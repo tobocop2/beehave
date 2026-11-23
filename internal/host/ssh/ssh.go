@@ -96,7 +96,7 @@ func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option
 	set := h.settingsOf(opts)
 
 	h.nonce, h.bank = set.nonce, set.bank
-	h.engine = jobwait.New(scheduler{h}, h.release, set.clock, set.bank, time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
+	h.engine = jobwait.New(scheduler{h}, h.release, set.clock, jobwait.ScopedBank(set.bank, h.bankFolder), time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
 
 	return h, nil
 }
@@ -316,6 +316,11 @@ func (h *Host) bankWork(ctx context.Context) error {
 	return host.BankAll(ctx, h.link.Runner("git"), h.link.Runner("find"), root, h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
+// bankFolder banks the work in one folder of the machine, the folder of a job. A folder that is gone holds no work.
+func (h *Host) bankFolder(ctx context.Context, folder string) error {
+	return host.BankFolder(ctx, h.link.Runner("git"), h.link.Runner("find"), h.link.Runner("test"), folder, h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
+}
+
 // WorkRoot is the absolute path where the repositories live: `host.ssh.work_root`, or the login folder of the machine.
 // A folder that starts with ~/ is read against the login folder. The folder must exist. The path is read once and is the same in every call.
 func (h *Host) WorkRoot(ctx context.Context) (string, error) {
@@ -384,8 +389,8 @@ func (h *Host) existing(ctx context.Context, root string) (string, error) {
 // The command travels as base64 and the unit runs it with eval, because systemd expands a dollar sign in a command line before the shell sees it.
 // --remain-after-exit keeps the finished unit loaded, so its result stays readable. A unit that is not kept reads as gone, like a lost one.
 func (h *Host) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error) {
-	if spec.Name == "" || spec.Command == "" {
-		return "", errJobFields
+	if err := checkSpec(spec); err != nil {
+		return "", err
 	}
 
 	root, err := h.WorkRoot(ctx)
@@ -402,7 +407,16 @@ func (h *Host) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, err
 		return "", err
 	}
 
-	return h.start(ctx, root, dir, spec.Command)
+	return h.start(ctx, root, dir, spec)
+}
+
+// checkSpec refuses a job with no name or no command, and a job with a folder that is not an absolute path.
+func checkSpec(spec model.JobSpec) error {
+	if spec.Name == "" || spec.Command == "" {
+		return errJobFields
+	}
+
+	return jobwait.CheckFolder(spec.Folder)
 }
 
 // refuseDraining returns ErrDraining when Drain marked the host.
@@ -420,9 +434,9 @@ func (h *Host) refuseDraining(ctx context.Context, root string) error {
 }
 
 // start runs the unit. dir is the state folder under root.
-func (h *Host) start(ctx context.Context, root, dir, command string) (model.JobID, error) {
+func (h *Host) start(ctx context.Context, root, dir string, spec model.JobSpec) (model.JobID, error) {
 	unit := "beehave-" + h.nonce()
-	encoded := base64.StdEncoding.EncodeToString([]byte(command))
+	encoded := base64.StdEncoding.EncodeToString([]byte(spec.Command))
 
 	_, err := h.run(ctx, "systemd-run", "systemd-run", "--user", "--quiet", "--unit="+unit, "--remain-after-exit",
 		"-p", "RuntimeMaxSec="+strconv.FormatInt(h.config.RunLimitSeconds(), 10), "-p", "TimeoutStopSec="+strconv.Itoa(stopTimeout),
@@ -432,7 +446,7 @@ func (h *Host) start(ctx context.Context, root, dir, command string) (model.JobI
 		return "", err
 	}
 
-	return model.JobID(unit), nil
+	return model.JobID(jobwait.Job{ID: unit, Folder: spec.Folder}.String()), nil
 }
 
 // Wait polls the unit until the job has a final state. See jobwait for the states, the lost, stale and died limits, and the bank.

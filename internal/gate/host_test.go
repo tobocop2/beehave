@@ -37,7 +37,7 @@ func TestRun_ThePathToAHostGateChecksOutTheSentCommitInAFreshFolderBeforeTheGate
 
 	_, err := g.Run(context.Background(), hostRequest(hostProject()))
 	require.NoError(t, err)
-	assert.Equal(t, []model.JobSpec{{Name: "gate-demo", Command: hostCommand}}, remote.submitted)
+	assert.Equal(t, []model.JobSpec{{Name: "gate-demo", Command: hostCommand, Folder: clone}}, remote.submitted)
 }
 
 func TestRun_EveryWordOfTheHostCommandIsQuoted(t *testing.T) {

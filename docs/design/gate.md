@@ -54,17 +54,21 @@ The engine calls `Submit`, records the `Job`, and then calls `Run` with that `Jo
 
 The exclusive queue runs one gate or merge for each project.
 
-A gate on a build host also runs its build job as a child run on the queue `hosts`, under the key `host:` and the host name. Each key runs one job at a time. So the gates of all projects on one host take turns, and the gates of two hosts run together.
+A gate on a build host also runs its build job as a child run on the slot queue of the class `gate`, named `slots:gate:<count>`, under the key `host:` and the host name. The count is `host.gate_slots`, with the default 1. Each key runs at most that many jobs at once. So the gates of all projects on one host share its gate slots, and the gates of two hosts run together.
 
 - The gate keeps its slot in the exclusive queue while the job waits, so a merge of the project still waits for the gate.
-- The queues cannot deadlock. A job queues nothing, so no job on the host queue waits for a slot of the exclusive queue.
+- The queues cannot deadlock. A job queues nothing, so no job on the slot queue waits for a slot of the exclusive queue.
 - A cancel of a gate, by a newer head or with its item, cancels the build job too. DBOS cancels each level of runs before it lists the children of that level. A child start checks in its own transaction that its parent still has an owner, and the cancel clears that owner. So a job that starts during the cancel is listed and canceled, or its start is refused. Until a DBOS release has this order, `go.mod` pins a fork commit that has it. The wait of the gate never cancels the job by its id, so a stop that ends late cannot cancel a job that a resume reopened.
 - DBOS commits each level of a cancel in its own transaction. A cancel that fails after the gate level leaves the gate canceled and its job running. The gate of a later head lists a canceled old gate whose job is still queued or running, and cancels it again with its children. `beehave cancel` of the item does the same. A cancel of a canceled run lists the open runs under it first. If there are none, it says the run has nothing to cancel and exits non-zero. Otherwise it cancels them and names them on stderr.
-- The cap is 1. A cap above 1 is not built.
+- The exclusive queue still keeps one gate for each project. With `gate_slots` above 1, the gates of different projects on one host run together, and two gates of one project never do.
+- The class `gate` is reserved. `host.slots` cannot name it, and a `command` call cannot use it.
+- Two projects that declare one host must give the same `gate_slots`. The config load refuses different counts, and the refusal names the class `gate` and both counts.
 
-The host of a gate is the cluster that `host_up` recorded, else the default `build_host` of the project. The engine reads it once, when the gate is queued, and keeps it in the input of the gate. So a replay uses the same host after the project file changes.
+The host of a gate is the cluster that `host_up` recorded, else the default `build_host` of the project. The engine reads it once, when the gate is queued, and keeps it and the count in the input of the gate. So a replay uses the same host after the project file changes, and a reopened job goes back to the queue of its count.
 
-A gate on a build host checks for a pass to reuse in the step `gate:reuse` before it takes its place on the host queue. So a gate that needs no build never waits for a host.
+Each job works in its own folder on the host, `beehave-gate-<project>-<head>` under the work root. The job id that the host returns holds that folder. When the job ends, the wait banks the work in that folder only, so the bank of one job never reads the clone of another job. A job with no folder banks the whole work root.
+
+A gate on a build host checks for a pass to reuse in the step `gate:reuse` before it takes its place on the slot queue. So a gate that needs no build never waits for a host.
 
 ### Recorded steps
 

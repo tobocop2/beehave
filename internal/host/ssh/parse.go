@@ -58,11 +58,16 @@ const minSystemd = 240
 
 // parseJobID reads a job id that Submit returned. It refuses any other text, so none reaches the command line of the host.
 func parseJobID(id model.JobID) (jobwait.Job, error) {
-	if !unitPattern.MatchString(string(id)) {
+	unit, folder, err := jobwait.SplitFolder(string(id))
+	if err != nil {
+		return jobwait.Job{}, err
+	}
+
+	if !unitPattern.MatchString(unit) {
 		return jobwait.Job{}, fmt.Errorf("%w: got %q", errBadJobID, string(id))
 	}
 
-	return jobwait.Job{ID: string(id)}, nil
+	return jobwait.Job{ID: unit, Folder: folder}, nil
 }
 
 // reading is what one poll read about the unit: the marker of a cancel and the properties. The size of the log comes back beside it.

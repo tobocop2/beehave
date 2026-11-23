@@ -6,6 +6,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // errNoSlotClass is the refusal of a command call that names a slot class that the host block of its project does not list.
@@ -42,7 +43,7 @@ func slotHost(projects map[string]config.Project, project, cluster, class string
 		return "", err
 	}
 
-	if found.Host.Slots[class] < 1 {
+	if class != model.GateClass && found.Host.Slots[class] < 1 {
 		return "", fmt.Errorf("%w: the class %q is not in `slots` of the `host` block of project %s, which runs the call on host %s. Add the class to `slots`, or remove `slots` from the call", errNoSlotClass, class, project, host)
 	}
 

@@ -198,7 +198,7 @@ func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
 // so a job id that the queue uses again never matches the marker of an earlier job.
 func (s slot) markerName(job jobwait.Job) string {
-	return ".beehave-banked-" + s.h.cluster + "-" + job.String()
+	return ".beehave-banked-" + s.h.cluster + "-" + job.Key()
 }
 
 // slotCommand is the command of the SkyPilot job that keeps the cluster busy until the marker exists.

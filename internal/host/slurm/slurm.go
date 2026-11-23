@@ -78,7 +78,7 @@ func New(l *link.Link, config model.HostConfig, slot Slot, opts ...Option) *Queu
 	}
 
 	q.nonce, q.limit, q.bank = s.nonce, s.limit, s.bank
-	q.engine = jobwait.New(scheduler{l}, slot.Release, s.clock, s.bank, time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
+	q.engine = jobwait.New(scheduler{l}, slot.Release, s.clock, jobwait.ScopedBank(s.bank, q.bankFolder), time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
 
 	return q
 }
@@ -142,6 +142,10 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 		return "", errJobFields
 	}
 
+	if err := jobwait.CheckFolder(spec.Folder); err != nil {
+		return "", err
+	}
+
 	job, err := q.queue(ctx, spec)
 	if err != nil {
 		return "", err
@@ -171,7 +175,7 @@ func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, err
 		return jobwait.Job{}, err
 	}
 
-	return jobwait.Job{ID: id, Nonce: q.nonce()}, nil
+	return jobwait.Job{ID: id, Nonce: q.nonce(), Folder: spec.Folder}, nil
 }
 
 // hold asks the slot to hold the cluster. If it cannot, the Slurm job is canceled.
@@ -348,6 +352,11 @@ func (q *Queue) bankWork(ctx context.Context) error {
 	}
 
 	return host.BankAll(ctx, q.link.Runner("git"), q.link.Runner("find"), root, q.config.PrivateRemote, host.WithRepoBudget(q.config.BankBudget))
+}
+
+// bankFolder banks the work in one folder of the head node, the folder of a job. A folder that is gone holds no work.
+func (q *Queue) bankFolder(ctx context.Context, folder string) error {
+	return host.BankFolder(ctx, q.link.Runner("git"), q.link.Runner("find"), q.link.Runner("test"), folder, q.config.PrivateRemote, host.WithRepoBudget(q.config.BankBudget))
 }
 
 // logTailBytes is the most bytes that Log reads from the end of the log of a job.

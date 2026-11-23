@@ -47,12 +47,13 @@ type rawHost struct {
 	DiskWaitMins  int
 	PrivateRemote string
 	Slots         slotTable
+	GateSlots     int
 	Blocks        map[string]*model.Block
 }
 
 // hostSpec is the schema of the host constructor: the keys every provider shares, and one optional argument for each provider block that the registry declares.
 func hostSpec(declared []Block) spec {
-	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "private_remote?", "lost_after?", "stop_limit?"}
+	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "gate_slots?", "private_remote?", "lost_after?", "stop_limit?"}
 
 	return spec{hostSpecName, append(args, blockArgs(declared)...)}
 }
@@ -63,9 +64,9 @@ const idleUnset = -1 << 31
 // newHost returns the constructor of the host block. A key that the call leaves out keeps its default.
 func newHost(declared []Block) func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
 	return func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
-		raw := &rawHost{At: at, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget, LostJobWait: defaultLostJobWaitText(), LostAfter: minutesText(DefaultLostAfter), StopLimit: minutesText(DefaultStopLimit)}
+		raw := &rawHost{At: at, GateSlots: 1, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget, LostJobWait: defaultLostJobWaitText(), LostAfter: minutesText(DefaultLostAfter), StopLimit: minutesText(DefaultStopLimit)}
 		held := holders(declared)
-		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit}
+		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.GateSlots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit}
 
 		err := hostSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
 		raw.Blocks = heldBlocks(declared, held)
@@ -277,11 +278,15 @@ func fillCounts(raw rawHost, host *model.HostConfig) error {
 	return fillLimits(raw, host)
 }
 
-// fillLimits sets the slot classes and the disk floor of host.
+// fillLimits sets the slot classes, the gate slots and the disk floor of host.
 func fillLimits(raw rawHost, host *model.HostConfig) error {
 	var err error
 
 	if host.Slots, err = slotsOf(raw.At, raw.Slots); err != nil {
+		return err
+	}
+
+	if host.GateSlots, err = positive(raw.At, "host.gate_slots", raw.GateSlots); err != nil {
 		return err
 	}
 

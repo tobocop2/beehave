@@ -227,17 +227,7 @@ func launchHostEngine(t *testing.T, h *harness, gate gate) *Engine {
 	return engine
 }
 
-func TestExclusiveHost_ReportsAHostQueueThatTheStoreRefuses(t *testing.T) {
-	t.Parallel()
-
-	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
-	require.NoError(t, err)
-	require.NoError(t, engine.Shutdown())
-
-	require.ErrorContains(t, engine.registerHostQueue(), "register the host queue")
-}
-
-func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
+func TestExclusiveHost_ReportsAGateSlotQueueThatTheStoreRefuses(t *testing.T) {
 	t.Parallel()
 
 	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
@@ -246,7 +236,23 @@ func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
 
 	var out ExclusiveOutput
 
-	err = engine.onHost(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box"}, &out)
+	err = engine.onHost(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box", SlotCount: 2}, &out)
+	require.ErrorContains(t, err, `register the queue of the slot class "gate"`)
+}
+
+func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+
+	queue, err := engine.slotQueue("gate", 1)
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	var out ExclusiveOutput
+
+	err = engine.runJob(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box"}, queue, &out)
 	require.ErrorContains(t, err, "queue the build job of item 12 on host box")
 }
 
@@ -308,7 +314,7 @@ func (w jobWaiter) wait(ctx dbos.Context, in ExclusiveInput) (string, error) {
 
 	var out ExclusiveOutput
 
-	return "", w.engine.runJob(run, in, w.engine.hostQueue, &out)
+	return "", w.engine.onHost(run, in, &out)
 }
 
 // A wait that stops writes nothing to its build job. Only a cancel of the gate in the store reaches the job, so the stop of a wait that ends after a resume
@@ -538,7 +544,7 @@ func TestExclusiveHost_AReplayRunsOnTheHostTheFirstRunChoseWhenTheProjectNamesAn
 	assert.Equal(t, hostKeyPrefix+"box", job.HostKey)
 }
 
-// waitsOnHost is true when the host queue holds want build jobs that wait for the job that runs.
+// waitsOnHost is true when the gate slot queue holds want build jobs that wait for the job that runs.
 func waitsOnHost(engine *Engine, want int) func() bool {
 	return func() bool {
 		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued))

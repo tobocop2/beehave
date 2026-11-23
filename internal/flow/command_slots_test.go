@@ -118,9 +118,9 @@ func TestReopen_ACanceledSlotJobGoesBackToTheQueueOfItsClassInThePartitionOfItsH
 	assert.Equal(t, "slots:mutation:3", queue)
 	assert.Equal(t, "host:box", partition)
 
-	queue, partition, err = gateRewindTarget(job(ExclusiveInput{Kind: kindGate, HostKey: hostKeyPrefix + "box"}))
+	queue, partition, err = gateRewindTarget(job(ExclusiveInput{Kind: kindGate, HostKey: hostKeyPrefix + "box", SlotCount: 2}))
 	require.NoError(t, err)
-	assert.Equal(t, hostQueueName, queue, "a build job of a gate keeps the host queue")
+	assert.Equal(t, "slots:gate:2", queue, "a build job of a gate goes back to the queue of the gate class and its count")
 	assert.Equal(t, "host:box", partition)
 }
 

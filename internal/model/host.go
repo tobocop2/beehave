@@ -37,6 +37,9 @@ type HostProvider string
 // MaxDiskFloorGB is the largest disk_floor_gb. It keeps the floor in bytes inside a 64-bit integer.
 const MaxDiskFloorGB = 1 << 20
 
+// GateClass is the slot class of the gates. It is reserved: `host.slots` cannot name it and a command call cannot use it.
+const GateClass = "gate"
+
 // HostConfig is the [host] table of a project: the keys every provider shares, and the block of the chosen provider.
 type HostConfig struct {
 	Provider     HostProvider
@@ -56,6 +59,8 @@ type HostConfig struct {
 	PrivateRemote        string
 	// Slots is the number of jobs of each slot class that the host runs at once. A class that is not a key has no slot on the host. It is nil when the block names none.
 	Slots map[string]int
+	// GateSlots is the number of gates that the host builds at once. The loader always sets it, from 1 to 1048576, and 1 is the default.
+	GateSlots int
 	// Block is the config block of the chosen provider, when the provider declares one and the project gave it. The provider reads its keys once, in its constructor.
 	Block *Block
 }
@@ -125,6 +130,9 @@ type JobID string
 type JobSpec struct {
 	Name    string
 	Command string
+	// Folder is the absolute path of the folder that the job works in. Wait and Cancel bank only this folder, so a job never reads the clone of another job.
+	// Empty means the job has no folder of its own, and they bank the whole work root.
+	Folder string
 }
 
 // JobState is where a job stands. The adapter reads it from the scheduler of the host.
