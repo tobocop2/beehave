@@ -97,7 +97,7 @@ func e2eFlow(dir, path string) cli.Flow {
 
 			engine, err := flow.NewEngine(ctx, withModules(opts), withBatch(flow.Deps{
 				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)), SkillLine: skillLineOf(cfg.Runners, newAdapters(nil, nil, nil)),
-				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: files,
+				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: e2eHosts{files},
 			}, dir, cfg))
 			if err != nil {
 				return nil, err
@@ -132,6 +132,12 @@ func (e2eFiles) Up(context.Context, string, string) (bool, string, error) { retu
 
 // Teardown stops no host.
 func (e2eFiles) Teardown(context.Context, string, string) error { return nil }
+
+// e2eHosts is the host keeper of the scripts: the Ready of the lifecycle of e2eFiles has another meaning, so the host keeper answers its own.
+type e2eHosts struct{ e2eFiles }
+
+// Ready says no host is ready: the project of the scripts has none.
+func (e2eHosts) Ready(context.Context, string, string) (bool, error) { return false, nil }
 
 // LostProof gives no proof: the project of the scripts has no host, so it has no host job.
 func (e2eFiles) LostProof(context.Context, string, string, string) (model.LostProof, error) {

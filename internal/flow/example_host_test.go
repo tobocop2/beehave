@@ -94,6 +94,9 @@ func (f *fakeHosts) Teardown(ctx context.Context, project, cluster string) error
 	return host.Teardown(ctx, f.host, git, find, f.private)
 }
 
+// Ready says every host is ready.
+func (*fakeHosts) Ready(context.Context, string, string) (bool, error) { return true, nil }
+
 // LostProof gives no proof: no run of these examples loses a gate job.
 func (*fakeHosts) LostProof(context.Context, string, string, string) (model.LostProof, error) {
 	return model.LostProof{}, nil
@@ -154,6 +157,8 @@ type failingHosts struct{ err error }
 func (failingHosts) Up(context.Context, string, string) (bool, string, error) { return false, "", nil }
 
 func (f failingHosts) Teardown(context.Context, string, string) error { return f.err }
+
+func (f failingHosts) Ready(context.Context, string, string) (bool, error) { return false, f.err }
 
 func (f failingHosts) LostProof(context.Context, string, string, string) (model.LostProof, error) {
 	return model.LostProof{}, f.err
