@@ -7,6 +7,14 @@ maintfakes
 env HOME=$WORK/home
 env GIT_BASE=file://$WORK/remotes
 env UPKEEP_WEEK=2026-W44
+
+# No long-running command of the tick runs outside child: beehave and the sync and plan scripts never stand at the start of a command, in a substitution, after ! or after =.
+grep -count=2 'child beehave item add' home/.upkeep/scripts/tick.sh
+grep -count=2 'child beehave run' home/.upkeep/scripts/tick.sh
+grep -count=1 'child sh .*sync.sh' home/.upkeep/scripts/tick.sh
+grep -count=1 'child sh .*plan.sh' home/.upkeep/scripts/tick.sh
+! grep '^[ \t]*(beehave|sh "\$H/scripts/(sync|plan)\.sh")' home/.upkeep/scripts/tick.sh
+! grep '(\$\(|! |= ?)(beehave|sh "\$H/scripts/(sync|plan)\.sh")' home/.upkeep/scripts/tick.sh
 cp blocking-git fake/git
 chmod 755 fake/git
 

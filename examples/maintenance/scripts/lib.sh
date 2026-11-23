@@ -44,6 +44,10 @@ POSIX::dup2(fileno($f), 9) or exit 74;
 exec @ARGV or exit 127' "$@"
 }
 
+# child <command...> runs a long-running command with descriptor 9 closed, so the command does not keep the lock of take_lock after its parent dies.
+# The body is a subshell, so the caller keeps descriptor 9. Never call child inside a command substitution: that shell would keep the lock while it waits.
+child() ( exec 9>&-; exec "$@" )
+
 # logged <week> <repo> [outcome...] is true when the log has a row for the week and the repository, with one of the outcomes when given.
 logged() {
     w=$1; r=$2; shift 2
