@@ -229,7 +229,7 @@ func attemptKey(ctx context.Context, n int) context.Context {
 		return ctx
 	}
 
-	return host.WithJobKey(ctx, key+":"+strconv.Itoa(n))
+	return withJobKey(ctx, key+":"+strconv.Itoa(n))
 }
 
 // commandRecord is the record of a command step: the output, and the stop when the exit code is one of stops.
