@@ -164,15 +164,18 @@ func TestResumeFailed_ADryRunPrintsTheListAndResumesNothing(t *testing.T) {
 	assert.Contains(t, stderr, "no failed run")
 }
 
-func TestResumeFailed_AFailedListReadResumesNothing(t *testing.T) {
+func TestResumeFailed_AListThatCannotBeReadIsReportedInTheRealRunAndTheDryRun(t *testing.T) {
 	t.Parallel()
 
-	rig := failedRig(t)
-	rig.steering.failedErr = errFake
+	for _, args := range [][]string{{"resume", "--failed"}, {"resume", "--failed", "--dry-run"}} {
+		rig := failedRig(t)
+		rig.steering.failedErr = errFake
 
-	code, _, stderr := rig.execute(t.Context(), "resume", "--failed")
+		code, stdout, stderr := rig.execute(t.Context(), args...)
 
-	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "fake failure")
-	assert.Equal(t, []string{"failed-runs"}, rig.steering.calls)
+		assert.Equal(t, 1, code, args)
+		assert.Contains(t, stderr, "fake failure", args)
+		assert.Empty(t, stdout, "a failed read prints no run line")
+		assert.Equal(t, []string{"failed-runs"}, rig.steering.calls, "nothing resumes after a failed read")
+	}
 }
