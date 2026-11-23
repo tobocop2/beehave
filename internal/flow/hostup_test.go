@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
@@ -17,11 +18,15 @@ import (
 // upHosts answers host_up. started is true for a host that this call launched, and false for a host that was already up.
 // A teardown is counted and always succeeds. LostProof answers from proofs in order, the last repeating; with none it gives no proof.
 type upHosts struct {
-	mu        sync.Mutex
-	started   bool
-	err       error
-	ups       []string
-	asked     []string // the cluster each Up call named
+	mu      sync.Mutex
+	started bool
+	err     error
+	ups     []string
+	asked   []string // the cluster each Up call named
+	// readQueue makes Up read the gates that wait on the cluster, as a provider with a size table does. waiting and waitErr hold the answer.
+	readQueue bool
+	waiting   int
+	waitErr   error
 	stopped   []string // the cluster each Teardown call named
 	teardowns int
 	proofs    []model.LostProof
@@ -35,14 +40,25 @@ type upHosts struct {
 // defaultCluster is the build host that upHosts resolves an empty choice to.
 const defaultCluster = "default-host"
 
-func (u *upHosts) Up(_ context.Context, project, cluster string) (bool, string, error) {
+func (u *upHosts) Up(_ context.Context, project, cluster string, waiting func(string) (int, error)) (bool, string, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	u.ups = append(u.ups, project)
 	u.asked = append(u.asked, cluster)
 
+	if u.readQueue {
+		u.waiting, u.waitErr = waiting(cmp.Or(cluster, defaultCluster))
+	}
+
 	return u.started, cmp.Or(cluster, defaultCluster), u.err
+}
+
+// Sized says no provider has a size table, and Defer says no host is left for a gate.
+func (*upHosts) Sized(string, string) (bool, error) { return false, nil }
+
+func (*upHosts) Defer(_ context.Context, _, cluster string) (bool, string, error) {
+	return false, cmp.Or(cluster, defaultCluster), nil
 }
 
 func (u *upHosts) Teardown(_ context.Context, _, cluster string) error {
@@ -130,6 +146,55 @@ func TestHostUp_ARunThatNamesNoHostGetsTheDefaultAndRecordsIt(t *testing.T) {
 
 	require.ErrorContains(t, err, "HOST "+defaultCluster, "the result holds the resolved host, not the empty choice")
 	assert.Equal(t, []string{""}, own.asked)
+}
+
+func TestHostUp_ThePassedQueueReadCountsTheGatesOnTheClusterFromTheGateQueue(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	own := &upHosts{started: true, readQueue: true}
+	h.hosts = own
+	h.flowIs(t, chosenHostFlow)
+
+	_, err := h.engine(t).Run(testItem, testProject)
+
+	require.ErrorContains(t, err, "main failed")
+	require.NoError(t, own.waitErr)
+	assert.Zero(t, own.waiting, "no gate waits on gpu-b in a store with no gate")
+}
+
+func TestGatesWaiting_CountsTheGatesOfOneClusterOfEveryProject(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).opened(t)
+	rows := append(slices.Repeat([]string{"gpu"}, 12), "gpu-b", "gpu-b")
+
+	for project, want := range map[string]int{"demo": 12, "other": 12} {
+		got, err := engine.gatesWaiting(project, jobsOn(rows...))("gpu")
+
+		require.NoError(t, err, project)
+		assert.Equal(t, want, got, project+": twelve gates on gpu, none of gpu-b")
+	}
+
+	got, err := engine.gatesWaiting("demo", jobsOn(rows...))("gpu-b")
+	require.NoError(t, err)
+	assert.Equal(t, 2, got)
+}
+
+func TestHostUp_ThePassedQueueReadRefusesWhenTheHostNamesNoGateSlots(t *testing.T) {
+	t.Parallel()
+
+	refused := errors.New("the host block names no gate slots")
+	h := newHarness(t)
+	own := &upHosts{started: true, readQueue: true}
+	h.hosts = own
+	h.slots = func(string, string, string) (SlotGrant, error) { return SlotGrant{}, refused }
+	h.flowIs(t, chosenHostFlow)
+
+	_, err := h.engine(t).Run(testItem, testProject)
+
+	require.ErrorContains(t, err, "main failed")
+	require.ErrorIs(t, own.waitErr, refused)
 }
 
 const chosenHostWorkFlow = "def main(item):\n    host_up(name = \"start\", host = \"gpu-b\")\n    gate(name = \"check\")\n    command(name = \"build\", run = [\"make\", \"x\"], host = \"build\")\n"

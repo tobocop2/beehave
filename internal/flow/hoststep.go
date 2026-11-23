@@ -18,7 +18,12 @@ import (
 // cluster names one build host of the project. An empty cluster means the build host of the project, and Up returns the cluster it used.
 // A cluster that the project file does not declare is an error.
 type hostKeeper interface {
-	Up(ctx context.Context, project, cluster string) (started bool, chosen string, err error)
+	// waiting counts the gates that wait or run on a cluster. Up calls it, for the cluster it chose, only when it starts a host whose size follows the queue.
+	Up(ctx context.Context, project, cluster string, waiting func(cluster string) (int, error)) (started bool, chosen string, err error)
+	// Sized says whether the provider of cluster has a size table. It reads the project file only and calls no host. A project with no host gives false.
+	Sized(project, cluster string) (bool, error)
+	// Defer says whether host_up leaves cluster for the first gate: the provider has a size table and the host is absent. chosen is the cluster that the call used.
+	Defer(ctx context.Context, project, cluster string) (deferred bool, chosen string, err error)
 	Teardown(ctx context.Context, project, cluster string) error
 	// LostProof stops the host job of a gate whose wait ended as lost, on the cluster that the job ran on, then reads whether the job can no longer run.
 	// It never waits for the job and never banks. It is safe to call again. A project with no host gives no proof and no error.
@@ -74,12 +79,34 @@ func (s *script) startHost(ctx context.Context, cluster string) (stepResult, err
 		return stepResult{Outputs: upOutputs(false, cluster)}, nil
 	}
 
-	started, chosen, err := s.e.deps.Hosts.Up(ctx, s.in.Project, cluster)
+	deferred, chosen, err := s.e.deps.Hosts.Defer(ctx, s.in.Project, cluster)
+	if err != nil {
+		return stepResult{}, err
+	}
+
+	if deferred {
+		return stepResult{Outputs: deferredOutputs(chosen)}, nil
+	}
+
+	started, chosen, err := s.e.deps.Hosts.Up(ctx, s.in.Project, cluster, s.e.gatesWaiting(s.in.Project, s.e.store().List))
 	if err != nil {
 		return stepResult{}, err
 	}
 
 	return stepResult{Outputs: upOutputs(started, chosen)}, nil
+}
+
+// gatesWaiting counts the gates that wait or run on a cluster, from the gate queue of the cluster. The count covers every project that shares the cluster:
+// the partition of the queue is the cluster, not the project. The project only names the gate slot count of the cluster.
+func (e *Engine) gatesWaiting(project string, list lister) func(cluster string) (int, error) {
+	return func(cluster string) (int, error) {
+		count, err := e.gateSlots(project, cluster)
+		if err != nil {
+			return 0, err
+		}
+
+		return gateJobs(list, count, cluster)
+	}
 }
 
 // hostTeardown stops the build host of the project: it banks the work first. The output down is true when the host is released, which for the providers
@@ -103,7 +130,7 @@ func (s *script) hostTeardown(b *starlark.Builtin, args starlark.Tuple, kwargs [
 	}
 
 	return s.durable("host_teardown", label, func(ctx context.Context, _ string) (stepResult, error) {
-		return s.stopHost(ctx, cmp.Or(cluster, s.hostChosen))
+		return s.stopHost(ctx, cmp.Or(cluster, s.hostChosen, s.gateStarted))
 	})
 }
 

@@ -87,7 +87,8 @@ project(
     #     skypilot = skypilot(
     #         cloud = "gcp",       # empty leaves the choice to SkyPilot
     #         region = "us-central1",
-    #         instance_type = "n2-standard-8",
+    #         instance_type = "n2-standard-8",   # one size for every queue; or give instance_sizes, never both
+    #         # instance_sizes = "3:n2-standard-4,n2-standard-16",  # up to 3 waiting gates: the first type; more: the last type. Read when host_up starts the host
     #     ),
     # ),
     # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the block of any other provider. beehave never deletes the machine: host_teardown banks the work and leaves it up.

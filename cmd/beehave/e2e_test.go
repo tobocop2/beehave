@@ -127,8 +127,17 @@ func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { re
 // Parent gives an item no parent.
 func (e2eFiles) Parent(context.Context, string, string) (string, error) { return "", nil }
 
+// Sized and Defer say the project of the scripts has no size table and leaves no host for a gate.
+func (e2eFiles) Sized(string, string) (bool, error) { return false, nil }
+
+func (e2eFiles) Defer(context.Context, string, string) (bool, string, error) {
+	return false, "", nil
+}
+
 // Up starts no host: the project of the scripts has none. The finish function of the example stops the host that the round started.
-func (e2eFiles) Up(context.Context, string, string) (bool, string, error) { return false, "", nil }
+func (e2eFiles) Up(context.Context, string, string, func(string) (int, error)) (bool, string, error) {
+	return false, "", nil
+}
 
 // Teardown stops no host.
 func (e2eFiles) Teardown(context.Context, string, string) error { return nil }

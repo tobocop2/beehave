@@ -23,7 +23,7 @@ func TestBlock_DeclaresThePlacementKeysAndOnlyOptionalOnes(t *testing.T) {
 		assert.True(t, arg.Optional, arg.Key)
 	}
 
-	assert.ElementsMatch(t, []string{"cloud", "region", "instance_type"}, keys)
+	assert.ElementsMatch(t, []string{"cloud", "region", "instance_type", "instance_sizes"}, keys)
 }
 
 func TestDecodeBlock_ReadsEveryKeyTheBlockDeclares(t *testing.T) {
@@ -36,7 +36,7 @@ func TestDecodeBlock_ReadsEveryKeyTheBlockDeclares(t *testing.T) {
 
 	got := decodeBlock(model.NewBlock("p.star:3:4", entries))
 
-	assert.Equal(t, block{cloud: "cloud-value", region: "region-value", instanceType: "instance_type-value"}, got)
+	assert.Equal(t, block{cloud: "cloud-value", region: "region-value", instanceType: "instance_type-value", instanceSizes: "instance_sizes-value"}, got)
 }
 
 func TestDecodeBlock_ANilBlockAndAnEmptyBlockLeaveEveryChoiceToSkyPilot(t *testing.T) {

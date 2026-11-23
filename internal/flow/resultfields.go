@@ -66,6 +66,11 @@ func upOutputs(started bool, host string) map[string]any {
 	return map[string]any{"started": started, hostKeyword: host}
 }
 
+// deferredOutputs records a host_up that started nothing because the host has a size table and the first gate starts it. Only this record holds the field deferred.
+func deferredOutputs(host string) map[string]any {
+	return map[string]any{"started": false, hostKeyword: host, "deferred": true}
+}
+
 // answerOutputs records the answer of a wait. timed_out is true when the deadline of the wait passed first, and the answer is then empty.
 // answers holds the text of each person who answered, by name. It is an empty dict for a wait that names no people, never a null.
 func answerOutputs(answer string, answers map[string]string, timedOut bool) map[string]any {

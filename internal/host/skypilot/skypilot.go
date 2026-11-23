@@ -55,6 +55,7 @@ type Host struct {
 	cluster string
 	config  model.HostConfig
 	values  block
+	sizes   sizeTable
 	sky     proc.Runner
 	link    *link.Link
 	Queue
@@ -69,7 +70,12 @@ func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue Qu
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, values: values, sky: sky, link: link.New(cluster, ssh)}
+	sizes, err := parseSizes(values)
+	if err != nil {
+		return nil, err
+	}
+
+	h := &Host{cluster: cluster, config: config, values: values, sizes: sizes, sky: sky, link: link.New(cluster, ssh)}
 	h.Queue = queue(h.link, config, slot{h})
 
 	return h, nil
@@ -109,6 +115,11 @@ func checkRequired(cluster string, config model.HostConfig, values block) error 
 // SkyPilot documents that setting for GPU requests only, so a CPU host may ignore it. The approved GCP trial checks that the instance carries the limit.
 // Up never passes `--wait-for none`: the default mode counts jobs, and the slot job of Submit relies on it.
 func (h *Host) Up(ctx context.Context) error {
+	return h.UpQueued(ctx, 0)
+}
+
+// UpQueued is Up with the size that the size table gives for queued waiting jobs. A cluster that runs keeps its size: the caller starts only an absent host.
+func (h *Host) UpQueued(ctx context.Context, queued int) error {
 	args := []string{
 		"launch", "-y", "-c", h.cluster, "--down",
 		"-i", strconv.Itoa(h.config.IdleMinutes),
@@ -119,8 +130,8 @@ func (h *Host) Up(ctx context.Context) error {
 		args = append(args, "--infra", infra)
 	}
 
-	if h.values.instanceType != "" {
-		args = append(args, "-t", h.values.instanceType)
+	if size := h.sizes.typeFor(queued); size != "" {
+		args = append(args, "-t", size)
 	}
 
 	if _, err := link.Run(ctx, h.sky, "sky launch", args); err != nil {

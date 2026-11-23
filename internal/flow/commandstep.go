@@ -276,6 +276,8 @@ func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[
 	in := ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
 
 	ran, err := s.e.queueExclusive(s.ctx, in)
+	s.noteGateHost(ran)
+
 	if err != nil {
 		return nil, fmt.Errorf("gate %q could not run: %w", label, err)
 	}
