@@ -124,7 +124,8 @@ type Lookup interface {
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 	Title(ctx context.Context, number int) (string, error)
 	CheckNotStarted(ctx context.Context, link string) (bool, error)
-	// ClosingRefs reads the issues that merging a pull request closes, as the forge lists them, with the base branch and the default branch.
+	// ClosingRefs reads the issues that merging a pull request closes, with the base branch and the default branch.
+	// For a base other than the default branch, where the forge lists none, the issues are the closing keywords of the body and the commit messages.
 	// A forge that cannot answer returns an error, never an empty list.
 	ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, error)
 	// IssueState reads the state of an issue: OPEN or CLOSED. A forge that cannot answer returns an error, never a state.
