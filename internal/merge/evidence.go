@@ -28,7 +28,7 @@ const (
 var errEmptyLog = errors.New("the log is empty")
 
 // Trees is what the merge reads to compare trees. A forge that also implements Trees lets the merge prove the base tip after the merge.
-// CommitTree returns the tree id of a commit. TreeBlobs returns the files of a tree, path to content id; a list cut short is an error.
+// CommitTree returns the tree id of a commit. TreeBlobs returns the files of a tree, path to mode and content id; a list cut short is an error.
 type Trees interface {
 	CommitTree(ctx context.Context, commit string) (string, error)
 	TreeBlobs(ctx context.Context, tree string) (map[string]string, error)
