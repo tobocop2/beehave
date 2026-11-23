@@ -90,6 +90,9 @@ type Spec struct {
 	MaxBudget float64
 	Log       io.Writer
 	OnStart   func(pid int)
+	// BeforeStart, when set, runs after every check that can refuse the run and just before the CLI starts. A refused run never calls it.
+	// The note it returns is added to the result of the run.
+	BeforeStart func(ctx context.Context) string
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
 	// Traceparent, when set, is the W3C TRACEPARENT that the CLI gets. No other trace or telemetry variable reaches the CLI.
@@ -329,12 +332,22 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
+	note := beforeStart(ctx, spec)
 	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch, versionArgs(p, printed)), spec.Dir)
 
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 
-	return withGuardProof(runCommand(ctx, spec, cmd, idle), runDir, launch.Loaded)
+	return withGuardProof(runCommand(ctx, spec, cmd, idle), runDir, launch.Loaded).AddNote(note)
+}
+
+// beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none.
+func beforeStart(ctx context.Context, spec Spec) string {
+	if spec.BeforeStart == nil {
+		return ""
+	}
+
+	return spec.BeforeStart(ctx)
 }
 
 // withGuardProof sets GuardMissing on the result when the launch named a marker file and the file is not in the run folder.

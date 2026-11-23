@@ -78,8 +78,15 @@ type agents struct {
 	identity func(ctx context.Context, git gitexec.Runner) agent.GitIdentity
 	// repos finds the repository of a worktree of a project with a repository, whose identity and hooks folder the git of the engine reads.
 	repos gitexec.Repositories
-	// modules fills the Go module cache of a project in a worktree and returns the cache, or "", and the note of a fill that failed.
-	modules func(ctx context.Context, project, dir string) (string, string)
+	// modules names and fills the Go module cache of a project in a worktree.
+	modules moduleFill
+}
+
+// moduleFill names the Go module cache of a project in a worktree, or "" for a worktree that needs none, and fills it.
+// Fill returns the cache and the note of a fill that failed.
+type moduleFill interface {
+	Cache(project, dir string) string
+	Fill(ctx context.Context, project, dir string) (string, string)
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -99,7 +106,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		home:     os.UserHomeDir,
 		identity: gitIdentity,
 		repos:    repos,
-		modules:  moduleFiller(opts).Fill,
+		modules:  moduleFiller(opts),
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
 		traceParent: cfg.Agents.TraceParent,
 		prices:      agent.DefaultPrices(),
@@ -234,24 +241,37 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	tap := a.tapOf(adapter, request)
 
 	spec := a.specOf(request, runner, dir, adapter, tap, guard, ready.box, ready.skills)
-	spec.ConfigFolder = ready.folder
+	spec.ConfigFolder, spec.BeforeStart = ready.folder, a.fillOf(request.Project, dir, ready.box)
 
 	result, err := endOf(adapter, ready.folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
-	return result.AddNote(ready.modules), err
+	return result, err
 }
 
-// stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan, its skill folders, and the note of a module fill that failed.
+// fillOf returns the function that fills the Go module cache of a sandboxed step, or nil for a step with no cache. The runner calls it after every
+// check that can refuse the step, so a step that does not start runs no download.
+func (a agents) fillOf(project, dir string, box *agent.SandboxPlan) func(context.Context) string {
+	if box == nil || box.ModuleCache == "" {
+		return nil
+	}
+
+	return func(ctx context.Context) string {
+		_, note := a.modules.Fill(ctx, project, dir)
+
+		return note
+	}
+}
+
+// stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan and its skill folders.
 type stepReady struct {
-	folder  string
-	box     *agent.SandboxPlan
-	skills  []string
-	modules string
+	folder string
+	box    *agent.SandboxPlan
+	skills []string
 }
 
 // readyOf returns what the step needs before it starts, or the reason why it cannot start: its config folder, its sandbox or its skills cannot be made.
-// Only a sandboxed step that starts gets its Go module cache filled.
+// The sandbox plan of a step that can start names the Go module cache of its project.
 func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (stepReady, string) {
 	folder, unknown := a.configFolder(runner, adapter)
 	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
@@ -262,7 +282,7 @@ func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner m
 		return ready, note
 	}
 
-	box.ModuleCache, ready.modules = a.modules(ctx, request.Project, dir)
+	box.ModuleCache = a.modules.Cache(request.Project, dir)
 
 	return ready, ""
 }
