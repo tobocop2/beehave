@@ -41,6 +41,8 @@ pool(
 # and halves (never below per_login) when a phase ends at a provider limit. beehave status shows the limit.
 # retention_days is the age in days at which `beehave run` deletes a finished run with its recorded steps. The default is 7.
 # 0 keeps every finished run. The most is 36500. A failed or canceled run is never deleted.
+# trace_parent is true or false. The default is false. When true, each agent process gets one TRACEPARENT that names the run and the step, so the spans of one run share a trace id.
+# beehave exports no span and passes no exporter setting: the agent CLI exports its own spans.
 # Call agents() once.
 agents(
     max_concurrent = 2,
@@ -54,6 +56,7 @@ agents(
     # review_poll_minutes = 60,
     # review_lookback_days = 3,
     # retention_days = 7,
+    # trace_parent = False,
 )
 
 runner(

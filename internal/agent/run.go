@@ -92,6 +92,8 @@ type Spec struct {
 	OnStart   func(pid int)
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
+	// Traceparent, when set, is the W3C TRACEPARENT that the CLI gets. No other trace or telemetry variable reaches the CLI.
+	Traceparent string
 	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs) and adds the ones that turn editing off
 	// (Profile.NoEditArgs and Profile.NoEditEnv).
 	NoEdits bool

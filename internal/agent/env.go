@@ -10,6 +10,9 @@ import (
 
 const localePrefix = "LC_"
 
+// traceparentVar is the W3C variable that names the parent span of a run.
+const traceparentVar = "TRACEPARENT"
+
 // inheritedNames lists the only variables an agent takes from the caller. A credential is never one of them.
 func inheritedNames() []string {
 	return []string{
@@ -57,7 +60,7 @@ func LoginEnv(base map[string]string, p Profile, dir string) []string {
 
 // envFor returns the environment of one run: the allowlisted names, the login folder and the token.
 // A sandboxed run gets no proxy variable, and sets the git variables of its plan: no config file of the owner, and the commit identity.
-// The variables of the launch come after the allow-list. The variables that turn editing off (NoEditEnv) come after those. The git variables of a sandboxed run, the login folder and the token come after them, so a launch cannot change those.
+// The variables of the launch come after the allow-list, and the trace parent of the spec after those, so a launch cannot change it. The variables that turn editing off (NoEditEnv) come after those. The git variables of a sandboxed run, the login folder and the token come after them, so a launch cannot change those.
 func envFor(spec Spec, p Profile, launch map[string]string) []string {
 	env := allowed(spec.Env)
 
@@ -68,6 +71,7 @@ func envFor(spec Spec, p Profile, launch map[string]string) []string {
 	}
 
 	maps.Copy(env, launch)
+	setTraceparent(env, spec.Traceparent)
 
 	if spec.NoEdits {
 		maps.Copy(env, p.NoEditEnv)
@@ -78,6 +82,13 @@ func envFor(spec Spec, p Profile, launch map[string]string) []string {
 	}
 
 	return list(env, p, spec.Runner.ConfigDir, spec.Token)
+}
+
+// setTraceparent sets the trace parent of the run in env. An empty value leaves env as it is.
+func setTraceparent(env map[string]string, traceparent string) {
+	if traceparent != "" {
+		env[traceparentVar] = traceparent
+	}
 }
 
 // buildEnv returns the NAME=value list for an agent: the allowlisted names of base, the login folder and the token.

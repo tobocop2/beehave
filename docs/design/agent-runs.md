@@ -51,7 +51,10 @@ The CLI gets an allowlisted environment:
 
 - the path, home, locale, proxy and certificate variables;
 - the login folder variables of its runner;
-- the token, if one is passed.
+- the token, if one is passed;
+- one `TRACEPARENT`, only when `agents.trace_parent` is true.
+
+The `TRACEPARENT` names the run and the step. The trace id is the first 16 bytes of the SHA-256 of `beehave-trace:` and the run id. The parent span id is the first 8 bytes of the SHA-256 of `beehave-span:`, the run id, `/` and the call name. The flags are `01`. A replay builds the same value. A sandboxed run gets it too. The engine value replaces any `TRACEPARENT` of the caller. `TRACESTATE`, `OTEL_*` and the telemetry switches of the caller never reach the CLI, and beehave exports no span: the CLI exports its own. A child run has its own run id and so its own trace id. The `command` step gets no trace variable.
 
 No other variable of the caller reaches it. `SSH_AUTH_SOCK` is not on the list, for any step, sandboxed or not, and the usage reader and the `command` step use the same list. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
 

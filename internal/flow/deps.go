@@ -21,6 +21,9 @@ var errEmptyLogin = errors.New("no agent login for this step: add a runner to ru
 // Forbid lists the kinds of command that the step forbids. The result holds one line in Violations for each Bash call of the run that breaks one.
 // Protect lists the directories of the kind protected-path; a relative one starts at the folder of the step.
 type AgentRequest struct {
+	// Run is the id of the run that queued the step. Call is the name of the agent call, such as agent:fix#1. Both stay the same on a replay.
+	Run         string
+	Call        string
 	Item        string
 	Project     string
 	Login       string
