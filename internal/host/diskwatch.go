@@ -125,18 +125,32 @@ func (f floored) watch(tick, ctx context.Context, id model.JobID) error {
 		case <-time.After(f.poll):
 		}
 
-		if youngest, ok := f.fleet.youngest(); !ok || youngest != id {
-			continue
-		}
-
-		if !errors.Is(DiskFloor(tick, f.Host, f.floorGB), ErrDiskLow) {
-			continue
-		}
-
-		if stopErr = f.Cancel(ctx, id); stopErr == nil {
-			f.fleet.markStopped(id)
-
+		stopped, err := f.stopIfLow(tick, ctx, id)
+		if stopped {
 			return nil
 		}
+
+		if err != nil {
+			stopErr = err
+		}
 	}
+}
+
+// stopIfLow stops the job when it is the youngest of the fleet and the host is under its floor. It says whether the stop took, and gives the error of a stop that failed.
+func (f floored) stopIfLow(tick, ctx context.Context, id model.JobID) (bool, error) {
+	if youngest, ok := f.fleet.youngest(); !ok || youngest != id {
+		return false, nil
+	}
+
+	if !errors.Is(DiskFloor(tick, f.Host, f.floorGB), ErrDiskLow) {
+		return false, nil
+	}
+
+	if err := f.Cancel(ctx, id); err != nil {
+		return false, err
+	}
+
+	f.fleet.markStopped(id)
+
+	return true, nil
 }
