@@ -57,15 +57,7 @@ func (l *freshLife) claimsTaken() int {
 func replaceRig(t *testing.T) (*harness, *Engine, *Client, *freshLife) {
 	t.Helper()
 
-	h := newHarness(t)
-	h.flowIs(t, waitFlow)
-
-	life := &freshLife{fakeLifecycle: h.life, claims: sharedClaims(t, "x")[0]}
-	engine := h.engineWith(t, func(e *Engine) { e.deps.Lifecycle = life })
-	client := h.client(t, testVersion)
-
-	runInBackground(engine, testItem)
-	waitOn(t, ownerAsks(t, h))
+	h, engine, client, life := replaceRigUnticked(t)
 
 	stop := make(chan struct{})
 	t.Cleanup(func() { close(stop) })
@@ -84,6 +76,23 @@ func replaceRig(t *testing.T) (*harness, *Engine, *Client, *freshLife) {
 			}
 		}
 	}()
+
+	return h, engine, client, life
+}
+
+// replaceRigUnticked is replaceRig with no engine tick: the engine gives back a canceled run only when the test sends a tick.
+func replaceRigUnticked(t *testing.T) (*harness, *Engine, *Client, *freshLife) {
+	t.Helper()
+
+	h := newHarness(t)
+	h.flowIs(t, waitFlow)
+
+	life := &freshLife{fakeLifecycle: h.life, claims: sharedClaims(t, "x")[0]}
+	engine := h.engineWith(t, func(e *Engine) { e.deps.Lifecycle = life })
+	client := h.client(t, testVersion)
+
+	runInBackground(engine, testItem)
+	waitOn(t, ownerAsks(t, h))
 
 	return h, engine, client, life
 }
@@ -383,4 +392,33 @@ func TestReplace_TheNewAttemptTakesTheClaimAfterTheEngineReleasedTheOldOne(t *te
 	require.Len(t, runs, 2, replaceStates(runs))
 	assert.False(t, runs[1].terminal(), "attempt 2 is open: %v %v", replaceStates(runs), runs[1].Status.Error)
 	assert.Equal(t, 2, life.claimsTaken(), "attempt 2 took the claim that attempt 1 released")
+}
+
+// The claim store refuses a take while attempt 1 holds the item, and the engine gives attempt 1 back only at the tick the test sends after attempt 2 started.
+func TestReplace_TheNewAttemptWaitsForTheReleaseOfTheCanceledAttemptBeforeItTakesTheClaim(t *testing.T) {
+	t.Parallel()
+
+	h, engine, client, life := replaceRigUnticked(t)
+
+	startWith(engine, testItem, testProject, workflow.OnOpenReplace)
+
+	soon(t, func() bool {
+		runs := replaceRuns(t, client, testItem)
+
+		return len(runs) == 2 && runs[1].Status.Status != dbos.WorkflowStatusEnqueued
+	}, "attempt 2 started")
+	assert.Equal(t, 1, life.claimsTaken(), "attempt 2 takes nothing while attempt 1 holds the claim")
+
+	h.tick(t)
+
+	soon(t, func() bool {
+		runs := replaceRuns(t, client, testItem)
+
+		return runs[1].terminal() || life.claimsTaken() == 2
+	}, "attempt 2 took its claim or ended")
+
+	runs := replaceRuns(t, client, testItem)
+	assert.False(t, runs[1].terminal(), "attempt 2 waited for the release and is open: %v %v", replaceStates(runs), runs[1].Status.Error)
+	assert.Equal(t, 2, life.claimsTaken(), "attempt 2 took the claim after the release of attempt 1")
+	assert.Equal(t, []string{"tok1"}, life.releasedBy(), "attempt 1 was given back before the take of attempt 2")
 }
