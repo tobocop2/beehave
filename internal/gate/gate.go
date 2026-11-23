@@ -890,7 +890,7 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 	cluster := project.BuildHost
 
 	// A stopped run ends the wait in one of these states too. That is the end of the run, not a gate that gave no result.
-	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut}, state) {
+	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull}, state) {
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 

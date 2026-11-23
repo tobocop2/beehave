@@ -189,12 +189,7 @@ func (f floored) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, e
 		return "", fmt.Errorf("job %s does not start: %w", spec.Name, err)
 	}
 
-	id, err := f.Host.Submit(ctx, spec)
-	if err == nil {
-		f.fleet.add(id)
-	}
-
-	return id, err
+	return f.Host.Submit(ctx, spec)
 }
 
 // waitForSpace runs DiskFloor and, while the host is under the floor, runs it again after each poll until the wait ends.

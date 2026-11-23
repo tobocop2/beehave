@@ -513,6 +513,7 @@ type runningHost struct {
 	free     uint64
 	jobs     map[model.JobID]chan model.JobState
 	canceled []model.JobID
+	entered  chan model.JobID // each Wait says its job is entered; the guard has put the job in its fleet first
 }
 
 func (r *runningHost) Status(context.Context) (model.HostStatus, error) {
@@ -536,6 +537,8 @@ func (r *runningHost) Wait(_ context.Context, id model.JobID) (model.JobState, e
 	r.mu.Lock()
 	ended := r.jobs[id]
 	r.mu.Unlock()
+
+	r.entered <- id
 
 	return <-ended, nil
 }
@@ -562,7 +565,7 @@ func TestAdapters_HostsBuiltForOneClusterShareOneFleetSoOnlyTheYoungestJobStops(
 
 	const gigabyte = 1 << 30
 
-	inner := &runningHost{free: 60 * gigabyte, jobs: map[model.JobID]chan model.JobState{}}
+	inner := &runningHost{free: 60 * gigabyte, jobs: map[model.JobID]chan model.JobState{}, entered: make(chan model.JobID, 2)}
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	table.diskPoll = time.Millisecond
 	table.hosts[skypilot.Name] = hostAdapter{build: func(model.Project) (host.Host, error) { return inner, nil }}
@@ -578,11 +581,8 @@ func TestAdapters_HostsBuiltForOneClusterShareOneFleetSoOnlyTheYoungestJobStops(
 	second, err := younger.Submit(t.Context(), model.JobSpec{Name: "b"})
 	require.NoError(t, err)
 
-	inner.mu.Lock()
-	inner.free = 10 * gigabyte
-	inner.mu.Unlock()
-
 	olderEnd := make(chan model.JobState, 1)
+	youngerEnd := make(chan model.JobState, 1)
 
 	go func() {
 		state, waitErr := older.Wait(t.Context(), first)
@@ -591,9 +591,23 @@ func TestAdapters_HostsBuiltForOneClusterShareOneFleetSoOnlyTheYoungestJobStops(
 		olderEnd <- state
 	}()
 
-	state, err := younger.Wait(t.Context(), second)
-	require.NoError(t, err)
-	assert.Equal(t, model.JobDiskFull, state, "the guard of the second host stops the job that started last on the cluster")
+	require.Equal(t, first, <-inner.entered)
+
+	go func() {
+		state, waitErr := younger.Wait(t.Context(), second)
+		assert.NoError(t, waitErr)
+
+		youngerEnd <- state
+	}()
+
+	require.Equal(t, second, <-inner.entered)
+
+	inner.mu.Lock()
+	inner.free = 10 * gigabyte
+	inner.mu.Unlock()
+
+	state := <-youngerEnd
+	assert.Equal(t, model.JobDiskFull, state, "the guard of the second host stops the job whose wait began last on the cluster")
 
 	select {
 	case inner.jobs[first] <- model.JobSucceeded:

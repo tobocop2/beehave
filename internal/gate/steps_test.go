@@ -265,7 +265,7 @@ func TestSteps_AStoppedRunIsAnErrorAndNeverAVoidGate(t *testing.T) {
 	_, err := local.Run(ctx, gate.Request{Project: project("local"), Dir: "/w"})
 	require.ErrorIs(t, err, context.Canceled, "a shell killed by the stop of the run")
 
-	for _, state := range []model.JobState{model.JobDied, model.JobStale, model.JobTimedOut} {
+	for _, state := range []model.JobState{model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull} {
 		g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
 
 		_, err = g.Run(ctx, hostRequest(hostProject()))

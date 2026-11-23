@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// Fleet is the jobs that one build host runs through its disk guard, in the order they started. Every guard of one host shares one Fleet.
+// Fleet is the jobs of one build host that a wait of its disk guard follows now, in the order their waits began. Every guard of one host shares one Fleet.
 type Fleet struct {
 	mu      sync.Mutex
 	count   uint64
@@ -74,13 +74,15 @@ func (f *Fleet) wasStopped(id model.JobID) bool {
 
 // Wait is the Wait of the host. At each poll the wait of the youngest job of the fleet reads the free space with DiskFloor.
 // When the host is under its floor, that wait stops its job, and the state of the job is JobDiskFull: a problem of the host, not a result of the job.
-// A disk that cannot be read stops no job. A guard with no poll does not watch the disk.
+// A job joins the fleet when its wait starts and leaves it when the wait returns, so a job that is submitted and never waited, or a job that
+// a restarted beehave waits for again, counts like any other. A disk that cannot be read stops no job. A guard with no poll does not watch the disk.
 func (f floored) Wait(ctx context.Context, id model.JobID) (model.JobState, error) {
-	defer f.fleet.remove(id)
-
 	if f.poll <= 0 {
 		return f.Host.Wait(ctx, id)
 	}
+
+	f.fleet.add(id)
+	defer f.fleet.remove(id)
 
 	tick, end := context.WithCancel(ctx)
 	defer end()
@@ -111,12 +113,15 @@ func (f floored) afterStop(id model.JobID, state model.JobState, err, stopErr er
 }
 
 // watch reads the disk at each poll for the job id while it is the youngest of the fleet, until tick ends. It stops the job when the host is under its floor.
-// The stop runs on ctx, not on tick, so the end of the wait does not cut the stop.
+// The stop runs on ctx, not on tick, so the end of the wait does not cut the stop. A stop that fails is tried again at the next poll,
+// because a job that stays the youngest and runs on would stop every older job from being read. The result is the error of the last try.
 func (f floored) watch(tick, ctx context.Context, id model.JobID) error {
+	var stopErr error
+
 	for {
 		select {
 		case <-tick.Done():
-			return nil
+			return stopErr
 		case <-time.After(f.poll):
 		}
 
@@ -128,8 +133,10 @@ func (f floored) watch(tick, ctx context.Context, id model.JobID) error {
 			continue
 		}
 
-		f.fleet.markStopped(id)
+		if stopErr = f.Cancel(ctx, id); stopErr == nil {
+			f.fleet.markStopped(id)
 
-		return f.Cancel(ctx, id)
+			return nil
+		}
 	}
 }
