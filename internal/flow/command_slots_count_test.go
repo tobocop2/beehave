@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -80,6 +81,55 @@ func TestCommand_TwoHostsWithDifferentCountsForOneClassEachKeepTheirOwnCount(t *
 	}
 }
 
+// stripSlotCount removes the count from the stored input of the job id. The store keeps an input as base64 text of its JSON.
+func stripSlotCount(t *testing.T, h *harness, id string) {
+	t.Helper()
+
+	db := sqlOf(t, h)
+
+	var stored string
+
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT inputs FROM workflow_input WHERE workflow_uuid = ?", id).Scan(&stored))
+
+	raw, err := base64.StdEncoding.DecodeString(stored)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"slot_count":1,`, "the stored input of the job holds the count")
+
+	text := strings.Replace(string(raw), `"slot_count":1,`, "", 1)
+
+	_, err = db.ExecContext(t.Context(), "UPDATE workflow_input SET inputs = ? WHERE workflow_uuid = ?", base64.StdEncoding.EncodeToString([]byte(text)), id)
+	require.NoError(t, err)
+}
+
+func TestResume_AJobQueuedBeforeCountsWereRecordedIsRefusedWithTheRunTheStepAndTheFix(t *testing.T) {
+	t.Parallel()
+
+	jobs := newSlotJobs("m1")
+	h := newHarness(t)
+	h.commands.before = jobs.hold
+	h.slots = func(_, _, _ string) (SlotGrant, error) { return SlotGrant{Host: "box", Count: 1}, nil }
+
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	first := runSlotItem(t, engine, testItem, slotFlow("m1", "mutation"))
+	require.Equal(t, "m1", receive(t, jobs.started))
+
+	require.NoError(t, client.Cancel(testItem))
+	h.tick(t)
+	require.Error(t, receive(t, first))
+
+	// The stored input of the job loses its count, as the input of a job that an older build queued has none.
+	stripSlotCount(t, h, "item-12-r1-2")
+
+	err := client.Resume(testItem)
+
+	require.ErrorContains(t, err, "reopen step", "the refusal names the step")
+	require.ErrorContains(t, err, "item-12-r1", "the refusal names the run")
+	require.ErrorContains(t, err, `slot class "mutation"`, "the refusal names the class")
+	require.ErrorContains(t, err, "Run the item again from its start", "the refusal names the fix")
+}
+
 func TestReopen_ASlotJobGoesBackToTheQueueOfItsCountThatItsInputRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -100,5 +150,5 @@ func TestReopen_ASlotJobGoesBackToTheQueueOfItsCountThatItsInputRecorded(t *test
 	assert.Equal(t, "slots:mutation:1", queue)
 
 	_, _, err = gateRewindTarget(row(ExclusiveInput{Kind: kindCommand, HostKey: hostKeyPrefix + "box", Request: CommandRequest{SlotClass: "mutation"}}))
-	require.ErrorContains(t, err, "no slot count", "a job queued before the input held the count has no queue to go back to")
+	require.ErrorContains(t, err, "Run the item again from its start", "a job queued before the input held the count has no queue to go back to")
 }
