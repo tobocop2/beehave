@@ -13,8 +13,12 @@ grep -count=2 'child beehave item add' home/.upkeep/scripts/tick.sh
 grep -count=2 'child beehave run' home/.upkeep/scripts/tick.sh
 grep -count=1 'child sh .*sync.sh' home/.upkeep/scripts/tick.sh
 grep -count=1 'child sh .*plan.sh' home/.upkeep/scripts/tick.sh
-! grep '^[ \t]*(beehave|sh "\$H/scripts/(sync|plan)\.sh")' home/.upkeep/scripts/tick.sh
-! grep '(\$\(|! |= ?)(beehave|sh "\$H/scripts/(sync|plan)\.sh")' home/.upkeep/scripts/tick.sh
+# Every line that names beehave, sync.sh or plan.sh, through a variable or a prefix, must be a comment, a log call, or start its command with child.
+exec grep -iE 'beehave|sync\.sh|plan\.sh' home/.upkeep/scripts/tick.sh
+cp stdout names.txt
+! exec grep -vE '^[[:space:]]*(#|child |if ! child |sh "\$H/scripts/log\.sh")' names.txt
+# After child, nothing may start a second command that names them.
+! exec grep -iE '(&&|\|\||;|\||\$\(|`).*(beehave|sync\.sh|plan\.sh)' home/.upkeep/scripts/tick.sh
 cp blocking-git fake/git
 chmod 755 fake/git
 
