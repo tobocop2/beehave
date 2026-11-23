@@ -50,6 +50,26 @@ func TestDryRun_ALocalExampleRedGateWithEveryStepKnownStillGoesToTheFixAgent(t *
 	assert.Equal(t, 2, strings.Count(out.String(), " gate:check#"), "the gate ran once more after the fix: %s", out.String())
 }
 
+func TestDryRun_ALocalExampleGateWithAFailedStepAndAnUnknownStepStillGoesToTheFixAgent(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", costing(1))
+	rig.h.gate.results = []GateResult{
+		{Passed: false, Steps: []GateStep{{Name: "command", Status: "fail"}, {Name: "tests", Status: "unknown"}}},
+		{Passed: true},
+	}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, localExampleFile(t, false), modeOff())
+	require.Error(t, err, "the fake review agent writes no verdict, so the run ends after the fix")
+
+	names, err := rig.h.client(t, testVersion).stepNames(testRun)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, stepCount(names, "agent:fix#3/start"), "a gate with a failed step is red, so the fix agent ran once: %v", names)
+	assert.Equal(t, 1, stepCount(names, "gate:check#1"), "the red gate did not run again before the fix: %v", names)
+}
+
 func TestDryRun_AVoidGateOptionMakesOnlyTheFirstGatesVoid(t *testing.T) {
 	t.Parallel()
 

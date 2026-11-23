@@ -174,6 +174,56 @@ func TestPatched_AnOpenRunOfTheOldLocalExampleReplaysAfterAdoptionWithNoUnexpect
 	assert.Contains(t, names, "gate:check#1", "the run went on past the implement step")
 }
 
+func TestPatched_AnOpenRunOfTheOldLocalExampleThatRecordedAVoidGateReplaysAfterAdoptionWithNoUnexpectedStep(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", costing(1))
+	h := rig.h
+	h.gate.results = []GateResult{{Passed: false, Steps: []GateStep{{Name: "command", Status: "unknown"}}}, {Passed: true}}
+	h.agents.hangAt = 3 // the old example sends the void gate to the fix agent, which holds, so the run is open after it recorded the gate
+	file := localExampleFile(t, true)
+
+	stopCtx, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopCtx, h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	go func() { _, _ = first.RunFile(testItem, testProject, file, modeOff()) }() //nolint:errcheck // the stop of the engine ends the run, and the test reads the store
+
+	waitOn(t, conditionOf(runOfEngine(t, first), func() bool { return len(h.agents.seen()) >= 3 }))
+	stop()
+	require.NoError(t, first.Shutdown())
+	expireLease(h)
+
+	current, err := os.ReadFile(localExampleFile(t, false))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, current, 0o600)) //nolint:gosec // the file lies in the temp folder of this test
+
+	h.agents.hangAt = 0
+	client := h.client(t, testVersion)
+	require.NoError(t, client.ResumeOnThisFile(testItem))
+
+	engine := h.engine(t)
+
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool {
+		last, found, readErr := latestRun(engine.store(), testItem)
+
+		return readErr == nil && found && last.terminal()
+	}))
+
+	last, found, err := latestRun(engine.store(), testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Error(t, last.Status.Error, "the fake review agent writes no verdict, so the run ends after the replay")
+	assert.NotContains(t, last.Status.Error.Error(), "UnexpectedStep", "the replay of the recorded void gate and fix step meets no other step")
+
+	names, err := client.stepNames(testRun)
+	require.NoError(t, err)
+	assert.Equal(t, 1, stepCount(names, "gate:check#1"), "the recorded void gate replays and does not run again: %v", names)
+	assert.NotContains(t, names, "DBOS.patch-void-gate", "a run that passed the call recorded no marker")
+}
+
 // stepCount counts the entries of names that equal want.
 func stepCount(names []string, want string) int {
 	return len(names) - len(slices.DeleteFunc(slices.Clone(names), func(name string) bool { return name == want }))
