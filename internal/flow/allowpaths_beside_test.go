@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -118,19 +118,18 @@ func TestScope_AMarkRecordedBeforeTheFilesBesideTheFolderWereReadChecksNothingBe
 	assert.Empty(t, bad)
 }
 
-func TestScope_AFolderBesideTheItemFolderThatCannotBeReadIsSkipped(t *testing.T) {
+func TestScope_AFolderBesideTheItemFolderThatCannotBeReadFailsTheMark(t *testing.T) {
 	t.Parallel()
 
 	dir, _ := gitTree(t)
 	locked := filepath.Join(filepath.Dir(dir), "locked")
 	putUnder(t, locked, "a.txt", "x")
-	require.NoError(t, os.Chmod(locked, 0o000))
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	require.NoError(t, exectest.ChmodFolder(locked, 0o000))
+	t.Cleanup(func() { assert.NoError(t, exectest.ChmodFolder(locked, 0o700)) })
 
-	state, err := readState(t.Context(), engineGit(dir))
+	_, err := readState(t.Context(), engineGit(dir))
 
-	require.NoError(t, err)
-	assert.Empty(t, state.outside)
+	require.ErrorContains(t, err, "read the folders beside the item folder")
 }
 
 func TestScope_AGitCallThatFailsWhileListingTheWorktreesNamesTheCall(t *testing.T) {

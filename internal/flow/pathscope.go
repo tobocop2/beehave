@@ -50,8 +50,15 @@ type startMark struct {
 	Outside map[string]string `json:"outside"`
 }
 
-// buildCaches names the folders that tools fill by themselves: a write inside one is not a change of the step, so each one is a single entry.
-var buildCaches = []string{".cache", ".gradle", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__", "node_modules"}
+// isBuildCache says whether a folder name is one that tools fill by themselves: a write inside one is not a change of the step, so each one is a single entry.
+func isBuildCache(name string) bool {
+	switch name {
+	case ".cache", ".gradle", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__", "node_modules":
+		return true
+	}
+
+	return false
+}
 
 // markStart records the start mark of an agent call with a scope or with a commit by the engine, in a step, so a replay keeps the first one.
 // A call with neither records nothing.
@@ -126,12 +133,25 @@ func readState(ctx context.Context, tree proc.Runner) (folderState, error) {
 	}
 
 	root := strings.TrimSpace(out)
+
+	seen, err := untrackedStamps(ctx, tree, root)
+	if err != nil {
+		return folderState{}, err
+	}
+
+	outside, err := besideFolder(ctx, tree, root)
+
+	return folderState{seen: seen, outside: outside}, err
+}
+
+// untrackedStamps maps each untracked file, and each ignored file or build cache folder, of the repository at root to its stamp.
+func untrackedStamps(ctx context.Context, tree proc.Runner, root string) (map[string]string, error) {
 	seen := map[string]string{}
 
 	for _, ignored := range []bool{false, true} {
-		names, listErr := listOthers(ctx, tree, ignored)
-		if listErr != nil {
-			return folderState{}, listErr
+		names, err := listOthers(ctx, tree, ignored)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, name := range names {
@@ -143,16 +163,14 @@ func readState(ctx context.Context, tree proc.Runner) (folderState, error) {
 		}
 	}
 
-	outside, err := besideFolder(ctx, tree, root)
-
-	return folderState{seen: seen, outside: outside}, err
+	return seen, nil
 }
 
 // collapse turns a file inside a folder of a known build cache into the entry of that folder, which ends with a slash.
 func collapse(name string) string {
 	parts := strings.Split(name, "/")
 	for i, part := range parts[:len(parts)-1] {
-		if slices.Contains(buildCaches, part) {
+		if isBuildCache(part) {
 			return strings.Join(parts[:i+1], "/") + "/"
 		}
 	}
@@ -191,25 +209,47 @@ func besideFolder(ctx context.Context, tree proc.Runner, root string) (map[strin
 		}
 	}
 
-	parent := filepath.Dir(root)
+	return walkBeside(filepath.Dir(root), owned)
+}
+
+// walkBeside maps each file below parent to its stamp, except the files below the folders in owned. An entry that the walk cannot read is an error,
+// so an unreadable folder never makes the mark smaller.
+func walkBeside(parent string, owned map[string]bool) (map[string]string, error) {
 	files := map[string]string{}
 
-	// An unreadable entry has no stamp to compare, so the walk skips it.
-	_ = filepath.WalkDir(parent, func(path string, entry fs.DirEntry, walkErr error) error {
-		switch {
-		case walkErr != nil:
-			return nil
-		case owned[path]:
-			return filepath.SkipDir
-		case !entry.IsDir():
-			rel, _ := filepath.Rel(parent, path)
-			files["../"+filepath.ToSlash(rel)] = stamp(parent, filepath.ToSlash(rel))
+	err := filepath.WalkDir(parent, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || owned[path] {
+			return besideSkip(walkErr)
 		}
+
+		if entry.IsDir() {
+			return nil
+		}
+
+		stampBeside(files, parent, path)
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("read the folders beside the item folder: %w", err)
+	}
 
 	return files, nil
+}
+
+// stampBeside puts the stamp of the file at path, below parent, in files under its key that starts with `../`.
+func stampBeside(files map[string]string, parent, path string) {
+	rel := filepath.ToSlash(strings.TrimLeft(strings.TrimPrefix(path, parent), string(filepath.Separator)))
+	files["../"+rel] = stamp(parent, rel)
+}
+
+// besideSkip is the result of the walk for an entry that is owned or unreadable: the read error, or a skip of the owned folder.
+func besideSkip(walkErr error) error {
+	if walkErr != nil {
+		return walkErr
+	}
+
+	return filepath.SkipDir
 }
 
 // listOthers lists the untracked files, or the ignored files.
