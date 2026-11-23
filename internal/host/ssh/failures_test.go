@@ -116,6 +116,18 @@ func TestSubmit_AStepThatFailsIsAnErrorAndStartsNoUnit(t *testing.T) {
 	}
 }
 
+func TestLog_AFailedReadOfTheLogIsAnErrorAndNeverAnEmptyLog(t *testing.T) {
+	t.Parallel()
+
+	m := machineWith(map[string]int{"tail": failed}, nil)
+	h, _, _ := newHost(t, m, config())
+
+	out, err := h.Log(t.Context(), "beehave-x")
+
+	require.Error(t, err)
+	assert.Empty(t, out)
+}
+
 func TestACallThatNeedsTheWorkRootFailsWhenTheRootCannotBeRead(t *testing.T) {
 	t.Parallel()
 
