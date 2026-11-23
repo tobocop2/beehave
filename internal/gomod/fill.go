@@ -4,7 +4,6 @@ package gomod
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/gotelemetry"
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
@@ -24,8 +24,6 @@ const (
 	vendorList = "vendor/modules.txt"
 	// cacheMode is the mode of the cache folder of a project: only the owner reads it.
 	cacheMode = 0o700
-	// modeFileMode is the mode of the telemetry mode file in the empty home.
-	modeFileMode = 0o600
 )
 
 // Filler fills one module cache per project under Root, with the go command that Path finds.
@@ -96,33 +94,14 @@ func emptyHome(root string) (string, func(), error) {
 		return "", func() {}, err
 	}
 
-	return home, func() { _ = os.RemoveAll(home) }, telemetryOff(home)
-}
-
-// telemetryOff writes the telemetry mode off into the config folder of the go command in home: home/.config, which XDG_CONFIG_HOME names, and
-// home/Library/Application Support on macOS. With telemetry on or local, the go command starts a child process that it does not wait for, in
-// that folder, and the child would outlive the fill and write into the home folder after the engine removes it.
-func telemetryOff(home string) error {
-	var err error
-
-	for _, config := range []string{configFolder(home), filepath.Join(home, "Library", "Application Support")} {
-		dir := filepath.Join(config, "go", "telemetry")
-		err = errors.Join(err, os.MkdirAll(dir, cacheMode), os.WriteFile(filepath.Join(dir, "mode"), []byte("off\n"), modeFileMode))
-	}
-
-	return err
-}
-
-// configFolder is the config folder in home that XDG_CONFIG_HOME names for the go command.
-func configFolder(home string) string {
-	return filepath.Join(home, ".config")
+	return home, func() { _ = os.RemoveAll(home) }, gotelemetry.Off(home)
 }
 
 // env is the whole environment of the go command: no variable of the owner reaches it.
 func (f Filler) env(cache, home, work string) []string {
 	return []string{
 		"PATH=" + f.Path, "HOME=" + home, "GOENV=off", "GOFLAGS=-mod=readonly", "GOPROXY=" + proxy, "GOTOOLCHAIN=local",
-		"GOMODCACHE=" + cache, "GOCACHE=" + filepath.Join(home, "build"), "GOWORK=" + work, "XDG_CONFIG_HOME=" + configFolder(home),
+		"GOMODCACHE=" + cache, "GOCACHE=" + filepath.Join(home, "build"), "GOWORK=" + work, "XDG_CONFIG_HOME=" + filepath.Join(home, gotelemetry.ConfigFolder),
 	}
 }
 

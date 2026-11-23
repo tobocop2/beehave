@@ -320,6 +320,7 @@ linters:
             - "**/internal/lockfile/**"
             - "**/internal/atomicfile/**"
             - "**/internal/fstree/**"
+            - "**/internal/gotelemetry/**"
             - "**/internal/exectest/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
@@ -330,6 +331,7 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
         layer-1:
           list-mode: lax
@@ -354,6 +356,7 @@ linters:
             - github.com/tobocop2/beehave/internal/config
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/credential
             - github.com/tobocop2/beehave/internal/roundsync
@@ -392,6 +395,7 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
@@ -432,6 +436,7 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
@@ -463,6 +468,7 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
@@ -494,6 +500,7 @@ linters:
             - "!**/internal/lockfile/**"
             - "!**/internal/atomicfile/**"
             - "!**/internal/fstree/**"
+            - "!**/internal/gotelemetry/**"
             - "!**/internal/exectest/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
