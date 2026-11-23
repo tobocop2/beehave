@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/gomod"
 )
 
@@ -32,7 +33,7 @@ func newRig(t *testing.T, download string) rig {
 	calls := filepath.Join(bin, "calls")
 	script := "#!/bin/sh\n{ echo \"args=$*\"; echo \"DIR=$(pwd -P)\"; env; } >> '" + calls + "'\n" +
 		"case \"$1 $2\" in\n\"mod edit\"|\"work edit\") [ -f '" + bin + "/edit.out' ] && exec cat '" + bin + "/edit.out'; exec '" + real + "' \"$@\" ;;\nesac\n" + strings.ReplaceAll(download, "REALGO", real) + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "go"), []byte(script), 0o700)) //nolint:gosec // the fake go command must be executable
+	require.NoError(t, exectest.Write(filepath.Join(bin, "go"), script))
 
 	return rig{filler: gomod.Filler{Root: filepath.Join(t.TempDir(), "gomodcache"), Path: bin + ":/usr/bin:/bin"}, work: work, calls: calls}
 }
@@ -106,7 +107,9 @@ func TestFill_ProjectWithDependenciesFillsTheCacheAndGoSum(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(sum), "example.com/dep v1.0.0 h1:")
 	require.Len(t, r.downloads(t), 1)
-	assert.Equal(t, r.work, r.downloads(t)[0]["DIR"], "the download runs in the item worktree")
+	assert.NotEqual(t, r.work, r.downloads(t)[0]["DIR"], "go never runs in the files the agent wrote")
+	assert.Equal(t, "tree", filepath.Base(r.downloads(t)[0]["DIR"]), "the download runs in the copy of the engine")
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehave"), "the new go.sum replaced the old one")
 }
 
 func TestFill_AProjectNameIsOnePathElementOfTheCache(t *testing.T) {
@@ -161,7 +164,9 @@ func TestFill_WorkspaceInsideTheWorktreeFillsTheCache(t *testing.T) {
 	assert.Empty(t, note)
 	assert.NotEmpty(t, cache)
 	require.Len(t, r.downloads(t), 1)
-	assert.Equal(t, filepath.Join(r.work, "go.work"), r.downloads(t)[0]["GOWORK"])
+	work := r.downloads(t)[0]["GOWORK"]
+	assert.True(t, strings.HasPrefix(work, r.filler.Root), "GOWORK names the go.work of the copy, not of the worktree: %s", work)
+	assert.Equal(t, "go.work", filepath.Base(work))
 }
 
 func TestFill_WorkspaceOutsideTheWorktreeIsRefused(t *testing.T) {
@@ -221,6 +226,56 @@ func TestFill_AFolderBesideTheWorktreeWithTheSameNameStartIsRefused(t *testing.T
 	assert.Empty(t, r.downloads(t), "no download ran")
 }
 
+func TestFill_AGoSumLinkToANewOutsideFileIsRefusedAndNothingIsWrittenOutside(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	victim := filepath.Join(t.TempDir(), "victim")
+	write(t, filepath.Join(r.work, "go.mod"), module+"\nrequire example.com/dep v1.0.0\n")
+	require.NoError(t, os.Symlink(victim, filepath.Join(r.work, "go.sum")))
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.NoFileExists(t, victim, "the engine created no file outside the worktree")
+	assert.Contains(t, note, "go.sum")
+	assert.Contains(t, note, "link")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
+func TestFill_AGoSumLinkToAnExistingOutsideFileLeavesItAsItIs(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	victim := filepath.Join(t.TempDir(), "victim")
+	write(t, victim, "keep\n")
+	write(t, filepath.Join(r.work, "go.mod"), module+"\nrequire example.com/dep v1.0.0\n")
+	require.NoError(t, os.Symlink(victim, filepath.Join(r.work, "go.sum")))
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	kept, err := os.ReadFile(victim) //nolint:gosec // a path inside the test folder
+	require.NoError(t, err)
+	assert.Equal(t, "keep\n", string(kept), "the engine changed no file outside the worktree")
+	assert.Contains(t, note, "link")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
+func TestFill_AGoWorkSumLinkToAnOutsideFileIsRefusedAndNothingIsWrittenOutside(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, `echo "example.com/dep v1.0.0 h1:x=" >> go.work.sum`)
+	victim := filepath.Join(t.TempDir(), "victim")
+	write(t, filepath.Join(r.work, "go.work"), "go 1.22\n\nuse ./a\n")
+	write(t, filepath.Join(r.work, "a", "go.mod"), "module example.com/a\n\ngo 1.22\n")
+	require.NoError(t, os.Symlink(victim, filepath.Join(r.work, "go.work.sum")))
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.NoFileExists(t, victim, "the engine created no file outside the worktree")
+	assert.Contains(t, note, "go.work.sum")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
 func TestFill_ALinkInTheWorktreeToAFolderOutsideIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -232,7 +287,79 @@ func TestFill_ALinkInTheWorktreeToAFolderOutsideIsRefused(t *testing.T) {
 
 	_, note := r.filler.Fill(t.Context(), "proj", r.work)
 
-	assert.Contains(t, note, outside)
+	assert.Contains(t, note, filepath.Join(r.work, "o")+" is a link")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
+func TestFill_AGoSumThatIsAFolderIsRefused(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	require.NoError(t, os.MkdirAll(filepath.Join(r.work, "go.sum"), 0o700))
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.Contains(t, note, filepath.Join(r.work, "go.sum")+" is a link or not a regular file")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
+func TestFill_AGoSumTheDownloadLeavesAsItIsIsNotRewritten(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, `true`)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	write(t, filepath.Join(r.work, "go.sum"), "example.com/dep v1.0.0 h1:x=\n")
+	before, err := os.Stat(filepath.Join(r.work, "go.sum"))
+	require.NoError(t, err)
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.Empty(t, note)
+	after, err := os.Stat(filepath.Join(r.work, "go.sum"))
+	require.NoError(t, err)
+	assert.True(t, os.SameFile(before, after), "the go.sum file is the same file")
+}
+
+func TestFill_AGoSumThatCannotBeWrittenBackIsANote(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	require.NoError(t, os.MkdirAll(filepath.Join(r.work, "go.sum.beehave"), 0o700))
+
+	cache, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.NotEmpty(t, cache, "the step starts with the cache")
+	assert.Contains(t, note, "cannot be written to "+filepath.Join(r.work, "go.sum"))
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum"))
+}
+
+func TestFill_AGoSumThatCannotBeReadIsANote(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	write(t, filepath.Join(r.work, "go.sum"), "")
+	require.NoError(t, os.Chmod(filepath.Join(r.work, "go.sum"), 0o000))
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.Contains(t, note, filepath.Join(r.work, "go.sum")+" cannot be copied")
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
+func TestFill_AWorktreeThatCannotBeOpenedIsANote(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	require.NoError(t, exectest.ChmodFolder(r.work, 0o100), "a folder that can be searched but not read")
+	t.Cleanup(func() { assert.NoError(t, exectest.ChmodFolder(r.work, 0o700)) })
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.Contains(t, note, "the worktree cannot be opened")
 	assert.Empty(t, r.downloads(t), "no download ran")
 }
 
@@ -364,8 +491,8 @@ func TestFill_AHomeFolderThatCannotBeMadeIsANote(t *testing.T) {
 
 	r := newRig(t, fillsCache)
 	require.NoError(t, os.MkdirAll(filepath.Join(r.filler.Root, "proj"), 0o700))
-	require.NoError(t, os.Chmod(r.filler.Root, 0o500))                      //nolint:gosec // a read-only root refuses the temporary home
-	t.Cleanup(func() { assert.NoError(t, os.Chmod(r.filler.Root, 0o700)) }) //nolint:gosec // the temp folder cleanup needs write access back
+	require.NoError(t, exectest.ChmodFolder(r.filler.Root, 0o500), "a read-only root refuses the temporary home")
+	t.Cleanup(func() { assert.NoError(t, exectest.ChmodFolder(r.filler.Root, 0o700)) })
 	write(t, filepath.Join(r.work, "go.mod"), module)
 
 	cache, note := r.filler.Fill(t.Context(), "proj", r.work)

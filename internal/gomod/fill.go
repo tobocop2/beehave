@@ -34,21 +34,31 @@ type Filler struct {
 // Fill runs go mod download all in the item worktree dir and returns the module cache of the project, or "" for a folder with no go.mod and no go.work,
 // or with a vendor folder. The note says why the cache may be incomplete; the step starts with the cache as it is.
 func (f Filler) Fill(ctx context.Context, project, dir string) (string, string) {
-	work := filepath.Join(dir, "go.work")
-	if !exists(work) && !exists(filepath.Join(dir, "go.mod")) || exists(filepath.Join(dir, vendorList)) {
+	cache := f.Cache(project, dir)
+	if cache == "" {
 		return "", ""
 	}
 
-	cache := filepath.Join(f.Root, url.PathEscape(project))
 	if err := os.MkdirAll(cache, cacheMode); err != nil {
 		return "", fmt.Sprintf("the Go module cache %s cannot be made (%v), so the step starts with no module cache.", cache, err)
 	}
 
-	return cache, f.download(ctx, cache, dir, work)
+	return cache, f.download(ctx, cache, dir)
 }
 
-// download runs the checks and the download in an empty home folder that it removes after, and returns the note of a failure.
-func (f Filler) download(ctx context.Context, cache, dir, work string) string {
+// Cache returns the module cache of the project for the item worktree dir, or "" for a folder with no go.mod and no go.work, or with a vendor folder.
+// It reads no file and makes no folder.
+func (f Filler) Cache(project, dir string) string {
+	if !exists(filepath.Join(dir, "go.work")) && !exists(filepath.Join(dir, "go.mod")) || exists(filepath.Join(dir, vendorList)) {
+		return ""
+	}
+
+	return filepath.Join(f.Root, url.PathEscape(project))
+}
+
+// download copies the module files of the worktree into a folder of an empty home that it removes after, runs the download there, and writes the
+// go.sum lines it added back into the worktree. go never runs in the files the agent wrote. It returns the note of a failure.
+func (f Filler) download(ctx context.Context, cache, dir string) string {
 	home, err := os.MkdirTemp(f.Root, ".home-")
 	if err != nil {
 		return failed(fmt.Sprintf("its empty home folder cannot be made (%v)", err))
@@ -60,15 +70,15 @@ func (f Filler) download(ctx context.Context, cache, dir, work string) string {
 		return failed("the engine finds no go command on its PATH")
 	}
 
-	g := goCommand{binary: binary, dir: dir, env: f.env(cache, home, workFile(work))}
-
-	if note := g.outside(ctx, dir, work); note != "" {
+	t, note := openTree(dir, filepath.Join(home, "tree"))
+	if note != "" {
 		return note
 	}
+	defer t.close()
 
-	_, note := g.run(ctx, "mod", "download", "all")
-
-	return note
+	return t.download(ctx, func(work string) goCommand {
+		return goCommand{binary: binary, dir: t.copy, env: f.env(cache, home, work)}
+	})
 }
 
 // env is the whole environment of the go command: no variable of the owner reaches it.
