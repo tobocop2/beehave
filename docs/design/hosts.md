@@ -299,9 +299,10 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 
 The key `build_host` is the one declaration of the hosts of a project: a name, or a list of names that share the `host` block. The first name is the default.
 
-- A run chooses another with the `host` argument of `host_up`, and the step records the cluster.
+- A run chooses another with the `host` argument of `host_up`, and the step records the cluster. A call of `host_up` with no name records the default host.
+- A run that never calls `host_up` has its gates placed: each gate goes to the declared host that is up and has the most free gate slots, and the first declared host wins a tie (see the gate design, `gate:place`). To keep the old behaviour, declare one host or call `host_up`.
 - The gate, its key, each `command` call with a `host`, and `host_teardown` read that record, so a resume uses the same cluster.
 - A resume reads the cluster from the replayed record of `host_up` for every later step.
 - `"local"` is the only name of a project that builds here. `host_up(host = "local")` starts nothing there and records `local`, and a cluster name is refused.
 - If the project file no longer declares the recorded cluster, the gate, the command and `host_teardown` refuse it with an error that lists the declared hosts.
-- The run never moves to another host.
+- A host that `host_up` recorded never changes for the run. Only a run that recorded none has its gates placed.

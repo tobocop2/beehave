@@ -64,7 +64,13 @@ A gate on a build host also runs its build job as a child run on the slot queue 
 - The class `gate` is reserved. `host.slots` cannot name it, and a `command` call cannot use it.
 - Two projects that declare one host must give the same `gate_slots`. The config load refuses different counts, and the refusal names the class `gate` and both counts.
 
-The host of a gate is the cluster that `host_up` recorded, else the default `build_host` of the project. The engine reads it once, when the gate is queued, and keeps it and the count in the input of the gate. So a replay uses the same host after the project file changes, and a reopened job goes back to the queue of its count.
+The host of a gate is the cluster that `host_up` recorded. A project that declares one host, or a run that called `host_up`, keeps that host. The engine reads it once, when the gate is queued, and keeps it and the count in the input of the gate. So a replay uses the same host after the project file changes, and a reopened job goes back to the queue of its count.
+
+A project that declares more than one host in `build_host`, with a run that called no `host_up`, places the gate on a host when the gate leaves the exclusive queue, in the recorded step `gate:place`. The step drops each host that is not up or is under `disk_floor_gb`, and a host that cannot be read. Then it picks the host with the most free gate slots: the count of `gate_slots` minus the build jobs that wait or run on that host. A negative number is a backlog, so when every host is full the shortest backlog wins. A tie goes to the host declared first. If no host is ready, the gate goes to the first declared host, as it did before. A program gate, a gate on this machine and a gate of a project with one host are not placed. A replay reads the record and asks no host, so a restart or a change of the project file never moves a gate.
+
+A lock covers the read of the free slots and the queueing of the job, so two gates never see the same free slot. One engine owns one state folder, so the lock does not reach a second engine with another state folder: two such engines can fill one host. A gate that queued on a host stays there, even if another host frees first.
+
+The key of a gate holds the list of declared hosts and not the host that ran it, so a pass of one tree on one declared host stands for the same tree on another.
 
 Each job works in its own folder on the host, `beehave-gate-<project>-<head>` under the work root. The job id that the host returns holds that folder. When the job ends, the wait banks the work in that folder only, so the bank of one job never reads the clone of another job. A job with no folder banks the whole work root.
 
