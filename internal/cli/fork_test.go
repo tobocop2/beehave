@@ -15,6 +15,10 @@ import (
 func (s *fakeSteering) Fork(req flow.ForkRequest) (string, error) {
 	s.calls = append(s.calls, fmt.Sprintf("fork %s %s %v", req.Run, req.Step, req.Vars))
 
+	if s.forkErr != nil {
+		return "", s.forkErr
+	}
+
 	return "item-12-r2", s.err
 }
 
@@ -65,17 +69,17 @@ func TestForkCommand_RefusesAVarsFileThatIsMissingOrIsNotAnObjectBeforeAskingThe
 	assert.Empty(t, rig.steering.calls)
 }
 
-func TestForkCommand_ShowsTheRefusalOfTheClient(t *testing.T) {
+func TestForkCommand_AForkThatTheClientCannotStartIsReportedAndNamesNoNewRun(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	rig.steering.err = errFake
+	rig.steering.forkErr = errFake
 
 	code, stdout, stderr := rig.execute(t.Context(), "fork", "item-12-r1", "--from", "command:two#2")
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, errFake.Error())
-	assert.Empty(t, stdout)
+	assert.Empty(t, stdout, "no new run is named")
 }
 
 func TestForkCommand_NeedsOneRunIdAndTheFlowCommandsOfTheConfig(t *testing.T) {

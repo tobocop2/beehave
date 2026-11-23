@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -38,7 +39,7 @@ func (r roundRig) removeTree(t *testing.T, dir string) {
 func chmodTest(t *testing.T, dir string, mode os.FileMode) {
 	t.Helper()
 
-	require.NoError(t, os.Chmod(dir, mode))
+	require.NoError(t, exectest.ChmodFolder(dir, mode))
 }
 
 func TestWorktrees_PlaceCutsAMissingRoundWorktreeDetachedAtTheHeadAndNeverAtTheTipOfTheBase(t *testing.T) {
