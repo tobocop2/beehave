@@ -238,12 +238,12 @@ func TestOwnerLogin_TheStartOfTheEngineReadsTheTokenOfEachHttpsHostBeforeAnyCall
 	log := fakeGH(t, "tok-gh")
 
 	roles := &writers{}
-	require.NoError(t, roles.start(t.Context(), httpsProjects(), flow.Options{StateDir: t.TempDir(), Env: map[string]string{"PATH": os.Getenv("PATH")}}))
+	require.NoError(t, roles.start(t.Context(), httpsProjects(), flow.Options{StateDir: t.TempDir(), Env: map[string]string{"PATH": testPath}}))
 
 	assert.Equal(t, []string{"auth token --hostname one.test"}, ghCalls(t, log), "the start read no token")
 }
 
-func TestOwnerLogin_AnEmptyTokenFromAZeroExitIsRefusedWithTheGhAuthLoginMessage(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+func TestOwnerLogin_AnEmptyTokenFromAZeroExitIsRefusedWithTheGhAuthLoginMessage(t *testing.T) {
 	bin := t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(bin, "gh"), "#!/bin/sh\necho '  '\nexit 0\n"))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+testPath)
