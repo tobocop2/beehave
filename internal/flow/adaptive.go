@@ -179,7 +179,7 @@ func (e *Engine) newController() *controller {
 
 // waitingPhases counts the phases that wait for a slot of the agents queue.
 func (e *Engine) waitingPhases(context.Context) (int, error) {
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued), dbos.WithFilterName(phaseName), dbos.WithFilterQueueName(queueName))
+	rows, err := e.store().List(dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued), dbos.WithFilterName(phaseName), dbos.WithFilterQueueName(queueName))
 	if err != nil {
 		return 0, fmt.Errorf("list the phases that wait: %w", err)
 	}
