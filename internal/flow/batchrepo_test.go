@@ -291,14 +291,17 @@ type treeGate struct {
 	jobs   []GateJob
 	// submitBases holds the base and the pin base of each Submit.
 	submitBases [][2]string
+	// submitSlots holds the slot of each Submit.
+	submitSlots []model.Slot
 	// started, when set, gets one signal from wait number blockAt (the first wait when blockAt is 0), which then blocks until its context ends.
 	started chan struct{}
 	blockAt int
 }
 
-func (g *treeGate) Submit(_ context.Context, _, _, _, base, pinBase, _ string) (GateJob, error) {
+func (g *treeGate) Submit(_ context.Context, _, _, _, base, pinBase, _ string, slot model.Slot) (GateJob, error) {
 	g.mu.Lock()
 	g.submitBases = append(g.submitBases, [2]string{base, pinBase})
+	g.submitSlots = append(g.submitSlots, slot)
 	g.mu.Unlock()
 
 	return GateJob{ID: fmt.Sprintf("job-%d", g.submits.Add(1))}, nil

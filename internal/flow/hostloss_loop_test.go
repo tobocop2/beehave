@@ -30,7 +30,7 @@ func (*lossyGate) Key(context.Context, string, string, string, string, string) (
 	return GateKey{}, nil
 }
 
-func (g *lossyGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
+func (g *lossyGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{ID: "job-" + strconv.Itoa(int(g.jobs.Add(1))), Head: g.head}, nil
 }
 

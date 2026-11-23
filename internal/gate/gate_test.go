@@ -288,6 +288,25 @@ func TestSubmit_AHostGateStartsItsJobForTheHeadOfTheTreeAndDoesNotWait(t *testin
 	assert.Empty(t, remote.waited)
 }
 
+func TestSubmit_TheHostJobCarriesTheSlotOfTheRequestAndAJobWithNoSlotCarriesNone(t *testing.T) {
+	t.Parallel()
+
+	limited, free := &fakeRemote{}, &fakeRemote{}
+	request := hostRequest(project("gpu-a"))
+	request.Slot = model.Slot{Class: model.GateClass, Count: 2}
+
+	_, err := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, limited).Submit(context.Background(), request)
+	require.NoError(t, err)
+
+	_, err = build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, free).Submit(context.Background(), hostRequest(project("gpu-a")))
+	require.NoError(t, err)
+
+	require.Len(t, limited.submitted, 1)
+	require.Len(t, free.submitted, 1)
+	assert.Equal(t, model.Slot{Class: model.GateClass, Count: 2}, limited.submitted[0].Slot)
+	assert.Equal(t, model.Slot{}, free.submitted[0].Slot)
+}
+
 var errNoSuchHost = errors.New("no such host")
 
 func TestSubmit_AProjectWhoseHostCannotBeFoundIsRefusedBeforeAnyJobStarts(t *testing.T) {

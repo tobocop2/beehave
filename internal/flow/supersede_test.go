@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
@@ -33,7 +34,7 @@ func (g supersedeGate) Key(context.Context, string, string, string, string, stri
 	return GateKey{Head: g.tip}, nil
 }
 
-func (supersedeGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
+func (supersedeGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
