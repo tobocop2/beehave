@@ -85,6 +85,29 @@ func TestSSH_AnswersTheNodeCommands(t *testing.T) {
 	assert.NotContains(t, call(up(hosttest.UnreadableDisk), "df").Stdout, "Filesystem 1024")
 }
 
+func TestSSH_ATestOfAFileAnswersForTheFilesThatWereTouched(t *testing.T) {
+	t.Parallel()
+
+	c := up(hosttest.Working)
+
+	assert.Equal(t, 1, call(c, "test", "-e", "m").ExitCode, "a file that nobody touched does not exist")
+
+	call(c, "touch", "m")
+
+	assert.Equal(t, 0, call(c, "test", "-e", "m").ExitCode)
+}
+
+func TestSSH_TheFlockProbeAnswersUnlessTheHeadNodeHasNoFlock(t *testing.T) {
+	t.Parallel()
+
+	assert.Contains(t, call(up(hosttest.Working), "flock", "--version").Stdout, "flock")
+
+	c := up(hosttest.Working)
+	c.NoFlock = true
+
+	assert.Equal(t, 127, call(c, "flock", "--version").ExitCode)
+}
+
 func TestSSH_TouchedFilesEndTheSlotsThatWaitForThem(t *testing.T) {
 	t.Parallel()
 

@@ -408,6 +408,7 @@ func TestScheduler_ALogWithNoSizeReadsAsMinusOne(t *testing.T) {
 
 			ssh := &proctest.Scripted{}
 			ssh.Plan("RUNNING\n", "squeue")
+			ssh.PlanFail("", "test", "-e") // a running job reads its waiting marker, and this one has none
 			ssh.PlanResult(answer, "stat")
 
 			state, size, err := scheduler{link.New("lane-host", ssh)}.Observe(t.Context(), jobwait.Job{ID: "7", Nonce: "n"})
