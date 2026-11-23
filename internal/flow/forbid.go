@@ -6,6 +6,7 @@ import (
 
 	"go.starlark.net/starlark"
 
+	"github.com/tobocop2/beehave/internal/closing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
@@ -50,7 +51,7 @@ func refuseClosing(integration bool, posted ...postedText) error {
 	}
 
 	for _, one := range posted {
-		if refs := merge.ClosingReferences(one.text); len(refs) > 0 {
+		if refs := closing.References(one.text); len(refs) > 0 {
 			return fmt.Errorf("the %s closes %s with a closing keyword. Only the integration pull request may close an issue. "+
 				"Remove the keyword, or pass integration = True when this is the integration pull request", one.name, refs[0])
 		}

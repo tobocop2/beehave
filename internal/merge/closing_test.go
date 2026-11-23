@@ -87,15 +87,21 @@ func TestClosing_ABranchNameThatTheForgeLeavesEmptyRefuses(t *testing.T) {
 	}
 }
 
-func TestClosing_ABaseThatIsNotTheDefaultBranchSkipsTheAuditAndSaysWhichBase(t *testing.T) {
+func TestClosing_ABaseThatIsNotTheDefaultBranchIsAuditedAgainstTheIssuesTheForgeGives(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t)
-	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main"}
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12}}
+
+	assert.Equal(t, merge.Done, w.run(audited(12)).Stop)
+
+	w = newWorld(t)
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12, 99}}
 	result := w.run(audited(12))
 
-	assert.Equal(t, merge.Done, result.Stop)
-	assert.Contains(t, result.Lines, "closing references: #5 targets integration/r7, not the default branch main, so GitHub lists none and the audit is skipped.")
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, last(result), "#5 closes #12 #99 and the item names #12")
+	assert.Empty(t, merges(w))
 }
 
 func TestClosing_WithTheAuditOffTheForgeIsNotAsked(t *testing.T) {
@@ -246,7 +252,7 @@ func TestCommitKeywords_ABaseThatIsNotTheDefaultBranchIsAuditedToo(t *testing.T)
 	t.Parallel()
 
 	w := newWorld(t)
-	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main"}
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12}}
 	w.set(t, map[string]any{"commits": []any{commitJSON(dev+"@x", dev, "Tidy", "Closes #99")}})
 	result := w.run(audited(12))
 
