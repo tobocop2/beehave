@@ -68,6 +68,8 @@ type Options struct {
 	MaxRunBudget float64
 	// MaxTreeBudget is agents.max_tree_budget_usd: the dollars that the agent steps of the root run and every run it spawns may spend in all. 0 means no cap.
 	MaxTreeBudget float64
+	// MaxWeekBudget is agents.max_week_budget_usd: the dollars that the agent steps of all items may spend in any seven days. 0 means no cap.
+	MaxWeekBudget float64
 	// MaxSpawnDepth is the depth of the deepest items queue: the highest max_spawn_depth of the projects. 0 means config.DefaultMaxSpawnDepth.
 	MaxSpawnDepth int
 	// ReviewPoll is the time between two review polls. 0 means no poll.
@@ -214,6 +216,8 @@ type Engine struct {
 	maxRunBudget float64
 	// maxTreeBudget is Options.MaxTreeBudget.
 	maxTreeBudget float64
+	// maxWeekBudget is Options.MaxWeekBudget.
+	maxWeekBudget float64
 	// reviewPoll is the time between two review polls. 0 means no poll.
 	reviewPoll time.Duration
 	// reviewLookbackDays is the days that the review poll looks back for replies: Options.ReviewLookbackDays, or the default of the config.
@@ -339,7 +343,7 @@ func newEngine(opts Options, deps Deps, state store, held *flock.Flock, registry
 	}
 
 	engine := &Engine{
-		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, concurrency: opts.Concurrency, limited: make(chan limitSignal, limitSignals), overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
+		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, maxWeekBudget: opts.MaxWeekBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, concurrency: opts.Concurrency, limited: make(chan limitSignal, limitSignals), overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
 		procs: &groups{path: groupsFile(state.dir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress, redact: redact},
 	}
 	warnShortSecrets(engine.logger, opts.Env)

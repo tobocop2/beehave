@@ -25,6 +25,7 @@ const (
 	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
 	envMaxTreeBudget       = "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD"
+	envMaxWeekBudget       = "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD"
 	envTraceParent         = "BEEHAVE_AGENTS_TRACE_PARENT"
 	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
@@ -238,12 +239,13 @@ func (c *Config) applyEnv(env map[string]string) error {
 	)
 }
 
-// overlayBudgets reads the three caps in dollars from the environment.
+// overlayBudgets reads the caps in dollars from the environment.
 func (c *Config) overlayBudgets(env map[string]string) error {
 	return errors.Join(
 		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
 		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
 		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
+		overlayDollars(env, envMaxWeekBudget, "300", &c.Agents.MaxWeekBudgetUSD),
 	)
 }
 
@@ -336,6 +338,7 @@ func (c Config) Validate() Problems {
 	problems = append(problems, c.pollProblems(runnersPath)...)
 	problems = append(problems, c.lookbackProblems(runnersPath)...)
 	problems = append(problems, c.retentionProblems(runnersPath)...)
+	problems = append(problems, c.weekRetentionProblems(runnersPath)...)
 	problems = append(problems, c.slotProblems()...)
 
 	return append(problems, c.poolProblems(runnersPath)...)
@@ -352,6 +355,7 @@ func (c Config) budgetProblems(runnersPath string) Problems {
 		{"agents.max_budget_usd", envMaxBudget, c.Agents.MaxBudgetUSD},
 		{"agents.max_run_budget_usd", envMaxRunBudget, c.Agents.MaxRunBudgetUSD},
 		{"agents.max_tree_budget_usd", envMaxTreeBudget, c.Agents.MaxTreeBudgetUSD},
+		{"agents.max_week_budget_usd", envMaxWeekBudget, c.Agents.MaxWeekBudgetUSD},
 	} {
 		if !(limit.dollars >= 0) || math.IsInf(limit.dollars, 0) {
 			problems = append(problems, refuse("%s must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", limit.name, runnersPath, limit.env))
@@ -389,6 +393,16 @@ func (c Config) retentionProblems(runnersPath string) Problems {
 		return Problems{refuse("agents.retention_days must be 0 (keep for ever) or more. Set it in %s or in %s.", runnersPath, envRetentionDays)}
 	case days > maxRetentionDays:
 		return Problems{refuse("agents.retention_days is %d: set it to %d (100 years) or less. Set it in %s or in %s.", days, maxRetentionDays, runnersPath, envRetentionDays)}
+	}
+
+	return nil
+}
+
+// weekRetentionProblems refuses a week cap with a retention of 1 to 6 days. The retention deletes a finished run before its cost leaves the seven day window, so the sum would be lower than the spend.
+func (c Config) weekRetentionProblems(runnersPath string) Problems {
+	if c.Agents.MaxWeekBudgetUSD > 0 && c.Agents.RetentionDays > 0 && c.Agents.RetentionDays < defaultRetentionDays {
+		return Problems{refuse("agents.retention_days is %d, and agents.max_week_budget_usd is set: the cap counts the last 7 days, and a finished run is deleted after %d. Set agents.retention_days to 7 or more, or to 0, or set agents.max_week_budget_usd to 0. Set them in %s or in %s and %s.",
+			c.Agents.RetentionDays, c.Agents.RetentionDays, runnersPath, envRetentionDays, envMaxWeekBudget)}
 	}
 
 	return nil
