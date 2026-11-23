@@ -1,6 +1,9 @@
 package flow
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -98,6 +101,98 @@ func TestPatched_ARunThatStartsOnTheFileTakesTheNewBranch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, slices.Index(names, "facts#1")-slices.Index(names, patchedMarker), "the marker comes right before the step of the new branch")
 	assert.NotContains(t, names, "now#1")
+}
+
+// localExampleFile copies examples/local beside a fresh folder and returns the path of its workflow file. The file holds the text of before when before is set,
+// the workflow of the example before it used patched, as the committed fixture keeps it.
+func localExampleFile(t *testing.T, before bool) string {
+	t.Helper()
+
+	folder := filepath.Join(t.TempDir(), "local")
+	require.NoError(t, os.CopyFS(folder, os.DirFS(filepath.Join("..", "..", "examples", "local"))))
+
+	file := filepath.Join(folder, "workflow.star")
+
+	if before {
+		old, err := os.ReadFile(filepath.Join("testdata", "local_before_patched.star"))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(file, old, 0o600)) //nolint:gosec // the file lies in the temp folder of this test
+	}
+
+	return file
+}
+
+func TestPatched_AnOpenRunOfTheOldLocalExampleReplaysAfterAdoptionWithNoUnexpectedStep(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", costing(1))
+	h := rig.h
+	h.agents.hangAt = 3 // the review agent holds, so the run is open after it recorded the plan and implement steps
+	file := localExampleFile(t, true)
+
+	stopCtx, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopCtx, h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	go func() { _, _ = first.RunFile(testItem, testProject, file, modeOff()) }() //nolint:errcheck // the stop of the engine ends the run, and the test reads the store
+
+	waitOn(t, conditionOf(runOfEngine(t, first), func() bool { return len(h.agents.seen()) >= 3 }))
+	stop()
+	require.NoError(t, first.Shutdown())
+	expireLease(h)
+
+	// The author installs the example as it is now over the open run.
+	current, err := os.ReadFile(localExampleFile(t, false))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, current, 0o600)) //nolint:gosec // the file lies in the temp folder of this test
+
+	h.agents.hangAt = 0
+	client := h.client(t, testVersion)
+	require.NoError(t, client.ResumeOnThisFile(testItem))
+
+	engine := h.engine(t)
+
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool {
+		last, found, readErr := latestRun(engine.store(), testItem)
+
+		return readErr == nil && found && last.terminal()
+	}))
+
+	last, found, err := latestRun(engine.store(), testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Error(t, last.Status.Error, "the fake review agent writes no verdict, so the run ends after the replay")
+	assert.NotContains(t, last.Status.Error.Error(), "UnexpectedStep", "the replay of the recorded steps meets no other step")
+
+	names, err := client.stepNames(testRun)
+	require.NoError(t, err)
+	assert.Equal(t, 1, stepCount(names, "agent:implement#2/start"), "the recorded implement step replays and does not run again: %v", names)
+	assert.NotContains(t, names, "DBOS.patch-implement-base", "a run that passed the call recorded no marker")
+	assert.NotContains(t, names, "facts#1", "the old branch does not read the facts")
+	assert.Contains(t, names, "gate:check#1", "the run went on past the implement step")
+}
+
+// stepCount counts the entries of names that equal want.
+func stepCount(names []string, want string) int {
+	return len(names) - len(slices.DeleteFunc(slices.Clone(names), func(name string) bool { return name == want }))
+}
+
+func TestPatched_ANameThatTheSignatureCannotSeeIsRefusedWhenTheRunReachesTheCall(t *testing.T) {
+	t.Parallel()
+
+	_, err := walkBody(t, newHarness(t), "name = \"a\" + \":b\"\npatched(name)")
+
+	require.ErrorContains(t, err, `patched: name "a:b" holds a character other than`)
+}
+
+func TestPatched_ANameThatIsNoTextIsRefusedWhenTheRunReachesTheCall(t *testing.T) {
+	t.Parallel()
+
+	_, err := walkBody(t, newHarness(t), "name = 3 + 4\npatched(name)")
+
+	require.ErrorContains(t, err, "patched")
 }
 
 func TestPatched_ANameUsedTwiceInOneWorkflowIsRefusedByName(t *testing.T) {
