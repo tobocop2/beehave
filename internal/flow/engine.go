@@ -201,9 +201,7 @@ type Engine struct {
 	itemQueues []dbos.Queue
 	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
 	exclusiveQueue dbos.Queue
-	// hostQueue is the queue of the build jobs of the gates: one job for each build host, whatever the project.
-	hostQueue dbos.Queue
-	deps      Deps
+	deps           Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
 	// perLogin is the agent steps that one login runs at once in each agent queue: Options.PerLogin, or the default of the config.
@@ -453,7 +451,7 @@ func (e *Engine) register(opts Options) error {
 
 	return errors.Join(
 		e.registerQueue(queueName, agentsLimit, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
-		e.registerItemQueues(maxConcurrent, cmp.Or(opts.MaxSpawnDepth, config.DefaultMaxSpawnDepth)), e.registerExclusiveQueue(), e.registerHostQueue(),
+		e.registerItemQueues(maxConcurrent, cmp.Or(opts.MaxSpawnDepth, config.DefaultMaxSpawnDepth)), e.registerExclusiveQueue(),
 	)
 }
 

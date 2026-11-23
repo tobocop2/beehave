@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // reopen puts a failed run back in the queue at its first failed step. The steps before it keep their results.
@@ -346,16 +349,14 @@ func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err err
 		return "", "", fmt.Errorf("read the input of %s: %w", row.ID, err)
 	}
 
-	if row.Name == hostJobName && in.Kind == kindCommand {
+	if row.Name == hostJobName {
+		class := cmp.Or(in.Request.SlotClass, model.GateClass)
+
 		if in.SlotCount < 1 {
-			return "", "", fmt.Errorf("the job %s of the slot class %q was queued before slot counts were recorded and cannot go back to a queue. Run the item again from its start", row.ID, in.Request.SlotClass)
+			return "", "", fmt.Errorf("the job %s of the slot class %q was queued before slot counts were recorded and cannot go back to a queue. Run the item again from its start", row.ID, class)
 		}
 
-		return slotQueueName(in.Request.SlotClass, in.SlotCount), in.HostKey, nil
-	}
-
-	if row.Name == hostJobName {
-		return hostQueueName, in.HostKey, nil
+		return slotQueueName(class, in.SlotCount), in.HostKey, nil
 	}
 
 	return exclusiveQueueName, in.Project, nil

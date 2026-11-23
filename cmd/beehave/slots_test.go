@@ -19,6 +19,28 @@ func slotProject(name string, hosts []string, slots map[string]int) config.Proje
 	return config.Project{Project: project}
 }
 
+func TestSlotsOf_TheClassOfTheGatesGetsTheGateSlotsOfTheHostBlockWithNoEntryInSlots(t *testing.T) {
+	t.Parallel()
+
+	one := slotProject("one", []string{"gpu"}, nil)
+	one.Host.GateSlots = 3
+	two := slotProject("two", []string{"gpu"}, map[string]int{"mutation": 1})
+	two.Host.GateSlots = 3
+
+	grant := slotsOf(map[string]config.Project{"one": one, "two": two})
+
+	got, err := grant("one", "gpu", model.GateClass)
+	require.NoError(t, err)
+	require.Equal(t, flow.SlotGrant{Host: "gpu", Count: 3}, got)
+
+	got, err = grant("two", "", model.GateClass)
+	require.NoError(t, err)
+	require.Equal(t, flow.SlotGrant{Host: "gpu", Count: 3}, got)
+
+	_, err = grant("two", "", "fuzz")
+	require.ErrorIs(t, err, errNoSlotClass, "only the class of the gates needs no entry")
+}
+
 func TestSlotsOf_AClassTheHostBlockListsGetsItsCountAndAClassItLeavesOutIsRefusedWithTheClassAndTheHost(t *testing.T) {
 	t.Parallel()
 

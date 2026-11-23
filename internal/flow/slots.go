@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // slotQueuePrefix starts the name of the queue of a slot class.
@@ -12,6 +14,9 @@ const slotQueuePrefix = "slots:"
 
 // errNoSlots is the refusal of a command call with `slots` when the build has no slot classes.
 var errNoSlots = errors.New("the build has no slot classes, so a command call cannot name `slots`")
+
+// errGateClass is the refusal of a command call that names the slot class of the gates.
+var errGateClass = errors.New("the slot class \"gate\" belongs to the gates, so a command call cannot name it. Use another class in `slots`")
 
 // SlotGrant is what a host gives to a slot class: the host that runs the job, and how many jobs of the class it runs at once.
 type SlotGrant struct {
@@ -43,6 +48,10 @@ func (e *Engine) queueSlotCommand(run dbos.Context, request CommandRequest) (Com
 func (e *Engine) grantOf(request CommandRequest) (SlotGrant, dbos.Queue, error) { //nolint:ireturn // the queue type of the workflow library
 	if e.deps.Slots == nil {
 		return SlotGrant{}, nil, errNoSlots
+	}
+
+	if request.SlotClass == model.GateClass {
+		return SlotGrant{}, nil, errGateClass
 	}
 
 	grant, err := e.deps.Slots(request.Project, request.BuildHost, request.SlotClass)
