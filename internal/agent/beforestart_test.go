@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,30 @@ func TestBeforeStart_RunsOnceBeforeTheCLIAndItsNoteIsInTheResult(t *testing.T) {
 	assert.Equal(t, 1, *calls)
 	assert.False(t, *started, "the CLI had not started")
 	assert.Contains(t, got.Note, "the Go module download failed")
+}
+
+func TestBeforeStart_ItsTimeDoesNotCountAgainstTheTotalLimit(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := boxed(t)
+	f.spec.Timeout = time.Hour
+	clock := &fakeClock{}
+
+	stops, resets := -1, -1
+	f.spec.BeforeStart = func(context.Context) string {
+		clock.mu.Lock()
+		defer clock.mu.Unlock()
+
+		stops, resets = clock.stops, clock.resets
+
+		return ""
+	}
+
+	got := agent.Runner{AfterFunc: clock.AfterFunc, Version: seen("2.1.330 (Claude Code)\n")}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Equal(t, time.Hour, clock.limit, "the only timer is the total timer")
+	assert.Equal(t, 1, stops, "the total timer is stopped while the hook runs")
+	assert.Zero(t, resets, "the total timer is not running while the hook runs")
+	assert.Equal(t, 1, clock.resetCount(), "the total timer starts again with the whole limit after the hook")
 }
 
 func TestBeforeStart_IsNotCalledForARunThatTheRunnerRefuses(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
