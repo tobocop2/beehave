@@ -45,7 +45,9 @@ type fakeRunner struct {
 	// sandboxes lists the sandbox mode that each RunFile call recorded.
 	sandboxes []model.SandboxMode
 	// onOpens lists the on_open word that each RunFile call recorded.
-	onOpens   []string
+	onOpens []string
+	// debounces lists the debounce window that each RunFile call recorded.
+	debounces []time.Duration
 	shutdowns int
 	// launched is closed by Launch. started is closed by the first Shutdown. slow holds Shutdown until it is closed.
 	launched, started, slow chan struct{}
@@ -70,6 +72,7 @@ func (r *fakeRunner) RunFile(item, project, file string, options ...flow.RunOpti
 	r.mu.Lock()
 	r.sandboxes = append(r.sandboxes, in.Sandbox)
 	r.onOpens = append(r.onOpens, string(in.OnOpen))
+	r.debounces = append(r.debounces, in.Debounce)
 	r.items = append(r.items, item+"@"+project)
 	r.files = append(r.files, item+"@"+project+" "+file)
 	r.mu.Unlock()
@@ -138,8 +141,10 @@ type fakeSteering struct {
 	openMode model.SandboxMode
 	openRun  bool
 	openErr  error
-	calls    []string
-	closeOK  bool
+	// openDelayed makes the open run one that waits in a debounce window.
+	openDelayed bool
+	calls       []string
+	closeOK     bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// resumeErrs makes the resume of one item fail, whatever s.err holds.
@@ -164,6 +169,8 @@ type fakeSteering struct {
 	joinedSandboxes []model.SandboxMode
 	// joinedOnOpens lists the on_open word that each JoinRun call recorded.
 	joinedOnOpens []string
+	// joinedDebounces lists the debounce window that each JoinRun call recorded.
+	joinedDebounces []time.Duration
 	// joinErrs are the errors of the first calls of JoinRun, one for each call, before joinErr applies.
 	joinErrs []error
 	// joinBlock holds JoinRun until the context ends.
@@ -193,6 +200,7 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, 
 
 	s.joinedSandboxes = append(s.joinedSandboxes, in.Sandbox)
 	s.joinedOnOpens = append(s.joinedOnOpens, string(in.OnOpen))
+	s.joinedDebounces = append(s.joinedDebounces, in.Debounce)
 	s.joined = append(s.joined, item+"@"+project+" "+file)
 
 	if s.joinBlock {
@@ -224,7 +232,7 @@ func (s *fakeSteering) OpenRun(_ string, live func(string) bool) (flow.OpenRun, 
 		return flow.OpenRun{}, nil
 	}
 
-	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live)}, nil
+	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live), Delayed: s.openDelayed}, nil
 }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }

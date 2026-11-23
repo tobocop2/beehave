@@ -30,6 +30,8 @@ const (
 	overCapFlag = "over-cap"
 	// onOpenFlag is the flag of beehave run that says what the start does with an open run of the item.
 	onOpenFlag = "on-open"
+	// debounceFlag is the flag of beehave run that holds the start back for a window.
+	debounceFlag = workflow.DebounceKeyword
 )
 
 // errNoWorkflow is returned by run when no workflow file is named and the current folder holds none.
@@ -234,7 +236,8 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 	"If the run has already ended when the stop begins, the next Ctrl-C exits at once with the exit code of the run: 0 for a finished run, 1 for a failed or stopped run.\n" +
 	"If the last run failed, beehave run refuses and names the step that failed. Run beehave resume, then beehave run. If the resume refuses the run, run beehave cancel, then beehave run: the cancel ends the failed run, and the next run starts a new attempt.\n" +
 	"After a finished or a canceled run, beehave run starts a new run.\n" +
-	"With --" + onOpenFlag + " replace, an open run of the item is canceled with its children, as beehave cancel does, and the next attempt starts. The run that the command starts pins the workflow file that the command names. A failed run is still refused, and so is an open run of another project.\n\n" +
+	"With --" + onOpenFlag + " replace, an open run of the item is canceled with its children, as beehave cancel does, and the next attempt starts. The run that the command starts pins the workflow file that the command names. A failed run is still refused, and so is an open run of another project.\n" +
+	"With --" + debounceFlag + " <duration>, the start waits that long. A later start of the item in the window takes the place of this one: one run starts, with the workflow file of the last start. A start after the window makes a new run. The hold ends 10 windows after the first start. With --" + onOpenFlag + " replace, the first start cancels the open run at once.\n\n" +
 	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
 	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
 	"If that engine stops, the run stays open, and after 10 seconds the command starts its own engine and continues the run.\n\n" +
@@ -244,8 +247,8 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 
 func (f flowCommands) runCommand() *cobra.Command {
 	var (
-		flag, workflowFile, onOpen string
-		overCap                    bool
+		flag, workflowFile, onOpen, window string
+		overCap                            bool
 	)
 
 	command := &cobra.Command{
@@ -254,33 +257,50 @@ func (f flowCommands) runCommand() *cobra.Command {
 		Long:  runLong,
 		Args:  runArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.run(cmd, args, flag, workflowFile, onOpen, overCap)
+			return f.run(cmd, args, flag, workflowFile, startOptions{onOpen: onOpen, debounce: window}, overCap)
 		},
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().StringVar(&onOpen, onOpenFlag, string(workflow.OnOpenJoin), "what the start does with an open run of the item: join it, or replace it (cancel it and start the next attempt)")
+	addStartFlags(command, &onOpen, &window)
 	command.Flags().BoolVar(&overCap, overCapFlag, false, "let the first agent step take a runner that is over its usage cap, in place of waiting for a reset")
 	command.Flags().StringVar(&workflowFile, workflowFlag, "", "the workflow file (default: "+defaultWorkflowFile+" in the current folder, when it exists)")
 
 	return command
 }
 
-// runOptions refuses an on_open word that is neither join nor replace, then reads the config and builds the options of the engine with the policy of the start.
-func (f flowCommands) runOptions(stderr io.Writer, flag, onOpen string) (config.Config, flow.Options, error) {
-	policy, err := workflow.OpenPolicy(onOpen)
+// addStartFlags adds the flags that say what a start does with an open run of its item and how long it waits.
+func addStartFlags(command *cobra.Command, onOpen, window *string) {
+	command.Flags().StringVar(onOpen, onOpenFlag, string(workflow.OnOpenJoin), "what the start does with an open run of the item: join it, or replace it (cancel it and start the next attempt)")
+	command.Flags().StringVar(window, debounceFlag, "", "hold the start back for this long, so that a later start of the item in the window takes its place (default: start at once)")
+}
+
+// startOptions are the words of the start options of beehave run, as the command line gave them.
+type startOptions struct {
+	onOpen, debounce string
+}
+
+// runOptions refuses an on_open word that is neither join nor replace and a debounce that is no window, then reads the config and builds the options of the engine with the policy and the window of the start.
+func (f flowCommands) runOptions(stderr io.Writer, flag string, start startOptions) (config.Config, flow.Options, error) {
+	policy, err := workflow.OpenPolicy(start.onOpen)
+	if err != nil {
+		return config.Config{}, flow.Options{}, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
+	window, err := workflow.DebouncePeriod(start.debounce)
 	if err != nil {
 		return config.Config{}, flow.Options{}, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
 	}
 
 	cfg, opts, err := f.options(stderr, flag)
 	opts.OnOpen = policy
+	opts.Debounce = window
 
 	return cfg, opts, err
 }
 
 // run validates the config, the project and the workflow file, then takes the item to the end of its run.
-func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile, onOpen string, overCap bool) error {
-	cfg, opts, err := f.runOptions(cmd.ErrOrStderr(), flag, onOpen)
+func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string, start startOptions, overCap bool) error {
+	cfg, opts, err := f.runOptions(cmd.ErrOrStderr(), flag, start)
 	if err != nil {
 		return err
 	}
@@ -425,7 +445,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 		return err
 	}
 
-	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, opts.OnOpen, project, item, file)
+	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, opts, project, item, file)
 	if err != nil {
 		return errors.Join(err, client.Close())
 	}
@@ -457,8 +477,8 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
 // It says the off line when the run uses the sandbox mode off.
-func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, policy workflow.OnOpen, project, item, file string) (string, bool, error) {
-	open, err := f.openRun(stdout, client, cfg, policy, item)
+func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, project, item, file string) (string, bool, error) {
+	open, err := f.openRun(stdout, client, cfg, opts, item)
 	if err != nil {
 		return "", false, err
 	}
@@ -491,7 +511,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
-	result, err := client.JoinRun(f.ctx, item, project, file, flow.RunSandbox(cfg.Projects[project].RunSandboxMode()), flow.RunOnOpen(opts.OnOpen))
+	result, err := client.JoinRun(f.ctx, item, project, file, startsOf(cfg, project, opts)...)
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
@@ -500,10 +520,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 		if errors.Is(err, flow.ErrEngineGone) {
 			_, _ = fmt.Fprintf(stderr, "the engine that ran item %s stopped; this command continues the run\n", item)
 
-			// The join made the run that this command continues, so the takeover joins it and cancels nothing.
-			opts.OnOpen = workflow.OnOpenJoin
-
-			return f.ownEngine(stdout, stderr, cfg, opts, item, project, file)
+			return f.ownEngine(stdout, stderr, cfg, takeover(opts), item, project, file)
 		}
 
 		return err
@@ -523,7 +540,20 @@ func (f flowCommands) runOnEngine(stdout, stderr io.Writer, cfg config.Config, o
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, flow.RunSandbox(cfg.Projects[project].RunSandboxMode()), flow.RunOnOpen(opts.OnOpen)))
+	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, startsOf(cfg, project, opts)...))
+}
+
+// takeover returns the options of the start that continues the run which a join made: it joins that run, cancels nothing and holds nothing back.
+func takeover(opts flow.Options) flow.Options {
+	opts.OnOpen = workflow.OnOpenJoin
+	opts.Debounce = 0
+
+	return opts
+}
+
+// startsOf returns the run options of the start of the command line: the sandbox mode of the project, and the policy and the window of the command.
+func startsOf(cfg config.Config, project string, opts flow.Options) []flow.RunOption {
+	return []flow.RunOption{flow.RunSandbox(cfg.Projects[project].RunSandboxMode()), flow.RunOnOpen(opts.OnOpen), flow.RunDebounce(opts.Debounce)}
 }
 
 // shutDownWithExitStatus shuts the engine down for beehave run.
@@ -588,14 +618,20 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 
 // openRun returns the open run of the item. It says which file the run continues with, or that the start replaces the run.
 // beehave run ignores --workflow when it joins an open run. A run recorded before the mode existed uses the live default of its project.
-func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, policy workflow.OnOpen, item string) (flow.OpenRun, error) {
+func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, opts flow.Options, item string) (flow.OpenRun, error) {
 	open, err := client.OpenRun(item, cfg.SandboxDefault)
 	if err != nil || open.File == "" {
 		return open, err
 	}
 
 	// A failed write to stdout has no recovery.
-	if policy == workflow.OnOpenReplace {
+	if opts.Debounce > 0 && open.Delayed {
+		_, _ = fmt.Fprintf(stdout, "item %s is held in its debounce window: this start extends the window and replaces the input of the run, which pinned %s\n", item, open.File)
+
+		return open, nil
+	}
+
+	if opts.OnOpen == workflow.OnOpenReplace {
 		_, _ = fmt.Fprintf(stdout, "item %s replaces its open run, which pinned %s\n", item, open.File)
 
 		return open, nil

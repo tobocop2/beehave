@@ -86,6 +86,8 @@ type Options struct {
 	OverCap bool
 	// OnOpen is what the start of the command line does with an open run of its item. The command reads it for its own start and takes the policy of its first start only: a takeover continues the run that the first start made.
 	OnOpen workflow.OnOpen
+	// Debounce is the window that holds the start of the command line back. The command reads it for its own start and takes the window of its first start only, as it does OnOpen.
+	Debounce time.Duration
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends.
 	// A client writes there the runs that a cancel of a canceled run stopped. A nil Progress prints nothing.
 	Progress io.Writer
@@ -696,6 +698,10 @@ func (in ItemInput) check() error {
 		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
 	}
 
+	if err := workflow.CheckDebounce(in.Debounce); err != nil {
+		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
 	if model.ItemKind(in.Item) == "" {
 		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
 	}
@@ -812,6 +818,10 @@ func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found boo
 	in, err := in.withBaseOf(last, found)
 	if err != nil {
 		return nil, err
+	}
+
+	if in.Debounce > 0 {
+		return e.asClient().debounce(in, plan.Attempt)
 	}
 
 	return e.start(in, plan.Attempt)

@@ -62,6 +62,9 @@ func (r run) terminal() bool {
 	return false
 }
 
+// delayed reports whether a debounced start holds the run back: it has not started, and the window is open.
+func (r run) delayed() bool { return r.Status.Status == dbos.WorkflowStatusDelayed }
+
 // cancelable reports whether a cancel reaches the run: an open run, a failed one, or a canceled one, whose children a cancel that stopped between two levels of the tree left open.
 func (r run) cancelable() bool {
 	return !r.terminal() || r.Status.Status == dbos.WorkflowStatusCancelled || r.failed()
