@@ -438,7 +438,7 @@ if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
 fi
 if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
-  printf '{"verdict":"%s","mechanism":"","regressions":"0","open":"","findings":[]}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
+  printf '{"verdict":"%s","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
 if [ "$step" = plan ]; then
   printf '{"regressions":"0"}\n' > "$(field write)"
@@ -447,8 +447,12 @@ if [ "$step" = settle ]; then
   printf '{"parked":"[]"}\n' > "$(field write)"
 fi
 # A lane answers the two outputs the example declares for it: its report and the reds it did not cause. The report check of the scripts is answered by e2eCommands.
-if [ "$step" = implement ] || [ "$step" = fix ]; then
+# A fix also answers the two outputs of the review ledger: it resolved no id and declares no finding wontfix.
+if [ "$step" = implement ]; then
   printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
+fi
+if [ "$step" = fix ]; then
+  printf '{"report":"# Report\\n","uncaused":"[]","resolved":"[]","wontfix":"[]"}\n' > "$(field write)"
 fi
 # The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
 if [ "$step" = sweep ]; then
