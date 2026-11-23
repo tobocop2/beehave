@@ -156,9 +156,15 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 		trees:   treeAt("/work/tree"),
 		adapter: func(kind model.Agent) agent.Adapter { f.kind = kind; return lineAdapter{} },
 		env:     map[string]string{"PATH": "/bin"},
-		modules: func(context.Context, string, string) (string, string) { return "", "" },
-		run: func(_ context.Context, spec agent.Spec) agent.Result {
+		modules: fakeModules{},
+		run: func(ctx context.Context, spec agent.Spec) agent.Result {
 			*f.spec = spec
+
+			out := result
+			if spec.BeforeStart != nil {
+				out = out.AddNote(spec.BeforeStart(ctx))
+			}
+
 			var lines strings.Builder
 
 			lines.WriteString(output + "skill=blast\nskill=oracle\n")
@@ -179,7 +185,7 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 				panic(err)
 			}
 
-			return result
+			return out
 		},
 		guard: "/bin/beehave check command",
 	}
