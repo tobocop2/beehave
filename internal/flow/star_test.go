@@ -184,6 +184,20 @@ func stepNames(t *testing.T, engine *Engine) []string {
 func interrupted(t *testing.T, h *harness, file string, options ...RunOption) {
 	t.Helper()
 
+	interruptedWhen(t, h, file, nil, options...)
+}
+
+// interruptedParked is interrupted, but it stops the engine only after the run has recorded the window of its receive. The question shows before the window is recorded, so a stop at the question can come first and leave a run that never parked.
+func interruptedParked(t *testing.T, h *harness, file string) {
+	t.Helper()
+
+	interruptedWhen(t, h, file, func(run *runRef) bool { return run.parked(time.Now()) != "" })
+}
+
+// interruptedWhen is interrupted that also waits until ready, when it is set, accepts the run.
+func interruptedWhen(t *testing.T, h *harness, file string, ready func(run *runRef) bool, options ...RunOption) {
+	t.Helper()
+
 	stopCtx, stop := context.WithCancel(t.Context())
 	engine, err := NewEngine(stopCtx, h.opts, h.deps())
 	require.NoError(t, err)
@@ -203,6 +217,12 @@ func interrupted(t *testing.T, h *harness, file string, options ...RunOption) {
 
 		return struct{}{}, err == nil && len(rows) == 1 && rows[0].Question != "", nil
 	}})
+
+	if ready != nil {
+		waitOn(t, waiting[struct{}]{what: "the run to record its receive window", read: func() (struct{}, bool, error) {
+			return struct{}{}, ready(runOfEngine(t, engine)), nil
+		}})
+	}
 
 	stop()
 	require.NoError(t, engine.Shutdown())
