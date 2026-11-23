@@ -166,6 +166,18 @@ func TestKey_ADifferentProjectNameRepoOrHostDefinitionGivesAnotherKey(t *testing
 	}
 }
 
+func TestKey_ATreeGivesOneKeyOnEveryHostThatTheProjectDeclares(t *testing.T) {
+	t.Parallel()
+
+	state := gate.State{Head: headA, Tree: "t1", Clean: true}
+	onA, onB, otherList := project("a"), project("b"), project("a")
+	onA.BuildHosts, onB.BuildHosts, otherList.BuildHosts = []string{"a", "b"}, []string{"a", "b"}, []string{"a", "c"}
+
+	assert.Equal(t, keyOf(t, state, &fakeShell{}, onA).ID, keyOf(t, state, &fakeShell{}, onB).ID, "a pass on host b stands for the same tree on host a")
+	assert.NotEqual(t, keyOf(t, state, &fakeShell{}, onA).ID, keyOf(t, state, &fakeShell{}, otherList).ID, "another list of hosts is another gate")
+	assert.NotEqual(t, keyOf(t, state, &fakeShell{}, project("a")).ID, keyOf(t, state, &fakeShell{}, project("b")).ID, "two projects with one host each keep the host in the key")
+}
+
 func TestKey_TheHostBlockIsPartOfTheKeyByItsKeysAndNotByItsPosition(t *testing.T) {
 	t.Parallel()
 
