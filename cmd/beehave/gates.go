@@ -170,11 +170,13 @@ func gateChecks(checks *gate.Checks) *flow.GateChecks {
 // Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
 // A project that builds here has no host job, and its job is empty.
 // A baseSHA that Key read is the base commit of the job: Submit reads no tip then, so the key and the job of one gate name the same commit.
-func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase, baseSHA string) (flow.GateJob, error) {
+func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase, baseSHA string, slot model.Slot) (flow.GateJob, error) {
 	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase, baseSHA)
 	if err != nil {
 		return flow.GateJob{}, err
 	}
+
+	request.Slot = slot
 
 	job, err := g.gate(project).Submit(ctx, request)
 	if err != nil {

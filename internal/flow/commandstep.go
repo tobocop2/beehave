@@ -290,8 +290,9 @@ func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[
 }
 
 // programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.
-func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string, slot model.Slot) (map[string]any, error) {
 	request.Gate = true
+	request.SlotClass, request.SlotCount = slot.Class, slot.Count
 
 	out, err := e.deps.Commands.Run(ctx, request)
 	if err != nil {
@@ -341,13 +342,13 @@ func (e *Engine) reuseProjectGate(ctx context.Context, request CommandRequest) (
 }
 
 // startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
-func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
+func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest, slot model.Slot) (gateStart, error) {
 	start, err := e.reuseProjectGate(ctx, request)
 	if err != nil || start.Reused != nil {
 		return start, err
 	}
 
-	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase, start.Key.BaseSHA)
+	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase, start.Key.BaseSHA, slot)
 	start.Required = e.requiredOf(start.Job, request.Project)
 
 	return start, err

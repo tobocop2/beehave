@@ -22,7 +22,24 @@ var (
 	ErrDropped = errors.New("the ssh link to the host dropped")
 )
 
+// ErrNoFlock is the refusal of a host that has no flock(1), which the slot limit of a job needs.
+var ErrNoFlock = errors.New("the host has no flock command. Install util-linux (flock) on the host")
+
 const droppedExit = 255 // the exit code of ssh when the link fails
+
+// CheckFlock returns an error that wraps ErrNoFlock when the host has no flock command. A dropped link is its own error.
+func (l *Link) CheckFlock(ctx context.Context) error {
+	result := l.Exec(ctx, "flock", "--version")
+	if err := l.Drop(result); err != nil {
+		return err
+	}
+
+	if result.ExitCode != 0 {
+		return fmt.Errorf("%s: %w", l.target, ErrNoFlock)
+	}
+
+	return nil
+}
 
 // Failure is the error of a command line that did not exit with zero. It wraps ErrCommand. name is the word that the error shows.
 func Failure(name string, result model.CommandResult) error {

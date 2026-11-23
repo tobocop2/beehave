@@ -19,6 +19,7 @@ import (
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var errNotKept = errors.New("an error that nobody keeps")
@@ -154,7 +155,7 @@ func TestKnownErrors_AKeptErrorAddsToTheProductionListAndNeverReplacesIt(t *test
 type deadlineGate struct{}
 
 // Run hits a real deadline of its own and returns the error of it.
-func (deadlineGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
+func (deadlineGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 

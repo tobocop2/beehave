@@ -48,6 +48,7 @@ type Machine struct {
 	Offline     bool // the ssh link does not connect
 	LingerOff   bool
 	NoSystemd   bool   // the user manager does not run
+	NoFlock     bool   // the machine has no flock command
 	SystemdText string // the first line of systemd-run --version; empty means systemd 255
 	Units       map[string]*Unit
 	Files       map[string]bool // markers and folders, by path
@@ -182,6 +183,8 @@ func (m *Machine) command(words []string) model.CommandResult {
 		return m.systemdRun(words)
 	case "sh":
 		return m.observe(words)
+	case "flock":
+		return m.flock()
 	case "df":
 		return m.df()
 	case "tail":
@@ -189,6 +192,15 @@ func (m *Machine) command(words []string) model.CommandResult {
 	}
 
 	return m.files(words)
+}
+
+// flock answers `flock --version`: the machine has util-linux unless NoFlock is set.
+func (m *Machine) flock() model.CommandResult {
+	if m.NoFlock {
+		return failure(127, "flock: command not found")
+	}
+
+	return ok("flock from util-linux 2.39.3\n")
 }
 
 // defaultLog is the log of a unit that a test gave no log.
@@ -365,6 +377,10 @@ func (m *Machine) observe(words []string) model.CommandResult {
 	var lines []string
 	if m.Files[base+".canceled"] {
 		lines = append(lines, "beehave-canceled")
+	}
+
+	if m.Files[base+".waiting"] {
+		lines = append(lines, "beehave-waiting")
 	}
 
 	for _, state := range []string{"succeeded", "failed", "timed_out"} {

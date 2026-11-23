@@ -125,6 +125,8 @@ type Request struct {
 	// BaseSHA is the commit that the base branch named when the engine read it for this gate. Every read of the base in the gate uses it, never the branch name.
 	// A project with no repository has none. A Run that has a Plan takes it from the Plan.
 	BaseSHA string
+	// Slot is the limit that the host job takes on the build host, shared with every engine that uses it. The zero Slot means no limit.
+	Slot model.Slot
 
 	// pins are the pinned tools that the probe in front of each gate command checks. Run and Submit read them from the pin file at the base commit.
 	pins []Pin
@@ -654,7 +656,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone, Slot: request.Slot})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}

@@ -542,7 +542,7 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 
 	gate := newDryGate(dir, head, false)
 
-	job, err := gate.Submit(t.Context(), "p", "i", "", "integration", "", "")
+	job, err := gate.Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.NoError(t, err)
 	assert.Equal(t, "integration", job.Plan.Base)
 
@@ -552,11 +552,11 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 	require.NoError(t, err)
 	assert.Equal(t, parent, base)
 
-	landing, err := newDryGate(filepath.Join(dir, "none"), head, false).Submit(t.Context(), "p", "i", "", "", "", "")
+	landing, err := newDryGate(filepath.Join(dir, "none"), head, false).Submit(t.Context(), "p", "i", "", "", "", "", model.Slot{})
 	require.NoError(t, err, "a gate with no base touches no repository")
 	assert.Empty(t, landing.Plan.Base)
 
-	_, err = newDryGate(dir, "no-such-commit", false).Submit(t.Context(), "p", "i", "", "integration", "", "")
+	_, err = newDryGate(dir, "no-such-commit", false).Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.ErrorContains(t, err, "git exited")
 }
 

@@ -63,14 +63,14 @@ func checkConfig(config model.HostConfig) (block, error) {
 	return values, nil
 }
 
-// Up checks that the head node answers and that Slurm lists its nodes. It is the first call. It is idempotent.
+// Up checks that the head node answers, that Slurm lists its nodes and that flock exists there. It is the first call. It is idempotent.
 // The disk is not read here: Status reports it, and the guards refuse a disk that cannot be read.
 func (h *Host) Up(ctx context.Context) error {
 	if _, err := h.draining(ctx); err != nil {
 		return fmt.Errorf("cannot use the head node. Check that `ssh %s` works from this computer and that Slurm runs there: %w", h.link.Target(), err)
 	}
 
-	return nil
+	return h.link.CheckFlock(ctx)
 }
 
 // Status reports the host absent when ssh cannot connect, draining when Slurm drains its nodes, and its free disk space.
