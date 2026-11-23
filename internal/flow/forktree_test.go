@@ -244,8 +244,23 @@ const forkPushFlow = `def main(item):
     command(name = "three", run = ["three"])
 `
 
+// forkPushUnlabeledFlow pushes with no name, so the step is push#1 and not push:<name>#1.
+const forkPushUnlabeledFlow = `def main(item):
+    f = facts()
+    command(name = "one", run = ["one"])
+    push(branch = f.vars["branch"], head = "aaa", expect = "")
+    command(name = "three", run = ["three"])
+`
+
 // pushWorld is an item that pushed head aaa to branch fix-7 and ended.
 func pushWorld(t *testing.T) *forkWorld {
+	t.Helper()
+
+	return pushWorldOf(t, forkPushFlow)
+}
+
+// pushWorldOf is pushWorld for the workflow source src.
+func pushWorldOf(t *testing.T, src string) *forkWorld {
 	t.Helper()
 
 	w := &forkWorld{h: newHarness(t), mode: &atomic.Value{}}
@@ -255,10 +270,34 @@ func pushWorld(t *testing.T) *forkWorld {
 	w.engine = w.h.engine(t)
 	w.client = w.h.client(t, testVersion)
 
-	_, err := w.engine.RunFile(testItem, testProject, writeFlow(t, forkPushFlow), modeOff())
+	_, err := w.engine.RunFile(testItem, testProject, writeFlow(t, src), modeOff())
 	require.NoError(t, err)
 
 	return w
+}
+
+func TestFork_AForkNeverPushesToABranchThatAPushWithNoNameAlreadyPushed(t *testing.T) {
+	t.Parallel()
+
+	w := pushWorldOf(t, forkPushUnlabeledFlow)
+
+	id, err := w.client.Fork(ForkRequest{Run: testRun, Step: "command:one#1"})
+	require.NoError(t, err)
+
+	assert.Contains(t, w.failed(t, id), "fix-7", "the error names the branch")
+	assert.Equal(t, []string{testProject + "|" + testItem + "|fix-7|aaa|"}, w.h.forge.pushed, "the fork pushed nothing")
+}
+
+func TestFork_ABranchThatDiffersOnlyByCaseCountsAsTheBranchOfAnEarlierRun(t *testing.T) {
+	t.Parallel()
+
+	w := pushWorld(t)
+
+	id, err := w.client.Fork(ForkRequest{Run: testRun, Step: "command:one#1", Vars: map[string]any{"branch": "Fix-7"}})
+	require.NoError(t, err)
+
+	assert.Contains(t, w.failed(t, id), "Fix-7", "a remote on a case-insensitive disk holds both names as one branch")
+	assert.Len(t, w.h.forge.pushed, 1, "the fork pushed nothing")
 }
 
 func (w *forkWorld) failed(t *testing.T, id string) string {

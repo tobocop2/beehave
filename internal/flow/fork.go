@@ -364,12 +364,19 @@ func pushedBranches(records []dbos.StepInfo, pushed []string) []string {
 
 	for _, record := range records {
 		branch := textOf(recordedOutputs(record)[branchKeyword])
-		if strings.HasPrefix(record.StepName, pushKind+":") && branch != "" && !slices.Contains(branches, branch) {
+		if isPushStep(record.StepName) && branch != "" && !slices.Contains(branches, branch) {
 			branches = append(branches, branch)
 		}
 	}
 
 	return branches
+}
+
+// isPushStep reports whether a step name is a push: push#1 with no name, or push:<name>#1 with one.
+func isPushStep(name string) bool {
+	rest, ok := strings.CutPrefix(name, pushKind)
+
+	return ok && (strings.HasPrefix(rest, ":") || strings.HasPrefix(rest, "#"))
 }
 
 // textOf returns value when it is text, and an empty text for any other value.
@@ -487,7 +494,8 @@ func (s *script) forkMayPush(branch string) error {
 		return err
 	}
 
-	if slices.Contains(pushed, branch) {
+	// A remote on a case-insensitive disk holds two names that differ only by case as one branch, so the names compare without case.
+	if slices.ContainsFunc(pushed, func(earlier string) bool { return strings.EqualFold(earlier, branch) }) {
 		return fmt.Errorf("%w: run %s is a fork, and a run before it pushed to branch %s. Push the fork to another branch", errBadFork, id, branch)
 	}
 
