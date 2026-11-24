@@ -74,7 +74,6 @@ func newHoldRig(t *testing.T, gated stopGate) holdRig {
 	engine, err := NewEngine(t.Context(), h.opts, deps)
 	require.NoError(t, err)
 	dbos.RegisterWorkflow(engine.ctx, gateQueuer{engine}.queue, dbos.WithWorkflowName("test-queue-gate"))
-	dbos.RegisterWorkflow(engine.ctx, waitProbe{engine}.stopped, dbos.WithWorkflowName("test-wait-stopped"))
 	dbos.RegisterWorkflow(engine.ctx, waitProbe{engine}.canceled, dbos.WithWorkflowName("test-await-canceled"))
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
@@ -122,22 +121,12 @@ func (r holdRig) let(item string) {
 	close(r.gated.release[item])
 }
 
-// waitProbe runs the wait of a held gate inside a run, because the wait reads the run id of its context.
+// waitProbe runs the wait of a gate inside a run, because the wait reads the run id of its context.
 type waitProbe struct{ engine *Engine }
 
-// stopped waits while job is held, with a context that is canceled already.
-func (p waitProbe) stopped(ctx dbos.Context, job string) (string, error) {
-	stopped, cancel := dbos.WithCancel(ctx)
-	cancel()
-
-	_, err := p.engine.waitWhileHeld(stopped, job)
-
-	return "", err
-}
-
-// canceled waits for a build job whose result is a cancel, and which is not held.
+// canceled waits for a build job whose result is a cancel, in a run that is no gate.
 func (p waitProbe) canceled(ctx dbos.Context, _ string) (string, error) {
-	_, err := p.engine.awaitHeld(ctx, canceledJob{})
+	_, err := p.engine.awaitHeld(ctx, canceledJob{}, "no-such-queue")
 
 	return "", err
 }
@@ -258,13 +247,47 @@ func TestGateHold_AHeldRunningGateFreesTheHostSlotAndReleaseKeepsItsPlace(t *tes
 	}
 }
 
+func TestGateHold_AHeldGateFreesThePlaceOfItsProjectAndResumesAfterReleaseWithItsRunIntact(t *testing.T) {
+	t.Parallel()
+
+	rig := newHoldRig(t, newStopGate("1", "2"))
+
+	first := queueHostGate(rig.engine, "project-a", "1", "A", "box")
+	rig.expect(t, "start 1")
+
+	running := rig.attemptsOfRunningJob(t)
+
+	require.NoError(t, rig.client.HoldGate("1"))
+	rig.h.tick(t)
+	receive(t, running)
+
+	second := queueHostGate(rig.engine, "project-a", "2", "A", "box")
+	rig.expect(t, "start 2")
+	rig.let("2")
+	rig.expect(t, "end 2")
+	require.NoError(t, receive(t, second).err)
+
+	select {
+	case end := <-first:
+		t.Fatalf("the run that awaits the held gate ended while the gate was held: %v", end.err)
+	default:
+	}
+
+	require.NoError(t, rig.client.ReleaseGate("1"))
+	rig.expect(t, "start 1")
+	rig.let("1")
+	rig.expect(t, "end 1")
+
+	require.NoError(t, receive(t, first).err, "the gate resumes and finishes: its run is not superseded")
+}
+
 func TestGateHold_AHeldGateStaysHeldAcrossARestartOfTheEngine(t *testing.T) {
 	t.Parallel()
 
-	gated := newStopGate("1")
+	gated := newStopGate("1", "2")
 	rig := newHoldRig(t, gated)
 
-	ended := rig.queue("1")
+	ended := queueHostGate(rig.engine, "project-a", "1", "A", "box")
 	rig.expect(t, "start 1")
 
 	require.NoError(t, rig.client.HoldGate("1"))
@@ -285,10 +308,96 @@ func TestGateHold_AHeldGateStaysHeldAcrossARestartOfTheEngine(t *testing.T) {
 	require.Never(t, func() bool { return len(gated.events) > 0 }, 3*storePoll, 100*time.Millisecond, "the held gate does not start on the engine that came back")
 	require.ErrorContains(t, rig.client.HoldGate("1"), "held already")
 
+	other := queueHostGate(second, "project-a", "2", "A", "box")
+	rig.expect(t, "start 2")
+	rig.let("2")
+	rig.expect(t, "end 2")
+	require.NoError(t, receive(t, other).err, "the place of the project stays free while the gate is held, across the restart")
+
 	require.NoError(t, rig.client.ReleaseGate("1"))
 	rig.expect(t, "start 1")
 	rig.let("1")
 	rig.expect(t, "end 1")
+}
+
+func TestGateHold_ACancelOfAHeldGateEndsTheAwaitingRunAsSuperseded(t *testing.T) {
+	t.Parallel()
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	ended := rig.queue("1")
+	rig.expect(t, "start 1")
+
+	gate, ok, err := rig.client.readGate("1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	running := rig.attemptsOfRunningJob(t)
+
+	require.NoError(t, rig.client.HoldGate("1"))
+	rig.h.tick(t)
+	receive(t, running)
+
+	setHead(rig.h, "B")
+	require.NoError(t, dbos.CancelWorkflows(rig.engine.ctx, []string{gate.row.ID}, dbos.WithCancelChildren()))
+
+	require.ErrorIs(t, endsAfterTicks(t, rig.h, ended).err, errSuperseded, "a cancel of a held gate is a stop, not a hold")
+}
+
+func TestGateHold_AReleaseBeforeTheOldRunSeesTheCancelOpensTheJobOnce(t *testing.T) {
+	t.Parallel()
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	ended := rig.queue("1")
+	rig.expect(t, "start 1")
+
+	require.NoError(t, rig.client.HoldGate("1"))
+	require.NoError(t, rig.client.ReleaseGate("1"))
+	rig.h.tick(t)
+
+	rig.expect(t, "start 1")
+	rig.let("1")
+	rig.expect(t, "end 1")
+	require.NoError(t, receive(t, ended).err)
+
+	jobs, err := dbos.ListWorkflows(rig.engine.ctx, dbos.WithFilterName(hostJobName))
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, dbos.WorkflowStatusSuccess, jobs[0].Status)
+	assert.Empty(t, rig.gated.events, "the job ran the gate once more, not twice")
+}
+
+func TestGateHold_ARunThatAReleaseReplacedLeavesTheJobToTheNewRun(t *testing.T) {
+	t.Parallel()
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	rig.queue("1")
+	rig.expect(t, "start 1")
+
+	gate, ok, err := rig.client.readGate("1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	began, err := rig.engine.runStartedAt(gate.row.ID)
+	require.NoError(t, err)
+	require.False(t, began.IsZero(), "the queue records the start of a gate that it started")
+
+	queue := slotQueueName(model.GateClass, 1)
+
+	reopened, err := rig.engine.reopenGate(gate.row.ID, gate.job.ID, queue, began.Add(-time.Second))
+	assert.False(t, reopened)
+	require.ErrorIs(t, err, errReplaced, "a run that started before the run that has the gate is replaced")
+
+	reopened, err = rig.engine.reopenGate(gate.row.ID, gate.job.ID, queue, began)
+	require.NoError(t, err)
+	assert.True(t, reopened, "the run that has the gate waits for a job that is open")
+
+	job, err := rig.engine.store().List(dbos.WithFilterWorkflowIDs(gate.job.ID))
+	require.NoError(t, err)
+	require.Len(t, job, 1)
+	assert.Equal(t, dbos.WorkflowStatusPending, job[0].Status, "an open job is not reopened")
 }
 
 func TestGateHold_EachCommandRefusesAGateInTheWrongState(t *testing.T) {
@@ -392,36 +501,76 @@ func TestGateHold_AWaitThatCannotReadTheGateFailsInsteadOfWaiting(t *testing.T) 
 
 	engine := idleEngine(t, newHarness(t))
 
-	released, err := engine.waitWhileHeld(engine.ctx, "job")
-
-	assert.False(t, released)
+	_, err := engine.awaitHeld(engine.ctx, canceledJob{}, "queue")
 	require.ErrorContains(t, err, "read the run id of the gate")
+
+	require.NoError(t, engine.Shutdown())
+
+	_, err = engine.runStartedAt("gate")
+	require.ErrorContains(t, err, "read the start of the gate")
+
+	reopened, err := engine.reopenGate("gate", "job", "queue", time.Time{})
+
+	assert.False(t, reopened)
+	require.ErrorContains(t, err, "read the build job of the gate")
 }
 
-func TestGateHold_TheWaitOfAHeldGateEndsWhenItsContextEndsAndTheCancelOfAJobThatIsNotHeldStands(t *testing.T) {
+func TestGateHold_AHoldRefusesAGateWhoseJobWasCanceledAndReportsAGateThatTheStoreDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	canceled := openGate{job: &dbos.WorkflowStatus{Status: dbos.WorkflowStatusCancelled}}
+	err := canceled.refuseHold("1")
+	require.ErrorIs(t, err, errGateState)
+	require.ErrorContains(t, err, "has no job that runs")
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	err = rig.client.parkAndStop(openGate{row: dbos.WorkflowStatus{ID: "no-such-gate"}}, "1")
+	require.ErrorContains(t, err, "park the gate of item 1")
+}
+
+func TestGateHold_TheCancelOfAJobStandsForARunThatIsNoGateAndForAGateThatTheStoreDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	await, err := dbos.RunWorkflow(rig.engine.ctx, waitProbe{rig.engine}.canceled, "")
+	require.NoError(t, err)
+
+	_, err = await.GetResult()
+	require.ErrorContains(t, err, dbos.ErrAwaitedWorkflowCancelled.Error(), "a run that is no gate does not reopen a canceled job")
+
+	reopened, err := rig.engine.reopenGate("no-such-gate", "no-such-job", "queue", time.Time{})
+	require.NoError(t, err)
+	assert.False(t, reopened, "a gate that the store does not hold has no job to reopen")
+}
+
+func TestGateHold_AParkedGateEndsTheRunThatSeesItsJobCanceledAndAReleasedGateReopensTheJob(t *testing.T) {
 	t.Parallel()
 
 	rig := newHoldRig(t, newStopGate("1"))
 
 	rig.queue("1")
 	rig.expect(t, "start 1")
+
+	gate, ok, err := rig.client.readGate("1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
 	require.NoError(t, rig.client.HoldGate("1"))
 
-	jobs, err := dbos.ListWorkflows(rig.engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusCancelled))
-	require.NoError(t, err)
-	require.Len(t, jobs, 1)
-
-	wait, err := dbos.RunWorkflow(rig.engine.ctx, waitProbe{rig.engine}.stopped, jobs[0].ID)
+	began, err := rig.engine.runStartedAt(gate.row.ID)
 	require.NoError(t, err)
 
-	_, err = wait.GetResult()
-	require.ErrorIs(t, err, context.Canceled, "a held gate stops waiting when its run stops")
+	reopened, err := rig.engine.reopenGate(gate.row.ID, gate.job.ID, slotQueueName(model.GateClass, 1), began)
+	assert.False(t, reopened)
+	require.ErrorIs(t, err, errReplaced, "the run of a parked gate ends and leaves the gate to its release")
 
-	await, err := dbos.RunWorkflow(rig.engine.ctx, waitProbe{rig.engine}.canceled, "")
+	parked, ok, err := rig.client.readGate("1")
 	require.NoError(t, err)
-
-	_, err = await.GetResult()
-	require.ErrorContains(t, err, dbos.ErrAwaitedWorkflowCancelled.Error())
+	require.True(t, ok)
+	assert.True(t, parked.held())
+	assert.Equal(t, dbos.WorkflowStatusEnqueued, parked.row.Status)
 }
 
 func TestGateHold_ACallThatIsNoRunHasNoGateToRead(t *testing.T) {
@@ -431,15 +580,9 @@ func TestGateHold_ACallThatIsNoRunHasNoGateToRead(t *testing.T) {
 
 	assert.Equal(t, uint(6), engine.currentPlace(engine.ctx, 6), "a context with no run id keeps the place that the gate was queued with")
 
-	_, _, err := engine.holdOf(engine.ctx, "job")
-	require.ErrorContains(t, err, "read the run id of the gate")
-
 	assert.Equal(t, uint(6), engine.storedPlace("no-such-run", 6), "a run that the store does not hold keeps the place that the gate was queued with")
 
 	require.NoError(t, engine.Shutdown())
 
 	assert.Equal(t, uint(6), engine.storedPlace("any-run", 6), "a store that cannot be read keeps the place that the gate was queued with")
-
-	_, _, err = engine.holdAt("gate", "job")
-	assert.ErrorContains(t, err, "read the build job of the gate")
 }
