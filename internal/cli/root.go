@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/ci"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
@@ -29,6 +30,8 @@ type BuildInfo struct {
 	Adapters func(context.Context, model.Project) error
 	// Registry is the names, blocks and tools of the adapters that the build registered. The config validates a project against it.
 	Registry config.Adapters
+	// Hooks reads the hook input of each agent CLI, by agent name, for the command guard.
+	Hooks map[model.Agent]agent.HookDecoder
 	// Items opens the item list of a project, by the tracker that owns the list. A nil value leaves the item commands out.
 	Items map[model.TrackerName]ItemOpener
 	// Doctor reads what the doctor command checks outside the process: the Keychain, the tools and the logins.
@@ -58,7 +61,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal, info.GateList), newDoctorCommand(ctx, env, info.Doctor, info.Registry))
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal, info.GateList, info.Hooks), newDoctorCommand(ctx, env, info.Doctor, info.Registry))
 	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items, registry: info.Registry, ownProgram: info.OwnProgram, console: info.Console}
 	commands.add(root)
 	commands.addItems(root)

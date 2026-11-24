@@ -220,7 +220,7 @@ func TestAgents_ACommitThatSetsAnAuthorIsAViolationOfTheKindGitAuthor(t *testing
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"git-author: git commit", "git-author: GIT_AUTHOR_NAME"}, got.Violations)
-	assert.Equal(t, "/bin/beehave check command --forbid git-author", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid git-author", f.spec.Guard)
 }
 
 func TestAgents_ACleanTranscriptHasNoViolations(t *testing.T) {
@@ -274,7 +274,7 @@ func TestAgents_AStepThatForbidsKindsRunsTheAgentWithTheHookOfThoseKinds(t *test
 	_, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/bin/beehave check command --forbid bulk-staging,local-delete", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid bulk-staging,local-delete", f.spec.Guard)
 }
 
 func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfTheStep(t *testing.T) {
@@ -288,16 +288,16 @@ func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfT
 	_, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, `/bin/beehave check command --forbid protected-path --protect '/own/it'\''s' --protect /work/sibling`, f.spec.Guard)
+	assert.Equal(t, `/bin/beehave check command --agent fake --forbid protected-path --protect '/own/it'\''s' --protect /work/sibling`, f.spec.Guard)
 }
 
 func TestAgents_OnlyAPrivateProjectPassesItsVisibilityToTheHookAndACopyToAnotherMachineIsAViolationOtherwise(t *testing.T) {
 	t.Parallel()
 
 	for visibility, want := range map[model.Visibility]string{
-		model.VisibilityPrivate: "/bin/beehave check command --forbid laptop-copy --visibility private",
-		model.VisibilityPublic:  "/bin/beehave check command --forbid laptop-copy",
-		"":                      "/bin/beehave check command --forbid laptop-copy",
+		model.VisibilityPrivate: "/bin/beehave check command --agent fake --forbid laptop-copy --visibility private",
+		model.VisibilityPublic:  "/bin/beehave check command --agent fake --forbid laptop-copy",
+		"":                      "/bin/beehave check command --agent fake --forbid laptop-copy",
 	} {
 		f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
 		f.bash = []string{"rsync -a src host:dst"}
@@ -325,7 +325,7 @@ func TestAgents_ARequestWhoseProjectIsNotInTheConfigGetsNoPrivateVisibilityAndAC
 	got, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/bin/beehave check command --forbid laptop-copy", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid laptop-copy", f.spec.Guard)
 	assert.Len(t, got.Violations, 1)
 }
 

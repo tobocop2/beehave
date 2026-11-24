@@ -5,9 +5,9 @@ const GUARD = __GUARD_COMMAND__
 const LOADED = __LOADED_PATH__
 
 // verdict returns why the call is refused, or "" when the guard command lets it through. Any failure to decide is a refusal.
-const verdict = (directory, command) => {
+const verdict = (directory, tool, args) => {
   try {
-    const event = JSON.stringify({ cwd: directory, tool_name: "Bash", tool_input: { command } })
+    const event = JSON.stringify({ directory, tool, args })
     const run = spawnSync(GUARD, { shell: true, input: event, encoding: "utf8", timeout: 30000 })
     if (run.error) return "the check of the command did not run"
     if (run.status === 2) return (run.stderr || "").trim() || "the command is not allowed"
@@ -26,7 +26,7 @@ export const BeehaveGuard = async ({ directory }) => {
     // OpenCode refuses the tool call when this hook throws.
     "tool.execute.before": async (input, output) => {
       if (input.tool !== "bash") return
-      const why = verdict(directory, output && output.args ? output.args.command : undefined)
+      const why = verdict(directory, input.tool, output && output.args)
       if (why !== "") throw new Error("beehave refused: " + why)
     },
   }

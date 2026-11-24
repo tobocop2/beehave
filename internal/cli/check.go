@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/ci"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
@@ -54,12 +55,12 @@ func (f GateRefusal) reason(project config.Project, program bool) string {
 	return ""
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters, refusal GateRefusal, gateList ci.Reader) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters, refusal GateRefusal, gateList ci.Reader, hooks map[model.Agent]agent.HookDecoder) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters, registry, refusal), newCheckWorkflowCommand(ctx, env, registry, refusal), newCheckCommandCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters, registry, refusal), newCheckWorkflowCommand(ctx, env, registry, refusal), newCheckCommandCommand(hooks))
 
 	if gateList != nil {
 		check.AddCommand(newCheckGateListCommand(gateList))

@@ -148,7 +148,8 @@ func protectionOf(protect []string, dir string) shell.Protection {
 }
 
 // guardFor returns the hook command of a run that forbids kinds, or "" when the run forbids none or has no guard.
-func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) string {
+// The command names the agent of the runner, so that it reads the hook format of that agent.
+func (a agents) guardFor(name model.Agent, forbid []model.FindingKind, protect shell.Protection) string {
 	if a.guard == "" || len(forbid) == 0 {
 		return ""
 	}
@@ -158,7 +159,7 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 		names = append(names, string(kind))
 	}
 
-	words := []string{a.guard, "--forbid", strings.Join(names, ",")}
+	words := []string{a.guard, "--agent", string(name), "--forbid", strings.Join(names, ",")}
 	for _, dir := range protect.Dirs {
 		words = append(words, "--protect", model.ShellQuote(dir))
 	}
@@ -235,7 +236,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 // runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
-	guard := a.guardFor(request.Forbid, protect)
+	guard := a.guardFor(runner.Agent, request.Forbid, protect)
 
 	ready, note := a.readyOf(ctx, request, runner, dir, adapter, guard)
 	if note != "" {
