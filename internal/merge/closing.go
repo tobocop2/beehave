@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // closing refuses a pull request whose closing references are not the issues that the request names. An extra issue would be closed by mistake,
@@ -23,7 +25,53 @@ func (a *attempt) closing() *refusal {
 		return stop
 	}
 
+	if stop := a.samePinned(refs); stop != nil {
+		return stop
+	}
+
 	return a.commitKeywords()
+}
+
+// samePinned refuses when the member pins the closing issues that a check read, and the forge lists others now. A member that pins no set passes.
+func (a *attempt) samePinned(refs model.ClosingRefs) *refusal {
+	if a.req.Pinned == nil {
+		return nil
+	}
+
+	now := make([]model.IssueRef, 0, len(refs.Issues)+len(refs.Elsewhere))
+	for _, number := range refs.Issues {
+		now = append(now, model.OwnIssue(number))
+	}
+
+	now = sortedIssues(append(now, refs.Elsewhere...))
+
+	if pinned := sortedIssues(a.req.Pinned); !slices.Equal(now, pinned) {
+		return refuse(fmt.Sprintf("REFUSE: #%d closes %s now, and closed %s when the scope check read it. The owner decides: run the scope check again.", a.req.PR, issueRefs(now), issueRefs(pinned)))
+	}
+
+	return nil
+}
+
+// sortedIssues returns the references in order, without a repeat.
+func sortedIssues(issues []model.IssueRef) []model.IssueRef {
+	out := slices.Clone(issues)
+	slices.SortFunc(out, model.CompareIssues)
+
+	return slices.Compact(out)
+}
+
+// issueRefs shows references as "#12 other-org/other-repo#5", or "no issue" for none.
+func issueRefs(issues []model.IssueRef) string {
+	if len(issues) == 0 {
+		return "no issue"
+	}
+
+	parts := make([]string, len(issues))
+	for i, issue := range issues {
+		parts[i] = string(issue)
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // sameIssues refuses when the issues that the forge lists are not the issues that the request names.

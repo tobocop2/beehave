@@ -304,7 +304,7 @@ const goldenFlow = `def main(item):
 // A change to the sequence of a builtin that is not behind a patch: bump the version of the module that owns it in moduleTable (stepmodules.go) and record the list here in the same commit.
 // A change behind a patch leaves this list alone and shows its marker in goldenSteps (see goldenpatch_test.go). A later change re-keys this list for each module.
 var goldenBaseSteps = []string{
-	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "scope:g#1", "gate:g#1",
+	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "gate:g#1",
 	"login#1", "agent:a#1/start", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1", "agent:a#1/commit",
 	"wait:w#1",
 }

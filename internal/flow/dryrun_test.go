@@ -344,10 +344,10 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"claim", "item", "facts#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
-		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
+		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1", "earlier_reads:scope#1", "pr_closing:scope#1",
 		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
@@ -368,10 +368,10 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"claim", "item", "facts#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
-		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
+		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1", "earlier_reads:scope#1", "pr_closing:scope#1",
 		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "preflight:before-fix-2#3", "pr_read:before-fix-2#3",

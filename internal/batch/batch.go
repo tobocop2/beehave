@@ -35,6 +35,10 @@ type Member struct {
 	OwnDraft int `json:"own_draft,omitempty"`
 	// Closes are the issues that the pull request of this member must close, and no others.
 	Closes []int `json:"closes,omitempty"`
+	// Kept are the issues that the owner kept for this member. A closing keyword in a commit message may name them.
+	Kept []model.IssueRef `json:"kept,omitempty"`
+	// Closing is the set of closing issues that a check read for this member, and the merge refuses a pull request whose set differs. Nil pins no set; an empty list pins no issue.
+	Closing []model.IssueRef `json:"closing"`
 }
 
 // Tip is the base tip: a commit and its tree.
