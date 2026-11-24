@@ -52,7 +52,8 @@ const (
 // Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
 // Version 19 runs the host job of a command call with a host and no slot class in the default class, so the call queues a child run before its command step.
-const coreVersion = 19
+// Version 20 adds the earlier_reads step.
+const coreVersion = 20
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -91,8 +92,8 @@ const trackerVersion = 4
 // forgeVersion is the version of the forge module. Version 2 added the pr_state step. Version 3 retires the kind pr_assign, which version 2 recorded.
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
 // Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
-// Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step.
-const forgeVersion = 9
+// Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step. Version 10 adds the pr_closing step.
+const forgeVersion = 10
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -129,14 +130,14 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", streamKind, "wait", "write"},
+			kinds:   []string{cancelKind, "command", "earlier_calls", earlierReadsKind, envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", streamKind, "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},
 		},
 		{name: moduleAgent, version: agentVersion, kinds: []string{agentStepName, loginStepName}},
 		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", itemListKind, "item_read", "item_status", itemStopKind}, retired: []string{"item_assign"}},
-		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, issueAssigneesKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
+		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, issueAssigneesKind, prClosingKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
 		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},

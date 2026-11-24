@@ -104,6 +104,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `earlier_calls` | `-` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `call` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `name` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
+| `earlier_reads` | `-` | #500: new, returns the recorded results of the earlier steps of one kind and name, newest run first | 1: `examples/remediation/workflow.star` |
+| `earlier_reads` | `item` | #500: new | 1: `examples/remediation/workflow.star` |
+| `earlier_reads` | `kind` | #500: new | 1: `examples/remediation/workflow.star` |
+| `earlier_reads` | `name` | #500: new | 1: `examples/remediation/workflow.star` |
+| `earlier_reads` | `own_run` | #500: new | 1: `examples/remediation/workflow.star` |
 | `env` | `-` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
 | `env` | `default` | unchanged | 13: `examples/approvals/policy.star`, `examples/desk/eval.star` and 11 more |
 | `env` | `name` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
@@ -193,6 +198,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
 | `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
+| `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 1: `examples/remediation/workflow.star` |
+| `pr_closing` | `item` | #500: new | 1: `examples/remediation/workflow.star` |
+| `pr_closing` | `name` | #500: new | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `key` | unchanged | 1: `examples/remediation/workflow.star` |

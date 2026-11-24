@@ -70,6 +70,7 @@ func repositoryDefs() []builtinDef {
 		{name: prReadKind, call: (*script).prRead, repository: true},
 		{name: prStateKind, call: (*script).prState, repository: true},
 		{name: issueAssigneesKind, call: (*script).issueAssignees, repository: true},
+		{name: prClosingKind, call: (*script).prClosing, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},
 	}
@@ -102,6 +103,7 @@ func runDefs() []builtinDef {
 		{name: "closing_references", call: closingReferences},
 		{name: "command", call: (*script).command},
 		{name: "earlier_calls", call: (*script).earlierCalls},
+		{name: earlierReadsKind, call: (*script).earlierReads},
 		{name: "env", call: (*script).env},
 		{name: "facts", call: (*script).facts},
 		{name: "host_teardown", call: (*script).hostTeardown},
