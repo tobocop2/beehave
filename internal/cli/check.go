@@ -73,8 +73,7 @@ const (
 	dryRunFlag      = "dry-run"
 	dryRunItemFlag  = "item"
 	dryRunItemValue = "1"
-	redGateFlag     = "red-gate"
-	sendBackFlag    = "send-back"
+	fixtureFlag     = "fixture"
 )
 
 const checkWorkflowLong = "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
@@ -83,9 +82,16 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"A line that starts with note: is a fact for the author, such as an agent step with sandbox = None. It is no problem and changes no exit code.\n\n" +
 	"With --" + dryRunFlag + ", beehave then runs the file for one item over fakes and prints each step with its fake result. " +
 	"The run uses a temporary state folder that beehave deletes at the end. It calls no forge, agent, tracker or host. " +
-	"Every gate in the run passes. With --" + redGateFlag + ", the first gate is red with one failed step, and each later gate passes, so the run walks the fix round of the workflow. " +
-	"A workflow that stops at a red gate exits 1 with --" + redGateFlag + ". " +
-	"Every review in the run approves. With --" + sendBackFlag + ", the first review sends the item back, and each later review approves, so the run walks a send-back and a fix round. " +
+	"Every gate in the run passes, and every review approves. " +
+	"A dry run takes no real time: a sleep reports 0 seconds, and a wait or a recv with no entry in the fixture times out at once. A wait with no timeout and no entry is refused, because a real run would wait for ever. " +
+	"With --" + fixtureFlag + " <file.json>, the file scripts the result of each agent, gate, wait and recv call by key, so a review can reject twice and then approve, or a gate can be red once. " +
+	"A key is agent, gate, wait or recv, or agent:<label>, gate:<label>, wait:<label> or recv:<label> for the call with that name. A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes. " +
+	"An agent result is {\"outputs\": {\"<name>\": \"<text>\"}}; an output that the result does not name keeps its base value. " +
+	"A gate result is {\"passed\": false}, which is a red gate with one failed step, or {\"passed\": true}. " +
+	"A wait result is {\"answer\": \"<text>\", \"timed_out\": <bool>}. A recv result is {\"value\": <JSON>, \"timed_out\": <bool>}. " +
+	"With a fixture, an agent call or a gate call whose key the file does not list fails the run, so does a call past the end of a list, and so does a result that no call used. " +
+	"The gate of a merge has no key and always passes. " +
+	"The file must be valid: an unknown key or field, or a value of the wrong type, exits 2 and names the file. " +
 	"A dry run has three exit codes. " +
 	"Exit 0: the run reached the end of the file and every step passed. " +
 	"Exit 1: a Starlark error, a REFUSE or a failed faked step; the output shows the error and the last step that ran. " +
@@ -104,30 +110,63 @@ func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]
 	return runDryWorkflow(ctx, cmd, env, file, item, dry, found.Project)
 }
 
-// dryFlags holds the flags of a dry run: whether to run, and which fakes walk a red gate or a send-back.
-type dryFlags struct{ run, redGate, sendBack bool }
+// dryFlags holds the flags of a dry run: whether to run, and the fixture file that scripts the agent calls and the gate calls.
+type dryFlags struct {
+	run     bool
+	fixture string
+}
 
-// runDryWorkflow checks the file, and with the run flag set it then runs the file over fakes and prints the steps. With redGate set, the first gate of the run is red. With sendBack set, the first review sends the item back.
+// runDryWorkflow checks the file, and with the run flag set it then runs the file over fakes and prints the steps. With a fixture file, the file scripts the agent calls and the gate calls.
 // The facts of the run hold the vars and the max_spawn_depth of the named project. They are static config, so the dry run reads them.
 func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dry dryFlags, project model.Project) error {
-	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dry.run {
+	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil {
 		return err
+	}
+
+	if !dry.run {
+		return refuseFixtureWithoutDryRun(cmd.ErrOrStderr(), dry)
 	}
 
 	if err := itemID(item); err != nil {
 		return err
 	}
 
-	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth), flow.WithRunnerSkillLoads(project.RunnerSkillLoads), flow.WithSandbox(project.RunSandboxMode())}
-	if dry.redGate {
-		options = append(options, flow.WithRedGate())
-	}
-
-	if dry.sendBack {
-		options = append(options, flow.WithSendBack())
+	options, err := dryOptions(cmd.ErrOrStderr(), dry, project)
+	if err != nil {
+		return err
 	}
 
 	return dryExit(flow.DryRun(ctx, file, item, env, cmd.OutOrStdout(), options...))
+}
+
+// dryOptions turns the flags and the project of a dry run into its options. A fixture file that cannot be loaded prints its error and exits 2.
+func dryOptions(stderr io.Writer, dry dryFlags, project model.Project) ([]flow.DryOption, error) {
+	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth), flow.WithRunnerSkillLoads(project.RunnerSkillLoads), flow.WithSandbox(project.RunSandboxMode())}
+	if dry.fixture == "" {
+		return options, nil
+	}
+
+	fixture, err := flow.LoadFixture(dry.fixture)
+	if err != nil {
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+
+		return nil, &ExitError{Code: exitProblems}
+	}
+
+	return append(options, flow.WithFixture(fixture)), nil
+}
+
+// refuseFixtureWithoutDryRun refuses a fixture file on a check that runs nothing: the file has no use there.
+func refuseFixtureWithoutDryRun(stderr io.Writer, dry dryFlags) error {
+	if dry.fixture == "" {
+		return nil
+	}
+
+	// A failed write to stderr has no recovery.
+	_, _ = fmt.Fprintf(stderr, "--%s needs --%s\n", fixtureFlag, dryRunFlag)
+
+	return &ExitError{Code: exitProblems}
 }
 
 // dryExit turns the error of a dry run into the exit code that the command ends with.
@@ -267,8 +306,7 @@ func (p projectCheck) refusedCalls(found config.Project, file string) []workflow
 
 func addDryRunFlags(command *cobra.Command, dry *dryFlags, item *string) *cobra.Command {
 	command.Flags().BoolVar(&dry.run, dryRunFlag, false, "after the check, run the file over fakes and print each step")
-	command.Flags().BoolVar(&dry.redGate, redGateFlag, false, "with --"+dryRunFlag+", make the first gate red so the run walks the fix round")
-	command.Flags().BoolVar(&dry.sendBack, sendBackFlag, false, "with --"+dryRunFlag+", make the first review send the item back so the run walks a fix round")
+	command.Flags().StringVar(&dry.fixture, fixtureFlag, "", "with --"+dryRunFlag+", a JSON file that scripts the result of each agent call and gate call by key, such as a review that rejects twice or a gate that is red once")
 	command.Flags().StringVar(item, dryRunItemFlag, dryRunItemValue, "the item id for --"+dryRunFlag)
 
 	return command
