@@ -2,6 +2,7 @@ package flow
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -17,8 +18,8 @@ var errNoGate = errors.New("no gate is open")
 // errGateState is the refusal of a gate command for a gate that is in the wrong state for the command.
 var errGateState = errors.New("the gate is in the wrong state")
 
-// heldPoll is the time between two reads of a held build job, when the clock sets no poll.
-const heldPoll = time.Second
+// heldQueueName is the queue of a held gate, which no engine serves; the queue name in the store is the record of the hold.
+const heldQueueName = "gate_held"
 
 // openGate is the open gate of an item and the build job of that gate, when it queued one.
 type openGate struct {
@@ -52,24 +53,46 @@ func (c *Client) SetGatePriority(item, level string) error {
 	return nil
 }
 
-// HoldGate stops the build job of the running gate of an item at the next tick of the engine and frees its slot on the host. The gate waits, and beehave gate release puts the job back
-// on the queue of its host with the place that it had.
+// HoldGate parks the running gate of an item and stops its build job at the next tick of the engine. The gate leaves the queue of its project, so another gate of the project starts,
+// and the job frees its slot on the host. beehave gate release puts the gate back on the queue of its project with the place that it had.
 func (c *Client) HoldGate(item string) error {
 	gate, err := c.openGateOf(item)
 	if err != nil {
 		return err
 	}
 
-	switch {
-	case gate.job == nil:
-		return fmt.Errorf("%w: the gate of item %s has no build job on a host, so there is no slot to free", errGateState, item)
-	case gate.job.Status == dbos.WorkflowStatusCancelled:
-		return fmt.Errorf("%w: the gate of item %s is held already. beehave gate release %s puts it back on the queue", errGateState, item, item)
-	case gate.job.Status != dbos.WorkflowStatusPending:
-		return fmt.Errorf("%w: the gate of item %s waits for its host and does not run. beehave gate priority changes its place", errGateState, item)
+	if err = gate.refuseHold(item); err != nil {
+		return err
+	}
+
+	return c.parkAndStop(gate, item)
+}
+
+// parkAndStop parks the gate and then cancels its build job, so the run of the gate has lost its row before it can see the cancel.
+func (c *Client) parkAndStop(gate openGate, item string) error {
+	if _, err := dbos.ResumeWorkflow[ExclusiveOutput](c.flow, gate.row.ID, dbos.WithResumeQueue(heldQueueName)); err != nil {
+		return failed("park the gate of item "+item, err)
 	}
 
 	return failed("hold the gate of item "+item, dbos.CancelWorkflow(c.flow, gate.job.ID))
+}
+
+// refuseHold is the refusal of a hold for a gate that does not run a build job, or nil for a gate that does.
+func (g openGate) refuseHold(item string) error {
+	switch {
+	case g.job == nil:
+		return fmt.Errorf("%w: the gate of item %s has no build job on a host, so there is no slot to free", errGateState, item)
+	case g.held():
+		return fmt.Errorf("%w: the gate of item %s is held already. beehave gate release %s puts it back on the queue", errGateState, item, item)
+	case g.job.Status == dbos.WorkflowStatusCancelled && g.row.Status == dbos.WorkflowStatusPending:
+		return fmt.Errorf("%w: the gate of item %s started again and has not reopened its job yet. Run beehave gate hold %s when the job runs", errGateState, item, item)
+	case g.job.Status == dbos.WorkflowStatusCancelled:
+		return fmt.Errorf("%w: the gate of item %s waits for its place on the queue of its project and has no job that runs. beehave gate priority changes its place", errGateState, item)
+	case g.job.Status != dbos.WorkflowStatusPending:
+		return fmt.Errorf("%w: the gate of item %s waits for its host and does not run. beehave gate priority changes its place", errGateState, item)
+	}
+
+	return nil
 }
 
 // failed names the step of a gate command that failed. It returns nil for no error.
@@ -81,21 +104,25 @@ func failed(step string, err error) error {
 	return fmt.Errorf("%s: %w", step, err)
 }
 
-// ReleaseGate puts the held build job of the gate of an item back on the queue of its host. The job keeps its place: the queue orders by priority and by the time of the first queue.
+// ReleaseGate puts the held gate of an item back on the queue of its project with its place; the gate reopens its own build job when it starts again.
 func (c *Client) ReleaseGate(item string) error {
 	gate, err := c.openGateOf(item)
 	if err != nil {
 		return err
 	}
 
-	if gate.job == nil || gate.job.Status != dbos.WorkflowStatusCancelled {
+	if !gate.held() {
 		return fmt.Errorf("%w: the gate of item %s is not held", errGateState, item)
 	}
 
-	queue := slotQueueName(model.GateClass, cmp.Or(gate.in.SlotCount, 1))
-	_, err = dbos.ResumeWorkflow[ExclusiveOutput](c.flow, gate.job.ID, dbos.WithResumeQueue(queue))
+	_, err = dbos.ResumeWorkflow[ExclusiveOutput](c.flow, gate.row.ID, dbos.WithResumeQueue(exclusiveQueueName))
 
 	return failed("release the gate of item "+item, err)
+}
+
+// held reports whether a person parked the gate: its run waits on the queue of the held gates, which no engine serves, and holds no place on the queue of its project.
+func (g openGate) held() bool {
+	return g.row.QueueName == heldQueueName
 }
 
 // jobID is the id of the build job of the gate, or empty when it has none.
@@ -186,78 +213,79 @@ func (e *Engine) storedPlace(id string, queued uint) uint {
 	return uint(rows[0].Priority)
 }
 
-// holdOf reads whether the gate of ctx is still open and whether its build job is stopped. A person who holds a gate stops the job and leaves the gate open.
-// A gate that was canceled cancels its job too: that is a stop, not a hold.
-func (e *Engine) holdOf(ctx dbos.Context, job string) (gateOpen, jobStopped bool, err error) {
-	id, err := dbos.GetWorkflowID(ctx)
-	if err != nil {
-		return false, false, fmt.Errorf("read the run id of the gate: %w", err)
-	}
+// errGateLeft ends the run of a gate that lost the gate before it reopened its build job: a person canceled or held the gate, or a release started it again under a new run.
+var errGateLeft = errors.New("the gate was canceled, held or started again before this run reopened its build job, so this run ends and leaves the job to the gate")
 
-	return e.holdAt(id, job)
-}
+// jobStopStepName is the recorded step that waits for the end of the earlier run of a canceled build job before the gate reopens the job.
+const jobStopStepName = "gate:stop job"
 
-// holdAt is holdOf for the run id of the gate.
-func (e *Engine) holdAt(id, job string) (gateOpen, jobStopped bool, err error) {
-	rows, err := e.store().List(dbos.WithFilterWorkflowIDs(id, job))
-	if err != nil {
-		return false, false, fmt.Errorf("read the build job of the gate: %w", err)
-	}
-
-	for _, row := range rows {
-		switch row.ID {
-		case id:
-			gateOpen = row.Status != dbos.WorkflowStatusCancelled
-		case job:
-			jobStopped = row.Status == dbos.WorkflowStatusCancelled
-		}
-	}
-
-	return gateOpen, jobStopped, nil
-}
-
-// awaitHeld waits for the result of the build job of a gate. A job that a person held keeps the gate waiting until beehave gate release opens the job again,
-// and then the gate waits for the job as before. A job that was canceled with its gate ends the wait with the cancel.
-func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput]) (ExclusiveOutput, error) {
+// awaitHeld waits for the result of the build job of a gate and reopens the job on queue each time that the wait records the job as canceled.
+func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], queue string) (ExclusiveOutput, error) {
 	for {
 		done, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
 		if !errors.Is(err, dbos.ErrAwaitedWorkflowCancelled) {
 			return done, err
 		}
 
-		if released, werr := e.waitWhileHeld(ctx, handle.GetWorkflowID()); !released || werr != nil {
-			return ExclusiveOutput{}, cmp.Or(werr, err)
+		if err := e.reopenJob(ctx, handle.GetWorkflowID(), queue); err != nil {
+			return ExclusiveOutput{}, err
 		}
 	}
 }
 
-// stillHeld reports whether the job is held: stopped while its gate is open.
-func (e *Engine) stillHeld(ctx dbos.Context, job string) (bool, error) {
-	open, stopped, err := e.holdOf(ctx, job)
-
-	return open && stopped, err
-}
-
-// waitWhileHeld waits while the job is held. It returns false at once for a job that is not held, and false with the error when the wait cannot go on.
-// It returns true when the hold ended: the job is not stopped any more, or the gate ended.
-func (e *Engine) waitWhileHeld(ctx dbos.Context, job string) (bool, error) {
-	held, err := e.stillHeld(ctx, job)
-	if err != nil || !held {
-		return false, err
+// reopenJob waits for the end of the earlier run of the canceled build job and puts the job back on queue, both in recorded steps of the run of the gate.
+func (e *Engine) reopenJob(ctx dbos.Context, job, queue string) error {
+	_, err := dbos.RunAsStep(ctx, func(step context.Context) (struct{}, error) { return struct{}{}, e.stopJob(step, job) }, dbos.WithStepName(jobStopStepName))
+	if err != nil {
+		return ownedGate(err)
 	}
 
-	ticker := time.NewTicker(cmp.Or(e.deps.Clock.Poll, heldPoll))
-	defer ticker.Stop()
+	return resumeJob(ctx, job, queue)
+}
 
-	for held && err == nil {
+// resumeJob puts the canceled build job back on queue in a recorded step of the run of ctx. The store refuses the step of a run that no longer owns its row.
+func resumeJob(ctx dbos.Context, job, queue string) error {
+	_, err := dbos.ResumeWorkflow[ExclusiveOutput](ctx, job, dbos.WithResumeQueue(queue))
+
+	return failed("reopen the build job of the gate", ownedGate(err))
+}
+
+// ownedGate turns the refusal of a step of a run that no longer has its gate into errGateLeft. It returns any other error as it is.
+func ownedGate(err error) error {
+	if errors.Is(err, dbos.ErrConflictingWorkflowID) {
+		return errGateLeft
+	}
+
+	return err
+}
+
+// jobStopLimit is the longest time that a reopen waits for the earlier run of the build job to end.
+const jobStopLimit = 5 * time.Minute
+
+// stopJob cuts the earlier run of the build job on this engine and waits for its end, for at most the stop limit or until ctx ends.
+func (e *Engine) stopJob(ctx context.Context, job string) error {
+	limit := cmp.Or(e.deps.Clock.JobStop, jobStopLimit)
+
+	wait, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+
+	err := waitEnded(wait, e.cancels.stop(job))
+	if err != nil && ctx.Err() == nil {
+		return fmt.Errorf("the earlier run of the build job %s did not stop within %s, so the gate does not reopen it. Stop the program of the job on the host, then run beehave resume for the item", job, limit)
+	}
+
+	return err
+}
+
+// waitEnded waits until the workflow function of each attempt has returned, or ctx ends.
+func waitEnded(ctx context.Context, list []*attempt) error {
+	for _, a := range list {
 		select {
+		case <-a.ended:
 		case <-ctx.Done():
-			return false, stopError(ctx)
-		case <-ticker.C:
+			return stopError(ctx)
 		}
-
-		held, err = e.stillHeld(ctx, job)
 	}
 
-	return err == nil, err
+	return nil
 }
