@@ -6,11 +6,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
-// forbidKinds returns the command kinds that the hook tests forbid: the list that the remediation example gives to its agent steps.
+// forbidKinds returns every kind of the engine that a step lists in forbid_commands, except git-write, which a step turns on by itself.
 func forbidKinds() []string {
-	return []string{"bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path", "zsh-expansion", "laptop-copy"}
+	return slices.DeleteFunc(model.FindingKindNames(), func(name string) bool { return name == string(model.FindingGitWrite) })
 }
 
 func jsonEvent(command string) string {
@@ -25,8 +27,39 @@ func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T
 	t.Parallel()
 
 	forbid := strings.Join(forbidKinds(), ",")
+	protect := []string{"--forbid", forbid, "--protect", "/own/checkout"}
 
-	rows := map[string]string{
+	for name, command := range hookRows() {
+		code, stderr := hook(t, jsonEvent(command), protect...)
+
+		assert.Equal(t, 2, code, "%s: %s", name, stderr)
+	}
+
+	for _, clean := range []string{"git commit -m x", "git push origin b", "git config --get core.editor", "cat main.go", "make check", "git -C /own/checkout log", "cat /own/checkout/main.go"} {
+		code, stderr := hook(t, jsonEvent(clean), protect...)
+
+		assert.Zero(t, code, "%s: %s", clean, stderr)
+	}
+}
+
+func TestExample_EveryKindOfTheEngineThatAStepCanForbidHasARowThatTheHookRefuses(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range forbidKinds() {
+		refused := false
+
+		for _, command := range hookRows() {
+			code, _ := hook(t, jsonEvent(command), "--forbid", kind, "--protect", "/own/checkout")
+			refused = refused || code == 2
+		}
+
+		assert.True(t, refused, "no row is refused for the kind %s", kind)
+	}
+}
+
+// hookRows returns the commands that the hook refuses, by the rule that each one breaks.
+func hookRows() map[string]string {
+	return map[string]string{
 		"S1-L-94: a commit author":                   "git commit --author='A <a@x>' -m x",
 		"S1-L-94: a configured author":               "git -c user.name=me commit -m x",
 		"S1-M-34: no-verify":                         "git commit --no-verify -m x",
@@ -47,20 +80,10 @@ func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T
 		"S1-B-23: a write in the checkout":           "touch /own/checkout/a",
 		"S1-B-23: git in the checkout":               "git -C /own/checkout commit -m x",
 		"S1-B-23: git after a cd into the checkout":  "cd /own/checkout && git checkout -b x",
-	}
-
-	protect := []string{"--forbid", forbid, "--protect", "/own/checkout"}
-
-	for name, command := range rows {
-		code, stderr := hook(t, jsonEvent(command), protect...)
-
-		assert.Equal(t, 2, code, "%s: %s", name, stderr)
-	}
-
-	for _, clean := range []string{"git commit -m x", "git push origin b", "git config --get core.editor", "cat main.go", "make check", "git -C /own/checkout log", "cat /own/checkout/main.go"} {
-		code, stderr := hook(t, jsonEvent(clean), protect...)
-
-		assert.Zero(t, code, "%s: %s", clean, stderr)
+		"zsh-expansion: a zsh-only expansion":        "for n in ${=list}; do :; done",
+		"unparsed: a quote that never closes":        "echo 'x",
+		"delete-text: a delete that echo prints":     "echo 'rm -rf /tmp/x' > clean.sh",
+		"laptop-copy: a copy to another machine":     "rsync -a ./src host:/work/src",
 	}
 }
 
