@@ -29,7 +29,7 @@ type hostStop struct {
 // A project with no host block has nothing to start: started is false and there is no error.
 // cluster is the host that the run chose. An empty one gives the build host of the project, and a cluster that the project does not declare is refused
 // before any host is built. chosen is the cluster that the call used.
-// waiting counts the gates that wait or run on a cluster. A provider with a size table reads it for the cluster when it starts a host, and no other provider does.
+// waiting counts the gates that wait or run on a cluster. Up reads it for the cluster only when it starts a host whose project gives it a size table.
 func (s hostStop) Up(ctx context.Context, project, cluster string, waiting func(cluster string) (int, error)) (started bool, chosen string, err error) {
 	chosen, err = s.programs.resolve(project, cluster)
 	if err != nil {
@@ -50,20 +50,20 @@ func (s hostStop) Up(ctx context.Context, project, cluster string, waiting func(
 	return started, chosen, err
 }
 
-// Sized says whether the provider of the cluster has a size table. It builds the host and calls nothing on it. A project with no host block gives false.
+// Sized says whether the project gives the cluster a size table (`instance_sizes`). It builds the host and calls nothing on it. A project with no host block gives false.
 func (s hostStop) Sized(project, cluster string) (bool, error) {
 	found, err := s.sizedHostOf(project, cluster)
 
 	return found.host != nil, err
 }
 
-// sizedFound is the host of a cluster that has a size table, and the cluster that the call used. The host is nil for a project with no host block and for a provider with no size table.
+// sizedFound is the host of a cluster that has a size table, and the cluster that the call used. The host is nil for a project with no host block and for a host with no size table.
 type sizedFound struct {
 	host    host.Host
 	cluster string
 }
 
-// sizedHostOf builds the host of the cluster and keeps it only when the provider has a size table.
+// sizedHostOf builds the host of the cluster and keeps it only when the project gives it a size table.
 func (s hostStop) sizedHostOf(project, cluster string) (sizedFound, error) {
 	chosen, err := s.programs.resolve(project, cluster)
 	if err != nil {
@@ -79,14 +79,14 @@ func (s hostStop) sizedHostOf(project, cluster string) (sizedFound, error) {
 		return sizedFound{}, err
 	}
 
-	if _, sized := h.(sizedHost); !sized {
+	if !hasSizeTable(h) {
 		return sizedFound{cluster: chosen}, nil
 	}
 
 	return sizedFound{host: h, cluster: chosen}, nil
 }
 
-// Defer says whether host_up leaves the cluster for the first gate: the provider has a size table and the host is absent.
+// Defer says whether host_up leaves the cluster for the first gate: the project gives it a size table and the host is absent.
 // A host that is up, or in another state, is left to Up, which keeps it or refuses it by name.
 func (s hostStop) Defer(ctx context.Context, project, cluster string) (deferred bool, chosen string, err error) {
 	found, err := s.sizedHostOf(project, cluster)
@@ -112,15 +112,23 @@ func launchWhenAbsent(ctx context.Context, h host.Host, project string, waiting 
 	return launchIfAbsent(ctx, h, project, status.State, waiting)
 }
 
-// sizedHost is a host whose size follows the queue: the provider has a size table.
+// sizedHost is a host that can start at the size for a queue length, and says whether its project gives it a size table.
 type sizedHost interface {
 	UpQueued(ctx context.Context, queued int) error
+	HasSizeTable() bool
+}
+
+// hasSizeTable says whether the project gives the host a size table. A host with one type, or none, has no size table.
+func hasSizeTable(h host.Host) bool {
+	sized, ok := h.(sizedHost)
+
+	return ok && sized.HasSizeTable()
 }
 
 // start launches the host. A host with a size table gets the queue length first.
 func start(ctx context.Context, h host.Host, waiting func() (int, error)) error {
 	sized, ok := h.(sizedHost)
-	if !ok {
+	if !ok || !sized.HasSizeTable() {
 		return h.Up(ctx)
 	}
 

@@ -15,7 +15,7 @@ type hostStart struct {
 	Started bool `json:"started"`
 }
 
-// startSizedHost starts the host of a gate when the provider has a size table and the host is absent. host_up leaves such a host for the first gate,
+// startSizedHost starts the host of a gate when the project file gives the host a size table and the host is absent. host_up leaves such a host for the first gate,
 // so the count of gates that wait is the count at the moment the gate needs the host. The start is a recorded step: a replay reads it and starts no second host.
 // The gates of one engine start in turn under the placement lock, so the second gate finds the host up. heldLock says that the caller holds the lock.
 // It returns the cluster that this gate started, or an empty text when it started none.
@@ -42,7 +42,7 @@ func (e *Engine) startSizedHost(ctx dbos.Context, in ExclusiveInput, heldLock bo
 	return host, nil
 }
 
-// sizedHostOf gives the cluster of a gate when the provider of the cluster has a size table. Any other gate gives an empty text.
+// sizedHostOf gives the cluster of a gate when the project file gives the cluster a size table. Any other gate gives an empty text.
 func (e *Engine) sizedHostOf(in ExclusiveInput) (string, error) {
 	host := strings.TrimPrefix(in.HostKey, hostKeyPrefix)
 	if e.deps.Hosts == nil || host == "" {

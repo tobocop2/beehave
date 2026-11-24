@@ -118,6 +118,11 @@ func (h *Host) Up(ctx context.Context) error {
 	return h.UpQueued(ctx, 0)
 }
 
+// HasSizeTable says whether the project gives the host an `instance_sizes` table. `instance_type` alone, or no size key, gives false.
+func (h *Host) HasSizeTable() bool {
+	return h.values.instanceSizes != ""
+}
+
 // UpQueued is Up with the size that the size table gives for queued waiting jobs. A cluster that runs keeps its size: the caller starts only an absent host.
 func (h *Host) UpQueued(ctx context.Context, queued int) error {
 	args := []string{

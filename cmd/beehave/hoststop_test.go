@@ -12,9 +12,11 @@ import (
 
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/host/sshtest"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 type tearingHost struct {
@@ -84,6 +86,8 @@ type sizedStartingHost struct {
 
 	queued []int
 }
+
+func (*sizedStartingHost) HasSizeTable() bool { return true }
 
 func (h *sizedStartingHost) UpQueued(_ context.Context, queued int) error {
 	h.queued = append(h.queued, queued)
@@ -257,6 +261,62 @@ func TestHostStop_DeferPassesOnEveryFaultThatItCannotSettle(t *testing.T) {
 	unreadable := &sizedStartingHost{startingHost: startingHost{statusErr: errors.New("sky status failed")}}
 	_, _, err = stopOf(unreadable, nil).Defer(t.Context(), "p", "")
 	require.ErrorContains(t, err, "sky status failed")
+}
+
+// skyPilotStop loads a project whose skypilot host block holds the keys, and builds its real SkyPilot host over a scripted sky that lists no cluster.
+func skyPilotStop(t *testing.T, keys string) (hostStop, *proctest.Scripted) {
+	t.Helper()
+
+	project, problems := loadHostProject(t, hostProjectTail+`, host = host(provider = "skypilot", disk_floor_gb = 50, idle_minutes = 30`+keys+`)`)
+	require.Empty(t, problems)
+
+	sky, sshRunner := &proctest.Scripted{}, &proctest.Scripted{}
+	sky.Plan("[]", "status")
+	sky.Plan("", "launch")
+	sshRunner.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
+
+	h, err := skypilot.New(project.BuildHost, *project.Host, sky, sshRunner, slurmQueue)
+	require.NoError(t, err)
+
+	return stopOf(h, nil), sky
+}
+
+func TestHostStop_OnlyAnInstanceSizesTableLeavesAnAbsentSkyPilotHostForTheFirstGate(t *testing.T) {
+	t.Parallel()
+
+	unread := func(string) (int, error) { return 0, errors.New("the queue is read for a host with no size table") }
+
+	for name, tc := range map[string]struct {
+		keys     string
+		deferred bool
+		launch   []string
+	}{
+		"instance_type_alone": {`, skypilot = skypilot(instance_type = "n2-standard-8")`, false, []string{"-t", "n2-standard-8"}},
+		"no_size_key":         {`, skypilot = skypilot(cloud = "gcp")`, false, []string{"--infra", "gcp"}},
+		"no_block":            {"", false, []string{"--down"}},
+		"instance_sizes":      {`, skypilot = skypilot(instance_sizes = "3:n2-standard-4,n2-standard-16")`, true, nil},
+	} {
+		stop, sky := skyPilotStop(t, tc.keys)
+
+		sized, err := stop.Sized("p", "")
+		require.NoError(t, err, name)
+		assert.Equal(t, tc.deferred, sized, name+": only a host with an instance_sizes table is sized")
+
+		deferred, _, err := stop.Defer(t.Context(), "p", "")
+		require.NoError(t, err, name)
+		assert.Equal(t, tc.deferred, deferred, name+": host_up records a deferral only for a host with an instance_sizes table")
+
+		if tc.deferred {
+			assert.False(t, sky.Called("launch"), name)
+
+			continue
+		}
+
+		started, _, err := stop.Up(t.Context(), "p", "", unread)
+		require.NoError(t, err, name)
+		assert.True(t, started, name+": host_up starts the host as at the base")
+		assert.True(t, sky.Called(tc.launch...), name)
+	}
 }
 
 func TestHostStop_PassesOnAHostLookupErrorThatIsNotNoHost(t *testing.T) {

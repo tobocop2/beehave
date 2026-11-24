@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -14,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sizedHosts is the host keeper of a provider with a size table. The host is absent until a start. A start reads the count of waiting gates, and the
+// sizedHosts is the host keeper of a host with a size table. The host is absent until a start. A start reads the count of waiting gates, and the
 // read comes between the check of the state and the change of it, so two starts that run at once both launch.
 type sizedHosts struct {
 	*upHosts
@@ -119,6 +120,47 @@ func TestGateStart_TwelveGatesWaitOnAHostThatIsGoneAndTheNextGateStartsItWithThe
 	for _, one := range ended {
 		require.NoError(t, receive(t, one).err)
 	}
+}
+
+// gateSteps runs one gate on host A to its end and gives the names of the steps that its exclusive run recorded, in order.
+func gateSteps(t *testing.T, h *harness) []string {
+	t.Helper()
+
+	gated := newPlaceGate("A")
+	close(gated.release)
+
+	engine := launchHostEngine(t, h, gated)
+	require.NoError(t, receive(t, queueHostGate(engine, "project-one", "1", "A", "A")).err)
+
+	rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(exclusiveName))
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	steps, err := dbos.GetWorkflowSteps(engine.ctx, rows[0].ID)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(steps))
+	for _, step := range steps {
+		names = append(names, step.StepName)
+	}
+
+	return names
+}
+
+func TestGateStart_AGateOnAHostWithNoSizeTableRecordsTheStepsOfTheBase(t *testing.T) {
+	t.Parallel()
+
+	unsized, _ := placeHarness(t, []string{"A"})
+	plain := gateSteps(t, unsized)
+
+	sizedRun, _ := sizedHarness(t, true)
+	sized := gateSteps(t, sizedRun)
+
+	assert.Equal(t, []string{"gate:reuse", "host_job", "DBOS.getResult"}, plain, "the steps that the same gate records at the base")
+	assert.NotContains(t, plain, gateHostStepName, "a host with no size table records no start step")
+	assert.Contains(t, sized, gateHostStepName, "the control: a host with a size table records the start step")
+	assert.Equal(t, slices.DeleteFunc(sized, func(name string) bool { return name == gateHostStepName }), plain,
+		"the only step that a size table adds is the start")
 }
 
 func TestGateStart_ARestartedGateReadsTheRecordOfItsStartAndStartsNoSecondHost(t *testing.T) {

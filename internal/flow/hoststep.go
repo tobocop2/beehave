@@ -20,9 +20,9 @@ import (
 type hostKeeper interface {
 	// waiting counts the gates that wait or run on a cluster. Up calls it, for the cluster it chose, only when it starts a host whose size follows the queue.
 	Up(ctx context.Context, project, cluster string, waiting func(cluster string) (int, error)) (started bool, chosen string, err error)
-	// Sized says whether the provider of cluster has a size table. It reads the project file only and calls no host. A project with no host gives false.
+	// Sized says whether the project file gives cluster a size table. It reads the project file only and calls no host. A project with no host gives false.
 	Sized(project, cluster string) (bool, error)
-	// Defer says whether host_up leaves cluster for the first gate: the provider has a size table and the host is absent. chosen is the cluster that the call used.
+	// Defer says whether host_up leaves cluster for the first gate: the project file gives it a size table and the host is absent. chosen is the cluster that the call used.
 	Defer(ctx context.Context, project, cluster string) (deferred bool, chosen string, err error)
 	Teardown(ctx context.Context, project, cluster string) error
 	// LostProof stops the host job of a gate whose wait ended as lost, on the cluster that the job ran on, then reads whether the job can no longer run.

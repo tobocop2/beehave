@@ -23,7 +23,7 @@ type upHosts struct {
 	err     error
 	ups     []string
 	asked   []string // the cluster each Up call named
-	// readQueue makes Up read the gates that wait on the cluster, as a provider with a size table does. waiting and waitErr hold the answer.
+	// readQueue makes Up read the gates that wait on the cluster, as a host with a size table does. waiting and waitErr hold the answer.
 	readQueue bool
 	waiting   int
 	waitErr   error
@@ -54,7 +54,7 @@ func (u *upHosts) Up(_ context.Context, project, cluster string, waiting func(st
 	return u.started, cmp.Or(cluster, defaultCluster), u.err
 }
 
-// Sized says no provider has a size table, and Defer says no host is left for a gate.
+// Sized says no host has a size table, and Defer says no host is left for a gate.
 func (*upHosts) Sized(string, string) (bool, error) { return false, nil }
 
 func (*upHosts) Defer(_ context.Context, _, cluster string) (bool, string, error) {

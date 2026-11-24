@@ -72,6 +72,24 @@ func TestUp_StartsTheFirstRowOfTheTable(t *testing.T) {
 	assert.Contains(t, sky.Calls[0], "n2-standard-4")
 }
 
+func TestHasSizeTable_IsTrueOnlyForAnInstanceSizesTable(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		placement *placed
+		want      bool
+	}{
+		"instance_sizes":      {&placed{instanceSizes: sizeTableText}, true},
+		"instance_type_alone": {&placed{instanceType: "n2-standard-8"}, false},
+		"no_size_key":         {&placed{cloud: "gcp"}, false},
+		"no_block":            {nil, false},
+	} {
+		h, _, _, _ := newHost(t, hostConfig(tc.placement))
+
+		assert.Equal(t, tc.want, h.HasSizeTable(), name)
+	}
+}
+
 func TestNew_RefusesABadSizeTableAndNamesTheKey(t *testing.T) {
 	t.Parallel()
 
