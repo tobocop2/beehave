@@ -267,7 +267,7 @@ A fencing token works only when the resource checks it. Neither `bd` nor GitHub 
 - `merge` pins with `--match-head-commit`.
 - A stale worker that lost its claim fails at its next push or merge, at the forge.
 - Inside one state folder, the DBOS workflow id `item-<n>-r<k>` dedupes a second start.
-- Across engines, preflight reads the assignee and the linked pull requests. An own open pull request that `round_items` does not hold stops the item as `HELD`.
+- Across engines, the library function `claim_stop` reads the assignee and the linked pull requests. An own open pull request that `round_items` does not hold stops the item as `HELD`.
 
 The `bd` lease stays for hand-run lanes as the `claims = "beads"` adapter. It is unfenced and is not called on the round path.
 

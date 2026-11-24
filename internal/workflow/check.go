@@ -289,7 +289,7 @@ func sentence(text string) string { return strings.TrimRight(text, ".") + "." }
 
 // repositoryBuiltins are the builtins that read git or a forge. A project with no repository cannot call them.
 func repositoryBuiltins() []string {
-	return []string{gateName, mergeName, preflightName}
+	return []string{gateName, issueAssigneesName, mergeName, preflightName, prReadName}
 }
 
 // repositoryCalls lists the calls of repositoryBuiltins in a parsed file. A name that the file defines is not the builtin.
@@ -355,7 +355,7 @@ func emptyLiteral(expr syntax.Expr) bool {
 	return false
 }
 
-// CheckNoRepository returns one diagnostic for each call of gate, merge or preflight in the workflow file and the files it loads.
+// CheckNoRepository returns one diagnostic for each call of gate, merge, preflight, pr_read or issue_assignees in the workflow file and the files it loads.
 // The project has no repository, and these builtins refuse it at run time. A gate call that names run is not one of them: it runs its own program.
 // It runs no workflow code.
 func CheckNoRepository(file, project string) []Diagnostic {

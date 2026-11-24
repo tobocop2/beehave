@@ -338,14 +338,14 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
 		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
-		"preflight:before-scoped-review-1#2",
+		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
-		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3",
+		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3", "pr_read:before-review-1#3",
 		"agent:candidate-review#5/render", "agent:candidate-review#5/clear1", "phase", "DBOS.getResult", "agent:candidate-review#5/read1", "pr_comment:approved#1",
 		"worktree", "release",
 	}, remediationStepNames(t))
@@ -362,18 +362,18 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"claim", "item", "facts#1", "scope:intake#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
 		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
-		"preflight:before-scoped-review-1#2",
+		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
-		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "preflight:before-fix-2#3",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "preflight:before-fix-2#3", "pr_read:before-fix-2#3",
 		"agent:fix-scoped-1#5/start", "agent:fix-scoped-1#5/render", "agent:fix-scoped-1#5/clear1", "phase", "DBOS.getResult", "agent:fix-scoped-1#5/read1", "agent:fix-scoped-1#5/commit", "push:push-fix-1#2",
-		"preflight:before-scoped-review-2#4",
+		"preflight:before-scoped-review-2#4", "pr_read:before-scoped-review-2#4",
 		"agent:scoped-review-1#6/render", "agent:scoped-review-1#6/clear1", "phase", "DBOS.getResult", "agent:scoped-review-1#6/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#2", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
-		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5",
+		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5", "pr_read:before-review-2#5",
 		"agent:candidate-review#7/render", "agent:candidate-review#7/clear1", "phase", "DBOS.getResult", "agent:candidate-review#7/read1", "pr_comment:approved#1",
 		"worktree", "release",
 	}, remediationStepNames(t, WithFixture(fixtureOf(t, remediationRedGate))))

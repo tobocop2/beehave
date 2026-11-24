@@ -16,6 +16,8 @@
 # This file is separate from examples/remediation because main is the entry of the parent and of a child alike.
 # The child function `work` is the one place to put the pipeline of one item: replace its agent call with the steps of the remediation example.
 
+load("@beehave//claims.star", "claim_stop")
+
 # The label of the forge that holds an item. Change it to the label that your repository uses.
 HOLD = "hold"
 
@@ -27,7 +29,9 @@ def work(item):
 
     # The forge is read here, at the start of the item, so a pull request that was opened after the pass read the queue still stops the item.
     # An open pull request of a login that is not OWNER_LOGIN claims the item. The failure holds the item with the reason, and no agent starts.
-    intake = preflight(name = "intake", base = env("BASE"), hold = HOLD, own = {"logins": [env("OWNER_LOGIN")]})
+    intake = preflight(name = "intake", base = env("BASE"))
+    if intake.ok:
+        intake = claim_stop(name = "intake", hold = HOLD, own = {"logins": [env("OWNER_LOGIN")]})
     if not intake.ok:
         fail(intake.reason)
 

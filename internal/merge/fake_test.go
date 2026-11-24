@@ -34,6 +34,8 @@ type world struct {
 	facts *model.PullFacts
 	// laterFacts is the answer of the typed read after the first read. Nil means the facts of the later view, or of the first.
 	laterFacts *model.PullFacts
+	// strict makes the typed read the one of the forge: the read of the first view that refuses a null list and a body link that is not an int.
+	strict     bool
 	children   []model.PullRequest
 	checks     []model.Check
 	scopes     []string
@@ -236,6 +238,10 @@ func (w *world) PullRead(_ context.Context, number int) (model.PullFacts, error)
 	}
 
 	facts.Number = number
+
+	if w.strict {
+		return w.first.Read(number)
+	}
 
 	return facts, facts.Check()
 }

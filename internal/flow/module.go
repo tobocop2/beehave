@@ -67,7 +67,9 @@ func repositoryDefs() []builtinDef {
 		{name: "pr_comment", call: (*script).prComment, repository: true},
 		{name: prHistoryKind, call: (*script).prHistory, repository: true},
 		{name: "pr_open", call: (*script).prOpen, repository: true},
+		{name: prReadKind, call: (*script).prRead, repository: true},
 		{name: prStateKind, call: (*script).prState, repository: true},
+		{name: issueAssigneesKind, call: (*script).issueAssignees, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},
 	}
@@ -80,6 +82,7 @@ func itemDefs() []builtinDef {
 		{name: "item_create", call: (*script).itemCreate},
 		{name: "item_read", call: (*script).itemRead},
 		{name: "item_status", call: (*script).itemStatus},
+		{name: itemStopKind, call: (*script).itemStop},
 	}
 }
 
