@@ -260,7 +260,7 @@ func TestWorktrees_PlaceRefusesWhenGitCannotDropTheRecordOfARemovedTrackerWorktr
 	real := rig.trees.git
 	rig.trees.git = func(folder string) proc.Runner { return pruneRefused{Runner: real(folder)} }
 
-	require.ErrorContains(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"), "git worktree in")
+	require.ErrorContains(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"), "fatal: refused")
 }
 
 // pruneRefused is a git runner whose worktree prune exits with code 128.

@@ -18,6 +18,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
@@ -553,6 +554,40 @@ func TestWorktrees_EnsureMakesATrackerWorktreeAgainThatSomeoneRemovedOnTheBranch
 	require.NoError(t, err)
 	assert.Equal(t, dir, again)
 	assert.Equal(t, model.ItemBranch("bb-1"), gitOut(t, again, "branch", "--show-current"), "the new tree is on the branch of the item")
+}
+
+func TestWorktrees_EnsureStillRefusesABranchThatALiveWorktreeOnAnotherPathHolds(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t)
+
+	dir, err := rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+	require.NoError(t, err)
+
+	other := filepath.Join(rig.trees.root, "p", "elsewhere")
+	_, err = rig.trees.add(t.Context(), rig.clone(), other, "bb-1", "origin/main")
+
+	require.ErrorContains(t, err, "bb-1")
+	assert.NoDirExists(t, other, "no second worktree holds the branch")
+	assert.Equal(t, model.ItemBranch("bb-1"), gitOut(t, dir, "branch", "--show-current"))
+}
+
+func TestWorktrees_EnsureRefusesATrackerWorktreeWhenGitCannotDropTheRecordOfARemovedOne(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t)
+
+	dir, err := rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+	require.NoError(t, err)
+
+	require.NoError(t, os.RemoveAll(dir))
+
+	real := rig.trees.git
+	rig.trees.git = func(folder string) proc.Runner { return pruneRefused{Runner: real(folder)} }
+
+	_, err = rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+
+	require.ErrorContains(t, err, "fatal: refused")
 }
 
 func TestWorktrees_PathOfAnItemNeverFailsWhileSiblingItemsAddTheirWorktrees(t *testing.T) {

@@ -182,11 +182,16 @@ func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch 
 		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
 	}
 
-	if err := w.run(ctx, clone, gitWorktree, "prune"); err != nil {
+	if err := w.prune(ctx, clone); err != nil {
 		return err
 	}
 
 	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
+}
+
+// prune drops the records of the worktrees whose folder is gone, so that no such record holds a branch. A branch that a live worktree holds stays held.
+func (w worktrees) prune(ctx context.Context, clone string) error {
+	return w.run(ctx, clone, gitWorktree, "prune")
 }
 
 // placeKept moves the kept worktree of the item to head. The move never takes work off the worktree: changes stop it, and so do the commits of a round worktree that no remote branch holds.
@@ -545,14 +550,19 @@ func absent(dir string) error {
 }
 
 // add makes the worktree dir from the clone. A round item gets a detached worktree at revision, with --force, so git replaces the record of a round
-// worktree whose folder someone removed and forgets no other record. Any other item uses the branch named item if the clone has one, also with --force
-// for a removed folder, and else starts that branch at revision. It returns dir.
+// worktree whose folder someone removed and forgets no other record. Any other item first drops the records of removed folders, then uses the branch
+// named item if the clone has one, and else starts that branch at revision. It returns dir.
 func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return "", fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
 	}
 
-	if err := w.run(ctx, clone, w.addArgs(ctx, clone, dir, item, revision)...); err != nil {
+	args, err := w.addArgs(ctx, clone, dir, item, revision)
+	if err != nil {
+		return "", err
+	}
+
+	if err := w.run(ctx, clone, args...); err != nil {
 		return "", err
 	}
 
@@ -565,18 +575,18 @@ func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (
 	return dir, nil
 }
 
-// addArgs returns the git arguments that add the worktree dir of the item at revision.
-func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision string) []string {
+// addArgs returns the git arguments that add the worktree dir of the item at revision. An existing branch of the item is added after a prune, so the record of a removed folder does not hold it.
+func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision string) ([]string, error) {
 	if _, round := model.RoundBase(item); round {
-		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}
+		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}, nil
 	}
 
 	branch := model.ItemBranch(item)
 	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
-		return []string{gitWorktree, gitAdd, "--force", dir, branch}
+		return []string{gitWorktree, gitAdd, dir, branch}, w.prune(ctx, clone)
 	}
 
-	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}
+	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}, nil
 }
 
 // clone makes the clone of the repository of the project in dir, unless it is there. The clone comes from the source of the project, or else from its forge.

@@ -197,7 +197,8 @@ func TestWorktrees_EnsureAddsTheWorktreeOnAnExistingItemBranchAndNeverResetsIt(t
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
-	assert.Equal(t, clone+": worktree add --force "+want+" bb-1", git.calls[len(git.calls)-1])
+	assert.Equal(t, []string{clone + ": rev-parse --verify --quiet refs/heads/bb-1", clone + ": worktree prune", clone + ": worktree add " + want + " bb-1"}, git.calls[len(git.calls)-3:],
+		"a prune drops the record of a removed folder, then a plain add with no force flag takes the branch")
 
 	for _, call := range git.calls {
 		assert.NotContains(t, call, " -B ")
