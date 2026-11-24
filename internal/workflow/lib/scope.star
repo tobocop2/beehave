@@ -2,6 +2,7 @@
 # fix_scope records the set at the first review. hold_scope compares it with the set now, asks the owner about each new issue with wait, and returns the members that may land.
 
 FIRST_READ = "scope"
+NOW_READ = "scope-now-"
 MAX_NUMBER = 9223372036854775807
 NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789_.-"
 DIGITS = "0123456789"
@@ -10,7 +11,8 @@ def fix_scope(name, item = ""):
     """Fixes the scope of the item and returns struct(found, issues, off).
 
     An earlier read of this run or of an earlier run of the item that found a pull request is the scope: nothing is read. Otherwise one pr_closing read is the scope.
-    name is the name of the call, and hold_scope finds the scope by it (its argument `first`). found is false when the item has no pull request yet: call fix_scope again later.
+    name is the name of the call. found is false when the item has no pull request yet: call fix_scope again later. Give the run of an item the result as the argument `own` of hold_scope.
+    hold_scope finds the scope that an earlier run of another item fixed by the name `scope`, so call fix_scope(name = "scope") in a run whose item another run merges.
     off is true when the project has no forge, so there is no scope to check.
     """
     for read in earlier_reads(kind = "pr_closing", name = name, item = item, own_run = True).reads:
@@ -20,32 +22,34 @@ def fix_scope(name, item = ""):
     read = pr_closing(name = name, item = item)
     return struct(found = read.found, issues = read.issues, off = not read.forge)
 
-def hold_scope(name, prs, run = "", first = FIRST_READ):
+def hold_scope(name, prs, run = "", own = None):
     """Checks each member of prs against its scope and returns struct(prs, rejected).
 
     prs is a list of the members of a merge. The result prs holds the members that may land: each one has the field kept (the issues that the owner kept for it) and,
     when its scope is known, the field closing (the closing issues that were read now, which the merge checks again). rejected holds struct(item, reason) for each member that the owner did not keep.
-    A member with no scope of its first review has nothing to compare: it passes with no read. first is the name that fix_scope got. name makes the step names of the call unique.
+    A member with no scope of its first review has nothing to compare: it passes with no read. name labels the call in its errors.
     run is the item of the run, which the owner names in beehave answer. An empty run is the item of the first member.
+    own is the result of fix_scope in this run. It is the scope of the member whose item is the item of the run. The scope of any other member is the one that an earlier run of that member fixed.
     A read that fails, or a pull request that is gone, ends the run.
     """
     landing = []
     rejected = []
+    run_item = run or (prs[0].item if prs else "")
 
     for pr in prs:
-        then = _first_review(first, pr.item)
+        then = _first_review(pr.item, run_item, own)
         if then == None:
             landing.append(_member(pr, [], None))
             continue
 
-        now = pr_closing(name = name + "-" + pr.item, item = pr.item)
-        if not now.found:
-            fail("scope check of item %s: read the issues that the pull request of item %s closes: the item has no pull request" % (pr.item, pr.item))
-
         kept = _kept_before(pr.item)
+        now = pr_closing(name = NOW_READ + pr.item, item = pr.item)
+        if not now.found:
+            fail("scope check %s: read the issues that the pull request of item %s closes: the item has no pull request" % (name, pr.item))
+
         fresh = [issue for issue in now.issues if issue not in then and issue not in kept]
         if fresh:
-            owner_item = run or prs[0].item
+            owner_item = run_item
             named = keep_issues(wait(question = _question(pr.item, fresh, then, owner_item), name = "keep-" + pr.item).answer)
             missing = [issue for issue in fresh if issue not in named]
             if missing:
@@ -91,19 +95,29 @@ def _issue(text):
 
     return "%s#%d" % (repo.lower(), int(digits))
 
-def _first_review(first, item):
-    """The issues of the first review of the item, or None when the item has none."""
-    for read in earlier_reads(kind = "pr_closing", name = first, item = item, own_run = True).reads:
+def _first_review(item, run_item, own):
+    """The issues of the first review of the item, or None when the item has none. The scope of the item of the run is own, and any other scope is read from the earlier runs of the item."""
+    if item == run_item and own != None:
+        return own.issues if own.found else None
+
+    for read in earlier_reads(kind = "pr_closing", name = FIRST_READ, item = item).reads:
         if read["found"]:
             return read["issues"]
 
     return None
 
 def _kept_before(item):
-    """The issues that the owner kept for the item in this run and in the earlier runs of the run item."""
+    """The issues that the owner kept for the item in this run and in the earlier runs of the run item.
+
+    An answer keeps only an issue that an earlier check of the item read as a closing issue: an issue that the owner names and the pull request did not close yet is asked about when it appears.
+    """
+    seen = []
+    for read in earlier_reads(kind = "pr_closing", name = NOW_READ + item, own_run = True).reads:
+        seen = _union(seen, read["issues"])
+
     kept = []
     for read in earlier_reads(kind = "wait", name = "keep-" + item, own_run = True).reads:
-        kept = _union(kept, keep_issues(read["answer"]))
+        kept = _union(kept, [issue for issue in keep_issues(read["answer"]) if issue in seen])
 
     return kept
 

@@ -24,7 +24,7 @@ const askBound = 5 * time.Second
 const scopeOffNote = "scope check off: the project has no forge"
 
 const (
-	fixFirstReview = `fix_scope(name = "scope")`
+	fixFirstReview = `own = fix_scope(name = "scope")`
 	scopeLoad      = "load(\"@beehave//scope.star\", \"fix_scope\", \"hold_scope\")\n\n"
 	otherIssue     = model.IssueRef("other-org/other-repo#5")
 )
@@ -39,10 +39,15 @@ func (r *batchRig) libFlow(pre, items string, holds int) string {
 
 	body := []string{"def main(item):", "    " + pre, "    merged = []", "    rejected = []"}
 
+	given := ""
+	if strings.Contains(pre, "own = ") {
+		given = "own = own, "
+	}
+
 	for k := 1; k <= holds; k++ {
 		n := string(rune('0' + k))
 		body = append(body,
-			`    held = hold_scope(name = "hold-`+n+`", prs = [`+strings.Join(members, ", ")+`])`,
+			`    held = hold_scope(name = "hold-`+n+`", `+given+`prs = [`+strings.Join(members, ", ")+`])`,
 			"    rejected += held.rejected",
 			"    if held.prs:",
 			`        merged += merge(prs = held.prs, base = "main", repo = "o/r", name = "b-`+n+`").merged`)
@@ -652,6 +657,115 @@ func TestHoldScope_AnIssueOfAnotherRepositoryWithTheNumberOfAnOwnIssueOfTheFirst
 	require.NoError(t, receive(t, done).err)
 
 	assert.Empty(t, rig.merger.landed(), "#5 of this repository does not cover other-org/other-repo#5")
+}
+
+// endsWithNoQuestion takes the outcome of a run that must not ask the owner: a run that asks stays open until the bound.
+func endsWithNoQuestion(t *testing.T, done <-chan runOutcome, what string) {
+	t.Helper()
+
+	select {
+	case outcome := <-done:
+		require.NoError(t, outcome.err)
+	case <-time.After(askBound):
+		t.Fatalf("the run did not end within %s: %s", askBound, what)
+	}
+}
+
+func TestHoldScope_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompareEvenWhenTheRunFixedItsOwnScope(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closingOf = map[string][][]int{"1": {{12}, {12}}, "3": {{20}}}
+
+	done := rig.runFlowAs(t, rig.engine(t), "1", rig.libFlow(fixFirstReview, "1 3", 1))
+
+	endsWithNoQuestion(t, done, "the member of item 3 has no first review, so it was compared with the scope of item 1 and the run asked the owner")
+	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
+	assert.Equal(t, 2, rig.h.forge.closingReads, "one read fixes the scope of item 1, one checks item 1, and item 3 has nothing to compare so it is not read")
+}
+
+func TestHoldScope_AnAnswerKeepsOnlyTheIssuesThatTheQuestionAskedAbout(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+	done := rig.runFlowAs(t, engine, "9", withRun(rig.libFlow("pass", "1", 2), "9"))
+
+	questionOf(t, rig.h, "9")
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13, #99"}))
+	require.NoError(t, receive(t, done).err)
+
+	require.Len(t, rig.merger.given, 2)
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[1].Kept, "the owner named #99, which the question did not ask about, so it is not kept")
+}
+
+func TestHoldScope_ANewRunOfTheSameItemWhoseIssuesDidNotGrowAsksNoQuestion(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}}
+	engine := rig.engine(t)
+
+	for range 2 {
+		endsWithNoQuestion(t, rig.runItemOne(t, engine), "a member whose issues did not grow was asked about")
+	}
+
+	assert.Equal(t, []string{"1", "1"}, rig.merger.landed())
+	assert.Equal(t, 3, rig.h.forge.closingReads, "run one reads twice, and run two keeps the scope of run one and reads once to check")
+}
+
+func TestHoldScope_AMemberOfAnotherItemWithAnEarlierRunWhoseIssuesDidNotGrowAsksNoQuestion(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+
+	endsWithNoQuestion(t, rig.runMergeAs(t, engine, "9", "1"), "a member whose issues did not grow was asked about")
+
+	assert.Equal(t, []string{"1"}, rig.merger.landed())
+	assert.Equal(t, 2, rig.h.forge.closingReads, "the earlier run read once, and the check reads once")
+}
+
+func TestFixScope_TheItemArgumentChoosesTheItemOfTheReadAndOfTheEarlierReads(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closingOf = map[string][][]int{"1": {{12}}, "3": {{20}, {20, 21}}}
+	engine := rig.engine(t)
+	text := scopeLoad + "def main(item):\n    s = fix_scope(name = \"scope\", item = \"3\")\n    command(name = \"report\", run = [\"report\", \",\".join(s.issues)])\n"
+
+	_, err := engine.RunFile("1", testProject, writeFlow(t, text), modeOff())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"report #20"}, rig.h.commands.ran(), "the read is the pull request of item 3, not the one of the run item")
+
+	reads := rig.h.forge.closingReads
+	_, err = engine.RunFile("3", testProject, writeFlow(t, scopeLoad+"def main(item):\n    "+fixFirstReview+"\n"), modeOff())
+	require.NoError(t, err)
+
+	_, err = engine.RunFile("1", testProject, writeFlow(t, text), modeOff())
+	require.NoError(t, err)
+	assert.Equal(t, reads+1, rig.h.forge.closingReads, "the run of item 3 read once, and the second call for item 3 found its scope in the earlier run of item 3 and read nothing")
+	assert.Equal(t, "report #20,#21", rig.h.commands.ran()[len(rig.h.commands.ran())-1], "the scope of item 3 is the one that its own run fixed")
+}
+
+func TestHoldScope_ANewIssueOfAMemberWhoseFirstReviewClosedNoIssueIsAskedAboutWithTheWordsNoIssue(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{}, {13}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+	done := rig.runMergeAs(t, engine, "9", "1")
+
+	question := questionOf(t, rig.h, "9")
+
+	assert.Contains(t, question, "did not at its first review (then: no issue)")
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "no"}))
+	require.NoError(t, receive(t, done).err)
 }
 
 func TestKeepIssues_ReadsOnlyTheKeepForm(t *testing.T) {
