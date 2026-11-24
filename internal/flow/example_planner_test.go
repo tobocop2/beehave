@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -188,13 +189,32 @@ func TestExamplePlanner_TheDeadlineCancelsANewWorkerThatIsStillOpen(t *testing.T
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1s", "DEADLINE": "1s"}
-	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, 3*time.Second
+	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1s", "DEADLINE": "1h"}
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, time.Hour
+
+	// The deadline of a gather reads a clock that the test moves past it. A deadline of one second on the real clock could end the wait before the new
+	// worker published, and the report would show 22=none.
+	var ahead atomic.Int64
+
+	began := time.Now()
+	h.reading = func() time.Time { return began.Add(time.Since(began) + time.Duration(ahead.Load())) }
 
 	engine := h.engine(t)
-	err := runTicking(t, h, engine)
+	client := h.client(t, testVersion)
+	done := make(chan error, 1)
 
-	require.NoError(t, err)
+	go func() { done <- runTicking(t, h, engine) }()
+
+	// The new worker of 22 has published when its progress exists. The deadline passes only after that.
+	waitOn(t, waiting[struct{}]{what: "the new worker of 22 to publish", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r2")
+
+		return struct{}{}, err == nil && len(seen) > 0, nil
+	}})
+
+	ahead.Store(int64(2 * time.Hour))
+
+	require.NoError(t, receive(t, done))
 	assert.Equal(t, "echo when the workers ended: 22=started 22:deadline cost_usd=0.0", lastRan(t, h))
 	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, engine, "item-22-r2"), "the deadline canceled the new worker")
 }
