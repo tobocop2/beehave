@@ -30,6 +30,31 @@ func TestIssueState_ReturnsOpenOrClosed(t *testing.T) {
 	assert.Subset(t, stepNames(t, engine), []string{"issue_state:a#1", "issue_state:b#2"})
 }
 
+func TestIssueState_FoundIsTrueForARead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.queue = &fakeQueue{issueStates: map[int]string{7: "OPEN"}}
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    command(name = \"seen\", run = [\"seen\", str(issue_state(number = 7).found)])\n"), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"True"}, seenBy(t, h))
+}
+
+func TestIssueState_AProjectWhoseTrackerHasNoIssueNumbersGivesFoundFalseAndNoState(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.queue = &fakeQueue{noIssueNumbers: true, issueStates: map[int]string{7: "OPEN"}}
+
+	body := "def main(item):\n    r = issue_state(number = 7)\n    command(name = \"seen\", run = [\"seen\", str(r.found), \"[\" + r.state + \"]\"])\n"
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"False", "[]"}, seenBy(t, h), "no read ran, so the result holds no state and the run goes on")
+}
+
 func TestIssueState_ANumberBelowOneIsRefusedBeforeAnyRead(t *testing.T) {
 	t.Parallel()
 

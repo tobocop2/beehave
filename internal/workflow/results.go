@@ -120,7 +120,7 @@ func factsResultFields() map[string][]string {
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		baseTipName:        {"commit", treeKeyword},
-		issueStateName:     {stateField},
+		issueStateName:     {stateField, foundField},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},

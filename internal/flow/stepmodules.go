@@ -101,7 +101,8 @@ const forgeVersion = 11
 // Version 4 records a lost job that has a proof in the item run (<call>/host-loss), and the gate step records host_losses, the count of the host losses of the item tree.
 // Version 5 added the revert field to the results of gate, and the revert run to the checks of a candidate gate.
 // Version 6 retires the kind before_review, which version 5 recorded. The function before_review of the library judges a head with command steps.
-const gateVersion = 6
+// Version 7 adds the step field to the result of gate: the name of the step that recorded it.
+const gateVersion = 7
 
 // roundVersion is the version of the round module. Version 2 added the step of the engine that makes the worktree at the start of every round item.
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).

@@ -29,12 +29,14 @@ type fakeQueue struct {
 	stateErr       error
 	stateAsked     []int
 	// issueStates answers IssueState and pullClosing answers PullClosing, each by number. issueErr and closingErr fail the read. issueAsked and closingAsked hold the numbers asked.
-	issueStates  map[int]string
-	issueErr     error
-	issueAsked   []int
-	pullClosing  map[int][]model.IssueRef
-	closingErr   error
-	closingAsked []int
+	issueStates map[int]string
+	issueErr    error
+	// noIssueNumbers makes IssueState answer found false, as a project whose tracker has no issue numbers does.
+	noIssueNumbers bool
+	issueAsked     []int
+	pullClosing    map[int][]model.IssueRef
+	closingErr     error
+	closingAsked   []int
 	// labelsAsked and basesAsked hold the label of each ItemList call and the base of each OpenPulls call.
 	labelsAsked []string
 	basesAsked  []string
@@ -90,13 +92,13 @@ func (q *fakeQueue) PullState(_ context.Context, _ string, pr int) (string, erro
 }
 
 // IssueState answers with the state that the test set for the issue number, and records each number it was asked about.
-func (q *fakeQueue) IssueState(_ context.Context, _ string, number int) (string, error) {
+func (q *fakeQueue) IssueState(_ context.Context, _ string, number int) (string, bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.issueAsked = append(q.issueAsked, number)
 
-	return q.issueStates[number], q.issueErr
+	return q.issueStates[number], !q.noIssueNumbers, q.issueErr
 }
 
 // PullClosing answers with the issues that the test set for the pull request number, unsorted as set, and records each number it was asked about.

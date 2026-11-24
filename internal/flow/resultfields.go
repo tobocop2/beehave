@@ -110,8 +110,10 @@ func baseTipOutputs(commit, tree string) map[string]any {
 	return map[string]any{commitField: commit, treeName: tree}
 }
 
-// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED.
-func issueStateOutputs(state string) map[string]any { return map[string]any{stateField: state} }
+// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED, and whether a read ran. A project whose tracker has no issue numbers gives found false and no state.
+func issueStateOutputs(state string, found bool) map[string]any {
+	return map[string]any{stateField: state, foundField: found}
+}
 
 // pushOutputs are the fields of push: the head that the branch holds after the push, and the branch. A fork reads the branch to keep out of it.
 func pushOutputs(branch, head string) map[string]any {

@@ -316,11 +316,12 @@ The `parent` argument:
 
 #### `issue_state`
 
-`issue_state(number, name)` reads the state of the issue with the number `number` and returns `state`: `OPEN` or `CLOSED`.
+`issue_state(number, name)` reads the state of the issue with the number `number` and returns `state` and `found`. `state` is `OPEN` or `CLOSED`.
 
+- A project whose tracker is not GitHub has no issue numbers. The call then reads nothing and returns `found` False and an empty `state`, as the check after a batch does.
 - A `number` below 1 is refused before any read.
 - The read is a recorded step named `issue_state:<name>#<n>`, so a resumed run replays the first state.
-- A read that fails ends the step with an error. So does an answer that is neither `OPEN` nor `CLOSED`. The call never gives a guessed state.
+- A read that fails ends the step with an error. An issue that does not exist is a failed read, as in the check after a batch. So is an answer that is neither `OPEN` nor `CLOSED`. The call never gives a guessed state.
 - A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
 
 #### `base_tip`
@@ -633,7 +634,7 @@ The project gate of the union is two steps in its gate run: `batch_gate:job` che
 
 #### The step field of `gate`
 
-A `gate` result has the field `step`. It holds the name of the step that recorded the result, such as `gate:check#1`, the name that `beehave status` shows. A later call reads it to name the gate that a result came from.
+A `gate` result has the field `step`. The gate module is at version 7 for it, so a run that recorded a gate before it does not replay on the new build. It holds the name of the step that recorded the result, such as `gate:check#1`, the name that `beehave status` shows. A later call reads it to name the gate that a result came from.
 
 #### The host loss fields
 

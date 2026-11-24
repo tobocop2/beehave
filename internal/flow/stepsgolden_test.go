@@ -58,7 +58,7 @@ var goldenShapes = map[string][]string{
 		"host_up: host,started",
 		"integration_pull: number,state",
 		"issue_assignees: assignees",
-		"issue_state: state",
+		"issue_state: found,state",
 		"item_comment: id",
 		"item_create: created,id",
 		"item_list: items",
