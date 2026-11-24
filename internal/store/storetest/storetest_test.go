@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/ifacetest"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/storetest"
@@ -358,4 +360,61 @@ func TestTestClaimRows_RunsTheSuiteOnAFactory(t *testing.T) {
 
 		return mem
 	})
+}
+
+// memReader serves the reader rules. empty answers an empty list and an empty parent and no error.
+type memReader struct{ empty bool }
+
+func (m memReader) Comments(context.Context, string) ([]string, error) {
+	if m.empty {
+		return nil, nil
+	}
+
+	return nil, errDown
+}
+
+func (m memReader) Parent(context.Context, string) (string, error) {
+	if m.empty {
+		return "", nil
+	}
+
+	return "", errDown
+}
+
+func TestCheckReaderFails_AcceptsAReaderThatErrorsAndFailsOneThatReadsAnErrorAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	storetest.CheckReaderFails(rec, memReader{})
+	assert.Empty(t, rec.failures)
+
+	rec = &recorder{}
+	storetest.CheckReaderFails(rec, memReader{empty: true})
+	assert.Equal(t, []string{
+		"Comments: want an error from a failed command, got none",
+		"Parent: want an error from a failed command, got none",
+	}, rec.failures)
+}
+
+// TestFailedCommandMethods_CoverEveryMethodOfTheStoreInterfaces fails when a method of the store interfaces has no failed-command case.
+func TestFailedCommandMethods_CoverEveryMethodOfTheStoreInterfaces(t *testing.T) {
+	t.Parallel()
+
+	ran := map[string]bool{}
+	for _, name := range storetest.FailedCommandMethods() {
+		ran[name] = true
+	}
+
+	declared, err := ifacetest.Methods([]string{"../tracker.go", "../writer.go"}, "Tracker", "Reader", "ClaimRows", "Writer")
+	require.NoError(t, err)
+
+	for _, name := range declared {
+		if name != "ItemFields" {
+			assert.True(t, ran[name], "store method %s has no failed-command case", name)
+		}
+	}
+
+	for name := range ran {
+		assert.Contains(t, declared, name, "a failed-command case runs %s, which no store interface has", name)
+	}
 }

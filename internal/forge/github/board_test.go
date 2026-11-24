@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/forge/forgetest"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
@@ -160,6 +161,14 @@ func TestCardStatus_ReadsTheStatusOfTheCardOfThisRepositoryAndKind(t *testing.T)
 	status, err = f.CardStatus(context.Background(), model.Card{Board: 3, Number: 8})
 	require.NoError(t, err)
 	assert.Equal(t, "Todo", status)
+}
+
+func TestBoarder_ConformsToTheFailedCommandRules(t *testing.T) {
+	t.Parallel()
+
+	down, _ := failing(t, "HTTP 502")
+
+	forgetest.CheckBoarderFails(t, down)
 }
 
 func TestCardStatus_ACardThatIsNotOnTheBoardOrAListThatIsCutShortIsAnError(t *testing.T) {

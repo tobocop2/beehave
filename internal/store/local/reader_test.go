@@ -8,6 +8,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/local"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 var _ store.Reader = (*local.Store)(nil)
@@ -80,6 +81,8 @@ func TestReader_AClosedFileIsAnError(t *testing.T) {
 
 	s, _ := newWriter(t)
 	require.NoError(t, s.Close())
+
+	storetest.CheckReaderFails(t, s)
 
 	_, err := s.Comments(t.Context(), "p-1")
 	require.Error(t, err)
