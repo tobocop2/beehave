@@ -54,6 +54,26 @@ func (q queueReads) PullState(ctx context.Context, project string, pr int) (stri
 	return *pull.State, nil
 }
 
+// IssueState reads the state of the issue with the number on the forge of the project: OPEN or CLOSED. A project with no forge cannot show one, which is an error.
+func (q queueReads) IssueState(ctx context.Context, project string, number int) (string, error) {
+	built, err := q.pulls.forgeOf(project)
+	if err != nil {
+		return "", err
+	}
+
+	return built.IssueState(ctx, number)
+}
+
+// PullClosing reads the issues that merging the pull request with the number closes on the forge of the project. A project with no forge is an error that matches forge.ErrNoForge.
+func (q queueReads) PullClosing(ctx context.Context, project string, pr int) ([]model.IssueRef, error) {
+	built, err := q.pulls.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return closingIssues(ctx, built, pr)
+}
+
 // isHole is true when the error holds holes and nothing else: every error of a join is a pull request that lacks a field of the list.
 // A hole that is joined to a real failure is not a hole, so the failure is not lost.
 func isHole(err error) bool {

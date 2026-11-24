@@ -8,6 +8,9 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// commitField is the result field of base_tip that holds the tip commit.
+const commitField = "commit"
+
 // revertField is the result field of gate that holds the verdict of the revert run.
 const revertField = "revert"
 
@@ -42,7 +45,7 @@ func writeOutputs(run CommandOutput, attempts int, key string, skipped bool) map
 // required holds the names that the gate list of the project had when the gate ran. A merge reads them from this record, never from the config of the day.
 // checks is what the log of a candidate job gave. new_tests is the list of its new test names, and a gate with no checks records an empty list and a zero record.
 // host_loss is an empty dict and host_losses is 0 here. Only a gate whose host job was lost and proved unable to run fills them: host_losses then counts
-// the host losses of the item tree, this one included (recordLoss).
+// the host losses of the item tree, this one included (recordLoss). step is empty here: the gate call that records the result fills it with its own step name (recordGate).
 func gateOutputs(passed bool, head, tree, report string, steps []GateStep, required []string, checks *GateChecks) map[string]any {
 	recorded := GateChecks{}
 	if checks != nil {
@@ -54,7 +57,7 @@ func gateOutputs(passed bool, head, tree, report string, steps []GateStep, requi
 
 	return map[string]any{
 		"passed": passed, "head": head, treeName: tree, "report": report, "steps": append([]GateStep{}, steps...), "required": append([]string{}, required...),
-		"checks": recorded, "new_tests": recorded.NewTests, revertField: string(recorded.Revert), hostLossKey: map[string]any{}, hostLossesKey: 0,
+		"checks": recorded, "new_tests": recorded.NewTests, revertField: string(recorded.Revert), hostLossKey: map[string]any{}, hostLossesKey: 0, stepField: "",
 	}
 }
 
@@ -101,6 +104,14 @@ func openOutputs(r OpenResult) map[string]any {
 
 // prStateOutputs are the fields of pr_state: the state of the pull request, OPEN, CLOSED or MERGED.
 func prStateOutputs(state string) map[string]any { return map[string]any{stateField: state} }
+
+// baseTipOutputs are the fields of base_tip: the tip commit of the base and its tree.
+func baseTipOutputs(commit, tree string) map[string]any {
+	return map[string]any{commitField: commit, treeName: tree}
+}
+
+// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED.
+func issueStateOutputs(state string) map[string]any { return map[string]any{stateField: state} }
 
 // pushOutputs are the fields of push: the head that the branch holds after the push, and the branch. A fork reads the branch to keep out of it.
 func pushOutputs(branch, head string) map[string]any {
