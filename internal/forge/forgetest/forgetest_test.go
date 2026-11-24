@@ -38,6 +38,10 @@ type memForge struct {
 	dropped   string
 	extra     bool
 	wrongPR   bool
+	// holeAccepted makes the typed read answer a pull request with no head instead of an error.
+	holeAccepted bool
+	// wrongHole makes the typed read of such a pull request fail with an error that does not name the missing field.
+	wrongHole bool
 	// emptyOn names the read that answers an empty value and no error.
 	emptyOn string
 }
@@ -64,6 +68,26 @@ func (m memForge) PRBody(context.Context, int) (string, error) {
 
 func (m memForge) PRView(context.Context, int, ...string) (model.PullRequest, error) {
 	return model.PullRequest{Title: forgetest.SevenTitle}, m.fail()
+}
+
+func (m memForge) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	if holes := map[int]model.PullFacts{
+		forgetest.NoHeadPull:  {Number: pr, State: forgetest.SevenState, Base: forgetest.SevenBase},
+		forgetest.NoStatePull: {Number: pr, Head: forgetest.SevenTip, Base: forgetest.SevenBase},
+		forgetest.NoBasePull:  {Number: pr, State: forgetest.SevenState, Head: forgetest.SevenTip},
+	}; holes[pr].Number != 0 {
+		if m.holeAccepted {
+			return holes[pr], nil
+		}
+
+		if m.wrongHole {
+			return model.PullFacts{}, errors.New("the read is bad")
+		}
+
+		return model.PullFacts{}, holes[pr].Check()
+	}
+
+	return model.PullFacts{Number: forgetest.Seven, State: forgetest.SevenState, Head: forgetest.SevenTip, Base: forgetest.SevenBase, Author: forgetest.SevenReviewer, Assignees: []string{forgetest.SevenAssignee}}, m.fail()
 }
 
 func (m memForge) ItemFields() []string {
@@ -307,6 +331,26 @@ func TestCheckForgeReads_FailsAForgeThatReturnsAWrongBody(t *testing.T) {
 	r = &recorder{}
 	forgetest.CheckForgeReads(r, memForge{down: true})
 	assert.Contains(t, r.failures, "Reviews: unexpected error: down")
+}
+
+func TestCheckForgeReads_FailsAForgeThatAnswersAPullRequestWithNoStateHeadOrBase(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{holeAccepted: true})
+	assert.ElementsMatch(t, []string{
+		"PullRead of a pull request with no head: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no state: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no base: want an IncompletePull that names it, got <nil>",
+	}, r.failures)
+}
+
+func TestCheckForgeReads_FailsAForgeThatNamesTheWrongMissingField(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{wrongHole: true})
+	assert.Len(t, r.failures, 3)
 }
 
 func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {

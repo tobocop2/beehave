@@ -21,6 +21,7 @@ func TestRun_AReadThatFailsRefusesTheMerge(t *testing.T) {
 		says string
 	}{
 		"the state and head of the pull request": {fail: "PRView", req: request(), says: "for its state"},
+		"the typed read of state, head and base": {fail: "PullRead", req: request(), says: "for its state"},
 		"the forge count of commits and files":   {fail: "PullCounts", req: request(), says: "cannot be counted"},
 		"the committers of the commits":          {fail: "Committers", req: request(), says: "committers of"},
 		"the checks":                             {fail: "PRChecks", req: request(), says: "cannot read the checks"},

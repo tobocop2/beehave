@@ -52,6 +52,9 @@ type hostForge struct {
 	listed   []model.PullRequest
 	listErr  error
 	viewHead string
+	// pullReads counts the typed reads when it is set. readNumber is the number the typed read answers with, in place of the number asked for, when it is not zero.
+	pullReads  *int
+	readNumber int
 	// draft is the isDraft field of the view, nil when the forge sends none. closed is what the list of closed pull requests holds.
 	draft  *bool
 	closed []model.PullRequest
@@ -73,6 +76,37 @@ func (f hostForge) SetDraft(_ context.Context, number int, draft bool) error {
 	}
 
 	return f.setDraftErr
+}
+
+// pullFactsOf is the typed read that a fake serves from a view. It numbers the facts and refuses a view with no state, head or base, as the contract of the typed read says.
+func pullFactsOf(number int, view model.PullRequest, err error) (model.PullFacts, error) {
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	facts := view.Facts()
+	facts.Number = number
+
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
+	}
+
+	return facts, nil
+}
+
+func (f hostForge) PullRead(ctx context.Context, number int) (model.PullFacts, error) {
+	if f.pullReads != nil {
+		*f.pullReads++
+	}
+
+	view, err := f.PRView(ctx, number)
+	facts, err := pullFactsOf(number, view, err)
+
+	if f.readNumber != 0 {
+		facts.Number = f.readNumber
+	}
+
+	return facts, err
 }
 
 func (f hostForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
@@ -304,11 +338,14 @@ func TestBatchHost_IntentReadsAnOpenPullRequestOnce(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	f := hostForge{state: "OPEN", viewHead: gated, listed: []model.PullRequest{{Number: 9}}}
+	var reads int
+
+	f := hostForge{state: "OPEN", viewHead: gated, listed: []model.PullRequest{{Number: 9}}, pullReads: &reads}
 
 	intent, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", now)
 
 	require.NoError(t, err)
+	assert.Equal(t, 1, reads, "the intent reads the pull request once")
 	assert.Equal(t, 9, intent.PR)
 	assert.Equal(t, gated, intent.Head)
 	assert.Equal(t, "main", intent.Base)
@@ -320,7 +357,7 @@ func TestBatchHost_IntentReadsAnOpenPullRequestOnce(t *testing.T) {
 func TestBatchHost_IntentRefusesAPullRequestThatIsNotOpen(t *testing.T) {
 	t.Parallel()
 
-	for _, state := range []string{"MERGED", "CLOSED", ""} {
+	for _, state := range []string{"MERGED", "CLOSED"} {
 		f := hostForge{state: state, viewHead: gated, listed: []model.PullRequest{{Number: 9}}}
 
 		_, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
@@ -344,9 +381,31 @@ func TestBatchHost_IntentFailsForAReadThatFailsAndForAPullRequestThatIsNotFound(
 
 	_, err = hostOver("", hostForge{state: "OPEN", listed: listed}, nil).Intent(t.Context(), "p", "item", "other/repo", "main", "t", time.Time{})
 	require.ErrorContains(t, err, "other/repo")
+}
 
-	_, err = hostOver("", hostForge{state: "OPEN", listed: listed}, nil).Intent(t.Context(), "p", "item", "o/r", "main", "t", time.Time{})
-	require.ErrorContains(t, err, "cannot make an intent", "a read with no head proves nothing")
+func TestBatchHost_IntentRefusesAReadWithNoStateHeadOrBase(t *testing.T) {
+	t.Parallel()
+
+	listed := []model.PullRequest{{Number: 9}}
+
+	for name, f := range map[string]hostForge{
+		"state": {viewHead: gated, listed: listed},
+		"head":  {state: "OPEN", listed: listed},
+	} {
+		_, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
+
+		require.ErrorContains(t, err, "the read has no "+name, name)
+	}
+}
+
+func TestBatchHost_IntentRefusesAReadThatAnswersForAnotherPullRequest(t *testing.T) {
+	t.Parallel()
+
+	f := hostForge{state: "OPEN", viewHead: gated, listed: []model.PullRequest{{Number: 9}}, readNumber: 4}
+
+	_, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
+
+	require.ErrorContains(t, err, "answered for pull request 4, not 9")
 }
 
 func TestBatchHost_PullReadsTheDraftFlagAndTheHeadOfTheOpenPullRequestThroughTheStandingReview(t *testing.T) {

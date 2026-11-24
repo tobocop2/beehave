@@ -126,6 +126,53 @@ type PullRequest struct {
 	ReviewRequests []reviewRequest `json:"reviewRequests"`
 }
 
+// PullFacts is the typed read of one pull request: its number, state, head commit, base branch, author login and assignee logins.
+type PullFacts struct {
+	Number    int
+	State     string
+	Head      string
+	Base      string
+	Author    string
+	Assignees []string
+}
+
+// Facts is the typed read of the view: a field the view lacks is empty.
+func (p PullRequest) Facts() PullFacts {
+	facts := PullFacts{Number: p.Number, State: Deref(p.State), Head: Deref(p.HeadRefOid), Base: Deref(p.BaseRefName), Author: p.Author.Login}
+	for _, who := range p.Assignees {
+		facts.Assignees = append(facts.Assignees, who.Login)
+	}
+
+	return facts
+}
+
+// IncompletePull is the refusal of a typed read that lacks the state, the head or the base. Facts holds what the read did give, and Missing names each field it lacked.
+type IncompletePull struct {
+	Facts   PullFacts
+	Missing []string
+}
+
+func (e *IncompletePull) Error() string {
+	return "cannot read pull request " + strconv.Itoa(e.Facts.Number) + ": the read has no " + strings.Join(e.Missing, ", ")
+}
+
+// Check is nil when the facts hold a state, a head and a base. Else it is an IncompletePull that names each missing field.
+func (f PullFacts) Check() error {
+	var missing []string
+
+	for _, field := range []struct{ name, value string }{{"state", f.State}, {"head", f.Head}, {"base", f.Base}} {
+		if field.value == "" {
+			missing = append(missing, field.name)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return &IncompletePull{Facts: f, Missing: missing}
+}
+
 // PriorPull is one pull request of an item in any state. MergedAt is empty when it never merged; ClosingComment is the body of its last comment made at or before its close, empty for an open one.
 type PriorPull struct {
 	Number         int    `json:"number"`

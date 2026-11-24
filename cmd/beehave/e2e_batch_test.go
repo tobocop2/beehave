@@ -137,6 +137,12 @@ func (f fileForge) PRList(_ context.Context, _ int, args ...string) ([]model.Pul
 	return []model.PullRequest{{Number: pr}}, nil
 }
 
+func (f fileForge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
+	view, err := f.PRView(ctx, pr)
+
+	return pullFactsOf(pr, view, err)
+}
+
 func (f fileForge) PRView(ctx context.Context, pr int, _ ...string) (model.PullRequest, error) {
 	head, err := f.git(ctx, "rev-parse", "refs/heads/m"+strconv.Itoa(pr))
 	if err != nil {

@@ -47,6 +47,17 @@ func (w *shipWorld) PRView(context.Context, int, ...string) (model.PullRequest, 
 	return w.pull, nil
 }
 
+func (w *shipWorld) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	facts := w.pull.Facts()
+	facts.Number = pr
+
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
+	}
+
+	return facts, nil
+}
+
 func (w *shipWorld) PullCounts(context.Context, int) (commits, files int, err error) {
 	return len(w.pull.Commits), len(w.pull.Files), nil
 }

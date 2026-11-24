@@ -4,6 +4,7 @@ package forgetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -34,6 +35,15 @@ const (
 	// SevenCommits and SevenFiles are the counts the fake serves for pull request 7.
 	SevenCommits = 2
 	SevenFiles   = 3
+	// SevenState, SevenBase and SevenAssignee are the state, base branch and assignee that the fake serves for pull request 7. Its author is SevenReviewer and its head is SevenTip.
+	SevenState    = "OPEN"
+	SevenBase     = "main"
+	SevenAssignee = "bob"
+	// NoHeadPull, NoStatePull and NoBasePull are the pull requests that the fake serves with no head commit, no state and no base branch.
+	// The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
+	NoHeadPull  = 8
+	NoStatePull = 9
+	NoBasePull  = 10
 )
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
@@ -141,6 +151,25 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 	checkStanding(c, target)
 }
 
+// checkPullRead runs the typed read of pull request 7.
+func checkPullRead(c check, target forge.Forge) {
+	c.r.Helper()
+
+	facts, err := target.PullRead(context.Background(), Seven)
+	c.noError(err, "PullRead")
+	c.equal(facts, model.PullFacts{Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee}}, "pull facts")
+
+	for pr, field := range map[int]string{NoHeadPull: "head", NoStatePull: "state", NoBasePull: "base"} {
+		_, err = target.PullRead(context.Background(), pr)
+
+		var hole *model.IncompletePull
+
+		if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{field}) {
+			c.r.Errorf("PullRead of a pull request with no %s: want an IncompletePull that names it, got %v", field, err)
+		}
+	}
+}
+
 // checkCounts runs the read of the forge's own counts.
 func checkCounts(c check, target forge.Forge) {
 	c.r.Helper()
@@ -159,6 +188,7 @@ func checkStanding(c check, target forge.Forge) {
 	c.r.Helper()
 
 	checkCounts(c, target)
+	checkPullRead(c, target)
 
 	ctx := context.Background()
 
@@ -338,6 +368,7 @@ func readCalls(target forge.Forge) []call {
 		{"Reviews", func(ctx context.Context) error { _, err := target.Reviews(ctx, Seven); return err }},
 		{"PRBody", func(ctx context.Context) error { _, err := target.PRBody(ctx, Seven); return err }},
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
+		{"PullRead", func(ctx context.Context) error { _, err := target.PullRead(ctx, Seven); return err }},
 		{"PRList", func(ctx context.Context) error {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err
