@@ -3,6 +3,7 @@
 
 load("@beehave//claims.star", "claim_stop")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
+load("@beehave//scope.star", "fix_scope", "hold_scope")
 load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
@@ -517,15 +518,6 @@ def closes_of(project, base, id, stacked):
 
     return [number]
 
-def recorded_scope(item):
-    """Returns the closing issues that an earlier read of this run or of an earlier run of the item recorded, newest first, and an empty list when none found a pull request.
-    No entry calls it yet: the scope check still runs inside the engine until the library function for it lands (#500)."""
-    for read in earlier_reads(kind = "pr_closing", name = "scope", item = item, own_run = True).reads:
-        if read["found"]:
-            return read["issues"]
-
-    return pr_closing(name = "scope", item = item).issues
-
 def integration_reads(base, pr, numbers):
     """Returns the reads that the audit of a batch needs: the tip of the base, the state of each issue number and the issues that the pull request number pr closes.
     No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
@@ -682,7 +674,7 @@ def file_parked(parked, output = "parked"):
             forbid_text = ATTRIBUTION,
         )
 
-def land(approved, project, round_settings, n):
+def land(approved, project, round_settings, n, run):
     """Lands the approved items of a pass as one batch named round-land-<n>: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `approved` has an item id, the full SHA that the review approved, and the verdict of the child run (`approved`). Each member of the batch carries that verdict, so our own pull request
     lands only on the approval of its own review, and the approval of one member never reaches another. The setting vars.round.merge, the stops before the work and the guards are those of the pipeline of one item.
@@ -725,8 +717,17 @@ def land(approved, project, round_settings, n):
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
         item_status(name = "stop-hold-" + skipped.item, id = skipped.item, status = "hold")
 
+    # The scope check: a pull request that closes an issue that is new since its first review waits for the owner. The owner answers the run `run` with "keep #N", and any other answer rejects the member here.
+    # A rejected member gets the reason as a comment and the hold status, as a member that the merge rejects does. The check runs before the merge, so before the union gate.
+    held = hold_scope(name = "round-scope-%d" % n, prs = prs, run = run)
+    prs = held.prs
+
+    for refused in held.rejected:
+        item_comment(name = "scope-no-" + refused.item, id = refused.item, key = "rejected", text = refused.reason, forbid_text = ATTRIBUTION)
+        item_status(name = "scope-hold-" + refused.item, id = refused.item, status = "hold")
+
     if len(prs) == 0:
-        return struct(host_losses = 0, moved = len(stopped) > 0)
+        return struct(host_losses = 0, moved = len(stopped) > 0 or len(held.rejected) > 0)
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
@@ -774,7 +775,7 @@ def land(approved, project, round_settings, n):
         if not accepted.passed:
             fail("REFUSE: the batch landed, but the acceptance script %s failed on %s. Read its output, then fix the round branch by hand:\n%s" % (round_settings["acceptance"], base, accepted.report))
 
-    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
+    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(held.rejected) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
@@ -1168,7 +1169,7 @@ def round(item):
             # The round lands from the queue only: the last run of a done row is the one record, whoever started that run. A child lands in the pass after it ended.
             approved = approved_runs(q, round_settings)
             if len(approved) > 0:
-                landing = land(approved, project, round_settings, n)
+                landing = land(approved, project, round_settings, n, item.id)
                 seen = max(seen, landing.host_losses)
                 landed = landing.moved
                 round_integration(project, round_settings, "round-integration-land-%d" % n)
@@ -1401,6 +1402,10 @@ def _lane(item, project, round_settings):
     # The board is a project choice: the key `board` of the project vars. With none, the run makes no board call.
     # With one, the card of the item moves to the started column now and to the merged column after the merge, and each call reads the card back.
     _move_card(project, "started", pr = draft.number)
+
+    # The first review fixes the scope: the issues that the pull request closes now. The merge of the round holds a pull request that closes another issue at the landing.
+    # A run of the item that follows an earlier run keeps the scope of the first one. A project with no forge has no scope, and the check is off.
+    fix_scope(name = "scope")
 
     # Five fix rounds need six candidates: the sixth checks the fifth fix. A candidate gets the gate on the base, the checks before review, the mutation run and a full review once.
     # Between candidates, scoped fixes and scoped reviews run with no gate. Each reviewer starts fresh and judges the commit it is pinned to.

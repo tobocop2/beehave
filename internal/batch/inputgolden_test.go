@@ -18,8 +18,8 @@ import (
 // a field type, the order of the fields or a field of a member strands the runs that recorded the step. The steps belong to the land module of the package flow.
 // The gate step is not here: production does not store or compare its input, because the child run is its record, so a change to it needs no bump.
 var goldenInputs = map[string]string{
-	"heads": "[{item:string,head:string,approved:bool}]",
-	"union": "{tipCommit:string,tipTree:string,members:[{item:string,head:string,approved:bool}]}",
+	"heads": "[{item:string,head:string,approved:bool,closing:null}]",
+	"union": "{tipCommit:string,tipTree:string,members:[{item:string,head:string,approved:bool,closing:null}]}",
 	"tip":   "{}",
 }
 

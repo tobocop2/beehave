@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"go.starlark.net/starlark"
 
@@ -58,7 +59,7 @@ func (s *script) prClosing(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 }
 
 // closingStep runs the read. A project with no forge records forge false and no issues.
-func closingStep(ctx context.Context, reader func(context.Context) (scopeRead, error)) (stepResult, error) {
+func closingStep(ctx context.Context, reader func(context.Context) (closingRead, error)) (stepResult, error) {
 	read, err := reader(ctx)
 	if errors.Is(err, forgepkg.ErrNoForge) {
 		return stepResult{Outputs: prClosingOutputs(closingRead{})}, nil
@@ -69,7 +70,7 @@ func closingStep(ctx context.Context, reader func(context.Context) (scopeRead, e
 
 // closingReader checks the item and the number of a pr_closing call and returns the read to run: the pull request of the item, or the pull request with the number.
 // Both named, a number below zero, and a build with no reader for the read are refused before any read.
-func (s *script) closingReader(item string, pr int) (func(context.Context) (scopeRead, error), error) {
+func (s *script) closingReader(item string, pr int) (func(context.Context) (closingRead, error), error) {
 	switch {
 	case item != "" && pr != 0:
 		return nil, fmt.Errorf("pass `item` or `pr`, not both: item is %q and pr is %d", item, pr)
@@ -78,20 +79,38 @@ func (s *script) closingReader(item string, pr int) (func(context.Context) (scop
 	case pr > 0 && s.e.deps.Queue == nil, pr == 0 && s.e.deps.Forge == nil:
 		return nil, errNoClosingReader
 	case pr > 0:
-		return func(ctx context.Context) (scopeRead, error) { return s.readClosingOfPull(ctx, pr) }, nil
+		return func(ctx context.Context) (closingRead, error) { return s.readClosingOfPull(ctx, pr) }, nil
 	}
 
 	item = cmp.Or(item, s.in.Item)
 
-	return func(ctx context.Context) (scopeRead, error) { return s.readClosing(ctx, item) }, nil
+	return func(ctx context.Context) (closingRead, error) { return s.readClosing(ctx, item) }, nil
+}
+
+// readClosing reads the closing issues of the pull request of the item, sorted and without a repeat.
+func (s *script) readClosing(ctx context.Context, item string) (closingRead, error) {
+	issues, found, err := s.e.deps.Forge.ClosingIssues(ctx, s.in.Project, item)
+	if err != nil {
+		return closingRead{}, fmt.Errorf("read the issues that the pull request of item %s closes: %w", item, err)
+	}
+
+	return closingRead{Found: found, Issues: sortedIssues(issues)}, nil
 }
 
 // readClosingOfPull reads the closing issues of the pull request with the number, sorted and without a repeat.
-func (s *script) readClosingOfPull(ctx context.Context, pr int) (scopeRead, error) {
+func (s *script) readClosingOfPull(ctx context.Context, pr int) (closingRead, error) {
 	issues, err := s.e.deps.Queue.PullClosing(ctx, s.in.Project, pr)
 	if err != nil {
-		return scopeRead{}, fmt.Errorf("read the issues that pull request %d closes: %w", pr, err)
+		return closingRead{}, fmt.Errorf("read the issues that pull request %d closes: %w", pr, err)
 	}
 
-	return scopeRead{Found: true, Issues: sortedIssues(issues)}, nil
+	return closingRead{Found: true, Issues: sortedIssues(issues)}, nil
+}
+
+// sortedIssues returns the issues in order, without a repeat. The result is never nil, so a recorded empty set stays a set.
+func sortedIssues(issues []model.IssueRef) []model.IssueRef {
+	out := append([]model.IssueRef{}, issues...)
+	slices.SortFunc(out, model.CompareIssues)
+
+	return slices.Compact(out)
 }

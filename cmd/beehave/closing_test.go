@@ -33,6 +33,15 @@ func TestPullsRequest_TheIssuesTheOwnerKeptReachTheMergeRequest(t *testing.T) {
 	assert.Equal(t, []model.IssueRef{"#13", "other-org/other-repo#5"}, req.Kept)
 }
 
+func TestPullsRequest_TheClosingSetThatTheScopeCheckReadReachesTheMergeRequestAsThePinnedSet(t *testing.T) {
+	t.Parallel()
+
+	req := pulls{}.request(config.Project{}, 5, gated, flow.MergeSettings{Closing: []model.IssueRef{"#12", "other-org/other-repo#5"}}, nil)
+	assert.Equal(t, []model.IssueRef{"#12", "other-org/other-repo#5"}, req.Pinned)
+
+	assert.Nil(t, pulls{}.request(config.Project{}, 5, gated, flow.MergeSettings{}, nil).Pinned, "a member with no check pins no set")
+}
+
 func TestPullsMerge_AForgeThatCannotReadClosingReferencesIsRefusedForEveryTrackerAndNothingMerges(t *testing.T) {
 	t.Parallel()
 

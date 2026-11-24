@@ -84,7 +84,8 @@ const agentVersion = 15
 // Version 12 adds the scope step at the first review read (preflight) and at the first merge call of a run that no gate fixed a scope for, and the no_forge field to the record of the scope step.
 // Version 13 records the closes field of each member in the input of the batch steps, and the merge audits its closing references against it.
 // Version 14 adds the call of merge with `member`: it records the step batch:<call>.tip after the merge, and the moved field of the intent step, when the tip has another tree than expect_tree.
-const landVersion = 14
+// Version 15 adds the kept and closing fields of each member to the input of the batch steps. The merge no longer records the steps batch:<call>.scope#<item> and batch:<call>.kept#<item>: the scope check is the library scope.star.
+const landVersion = 15
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 // Version 3 adds the item_stop step. Version 4 adds the item_list step.
@@ -111,7 +112,8 @@ const gateVersion = 7
 // Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
 // Version 5 adds the field value to each row: the value that the last run of a done row returned.
 // Version 6 retires the kind queue, which version 5 recorded. The function queue of the library reads with the steps item_list, pr_list, run_read and pr_state.
-const roundVersion = 6
+// Version 7 retires the kind scope, which version 6 recorded. The library scope.star fixes and checks the scope with the steps pr_closing, earlier_reads and wait.
+const roundVersion = 7
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.
@@ -143,7 +145,7 @@ func moduleTable() []stepModule {
 		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},
-		{name: moduleRound, version: roundVersion, kinds: []string{runReadKind, scopeStep}, engine: []string{kindHold}, retired: []string{"queue", "scope-check"}},
+		{name: moduleRound, version: roundVersion, kinds: []string{runReadKind}, engine: []string{kindHold}, retired: []string{"queue", "scope", "scope-check"}},
 	}
 }
 
