@@ -33,7 +33,7 @@ func (a *attempt) sameIssues(listed []int) *refusal {
 		return nil
 	}
 
-	return refuse(fmt.Sprintf("REFUSE: #%d closes %s and the item names %s. The owner decides: fix the closing keywords or name the issue.", a.req.PR, issueList(got), issueList(want)))
+	return refuse(fmt.Sprintf("REFUSE: #%d closes %s and the closes list of the member holds %s. The owner decides: fix the closing keywords or the closes list.", a.req.PR, issueList(got), issueList(want)))
 }
 
 func sortedUnique(numbers []int) []int {

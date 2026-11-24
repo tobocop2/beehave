@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
@@ -48,6 +50,33 @@ func TestPullsMerge_AForgeThatCannotReadClosingReferencesIsRefusedForEveryTracke
 		assert.Contains(t, result.Lines[len(result.Lines)-1], "cannot read the issues that #5 closes", tracker)
 		assert.Empty(t, f.writes, tracker)
 	}
+}
+
+// listedForge lists the issues in issues as the issues that the pull request closes.
+type listedForge struct {
+	*shipForge
+
+	issues []int
+}
+
+func (f listedForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{Issues: f.issues, BaseBranch: "main", DefaultBranch: "main"}, nil
+}
+
+func TestPullsMerge_AnIssueThatTheForgeListsAndTheClosesListLacksIsRefusedForTheLocalTracker(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	p.projects = map[string]config.Project{"p": {Project: model.Project{Repo: "o/r", Tracker: "local"}}}
+	p.forge = func(model.Project) (forge.Forge, error) { return listedForge{shipForge: f, issues: []int{7}}, nil }
+	settings.Closes = []int{}
+
+	result, err := p.Merge(t.Context(), "p", "12", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #7 and the closes list of the member holds no issue. The owner decides: fix the closing keywords or the closes list.", result.Lines[len(result.Lines)-1])
+	assert.Empty(t, f.writes)
 }
 
 func TestPullsMerge_AProjectThatTheMapLacksIsRefusedAndNothingMerges(t *testing.T) {

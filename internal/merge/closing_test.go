@@ -42,7 +42,7 @@ func TestClosing_AnExtraIssueRefusesAndNamesBothLists(t *testing.T) {
 
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Equal(t, merge.Plain, result.Reason)
-	assert.Contains(t, last(result), "#5 closes #12 #99 and the item names #12")
+	assert.Equal(t, "REFUSE: #5 closes #12 #99 and the closes list of the member holds #12. The owner decides: fix the closing keywords or the closes list.", last(result))
 	assert.Empty(t, merges(w))
 }
 
@@ -53,7 +53,7 @@ func TestClosing_AMissingIssueRefusesAndNamesBothLists(t *testing.T) {
 	result := w.run(audited(12))
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Contains(t, last(result), "#5 closes no issue and the item names #12")
+	assert.Equal(t, "REFUSE: #5 closes no issue and the closes list of the member holds #12. The owner decides: fix the closing keywords or the closes list.", last(result))
 	assert.Empty(t, merges(w))
 }
 
@@ -100,7 +100,7 @@ func TestClosing_ABaseThatIsNotTheDefaultBranchIsAuditedAgainstTheIssuesTheForge
 	result := w.run(audited(12))
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Contains(t, last(result), "#5 closes #12 #99 and the item names #12")
+	assert.Contains(t, last(result), "#5 closes #12 #99 and the closes list of the member holds #12")
 	assert.Empty(t, merges(w))
 }
 
@@ -117,7 +117,7 @@ func TestClosing_ARequestThatNamesNoIssueIsAuditedAgainstNone(t *testing.T) {
 	result = w.run(request())
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Contains(t, last(result), "#5 closes #12 and the item names no issue")
+	assert.Equal(t, "REFUSE: #5 closes #12 and the closes list of the member holds no issue. The owner decides: fix the closing keywords or the closes list.", last(result), "an empty closes list is named as the closes list")
 	assert.Empty(t, merges(w))
 }
 
