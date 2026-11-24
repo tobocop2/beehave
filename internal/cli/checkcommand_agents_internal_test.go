@@ -39,24 +39,34 @@ func TestCheckCommand_TheSameRefusedCommandInTheHookFormatOfEachAgentExits2AndPr
 	}
 }
 
-func TestCheckCommand_AnAllowedCommandAndACallOfAnotherToolExit0InTheHookFormatOfEachAgent(t *testing.T) {
+func TestCheckCommand_AnAllowedCommandExits0AndACallOfAnotherToolExits2InTheHookFormatOfEachAgent(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name    model.Agent
-		tool    string
-		command string
-	}{
-		{claude.Name, "Bash", "go test ./..."},
-		{opencode.Name, "bash", "go test ./..."},
-		{claude.Name, "Read", "git add -A"},
-		{opencode.Name, "read", "git add -A"},
+	for name, tool := range shellTools {
+		code, stderr := hookOf(t, name, eventsOf(t, tool, "go test ./...", "/work")[name])
+		assert.Zero(t, code, "%s: %s", name, stderr)
+
+		code, stderr = hookOf(t, name, eventsOf(t, "read", "git add -A", "/work")[name])
+		assert.Equal(t, 2, code, name)
+		assert.Contains(t, stderr, "the hook event is not a call of the shell tool", name)
+	}
+}
+
+func TestCheckCommand_AShellCallWithNoCommandExits2InTheHookFormatOfEachAgent(t *testing.T) {
+	t.Parallel()
+
+	noCommand := map[model.Agent][]string{
+		claude.Name:   {`{"tool_name":"Bash"}`, `{"tool_name":"Bash","tool_input":{}}`, `{"tool_name":"Bash","tool_input":{"command":""}}`},
+		opencode.Name: {`{"tool":"bash"}`, `{"tool":"bash","args":{}}`, `{"tool":"bash","args":{"command":""}}`, `{"directory":"/work","tool":"bash","args":null}`},
 	}
 
-	for _, tc := range cases {
-		code, stderr := hookOf(t, tc.name, eventsOf(t, tc.tool, tc.command, "/work")[tc.name])
+	for name, events := range noCommand {
+		for _, event := range events {
+			code, stderr := hookOf(t, name, event)
 
-		assert.Zero(t, code, "%s %s: %s", tc.name, tc.tool, stderr)
+			assert.Equal(t, 2, code, "%s %s", name, event)
+			assert.Contains(t, stderr, "the shell call of the hook event has no command", "%s %s", name, event)
+		}
 	}
 }
 
@@ -78,11 +88,13 @@ func TestCheckCommand_AMalformedInputExits2InTheHookFormatOfEachAgent(t *testing
 func TestCheckCommand_TheHookFormatOfAnotherAgentIsNotRead(t *testing.T) {
 	t.Parallel()
 
-	code, _ := hookOf(t, opencode.Name, eventsOf(t, "Bash", "git add -A", "/work")[claude.Name])
-	assert.Zero(t, code, "a Claude Code event names no OpenCode tool, so it is no shell call of OpenCode")
+	code, stderr := hookOf(t, opencode.Name, eventsOf(t, "Bash", "git add -A", "/work")[claude.Name])
+	assert.Equal(t, 2, code, "a Claude Code event names no OpenCode tool, so it is no shell call of OpenCode")
+	assert.Contains(t, stderr, "the hook event is not a call of the shell tool")
 
-	code, _ = hookOf(t, claude.Name, eventsOf(t, "bash", "git add -A", "/work")[opencode.Name])
-	assert.Zero(t, code, "an OpenCode event names no Claude Code tool, so it is no shell call of Claude Code")
+	code, stderr = hookOf(t, claude.Name, eventsOf(t, "bash", "git add -A", "/work")[opencode.Name])
+	assert.Equal(t, 2, code, "an OpenCode event names no Claude Code tool, so it is no shell call of Claude Code")
+	assert.Contains(t, stderr, "the hook event is not a call of the shell tool")
 }
 
 func TestCheckCommand_ADirectoryOfTheCallInTheFormatOfEachAgentPlacesARelativePath(t *testing.T) {

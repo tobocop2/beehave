@@ -21,5 +21,5 @@ func DecodeHook(input string) (agent.HookCall, error) {
 		return agent.HookCall{}, err
 	}
 
-	return agent.HookCall{Shell: event.Tool == bashTool, Dir: event.Directory, Command: event.Args.Command}, nil
+	return agent.ShellCall(event.Tool, bashTool, event.Directory, event.Args.Command)
 }

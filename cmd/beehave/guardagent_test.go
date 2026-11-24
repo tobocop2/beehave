@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/cli"
@@ -76,6 +79,66 @@ func TestGuardAgent_AMalformedInputExits2InTheFormatOfEachAgent(t *testing.T) { 
 		assert.Equal(t, 2, code, name)
 		assert.Contains(t, stderr, "beehave refused the command", name)
 	}
+}
+
+func TestGuardAgent_AnEventThatIsNotAShellCallWithACommandExits2InTheFormatOfEachAgent(t *testing.T) { //nolint:paralleltest // the test replaces os.Stdin of the process
+	events := map[model.Agent][]string{
+		claude.Name:   {`{}`, `{"tool_name":"Bash"}`, `{"tool_name":"Bash","tool_input":{}}`, guardEvents[opencode.Name]("ls")},
+		opencode.Name: {`{}`, `{"tool":"bash"}`, `{"tool":"bash","args":{}}`, guardEvents[claude.Name]("ls")},
+	}
+
+	for name, list := range events {
+		for _, event := range list {
+			code, stderr := guardRun(t, name, event)
+
+			assert.Equal(t, 2, code, "%s %s", name, event)
+			assert.Contains(t, stderr, "beehave refused the command: the ", "%s %s", name, event)
+		}
+	}
+}
+
+// TestGuardAgent_TheRefusalOfTheCommandIsARefusedCallInTheRecordOfEachAgent feeds the real stderr of the refused command into the stream reader of each agent,
+// in the way that agent shows a refused call: the hook error of Claude Code, and the error that the OpenCode plugin throws.
+func TestGuardAgent_TheRefusalOfTheCommandIsARefusedCallInTheRecordOfEachAgent(t *testing.T) { //nolint:paralleltest // guardRun replaces os.Stdin of the process
+	_, claudeText := guardRun(t, claude.Name, guardEvents[claude.Name]("git add -A"))
+	_, openText := guardRun(t, opencode.Name, guardEvents[opencode.Name]("git add -A"))
+
+	hookError, err := json.Marshal("PreToolUse:Bash hook error: [beehave check command]: " + claudeText)
+	require.NoError(t, err)
+
+	claudeCall := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_9","name":"Bash","input":{"command":"git add -A"}}]}}`
+	claudeResult := `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":` + string(hookError) + `}]}}`
+
+	adapter := claude.New(nil)
+	assert.Equal(t, []string{"git add -A"}, callTexts(adapter.Calls(claudeCall).Shell))
+	assert.Equal(t, []string{"toolu_9"}, adapter.Calls(claudeResult).Refused, "Claude Code: the hook error of the command refuses the call")
+
+	fixture, err := os.ReadFile("../../internal/agent/opencode/testdata/refused.jsonl")
+	require.NoError(t, err)
+
+	line := strings.Split(string(fixture), "\n")[1]
+	thrown, err := json.Marshal("beehave refused: " + strings.TrimSpace(openText))
+	require.NoError(t, err)
+
+	const recorded = `"error":"beehave refused: forbidden command: touch of forbidden-ran"`
+
+	require.Contains(t, line, recorded)
+
+	line = strings.Replace(line, recorded, `"error":`+string(thrown), 1)
+	seen := opencode.New().Calls(line)
+
+	assert.Equal(t, []string{"call_1"}, seen.Refused, "OpenCode: the error that the plugin throws with the text of the command refuses the call")
+	assert.Contains(t, string(thrown), "bulk-staging: git add -A")
+}
+
+// callTexts returns the text of each call.
+func callTexts(calls []agent.Call) []string {
+	texts := make([]string, 0, len(calls))
+	for _, call := range calls {
+		texts = append(texts, call.Text)
+	}
+
+	return texts
 }
 
 func TestAdapters_EveryAgentOfTheTableHasAHookReader(t *testing.T) {

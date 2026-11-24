@@ -16,25 +16,33 @@ func TestDecodeHook_ReadsThePreToolUseEventOfABashCall(t *testing.T) {
 	call, err := claude.DecodeHook(`{"hook_event_name":"PreToolUse","cwd":"/work","tool_name":"Bash","tool_input":{"command":"git add -A"}}`)
 
 	require.NoError(t, err)
-	assert.Equal(t, agent.HookCall{Shell: true, Dir: "/work", Command: "git add -A"}, call)
+	assert.Equal(t, agent.HookCall{Dir: "/work", Command: "git add -A"}, call)
 }
 
-func TestDecodeHook_ACallOfAnotherToolIsNoShellCall(t *testing.T) {
+func TestDecodeHook_ACallOfAnotherToolIsAnError(t *testing.T) {
 	t.Parallel()
 
-	call, err := claude.DecodeHook(`{"tool_name":"Read","tool_input":{"file_path":"/x"}}`)
+	_, err := claude.DecodeHook(`{"tool_name":"Read","tool_input":{"file_path":"/x"}}`)
 
-	require.NoError(t, err)
-	assert.False(t, call.Shell)
+	require.ErrorContains(t, err, "not a call of the shell tool")
 }
 
-func TestDecodeHook_AnInputOfAnotherFormatIsNoShellCall(t *testing.T) {
+func TestDecodeHook_AnInputOfAnotherFormatIsAnError(t *testing.T) {
 	t.Parallel()
 
-	call, err := claude.DecodeHook(`{"directory":"/work","tool":"bash","args":{"command":"git add -A"}}`)
+	_, err := claude.DecodeHook(`{"directory":"/work","tool":"bash","args":{"command":"git add -A"}}`)
 
-	require.NoError(t, err)
-	assert.False(t, call.Shell, "the format of OpenCode names no Claude Code tool")
+	require.ErrorContains(t, err, "not a call of the shell tool", "the format of OpenCode names no Claude Code tool")
+}
+
+func TestDecodeHook_ABashCallWithNoCommandIsAnError(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{`{"tool_name":"Bash"}`, `{"tool_name":"Bash","tool_input":{}}`, `{"tool_name":"Bash","tool_input":{"command":""}}`} {
+		_, err := claude.DecodeHook(input)
+
+		require.ErrorContains(t, err, "has no command", input)
+	}
 }
 
 func TestDecodeHook_AnInputThatIsNotTheFormatIsAnErrorThatNamesTheEvent(t *testing.T) {

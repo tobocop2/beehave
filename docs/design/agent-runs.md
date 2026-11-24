@@ -223,7 +223,9 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 The Claude adapter passes `--settings` with inline JSON. The JSON adds a `PreToolUse` hook with matcher `Bash` for that run (https://code.claude.com/docs/en/hooks). The adapter never edits a settings file of the user.
 
-The hook runs `beehave check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 2 for every failure: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read.
+The hook runs `beehave check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 0 only for a shell call that has a command and breaks no rule. It exits 2 for every other input: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read, an event longer than 1 MiB, an event of another tool, an event in the format of another agent, and a shell call with no command. The hook of each agent runs for the shell tool only, so a call of another tool never reaches the command, and an event that is not a shell call is a fault, not a call to allow.
+
+An agent session that keeps running across an upgrade of beehave carries the old hook, which has no `--agent`. The command refuses every call of that session until the session restarts. Each new run builds the hook again, so only a session that started before the upgrade is affected.
 
 The shell rules are the same for each agent. Each adapter supplies only the reader of its hook format: `agent/claude` reads the `PreToolUse` event of Claude Code, and `agent/opencode` reads the call that its plugin forwards (`directory`, `tool` and `args`). A new agent CLI needs a reader and a name in the table of `--agent`, and no copy of the rules.
 

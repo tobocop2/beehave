@@ -24,10 +24,13 @@ const (
 	// agentFlag names the agent CLI whose hook format the command reads.
 	agentFlag   = "agent"
 	exitRefused = 2
+	// maxEventBytes is the most that the command reads from stdin. A longer event is refused.
+	maxEventBytes = 1 << 20
 )
 
 var (
 	errUnknownAgent = errors.New("unknown agent")
+	errEventTooLong = errors.New("the hook event is too long")
 	errUnknownKind  = errors.New("unknown kind of command")
 	errNoPaths      = errors.New("the kind needs a directory")
 )
@@ -57,7 +60,8 @@ func newCheckCommandCommand(hooks map[model.Agent]agent.HookDecoder) *cobra.Comm
 }
 
 const checkCommandLong = "Read one hook event of the agent CLI that --agent names, as it arrives on stdin, and check the shell command in it against the shell rules. " +
-	"Exit 0 when the command is allowed or the tool is not a shell tool. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason (an unknown agent, an unreadable event, a bad flag); " +
+	"Exit 0 only when the event is a shell call with a command that breaks no rule. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason " +
+	"(an unknown agent, an event that is not a shell call or has no command, an event longer than 1 MiB, an unreadable event, a bad flag); " +
 	"the agent CLI then blocks the call. The step of a workflow installs this command as a hook for each run that sets `forbid_commands`. " +
 	"The kind protected-path refuses a write inside the directories of --protect, and a git command that is not a read there. " +
 	"The kind laptop-copy refuses a copy from this machine to another machine (rsync or scp with a remote target, a pipe into ssh) unless --visibility is private; " +
@@ -153,10 +157,6 @@ func runCheckCommand(stdin io.Reader, stderr io.Writer, decode agent.HookDecoder
 		return refuse(stderr, err.Error())
 	}
 
-	if !call.Shell {
-		return nil
-	}
-
 	if hits := hitsOf(call.Command, kinds, shell.Protection{Dirs: protect, Base: dirOf(call, os.Getwd), Private: private}); len(hits) > 0 {
 		return refuse(stderr, "this command breaks the shell rules of the step.\n"+strings.Join(hits, "\n"))
 	}
@@ -191,9 +191,13 @@ func privateOf(visibility string) (bool, error) {
 }
 
 func decodeEvent(stdin io.Reader, decode agent.HookDecoder) (agent.HookCall, error) {
-	raw, err := io.ReadAll(stdin)
+	raw, err := io.ReadAll(io.LimitReader(stdin, maxEventBytes+1))
 	if err != nil {
 		return agent.HookCall{}, fmt.Errorf("cannot read the hook event: %w", err)
+	}
+
+	if len(raw) > maxEventBytes {
+		return agent.HookCall{}, fmt.Errorf("%w: it is longer than %d bytes", errEventTooLong, maxEventBytes)
 	}
 
 	return decode(string(raw))

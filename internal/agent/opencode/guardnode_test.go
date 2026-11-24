@@ -16,10 +16,11 @@ import (
 )
 
 // driver loads the plugin like OpenCode does, calls the hook of one tool call and prints the result on one line.
+// The call has the shape of the type of the hook in @opencode-ai/plugin 1.14.48 (dist/index.d.ts:231): the input is { tool, sessionID, callID } and the output is { args }.
 const driver = `import { BeehaveGuard } from "./plugin.mjs"
 const hooks = await BeehaveGuard({ directory: process.cwd() })
 try {
-  await hooks["tool.execute.before"]({ tool: process.argv[2] }, { args: { command: "ls" } })
+  await hooks["tool.execute.before"]({ tool: process.argv[2], sessionID: "ses_1", callID: "call_1" },{ args: { command: "ls" } })
   console.log("pass")
 } catch (err) {
   console.log("refused: " + err.message)
@@ -137,7 +138,6 @@ func TestGuard_ThePluginRunOnNodeSendsTheCallInTheFormatThatDecodeHookReads(t *t
 
 	call, err := opencode.DecodeHook(string(input))
 	require.NoError(t, err)
-	assert.True(t, call.Shell)
 	assert.Equal(t, "ls", call.Command)
 	assert.NotEmpty(t, call.Dir)
 }

@@ -64,15 +64,47 @@ func TestCheckCommand_RefusesACommandThatBreaksARuleWithExit2AndTheReasonOnStder
 	assert.Contains(t, stderr, "bulk-staging: git add -A")
 }
 
-func TestCheckCommand_AllowsACleanCommandAndAnyOtherTool(t *testing.T) {
+func TestCheckCommand_AllowsACleanCommand(t *testing.T) {
 	t.Parallel()
 
-	for _, event := range []string{cleanEvent, readEvent, `{"tool_name":"Bash"}`} {
+	code, stderr := hook(t, cleanEvent)
+
+	assert.Zero(t, code)
+	assert.Empty(t, stderr)
+}
+
+func TestCheckCommand_RefusesAnEventThatIsNotAShellCallWithACommand(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"another tool":          readEvent,
+		"no command":            `{"tool_name":"Bash"}`,
+		"an empty tool input":   `{"tool_name":"Bash","tool_input":{}}`,
+		"an empty command":      `{"tool_name":"Bash","tool_input":{"command":""}}`,
+		"an empty object":       `{}`,
+		"the other agent":       `{"directory":"/work","tool":"bash","args":{"command":"ls"}}`,
+		"no tool and a command": `{"tool_input":{"command":"ls"}}`,
+	}
+
+	for name, event := range cases {
 		code, stderr := hook(t, event)
 
-		assert.Zero(t, code, event)
-		assert.Empty(t, stderr, event)
+		assert.Equal(t, 2, code, name)
+		assert.Contains(t, stderr, "beehave refused the command: the ", name)
 	}
+}
+
+func TestCheckCommand_ReadsAnEventUpToTheCapAndRefusesALongerOne(t *testing.T) {
+	t.Parallel()
+
+	atCap := cleanEvent + strings.Repeat(" ", maxEventBytes-len(cleanEvent))
+
+	code, stderr := hook(t, atCap)
+	assert.Zero(t, code, stderr)
+
+	code, stderr = hook(t, atCap+" ")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "the hook event is too long: it is longer than 1048576 bytes")
 }
 
 func TestCheckCommand_RefusesOnlyTheKindsListedInForbid(t *testing.T) {
