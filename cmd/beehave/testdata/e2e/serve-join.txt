@@ -11,7 +11,7 @@ example local/prompts/plan.md
 example local/prompts/implement.md
 example local/prompts/review.md
 example local/prompts/fix.md
-example local/project.star config/projects/local.star
+fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
 # The sandbox stays on, as in local.txt, and reads the folder of the harness wrappers.
 replace config/projects/local.star 'sandbox = "on",' 'sandbox = "on", sandbox_read = ["'$TOOLS'"],'
