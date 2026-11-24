@@ -956,7 +956,7 @@ A dry run takes no real time at a `sleep`, a `wait` or a `recv`. A call with no 
 - A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes.
 - An agent result is `{"outputs": {"<output>": "<text>"}}`. A gate result is `{"passed": <bool>}`; a gate that does not pass is red with one failed step. A result with no `passed` field passes. A wait result is `{"answer": "<text>", "timed_out": <bool>}`, and a recv result is `{"value": <JSON>, "timed_out": <bool>}`; `timed_out` is false unless the result sets it. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
 - With a fixture, an agent call or a gate call whose key the file does not list fails the run and names the keys of the file. A wait or a recv that the file does not list takes the default above. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
-- An unknown key, an unknown field and a value of the wrong type exit 2 and name the file.
+- An unknown key, an unknown field, a value of the wrong type and a key that the file holds twice exit 2 and name the file. The message for a call with no entry says to add its key to the file.
 
 ### Examples
 

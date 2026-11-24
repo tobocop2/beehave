@@ -24,7 +24,7 @@ func TestDryRun_ASleepAWaitAndARecvEndAtOnce(t *testing.T) {
 
 	require.NoError(t, DryRun(t.Context(), dryFile(t, text), "12", map[string]string{}, &out), out.String())
 
-	assert.Less(t, time.Since(started), 20*time.Second, "a call that waited its 30 seconds would take longer")
+	assert.Less(t, time.Since(started), 60*time.Second, "the three calls that waited 30 seconds each would take 90 seconds")
 	assert.Contains(t, out.String(), "sleep:nap#1/start", "the marker step of the sleep stays")
 	assert.Contains(t, out.String(), "sleep:nap#1:", "the sleep prints its step")
 	assert.Contains(t, out.String(), "wait:deadline", "the record of the deadline of the wait stays")

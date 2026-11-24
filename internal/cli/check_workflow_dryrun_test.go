@@ -178,6 +178,18 @@ func TestCheckWorkflowDryRun_TheHelpTextNamesTheThreeExitCodes(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Exit 3")
 }
 
+func TestCheckWorkflowDryRun_TheHelpTextNamesTheWaitAndRecvKeysAndTheTimeOfADryRun(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	cli.Execute(context.Background(), []string{"check", "workflow", "--help"}, cli.BuildInfo{Registry: registry(), Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	for _, want := range []string{"wait:<label>", "recv:<label>", `"answer"`, `"value"`, "takes no real time"} {
+		assert.Contains(t, strings.Join(strings.Fields(stdout.String()), " "), want)
+	}
+}
+
 func TestCheckWorkflowDryRun_AFileWithProblemsStopsBeforeTheRun(t *testing.T) {
 	t.Parallel()
 

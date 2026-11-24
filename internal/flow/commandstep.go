@@ -293,10 +293,19 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	return s.recordGate(label, outputs)
 }
 
+// scriptKey is the key of a call for the fixture of a dry run. A real run has no fixture, so its key is empty and its records and gate jobs stay as they were.
+func (s *script) scriptKey(builtin, label string) string {
+	if s.e.deps.Waits == nil {
+		return ""
+	}
+
+	return callKey(builtin, label)
+}
+
 // exclusiveGate runs the gate of a call as a child workflow on the exclusive queue, so no merge of the repository starts while it runs,
 // and returns its outputs. The gate call records them as its own step, so a replay reads them and runs no gate again.
 func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[string]any, error) {
-	in := ExclusiveInput{Kind: kindGate, Call: callKey(kindGate, label), Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
+	in := ExclusiveInput{Kind: kindGate, Call: s.scriptKey(kindGate, label), Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
 
 	ran, err := s.e.queueExclusive(s.ctx, in)
 	s.noteGateHost(ran)

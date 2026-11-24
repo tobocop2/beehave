@@ -142,6 +142,7 @@ func TestDryRun_AnAgentCallWhoseKeyTheFileDoesNotListIsRefusedWithTheKeysOfTheFi
 	require.Error(t, err)
 	assert.Contains(t, out, "agent:review has no entry")
 	assert.Contains(t, out, "[agent:reviewer]")
+	assert.Contains(t, out, "add the key agent:review to the fixture file")
 }
 
 func TestDryRun_AnOutputTheCallDoesNotDeclareIsRefusedWithTheKeyAndTheDeclaredNames(t *testing.T) {
@@ -172,6 +173,7 @@ func TestLoadFixture_AnUnknownFieldAnUnknownBuiltinAndAWrongTypeAreRefusedWithTh
 		"an unknown builtin":         {`{"frobnicate:x": [{}]}`, `frobnicate:x`},
 		"the merge key":              {`{"merge": [{}]}`, `merge`},
 		"a field of no wait":         {`{"wait:ask": {"verdict": "go"}}`, `unknown field "verdict"`},
+		"a key twice":                {`{"agent:review": [{}], "gate:check": {}, "agent:review": [{}]}`, `the key "agent:review" is in the file more than once`},
 		"a wrong type":               {`{"agent:review": [{"outputs": {"verdict": 7}}]}`, `agent:review`},
 		"a top level that is a list": {`[]`, `a JSON object`},
 		"text that is no JSON":       {`not json`, `fixture.json`},
@@ -187,6 +189,27 @@ func TestLoadFixture_AnUnknownFieldAnUnknownBuiltinAndAWrongTypeAreRefusedWithTh
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "fixture.json")
 			assert.Contains(t, err.Error(), test.want)
+		})
+	}
+}
+
+func TestLoadFixture_ADuplicateKeyIsFoundOnlyAtTheTopLevelAndDataThatEndsEarlyHasNone(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct{ text, want string }{
+		"a key twice after a list":       {`{"a": [1, {"a": 2}], "b": {"a": 1}, "a": 3}`, "a"},
+		"a name that repeats inside":     {`{"a": {"x": 1, "x": 2}, "b": [{"x": 1}, {"x": 2}]}`, ""},
+		"no key":                         {`{}`, ""},
+		"no data":                        {``, ""},
+		"a key with no value":            {`{"a"`, ""},
+		"a name that is no text":         {`{1: 2}`, ""},
+		"a value that ends too early":    {`{"a": [`, ""},
+		"a first key and a second twice": {`{"a": 1, "b": 2, "b": 3}`, "b"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.want, duplicateKey([]byte(test.text)))
 		})
 	}
 }

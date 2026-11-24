@@ -297,6 +297,7 @@ func TestDryGate_AGateCallWhoseKeyTheFileDoesNotListIsRefusedWithTheKeysOfTheFil
 
 	require.ErrorContains(t, err, "gate:check has no entry")
 	require.ErrorContains(t, err, "[gate:other]")
+	require.ErrorContains(t, err, "add the key gate:check to the fixture file")
 }
 
 func TestDryGate_AnObjectGateResultWithNoFieldPassesEveryCall(t *testing.T) {

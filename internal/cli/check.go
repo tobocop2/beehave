@@ -83,10 +83,12 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"With --" + dryRunFlag + ", beehave then runs the file for one item over fakes and prints each step with its fake result. " +
 	"The run uses a temporary state folder that beehave deletes at the end. It calls no forge, agent, tracker or host. " +
 	"Every gate in the run passes, and every review approves. " +
-	"With --" + fixtureFlag + " <file.json>, the file scripts the result of each agent call and each gate call by key, so a review can reject twice and then approve, or a gate can be red once. " +
-	"A key is agent or gate, or agent:<label> or gate:<label> for the call with that name. A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes. " +
+	"A dry run takes no real time: a sleep reports 0 seconds, and a wait or a recv with no entry in the fixture times out at once. A wait with no timeout and no entry is refused, because a real run would wait for ever. " +
+	"With --" + fixtureFlag + " <file.json>, the file scripts the result of each agent, gate, wait and recv call by key, so a review can reject twice and then approve, or a gate can be red once. " +
+	"A key is agent, gate, wait or recv, or agent:<label>, gate:<label>, wait:<label> or recv:<label> for the call with that name. A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes. " +
 	"An agent result is {\"outputs\": {\"<name>\": \"<text>\"}}; an output that the result does not name keeps its base value. " +
 	"A gate result is {\"passed\": false}, which is a red gate with one failed step, or {\"passed\": true}. " +
+	"A wait result is {\"answer\": \"<text>\", \"timed_out\": <bool>}. A recv result is {\"value\": <JSON>, \"timed_out\": <bool>}. " +
 	"With a fixture, an agent call or a gate call whose key the file does not list fails the run, so does a call past the end of a list, and so does a result that no call used. " +
 	"The gate of a merge has no key and always passes. " +
 	"The file must be valid: an unknown key or field, or a value of the wrong type, exits 2 and names the file. " +
