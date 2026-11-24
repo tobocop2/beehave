@@ -5,9 +5,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -16,15 +22,25 @@ const (
 	readEvent  = `{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"git add -A"}}`
 )
 
-// hook runs `beehave check command` with the event on stdin and returns the exit code and stderr.
+// hooks reads the hook input of the agents of the tests: the real readers of the two adapters.
+var hooks = map[model.Agent]agent.HookDecoder{claude.Name: claude.DecodeHook, opencode.Name: opencode.DecodeHook}
+
+// hook runs `beehave check command --agent claude` with the event on stdin and returns the exit code and stderr.
 func hook(t *testing.T, event string, args ...string) (int, string) {
+	t.Helper()
+
+	return hookOf(t, claude.Name, event, args...)
+}
+
+// hookOf runs `beehave check command` for the agent with the event on stdin and returns the exit code and stderr.
+func hookOf(t *testing.T, name model.Agent, event string, args ...string) (int, string) {
 	t.Helper()
 
 	var stdout, stderr bytes.Buffer
 
-	root := newRootCommand(t.Context(), BuildInfo{Version: "x"}, map[string]string{}, &stdout, &stderr)
+	root := newRootCommand(t.Context(), BuildInfo{Version: "x", Hooks: hooks}, map[string]string{}, &stdout, &stderr)
 	root.SetIn(strings.NewReader(event))
-	root.SetArgs(append([]string{"check", "command"}, args...))
+	root.SetArgs(append([]string{"check", "command", "--agent", string(name)}, args...))
 
 	err := root.ExecuteContext(t.Context())
 	if err == nil {
@@ -49,15 +65,55 @@ func TestCheckCommand_RefusesACommandThatBreaksARuleWithExit2AndTheReasonOnStder
 	assert.Contains(t, stderr, "bulk-staging: git add -A")
 }
 
-func TestCheckCommand_AllowsACleanCommandAndAnyOtherTool(t *testing.T) {
+func TestCheckCommand_AllowsACleanCommand(t *testing.T) {
 	t.Parallel()
 
-	for _, event := range []string{cleanEvent, readEvent, `{"tool_name":"Bash"}`} {
+	code, stderr := hook(t, cleanEvent)
+
+	assert.Zero(t, code)
+	assert.Empty(t, stderr)
+}
+
+func TestCheckCommand_RefusesAnEventThatIsNotAShellCallWithACommand(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"another tool":          readEvent,
+		"no command":            `{"tool_name":"Bash"}`,
+		"an empty tool input":   `{"tool_name":"Bash","tool_input":{}}`,
+		"an empty command":      `{"tool_name":"Bash","tool_input":{"command":""}}`,
+		"an empty object":       `{}`,
+		"the other agent":       `{"directory":"/work","tool":"bash","args":{"command":"ls"}}`,
+		"no tool and a command": `{"tool_input":{"command":"ls"}}`,
+	}
+
+	for name, event := range cases {
 		code, stderr := hook(t, event)
 
-		assert.Zero(t, code, event)
-		assert.Empty(t, stderr, event)
+		assert.Equal(t, 2, code, name)
+		assert.Contains(t, stderr, "beehave refused the command: the ", name)
 	}
+}
+
+func TestDecodeEvent_AnUnreadableStdinIsAnError(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeEvent(iotest.ErrReader(errors.New("pipe closed")), claude.DecodeHook)
+
+	require.ErrorContains(t, err, "cannot read the hook event: pipe closed")
+}
+
+func TestCheckCommand_ReadsAnEventUpToTheCapAndRefusesALongerOne(t *testing.T) {
+	t.Parallel()
+
+	atCap := cleanEvent + strings.Repeat(" ", maxEventBytes-len(cleanEvent))
+
+	code, stderr := hook(t, atCap)
+	assert.Zero(t, code, stderr)
+
+	code, stderr = hook(t, atCap+" ")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "the hook event is too long: it is longer than 1048576 bytes")
 }
 
 func TestCheckCommand_RefusesOnlyTheKindsListedInForbid(t *testing.T) {
@@ -128,15 +184,15 @@ func TestCheckCommand_ProtectedPathRefusesARelativeDirectoryInTheList(t *testing
 	assert.Contains(t, stderr, "needs absolute directories")
 }
 
-func TestHookEvent_TheDirectoryIsTheEventOneThenTheProcessOneThenNone(t *testing.T) {
+func TestDirOf_TheDirectoryIsTheCallOneThenTheProcessOneThenNone(t *testing.T) {
 	t.Parallel()
 
 	getwd := func() (string, error) { return "/proc/dir", nil }
 	broken := func() (string, error) { return "", errors.New("no working directory") }
 
-	assert.Equal(t, "/ev/dir", hookEvent{Cwd: "/ev/dir"}.dir(broken))
-	assert.Equal(t, "/proc/dir", hookEvent{}.dir(getwd))
-	assert.Empty(t, hookEvent{}.dir(broken), "a relative path cannot be placed")
+	assert.Equal(t, "/ev/dir", dirOf(agent.HookCall{Dir: "/ev/dir"}, broken))
+	assert.Equal(t, "/proc/dir", dirOf(agent.HookCall{}, getwd))
+	assert.Empty(t, dirOf(agent.HookCall{}, broken), "a relative path cannot be placed")
 }
 
 func TestCheckCommand_ProtectedPathWithNoDirectoryIsRefusedAndTheDefaultListLeavesItOut(t *testing.T) {
@@ -191,7 +247,7 @@ func TestRunCheckCommand_AnInputThatFailsToReadIsRefused(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	err := runCheckCommand(failingReader{}, &stderr, []string{"bulk-staging"}, nil, "")
+	err := runCheckCommand(failingReader{}, &stderr, claude.DecodeHook, []string{"bulk-staging"}, nil, "")
 
 	var exit *ExitError
 	require.ErrorAs(t, err, &exit)
