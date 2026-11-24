@@ -4,7 +4,7 @@
 
 ## Build the tool
 
-From the source checkout, run `make remedy`. The command writes `bin/remedy` in the checkout. It installs nothing outside the checkout.
+From the source checkout, run `make remedy`. The command writes `bin/remedy` in the checkout. It installs nothing outside the checkout. `make build` does not make `bin/remedy`. Run `make test-examples` to build the tool and run the tests of the examples folder.
 
 ## Run the round
 

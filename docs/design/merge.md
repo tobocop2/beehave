@@ -361,7 +361,7 @@ Every other member, and every member whose read failed, is a line of the result 
 
 ### Binary and packages
 
-- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
+- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`. `make build` does not make it. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner.
 - A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only check `report`. The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
 
