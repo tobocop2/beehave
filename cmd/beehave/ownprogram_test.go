@@ -102,7 +102,7 @@ func (ownTracker) ItemFields() []string { return []string{"id"} }
 
 func (ownTracker) Item(context.Context, string) (map[string]string, error) { return nil, nil }
 
-func (o ownTracker) OpenItems(context.Context) ([]model.Item, error) { return o.items, o.err }
+func (o ownTracker) ItemList(context.Context, string) ([]model.Item, error) { return o.items, o.err }
 
 // ownRigWith is ownRig over the tracker items: the project names the tracker "github", whose adapter the test replaces.
 func ownRigWith(t *testing.T, repo ownRepo, withWriter bool, items ownTracker) (ownGate, *[]model.CommitStatus) {

@@ -234,6 +234,28 @@ func (f swarmForgeAt) PRList(ctx context.Context, _ int, args ...string) ([]mode
 	return found, nil
 }
 
+// OpenPulls lists the open pull requests as the real forge does: the pull requests of PRList for the state open, and an error for each pull request that lacks a field.
+func (f swarmForgeAt) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error) {
+	rows, err := f.PRList(ctx, forge.OpenPullLimit, "--state", "open")
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		pulls []model.OpenPull
+		holes []error
+	)
+
+	for _, row := range rows {
+		if open := row.Open(); base == "" || open.Base == base {
+			pulls = append(pulls, open)
+			holes = append(holes, open.Check())
+		}
+	}
+
+	return pulls, errors.Join(holes...)
+}
+
 func (f swarmForgeAt) PRView(ctx context.Context, pr int, _ ...string) (model.PullRequest, error) {
 	branches, err := f.branches(ctx)
 	if err != nil {

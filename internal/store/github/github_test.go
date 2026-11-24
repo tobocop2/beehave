@@ -64,7 +64,7 @@ func TestNew_TakesLettersDigitsDotsUnderscoresAndHyphens(t *testing.T) {
 	}
 }
 
-func TestGithubOpenItems_SkipsEpicsAndReadsLabels(t *testing.T) {
+func TestGithubItemList_SkipsEpicsAndReadsLabels(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
@@ -75,7 +75,7 @@ func TestGithubOpenItems_SkipsEpicsAndReadsLabels(t *testing.T) {
 		issue(4, "holding", "holder", "P3"), issue(5, "not an epic: x", "P1"), issue(6, "no hold", "Hold", "P4"),
 	}), "issue", "list")
 
-	items, err := gh.OpenItems(context.Background())
+	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{
 		{ID: "1", Severity: model.SeverityUnknown, Title: "plain"},
@@ -118,7 +118,7 @@ func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 				run.Plan(tt.stdout, "issue", "list")
 			}
 
-			_, err := gh.OpenItems(context.Background())
+			_, err := gh.ItemList(context.Background(), "")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Equal(t, store.CodeRefused, codeOf(t, err))
@@ -126,24 +126,36 @@ func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 	}
 }
 
-func TestGithubOpenItems_ListsAPageOneUnderFull(t *testing.T) {
+func TestGithubItemList_WithALabelAsksGithubForThatLabel(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+	run.Plan(toJSON(t, []any{issue(1, "tagged", "bug")}), "issue", "list")
+
+	items, err := gh.ItemList(context.Background(), "bug")
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+	assert.True(t, run.Called("--label", "bug"))
+}
+
+func TestGithubItemList_ListsAPageOneUnderFull(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
 	run.Plan(toJSON(t, fill(999, nil)), "issue", "list")
 
-	items, err := gh.OpenItems(context.Background())
+	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Len(t, items, 999)
 }
 
-func TestGithubOpenItems_NullLabelsAndAssigneesAreEmpty(t *testing.T) {
+func TestGithubItemList_NullLabelsAndAssigneesAreEmpty(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
 	run.Plan(`[{"number":7,"title":"t","labels":null,"assignees":null}]`, "issue", "list")
 
-	items, err := gh.OpenItems(context.Background())
+	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{{ID: "7", Severity: model.SeverityUnknown, Title: "t"}}, items)
 }
@@ -154,14 +166,14 @@ func TestDecodeRefusals_KeepTheirCause(t *testing.T) {
 	gh, run := newGithub(t)
 	run.Plan("null", "issue", "list")
 
-	_, err := gh.OpenItems(context.Background())
+	_, err := gh.ItemList(context.Background(), "")
 	require.ErrorIs(t, err, model.ErrNullAnswer)
 
 	for _, answer := range []string{"nope", "[] []"} {
 		gh, run = newGithub(t)
 		run.Plan(answer, "issue", "list")
 
-		_, err = gh.OpenItems(context.Background())
+		_, err = gh.ItemList(context.Background(), "")
 
 		var syntax *json.SyntaxError
 		require.ErrorAs(t, err, &syntax, answer)

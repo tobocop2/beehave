@@ -25,9 +25,12 @@ type pullForge struct {
 	mu      sync.Mutex
 	listed  map[string][]model.PullRequest
 	listErr error
-	state   string
-	drafts  []draftCall
-	asked   [][]string
+	// opened is the answer of OpenPulls, and openBases holds the base of each call.
+	opened    []model.OpenPull
+	openBases []string
+	state     string
+	drafts    []draftCall
+	asked     [][]string
 	// refs and refsErr are the answer of ClosingRefs.
 	refs    model.ClosingRefs
 	refsErr error
@@ -39,6 +42,16 @@ type pullForge struct {
 	readyOnCall bool
 	// viewErr fails PRView.
 	viewErr error
+}
+
+// OpenPulls answers with the open pull requests that the test set, and keeps the base of each call. listErr fails the read.
+func (f *pullForge) OpenPulls(_ context.Context, base string) ([]model.OpenPull, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.openBases = append(f.openBases, base)
+
+	return slices.Clone(f.opened), f.listErr
 }
 
 func (f *pullForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {

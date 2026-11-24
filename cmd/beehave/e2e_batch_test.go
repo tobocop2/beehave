@@ -137,6 +137,9 @@ func (f fileForge) PRList(_ context.Context, _ int, args ...string) ([]model.Pul
 	return []model.PullRequest{{Number: pr}}, nil
 }
 
+// OpenPulls lists no pull request: the batch scripts open none that the queue reads.
+func (f fileForge) OpenPulls(context.Context, string) ([]model.OpenPull, error) { return nil, nil }
+
 func (f fileForge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
 	view, err := f.PRView(ctx, pr)
 

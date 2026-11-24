@@ -239,7 +239,7 @@ type servedOnce struct {
 	reads  int
 }
 
-func (s *servedOnce) OpenPulls(ctx context.Context, project string) ([]model.PullRequest, error) {
+func (s *servedOnce) OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error) {
 	s.seenMu.Lock()
 	s.reads++
 	read := s.reads
@@ -247,11 +247,11 @@ func (s *servedOnce) OpenPulls(ctx context.Context, project string) ([]model.Pul
 
 	s.turns.queueRead(read)
 
-	return s.fakeQueue.OpenPulls(ctx, project)
+	return s.fakeQueue.OpenPulls(ctx, project, base)
 }
 
-func (s *servedOnce) OpenItems(ctx context.Context, project string) ([]model.Item, error) {
-	all, err := s.fakeQueue.OpenItems(ctx, project)
+func (s *servedOnce) ItemList(ctx context.Context, project, label string) ([]model.Item, error) {
+	all, err := s.fakeQueue.ItemList(ctx, project, label)
 
 	var open []model.Item
 
