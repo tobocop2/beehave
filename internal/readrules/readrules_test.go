@@ -218,6 +218,7 @@ var rules = map[string]rule{
 	"internal/forge.PullReads.Reviews":            {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRBody":             {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRView":             {NotHeld: inAdapter},
+	"internal/forge.PullFactsRead.PullRead":       {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRList":             {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRChecks":           {NotHeld: inAdapter},
 	"internal/forge.PullReads.OpenChangeRequests": {NotHeld: inAdapter},

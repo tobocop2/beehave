@@ -66,6 +66,10 @@ func (m memForge) PRView(context.Context, int, ...string) (model.PullRequest, er
 	return model.PullRequest{Title: forgetest.SevenTitle}, m.fail()
 }
 
+func (m memForge) PullRead(context.Context, int) (model.PullFacts, error) {
+	return model.PullFacts{Number: forgetest.Seven, State: forgetest.SevenState, Head: forgetest.SevenTip, Base: forgetest.SevenBase, Author: forgetest.SevenReviewer, Assignees: []string{forgetest.SevenAssignee}}, m.fail()
+}
+
 func (m memForge) ItemFields() []string {
 	if m.noFields {
 		return nil

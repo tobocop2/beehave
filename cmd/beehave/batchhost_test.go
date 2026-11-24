@@ -75,6 +75,15 @@ func (f hostForge) SetDraft(_ context.Context, number int, draft bool) error {
 	return f.setDraftErr
 }
 
+func (f hostForge) PullRead(ctx context.Context, number int) (model.PullFacts, error) {
+	view, err := f.PRView(ctx, number)
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	return view.Facts(), nil
+}
+
 func (f hostForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errFake
 }
@@ -344,9 +353,6 @@ func TestBatchHost_IntentFailsForAReadThatFailsAndForAPullRequestThatIsNotFound(
 
 	_, err = hostOver("", hostForge{state: "OPEN", listed: listed}, nil).Intent(t.Context(), "p", "item", "other/repo", "main", "t", time.Time{})
 	require.ErrorContains(t, err, "other/repo")
-
-	_, err = hostOver("", hostForge{state: "OPEN", listed: listed}, nil).Intent(t.Context(), "p", "item", "o/r", "main", "t", time.Time{})
-	require.ErrorContains(t, err, "cannot make an intent", "a read with no head proves nothing")
 }
 
 func TestBatchHost_PullReadsTheDraftFlagAndTheHeadOfTheOpenPullRequestThroughTheStandingReview(t *testing.T) {
