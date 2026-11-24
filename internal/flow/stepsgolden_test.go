@@ -48,6 +48,7 @@ var goldenShapes = map[string][]string{
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
+		"earlier_reads: reads",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
 		"first_of: kind,message,outcome,run,runs",
 		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
@@ -63,6 +64,7 @@ var goldenShapes = map[string][]string{
 		"item_status: id,status",
 		"item_stop: recorded",
 		"merge: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
+		"pr_closing: forge,found,issues",
 		"pr_comment: number",
 		"pr_history: pulls",
 		"pr_list: pulls",
@@ -99,9 +101,9 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "board_card", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
+		"agent", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
 		"issue_assignees", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "login", "now",
-		"pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
+		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 

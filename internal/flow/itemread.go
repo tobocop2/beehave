@@ -96,5 +96,5 @@ func readOutputs(found bool, id string, fields map[string]string, comments []str
 		comments = []string{}
 	}
 
-	return map[string]any{"found": found, "id": id, "fields": fields, "comments": comments, "parent": parent}
+	return map[string]any{foundField: found, "id": id, "fields": fields, "comments": comments, "parent": parent}
 }
