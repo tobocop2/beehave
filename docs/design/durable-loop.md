@@ -848,6 +848,7 @@ The line then shows the fields that decide the flow, when the step has them:
 - `label`: the free label of an agent step
 - `login`: the runner that an agent step runs on. It is the runner that the call names with `runner`, or the login that the pool picked when the call names none. The line shows it while the step runs and after the step fails.
 - `model`: the model that an agent step sets. The line shows it while the step runs and after the step fails. A step that sets no model shows none.
+- `scope_off`: set on the scope step of a project with no forge. The step records that the scope check is off, and the notes of the run show `scope check off: the project has no forge`.
 - `stop`
 - `verdict`
 - `head`
@@ -863,7 +864,7 @@ A failed step shows its error. The last line is `run`: the state of the run (run
 - While the run waits for a spawned child, the last line is `step in progress` with no start time and no duration, and the field `waits_on` names the runs of the children that have not ended.
 - A step with no recorded start or end shows an empty column. A duration is never shown for an end that is before its start.
 
-`--json` prints one object for scripts. Its fields are `run`, `state`, `error` (left out when empty) and `steps`. Each step has `name`, `state` and, when it has them, `duration_seconds`, `waits_on`, `started`, `ended`, `error`, `exit_code`, `label`, `login`, `model`, `stop`, `verdict`, `head`, `passed` and `gate` (a list of `name` and `status`).
+`--json` prints one object for scripts. Its fields are `run`, `state`, `error` (left out when empty) and `steps`. Each step has `name`, `state` and, when it has them, `duration_seconds`, `waits_on`, `started`, `ended`, `error`, `exit_code`, `label`, `login`, `model`, `scope_off`, `stop`, `verdict`, `head`, `passed` and `gate` (a list of `name` and `status`).
 
 #### `beehave status --item <item>`: the lanes of one item
 

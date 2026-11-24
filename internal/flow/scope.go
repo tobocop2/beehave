@@ -76,7 +76,7 @@ func (s *script) firstRead(ctx context.Context) (scopeRead, error) {
 
 	read, err := s.readClosing(ctx, s.in.Item)
 	if errors.Is(err, forgepkg.ErrNoForge) {
-		return scopeRead{Issues: []model.IssueRef{}, NoForge: true}, nil
+		return scopeRead{NoForge: true}, nil
 	}
 
 	return read, err
