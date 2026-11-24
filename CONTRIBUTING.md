@@ -9,7 +9,7 @@ make setup    # install the Go tools and generate the agent files
 make check    # the full gate, the same as CI
 make build    # write bin/beehave only
 make remedy   # write bin/remedy, the tool of the remediation example
-make test-examples   # build bin/remedy and run the tests of the examples folder
+make test-examples   # run the tests of the examples folder
 ```
 
 ## macOS code

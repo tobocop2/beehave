@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -391,12 +392,28 @@ func (w *world) SetBody(_ context.Context, number int, body string) error {
 	return nil
 }
 
-// request is a merge request of the default shape. Its forbidden text is the `forbid_text` of the remediation example, so the engine holds no pattern of its own.
+// attributionPatterns is the forbidden text of the default request: four attribution marks, which the engine does not hold.
+func attributionPatterns() []string {
+	return []string{"(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"}
+}
+
+// compiled compiles patterns that the check of the workflow already proved to be RE2.
+func compiled(patterns []string) []*regexp.Regexp {
+	rules := make([]*regexp.Regexp, len(patterns))
+
+	for i, pattern := range patterns {
+		rules[i] = regexp.MustCompile(pattern)
+	}
+
+	return rules
+}
+
+// request is a merge request of the default shape.
 func request() merge.Request {
 	return merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
 		Repo: "owner/name", Base: "main", OwnLogins: []string{me}, OwnEmails: []string{meMail},
-		ForbidText: compiled(examplePatterns()),
+		ForbidText: compiled(attributionPatterns()),
 	}
 }
 

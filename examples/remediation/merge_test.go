@@ -1,4 +1,4 @@
-package merge_test
+package remediation_test
 
 import (
 	"os"
@@ -16,12 +16,12 @@ import (
 
 // loadedPatterns reads the `forbid_text` patterns of the merge step of the remediation example once.
 var loadedPatterns = sync.OnceValues(func() ([]string, error) {
-	text, err := os.ReadFile("../../examples/remediation/workflow.star")
+	text, err := os.ReadFile("workflow.star")
 	if err != nil {
 		return nil, err
 	}
 
-	calls, err := workflowtest.Calls("workflow.star", text)
+	listed, err := workflowtest.Calls("workflow.star", text)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ var loadedPatterns = sync.OnceValues(func() ([]string, error) {
 		return nil, err
 	}
 
-	for _, call := range calls {
+	for _, call := range listed {
 		if call.Builtin == "merge" {
 			patterns = append(patterns, workflowtest.Literals(call.Args["forbid_text"])...)
 		}
@@ -39,27 +39,6 @@ var loadedPatterns = sync.OnceValues(func() ([]string, error) {
 
 	return patterns, nil
 })
-
-// examplePatterns is the forbidden text of the example. It is empty when the example cannot be read, and the attribution test then fails.
-func examplePatterns() []string {
-	patterns, err := loadedPatterns()
-	if err != nil {
-		return nil
-	}
-
-	return patterns
-}
-
-// compiled compiles patterns that the check of the workflow already proved to be RE2.
-func compiled(patterns []string) []*regexp.Regexp {
-	rules := make([]*regexp.Regexp, len(patterns))
-
-	for i, pattern := range patterns {
-		rules[i] = regexp.MustCompile(pattern)
-	}
-
-	return rules
-}
 
 func TestAttribution_TheExampleForbidsTheFourAttributionMarks(t *testing.T) {
 	t.Parallel()
@@ -75,14 +54,14 @@ func TestAttribution_TheExampleForbidsTheFourAttributionMarks(t *testing.T) {
 func TestExample_ClosingKeywordsMatchTheGrammarOfTheMerge(t *testing.T) {
 	t.Parallel()
 
-	text, err := os.ReadFile("../../examples/remediation/workflow.star")
+	text, err := os.ReadFile("workflow.star")
 	require.NoError(t, err)
 
 	patterns, err := workflowtest.Constant("workflow.star", text, "CLOSING_KEYWORDS")
 	require.NoError(t, err)
 	require.Len(t, patterns, 1)
 
-	rules := compiled(patterns)
+	rule := regexp.MustCompile(patterns[0])
 	words := []string{"close", "Closes", "CLOSED", "fix", "fixes", "Fixed", "resolve", "resolves", "resolved", "closing", "unfixed", "prefix", "address", "fixes:", "Fixes:"}
 	refs := []string{"#12", "o/r#12", "o.x/r-y_z#7", "https://github.com/o/r/issues/12", "http://github.com/o/r/issues/3", "#", "12", "other#1", "o/r/s#4", "https://example.com/o/r/issues/1"}
 	joins := []string{" ", "  ", "\t", ": ", "", "-"}
@@ -97,7 +76,7 @@ func TestExample_ClosingKeywordsMatchTheGrammarOfTheMerge(t *testing.T) {
 					line := strings.ReplaceAll(frame, "%s", word+join+ref)
 					want := len(closing.References(line)) > 0
 
-					assert.Equal(t, want, rules[0].MatchString(line), "%q", line)
+					assert.Equal(t, want, rule.MatchString(line), "%q", line)
 
 					checked++
 				}
