@@ -934,6 +934,25 @@ It checks that:
 - A helper function that receives the item is not tracked, and neither is a function in a loaded file.
 - A missing prompt file, or a field that the item lacks, fails the step when it runs, with the file, the line and the column of the call.
 
+#### The dry run and the fixture
+
+`beehave check workflow --dry-run` runs the file for one item over fakes. Every agent call ends as done, and every review approves.
+
+`--fixture <file.json>` scripts the result of each agent call. It needs `--dry-run`; without it the command exits 2.
+
+```json
+{
+  "agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}],
+  "agent:fix": {}
+}
+```
+
+- A key is `agent` for a call with no name, or `agent:<name>` for the call with that name. Any other key is refused when the file loads.
+- A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes.
+- A result is `{"outputs": {"<output>": "<text>"}}`. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
+- With a fixture, an agent call whose key the file does not list fails the run and names the keys of the file. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
+- An unknown key, an unknown field and a value of the wrong type exit 2 and name the file.
+
 ### Examples
 
 #### `examples/remediation/`

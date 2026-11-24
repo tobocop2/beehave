@@ -442,7 +442,7 @@ The argument `review_outputs` of `review_fix` (default: an empty list) names mor
 
 - The returned `review` holds each one as a field. A workflow reads a field of the review, such as a count, and does not parse the text of the report.
 - The review prompt must ask for each one. A review that leaves one out fails like a review that leaves out the verdict.
-- A dry run writes the text `0` for each output that is not the verdict.
+- A dry run writes the text `0` for each output that is not the verdict, unless the fixture of the run sets it (see `beehave check workflow`).
 
 #### The `fix_outputs` and `lane_check` arguments
 

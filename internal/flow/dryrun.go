@@ -72,7 +72,9 @@ func dryReading() func() time.Time {
 
 // dryChoice holds what the caller chose for a dry run.
 type dryChoice struct {
-	redGate, sendBack bool
+	redGate bool
+	// script is the state of the fixture of the run, or nil for a run that scripts nothing.
+	script *fixtureRun
 	// voidGates is the number of the first gates that give no verdict.
 	voidGates        int
 	vars             map[string]any
@@ -95,8 +97,8 @@ func WithRedGate() DryOption { return func(c *dryChoice) { c.redGate = true } }
 // The command beehave check has no flag for it: the option is for tests of the library.
 func WithVoidGates(count int) DryOption { return func(c *dryChoice) { c.voidGates = count } }
 
-// WithSendBack makes the first review of the dry run end with the verdict changes, so that the run walks a send-back and a fix round. Each later review approves.
-func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } }
+// WithFixture scripts the agent calls of the dry run from the fixture, so that a review rejects twice and then approves. With a fixture, an agent call whose key the file does not list fails the run.
+func WithFixture(fixture Fixture) DryOption { return func(c *dryChoice) { c.script = fixture.start() } }
 
 // WithVars gives the facts of the dry run the vars of a project. The vars are static config, so the dry run reads them as a real run does. Every other fact stays empty.
 func WithVars(vars map[string]any) DryOption { return func(c *dryChoice) { c.vars = vars } }
@@ -153,7 +155,22 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 	runErr := dryWalk(ctx, opts, deps, item, file, chosen.entry, chosen.sandbox)
 	last, printErr := printDrySteps(ctx, opts, out)
 
-	return errors.Join(printErr, dryFailure(out, last, runErr))
+	return errors.Join(printErr, dryFailure(out, last, runErr), dryLeftover(out, chosen.script, runErr))
+}
+
+// dryLeftover reports each result of the fixture that no call used. A run that failed or ended early reports none, because it did not reach the calls that would use them.
+func dryLeftover(out io.Writer, script *fixtureRun, runErr error) error {
+	if runErr != nil {
+		return nil
+	}
+
+	err := script.leftover()
+	if err != nil {
+		// A failed write has no recovery.
+		_, _ = fmt.Fprintf(out, "error: %v\n", err)
+	}
+
+	return err
 }
 
 // dryPrepare makes the worktree of the item in the folder of the run and returns the fakes that serve it, with the skills that the file checks for.
@@ -231,12 +248,7 @@ func onlyAbsent(err error) bool {
 
 // dryDeps holds the only collaborators of a dry run. Each one answers from a fixed value and touches nothing outside the folder of the run.
 func dryDeps(tree, head, item string, chosen dryChoice) Deps {
-	agents := dryAgents{skills: chosen.skills}
-	if chosen.sendBack {
-		agents.sendBack = new(atomic.Bool)
-		agents.sendBack.Store(true)
-	}
-
+	agents := dryAgents{skills: chosen.skills, script: chosen.script}
 	gate := newDryGate(tree, head, chosen.redGate)
 	gate.void = chosen.voidGates
 
@@ -354,10 +366,10 @@ func dryLine(n int, step dbos.StepInfo) string {
 }
 
 // dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve, the output open empty, any other output 0).
-// With sendBack set, the first agent that declares a verdict writes changes instead; the flag then clears.
+// The fixture of the run, when there is one, sets the outputs of a call by its key.
 type dryAgents struct {
-	sendBack *atomic.Bool
-	skills   []string
+	script *fixtureRun
+	skills []string
 }
 
 // outputVerdict is the output of a review call that holds its verdict. verdictChanges is the verdict of a head that needs a commit.
@@ -375,8 +387,13 @@ const (
 )
 
 func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, error) {
+	set, err := a.script.agentOutputs(request.Call, request.Outputs)
+	if err != nil {
+		return agent.Result{}, err
+	}
+
 	if len(request.Outputs) > 0 {
-		raw := a.outputs(request.Outputs)
+		raw := a.outputs(request.Outputs, set)
 
 		if err := errors.Join(os.MkdirAll(filepath.Dir(request.OutputFile), dryDirMode), os.WriteFile(request.OutputFile, raw, dryFileMode)); err != nil {
 			return agent.Result{}, fmt.Errorf("write the fake outputs: %w", err)
@@ -386,15 +403,14 @@ func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, e
 	return agent.Result{Outcome: agent.OutcomeExited, Session: "dry-session", Transcript: "/dry.jsonl", Text: "dry run: no agent ran", Skills: a.skills}, nil
 }
 
-// outputs is the content of the output file: one string for each declared output.
-func (a dryAgents) outputs(declared []string) []byte {
-	sendBack := a.sendBack != nil && slices.Contains(declared, outputVerdict) && a.sendBack.Swap(false)
+// outputs is the content of the output file: one string for each declared output, the one that the fixture set or else the base value.
+func (dryAgents) outputs(declared []string, set map[string]string) []byte {
 	fields := make([]string, 0, len(declared))
 
 	for _, name := range declared {
-		value := dryOutput(name)
-		if sendBack && name == outputVerdict {
-			value = verdictChanges
+		value, named := set[name]
+		if !named {
+			value = dryOutput(name)
 		}
 
 		fields = append(fields, strconv.Quote(name)+":"+strconv.Quote(value))
