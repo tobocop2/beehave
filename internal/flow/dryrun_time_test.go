@@ -18,13 +18,21 @@ func TestDryRun_ASleepAWaitAndARecvEndAtOnce(t *testing.T) {
 	const text = "def main(item):\n    n = sleep(\"" + tenMinutes + "\", name = \"nap\")\n    w = wait(name = \"ask\", question = \"Go?\", timeout = \"" + tenMinutes + "\")\n    r = recv(topic = \"done\", timeout = \"" + tenMinutes + "\", name = \"got\")\n" +
 		"    if n.slept != 0 or not w.timed_out or not r.timed_out:\n        fail(\"WRONG RESULTS: %s %s %s\" % (n.slept, w.timed_out, r.timed_out))\n"
 
-	var out bytes.Buffer
+	out := &safeBuffer{}
+	done := make(chan error, 1)
 
-	started := time.Now()
+	file := dryFile(t, text)
 
-	require.NoError(t, DryRun(t.Context(), dryFile(t, text), "12", map[string]string{}, &out), out.String())
+	go func() { done <- DryRun(t.Context(), file, "12", map[string]string{}, out) }()
 
-	assert.Less(t, time.Since(started), 60*time.Second, "a call that waited its 10 minutes would take far longer, so a leak of any one call fails here")
+	select {
+	case err := <-done:
+		require.NoError(t, err, out.String())
+	case <-time.After(60 * time.Second):
+		// A dry run prints its steps at its end, so the output shows no call; the sleep, the wait or the recv took real time.
+		t.Fatal("the dry run took real time at its sleep, its wait or its recv: each call is scripted at 10 minutes and the run did not end in 60 seconds")
+	}
+
 	assert.Contains(t, out.String(), "sleep:nap#1/start", "the marker step of the sleep stays")
 	assert.Contains(t, out.String(), "sleep:nap#1:", "the sleep prints its step")
 	assert.Contains(t, out.String(), "wait:deadline", "the record of the deadline of the wait stays")
