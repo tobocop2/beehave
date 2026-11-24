@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"time"
 
 	"go.starlark.net/starlark"
 
@@ -29,17 +30,93 @@ func (l *gateList) Unpack(v starlark.Value) error {
 	*l = nil
 
 	for _, item := range dict.Items() {
-		name, nameOK := starlark.AsString(item[0])
-		command, commandOK := starlark.AsString(item[1])
-
-		if !nameOK || !commandOK {
-			return fmt.Errorf("the entry %s holds a %s and a %s, want a step name and a command", item[0].String(), item[0].Type(), item[1].Type())
+		spec, err := stepSpec(item[0], item[1])
+		if err != nil {
+			return err
 		}
 
-		*l = append(*l, model.GateSpec{Name: name, Command: command})
+		*l = append(*l, spec)
 	}
 
 	return nil
+}
+
+// stepSpec reads one entry of the dict: a step name and a command, or a step name and a dict with the keys `command` and `timeout`.
+func stepSpec(key, value starlark.Value) (model.GateSpec, error) {
+	name, ok := starlark.AsString(key)
+	if !ok {
+		return model.GateSpec{}, fmt.Errorf("the entry %s holds a %s as its name, want a step name", key.String(), key.Type())
+	}
+
+	if command, isText := starlark.AsString(value); isText {
+		return model.GateSpec{Name: name, Command: command}, nil
+	}
+
+	dict, isDict := value.(*starlark.Dict)
+	if !isDict {
+		return model.GateSpec{}, fmt.Errorf("the step %q holds a %s, want a command or a dict with `command` and `timeout`", name, value.Type())
+	}
+
+	return dictSpec(name, dict)
+}
+
+// dictSpec reads the dict form of a step. It refuses a key other than `command` and `timeout`, and a dict with no `command`.
+func dictSpec(name string, dict *starlark.Dict) (model.GateSpec, error) {
+	fields, err := dictFields(name, dict)
+	if err != nil {
+		return model.GateSpec{}, err
+	}
+
+	text, ok := starlark.AsString(fields.command)
+	if !ok {
+		return model.GateSpec{}, fmt.Errorf("the step %q needs a `command` that is a string", name)
+	}
+
+	limit, err := stepTimeout(name, fields.timeout)
+
+	return model.GateSpec{Name: name, Command: text, Timeout: limit}, err
+}
+
+// stepFields holds the values of the keys `command` and `timeout` of a step dict. A key that is not there leaves its value nil.
+type stepFields struct {
+	command, timeout starlark.Value
+}
+
+// dictFields reads the keys of a step dict and refuses any key other than `command` and `timeout`.
+func dictFields(name string, dict *starlark.Dict) (stepFields, error) {
+	var fields stepFields
+
+	for _, item := range dict.Items() {
+		switch key, _ := starlark.AsString(item[0]); key {
+		case "command":
+			fields.command = item[1]
+		case "timeout":
+			fields.timeout = item[1]
+		default:
+			return stepFields{}, fmt.Errorf("the step %q has the key %s, want only `command` and `timeout`", name, item[0].String())
+		}
+	}
+
+	return fields, nil
+}
+
+// stepTimeout reads the `timeout` of a step: a duration of at least one second, such as "10m". A step with no `timeout` has no limit of its own.
+func stepTimeout(name string, value starlark.Value) (time.Duration, error) {
+	if value == nil {
+		return 0, nil
+	}
+
+	text, ok := starlark.AsString(value)
+	if !ok {
+		return 0, fmt.Errorf("the `timeout` of the step %q holds a %s, want a duration string such as \"10m\"", name, value.Type())
+	}
+
+	parsed, err := time.ParseDuration(text)
+	if err != nil || parsed < time.Second {
+		return 0, fmt.Errorf("the `timeout` of the step %q must be a duration of at least 1s, such as \"10m\"; got `%s`", name, text)
+	}
+
+	return parsed, nil
 }
 
 // gateKeys checks the gate of a project: exactly one of gate and gate_steps, and a valid list when it is gate_steps.
