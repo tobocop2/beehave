@@ -99,7 +99,9 @@ A project sets either `gate` (one command line) or `gate_steps` (a dict of step 
 With `gate_steps`, the gate runs each command in the dict order and gives one result for each name. So a recipe that exits 0 without its work cannot hide behind another step.
 
 - A failed step does not stop the later steps.
-- A signal or the time limit stops the later steps and makes every step `unknown`.
+- A signal or the time limit of the whole gate (`host.max_run` on a build host) stops the later steps and makes every step `unknown`.
+- A step can have its own `timeout`. Write the value as a dict: `"build": {"command": "make build", "timeout": "10m"}`. The `timeout` is a duration of at least one second. A step that runs past its `timeout` is killed and is `unknown` with the reason "timeout" in the report. The later steps still run. The limit of the whole gate stays the outer bound.
+- On a build host, `timeout` ends the step with exit status 124. For a step that has a `timeout`, a marker line with `rc=124` reads as a timeout. A step with no `timeout` that exits 124 on its own is a failure.
 
 A job on a build host runs each command in the same way and writes the line `beehave-gate-step <name> rc=<code>` after it. The gate reads these lines from the log of a failed job:
 

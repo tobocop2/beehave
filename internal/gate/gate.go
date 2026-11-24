@@ -47,6 +47,9 @@ const (
 // so a command that exits 124 on its own is a failure, and a command that the limit killed is unresolved.
 const ExitTimedOut = -2
 
+// stepTimedOut is the code that the gate gives a step that its own timeout killed. It is never a code of the shell.
+const stepTimedOut = -3
+
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
 var ErrTreeChanged = errors.New("the tree is not the commit the gate judges")
 
@@ -374,7 +377,7 @@ func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
 	ran := specRun{steps: make([]Step, 0, len(specs)+1)}
 
 	for _, spec := range specs {
-		out, code := g.shell(ctx, request.Dir, probed(request.pins, spec.Command))
+		out, code := g.runSpec(ctx, request, spec)
 
 		if ran.add(spec, len(specs), out, code) {
 			return ran, code
@@ -382,6 +385,39 @@ func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
 	}
 
 	return ran, 0
+}
+
+// runSpec runs one step under its own limit. A step that its own limit killed while the gate still runs gives stepTimedOut and the reason in its output,
+// so the gate goes on with the next step. A kill by the limit of the whole gate keeps ExitTimedOut and stops the gate.
+func (g Gate) runSpec(ctx context.Context, request Request, spec model.GateSpec) (string, int) {
+	stepCtx, cancel := ctx, context.CancelFunc(func() {})
+	if spec.Timeout > 0 {
+		stepCtx, cancel = context.WithTimeout(ctx, spec.Timeout)
+	}
+
+	defer cancel()
+
+	out, code := g.shell(stepCtx, request.Dir, probed(request.pins, spec.Command))
+
+	if code == ExitTimedOut && ctx.Err() == nil && errors.Is(stepCtx.Err(), context.DeadlineExceeded) {
+		return out + "\n" + timeoutNote(spec) + "\n", stepTimedOut
+	}
+
+	return out, code
+}
+
+// timeoutNote is the reason that a step that its own limit killed gives.
+func timeoutNote(spec model.GateSpec) string {
+	return "the step " + spec.Name + " ran past its timeout of " + spec.Timeout.String() + " and was killed. Its result is unknown (timeout)."
+}
+
+// stepStatus is the result of a step from its code: a step that its own timeout killed is unknown, any other code is read as an exit code.
+func stepStatus(code int) Status {
+	if code == stepTimedOut {
+		return StatusUnknown
+	}
+
+	return exitStatus(code)
 }
 
 // add keeps the result of one step. It is true when the step stopped the gate: a probe that found a tool at another version, a signal, or the time limit.
@@ -400,7 +436,7 @@ func (r *specRun) add(spec model.GateSpec, count int, out string, code int) bool
 		r.first = code
 	}
 
-	r.steps = append(r.steps, Step{Name: spec.Name, Status: exitStatus(code)})
+	r.steps = append(r.steps, Step{Name: spec.Name, Status: stepStatus(code)})
 
 	return false
 }
@@ -579,6 +615,7 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 
 	if len(project.GateSteps) > 0 {
 		result.Steps = stepMarkerResults(log, project)
+		result.Report += timedOutReport(log, project)
 	}
 
 	return result
@@ -820,7 +857,7 @@ func gateWords(project model.Project, pins []Pin) []string {
 	var words []string
 
 	for _, spec := range project.GateSteps {
-		words = append(words, "{ "+limited(project, "sh -c "+model.ShellQuote(probed(pins, spec.Command)))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
+		words = append(words, "{ "+limited(project, stepLimited(spec, "sh -c "+model.ShellQuote(probed(pins, spec.Command))))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
 	}
 
 	return append(words, `[ -z "$bad" ]`)
@@ -829,17 +866,50 @@ func gateWords(project model.Project, pins []Pin) []string {
 // stepMarkerResults reads the marker lines of a gate list from the log of a job. A step with no marker is unknown, and a code other than 0 is a failure.
 // A step that the log marks twice is unknown: a later line, which any step can print, then cannot turn the real code into another one.
 // The marker is a line in the log that the step commands write to as well, so it is a reading and not proof.
+// A step with a timeout that the marker gives as code 124 ran past that timeout: it is unknown, as on a local gate.
 func stepMarkerResults(log string, project model.Project) []Step {
 	codes := markerCodes(log)
 	steps := hostSteps(project, StatusUnknown, StatusUnknown)
 
-	for i := range steps {
-		if got := codes[steps[i].Name]; len(got) == 1 {
+	for i, spec := range Specs(project) {
+		if got := codes[spec.Name]; len(got) == 1 && !hostStepTimedOut(spec, got[0]) {
 			steps[i].Status = exitStatus(atoiOr(got[0], 1))
 		}
 	}
 
 	return steps
+}
+
+// stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up.
+func stepLimited(spec model.GateSpec, command string) string {
+	if spec.Timeout <= 0 {
+		return command
+	}
+
+	return "timeout " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+}
+
+// hostTimeoutCode is the exit status that `timeout` gives for a command that it killed.
+const hostTimeoutCode = "124"
+
+// hostStepTimedOut is true for a step with a timeout whose marker line gives the code of `timeout`.
+func hostStepTimedOut(spec model.GateSpec, code string) bool {
+	return spec.Timeout > 0 && code == hostTimeoutCode
+}
+
+// timedOutReport names each step of a host gate that ran past its timeout, one line for each, or is empty when none did.
+func timedOutReport(log string, project model.Project) string {
+	var report strings.Builder
+
+	codes := markerCodes(log)
+
+	for _, spec := range project.GateSteps {
+		if got := codes[spec.Name]; len(got) == 1 && hostStepTimedOut(spec, got[0]) {
+			report.WriteString("\n" + timeoutNote(spec) + "\n")
+		}
+	}
+
+	return report.String()
 }
 
 // markerCodes lists the codes that the marker lines of the log give for each step name, in log order.
