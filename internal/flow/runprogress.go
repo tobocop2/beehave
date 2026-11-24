@@ -46,6 +46,8 @@ type RunProgress struct {
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Label is the label of the latest agent step that has one, as the workflow wrote it. It is empty for a run with no labeled agent step.
 	Label string `json:"label,omitempty"`
+	// ScopeOff is true when the run could not fix a scope because its project has no forge, so no merge of the run checks for a new closing issue.
+	ScopeOff bool `json:"scope_off,omitempty"`
 }
 
 // Notes lists the facts of the progress as short texts, one for each fact the run has: the cost, the step that runs now, the deadline of a wait,
@@ -66,12 +68,25 @@ func (p RunProgress) NotesAt(now time.Time) []string {
 		notes = append(notes, p.deadlineNote(now))
 	}
 
+	notes = append(notes, p.gateNotes()...)
+
+	if p.Label != "" {
+		notes = append(notes, p.Label)
+	}
+
+	return notes
+}
+
+// gateNotes are the notes of the last gate result and of a scope check that is off. A run with neither has none.
+func (p RunProgress) gateNotes() []string {
+	var notes []string
+
 	if p.Gate != nil {
 		notes = append(notes, p.Gate.text())
 	}
 
-	if p.Label != "" {
-		notes = append(notes, p.Label)
+	if p.ScopeOff {
+		notes = append(notes, "scope check off: the project has no forge")
 	}
 
 	return notes
@@ -209,6 +224,8 @@ func (p *RunProgress) take(line StepLine, open bool) {
 	if line.Label != "" {
 		p.Label = line.Label
 	}
+
+	p.ScopeOff = p.ScopeOff || line.ScopeOff
 
 	if open && (line.State == stepRunning || line.State == string(runRunning)) {
 		p.Now = line.Name

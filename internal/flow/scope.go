@@ -13,10 +13,11 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// scopeStep is the recorded step that keeps the scope of a pull request. The first gate of an item fixes the scope. A merge checks it for each member.
+// scopeStep is the recorded step that keeps the scope of a pull request. The first gate, review read or merge call of an item fixes the scope. A merge checks it for each member.
 const scopeStep = "scope"
 
 // keptStep is the kind of the recorded step that keeps an owner line: the issues that the owner kept for one member.
@@ -36,15 +37,18 @@ var issueRef = regexp.MustCompile(`(?i)` + issueRefText)
 
 // scopeRead is what one step of the scope records: the closing issues of the pull request, or Found false when the item has no pull request yet.
 // An issue is "#N" for the repository of the pull request and "owner/repo#N" for another one. A scope that an earlier run recorded as numbers still reads.
+// NoForge is true when the project has no forge, so there is no scope to fix and the scope check is off.
 type scopeRead struct {
-	Found  bool             `json:"found"`
-	Issues []model.IssueRef `json:"issues"`
+	Found   bool             `json:"found"`
+	Issues  []model.IssueRef `json:"issues"`
+	NoForge bool             `json:"no_forge,omitempty"`
 }
 
-// fixScope records the issues that the pull request of the item closes at the first review, which is the first gate that finds a pull request.
-// A later gate of the run keeps that set and reads nothing. A replay reads the recorded set, so it holds the same scope.
+// fixScope records the issues that the pull request of the item closes at the first review, which is the first gate, review read or merge call that finds a pull request.
+// A later call of the run keeps that set and reads nothing. A replay reads the recorded set, so it holds the same scope.
+// A project with no forge has no scope: the step records that the scope check is off, and no later call reads again.
 func (s *script) fixScope(label string) error {
-	if s.fixed {
+	if s.fixed || s.scopeOff {
 		return nil
 	}
 
@@ -52,6 +56,8 @@ func (s *script) fixScope(label string) error {
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", scopeStep, s.in.Item, err)
 	}
+
+	s.scopeOff = read.NoForge
 
 	if read.Found {
 		s.fixed, s.scope = true, read.Issues
@@ -68,7 +74,12 @@ func (s *script) firstRead(ctx context.Context) (scopeRead, error) {
 		return earlier, err
 	}
 
-	return s.readClosing(ctx, s.in.Item)
+	read, err := s.readClosing(ctx, s.in.Item)
+	if errors.Is(err, forgepkg.ErrNoForge) {
+		return scopeRead{Issues: []model.IssueRef{}, NoForge: true}, nil
+	}
+
+	return read, err
 }
 
 // earlierScope returns the scope of the newest earlier run of the item that recorded one, or a read with Found false.
