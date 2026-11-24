@@ -19,6 +19,15 @@ func TestDecodeHook_ReadsTheCallThatThePluginForwards(t *testing.T) {
 	assert.Equal(t, agent.HookCall{Dir: "/work", Command: "git add -A"}, call)
 }
 
+func TestDecodeHook_ReadsTheShellCallOfOpenCode2x(t *testing.T) {
+	t.Parallel()
+
+	call, err := opencode.DecodeHook(`{"directory":"/work","tool":"shell","args":{"command":"git add -A"}}`)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.HookCall{Dir: "/work", Command: "git add -A"}, call)
+}
+
 func TestDecodeHook_ACallOfAnotherToolIsAnError(t *testing.T) {
 	t.Parallel()
 
