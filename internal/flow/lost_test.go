@@ -165,13 +165,19 @@ func TestClient_TheLostStepIsListedWithItsRecordAsTheOutput(t *testing.T) {
 	harness := lostRun(t, 33*time.Minute)
 
 	next := harness.engine(t)
-	_, err := next.Run(testItem, testProject)
-	require.NoError(t, err)
+	_, runErr := next.Run(testItem, testProject)
+	require.NoError(t, runErr)
+
+	// The loss step is recorded before the agent starts again, so a second request shows the run reached it.
+	require.Len(t, harness.agents.seen(), 2, "the run reached the step that records the loss, run error: %v", runErr)
 
 	client := harness.client(t, testVersion)
 	phases, err := dbos.ListWorkflows(client.flow, dbos.WithFilterName(phaseName))
 	require.NoError(t, err)
-	require.NotEmpty(t, phases)
+
+	workflows, err := dbos.ListWorkflows(client.flow)
+	require.NoError(t, err)
+	require.NotEmpty(t, phases, "run error: %v; workflows: %+v", runErr, workflows)
 
 	var found []dbos.StepInfo
 
