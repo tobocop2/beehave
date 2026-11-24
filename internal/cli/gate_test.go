@@ -448,5 +448,5 @@ func TestGate_ABuildWithoutTheOwnerCommandHasNoGateCommand(t *testing.T) {
 	code := cli.Execute(t.Context(), []string{"gate", "--own-program", "7", "--config", rig.dir}, cli.BuildInfo{Registry: registry(), Flow: rig.factory()}, rig.env, &stdout, &stderr)
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), "unknown command")
+	assert.Contains(t, stderr.String(), "unknown flag: --own-program", "the gate group of a build without the owner command has the hold commands and no own-program flag")
 }
