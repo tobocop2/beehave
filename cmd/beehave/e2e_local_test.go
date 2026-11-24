@@ -70,29 +70,40 @@ func e2eReal() {
 // cmdExample is "example <path> [<to>]": it copies examples/<path> of the repository to <to> (default <path>) in the work folder.
 // The script then runs the file that users copy, not a second version of it.
 func cmdExample(ts *testscript.TestScript, _ bool, args []string) {
+	copyIntoWork(ts, "example", filepath.Join("..", ".."), "examples", args)
+}
+
+// cmdFixture is "fixture <path> [<to>]": it copies testdata/fixtures/<path> to <to> (default <path>) in the work folder.
+// The fixture is a file of this package that stays valid for the engine; it does not follow a file of the examples folder.
+func cmdFixture(ts *testscript.TestScript, _ bool, args []string) {
+	copyIntoWork(ts, "fixture", "testdata", "fixtures", args)
+}
+
+// copyIntoWork copies the file args[0] of the folder parent/folder to args[1] (default args[0]) in the work folder, for the command name.
+func copyIntoWork(ts *testscript.TestScript, name, parent, folder string, args []string) {
 	if len(args) < 1 || len(args) > 2 {
-		ts.Fatalf("usage: example <path> [<to>]")
+		ts.Fatalf("usage: %s <path> [<to>]", name)
 	}
 
 	to := args[len(args)-1]
 
-	examples := openRoot(ts, filepath.Join("..", ".."), "examples")
-	defer examples.Close()
+	source := openRoot(ts, parent, folder)
+	defer source.Close()
 
 	work := openRoot(ts, ts.Getenv("WORK"), "")
 	defer work.Close()
 
-	text, err := examples.ReadFile(args[0])
+	text, err := source.ReadFile(args[0])
 	if err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 
 	if err := work.MkdirAll(filepath.Dir(to), e2eFolderMode); err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 
 	if err := work.WriteFile(to, text, e2eFileMode); err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 }
 
