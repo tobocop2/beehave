@@ -33,6 +33,7 @@ const closingField = "closing"
 // OwnDraft is the number of the draft that the run opened for this member, or zero when the member names none.
 // Closes holds the issues that the pull request must close, and nothing else: an empty list means it closes no issue.
 // Kept holds the issues that the owner kept. Closing is nil when the member pins no set, and a list (empty for no issue) when it does.
+// The fields are those of a batch member in the same order, so the merge converts one into the other and a field that only one of them has does not compile.
 type PullRequest struct {
 	Item, Head string
 	Approved   bool

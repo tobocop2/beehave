@@ -782,6 +782,85 @@ func TestHoldScope_ANewIssueOfAMemberWhoseFirstReviewClosedNoIssueIsAskedAboutWi
 	require.NoError(t, receive(t, done).err)
 }
 
+// mergeForm is one form of a merge call over the members that hold_scope let through: the argument that passes them, and the expression of the refusal reasons in its result.
+type mergeForm struct{ members, reasons string }
+
+// mergeForms are the two forms of a merge call: the list and the one member.
+func mergeForms() map[string]mergeForm {
+	return map[string]mergeForm{
+		"prs":    {members: "prs = held.prs", reasons: `",".join([r.reason for r in out.rejected])`},
+		"member": {members: "member = held.prs[0]", reasons: "out.reason"},
+	}
+}
+
+// heldMergeFlow fixes the scope, checks the pull request of item 1, merges it with the form and the owner identities, and reports the refusal reasons of the result.
+func (r *batchRig) heldMergeFlow(form mergeForm) string {
+	return scopeLoad + "def main(item):\n    " + fixFirstReview + "\n" +
+		`    held = hold_scope(name = "h", own = own, prs = [struct(item = "1", head = "` + r.heads["1"] + `", closes = [])])` + "\n" +
+		`    out = merge(` + form.members + `, base = "main", repo = "o/r", own = {"logins": ["` + shipOwner + `"], "emails": ["` + shipMail + `"]}, name = "b")` + "\n" +
+		`    command(name = "report", run = ["report", ` + form.reasons + `])` + "\n"
+}
+
+// keepThirteen runs the workflow text as item 1 over a scope of #12 and a check that reads #12 and #13, answers "keep #13", and returns the report of the run.
+func keepThirteen(t *testing.T, rig *batchRig, engine *Engine, text string) string {
+	t.Helper()
+
+	done := rig.runFlowAs(t, engine, "1", text)
+
+	questionOf(t, rig.h, "1")
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}))
+	require.NoError(t, receive(t, done).err)
+
+	ran := rig.h.commands.ran()
+	require.Len(t, ran, 1)
+
+	return ran[0]
+}
+
+func TestHoldScope_EachFormOfMergeGivesTheMergerTheKeptIssuesAndTheCheckedSetOfTheMember(t *testing.T) {
+	t.Parallel()
+
+	for name, form := range mergeForms() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newBatchRig(t)
+			rig.h.forge.closing = [][]int{{12}, {12, 13}}
+			keepThirteen(t, rig, rig.engine(t), rig.heldMergeFlow(form))
+
+			require.Len(t, rig.merger.given, 1)
+			assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[0].Kept, "the closing keyword guard of the merge may name the kept issue")
+			assert.Equal(t, []model.IssueRef{"#12", "#13"}, rig.merger.given[0].Closing, "the merge pins the set that the check read")
+		})
+	}
+}
+
+func TestHoldScope_EachFormOfMergeRefusesAMemberWhoseClosingSetChangedAfterTheCheck(t *testing.T) {
+	t.Parallel()
+
+	for name, form := range mergeForms() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newBatchRig(t)
+			rig.h.forge.closing = [][]int{{12}, {12, 13}}
+			world := &shipWorld{pull: shipPull(t, rig.heads["1"], map[string]any{"baseRefName": "main"})}
+			deps := rig.deps()
+			deps.Merge = &fakeMerge{over: mergerOver(world)}
+
+			engine, err := NewEngine(t.Context(), rig.h.opts, deps)
+			require.NoError(t, err)
+			require.NoError(t, engine.Launch())
+			t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+			report := keepThirteen(t, rig, engine, rig.heldMergeFlow(form))
+
+			assert.Contains(t, report, "closes no issue now, and closed #12 #13 when the scope check read it", "the forge lists no issue at the merge, so the pinned set refuses")
+			assert.Empty(t, world.writes, "a refused member has had no write on the forge")
+		})
+	}
+}
+
 func TestKeepIssues_ReadsOnlyTheKeepForm(t *testing.T) {
 	t.Parallel()
 

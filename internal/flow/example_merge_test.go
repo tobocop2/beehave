@@ -173,7 +173,7 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 		world.listed = settings.Closes
 
 		return merge.Run(ctx, world, merge.Request{
-			Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+			Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 			Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
 		}), nil

@@ -274,7 +274,7 @@ func (c *batchCall) fillOne(member, forbid, own starlark.Value) error {
 	}
 
 	c.single = true
-	c.members = []batch.Member{{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft, Closes: pr.Closes}}
+	c.members = []batch.Member{batch.Member(pr)}
 
 	return c.settings.read(forbid, own)
 }
@@ -355,7 +355,7 @@ func members(v starlark.Value) ([]batch.Member, error) {
 
 	list := make([]batch.Member, len(prs))
 	for i, pr := range prs {
-		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft, Closes: pr.Closes, Kept: pr.Kept, Closing: pr.Closing}
+		list[i] = batch.Member(pr)
 	}
 
 	return list, nil
