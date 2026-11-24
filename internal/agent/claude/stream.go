@@ -60,7 +60,7 @@ func (Adapter) Calls(line string) agent.Seen {
 	limit, denied := refusalOf(value)
 
 	return agent.Seen{
-		Cost: costOf(value), Stop: stopOf(value), Failed: failedOf(value), Result: lineType(value) == resultType,
+		Cost: costOf(value), Context: contextOf(value), Stop: stopOf(value), Failed: failedOf(value), Result: lineType(value) == resultType,
 		Shell: toolCalls(value, bashTool, bashKey, false), Skills: skillCalls(value), Succeeded: succeededIDs(value), Refused: refusedIDs(value), Denials: denialsOf(value),
 		Limit: limit, Denied: denied, Said: saidOf(value),
 	}
@@ -277,6 +277,32 @@ func costOf(value any) float64 {
 	}
 
 	return cost
+}
+
+// contextOf returns the tokens in the context of the main agent after the turn of an assistant line: input_tokens, cache_read_input_tokens and
+// cache_creation_input_tokens of message.usage. A line of a sub-agent (parent_tool_use_id set), a line with no usage and any other line give 0.
+func contextOf(value any) int64 {
+	if lineType(value) != assistantType {
+		return 0
+	}
+
+	line, _ := value.(map[string]any) //nolint:errcheck // lineType found an object
+	if line["parent_tool_use_id"] != nil {
+		return 0
+	}
+
+	usage := object(object(line, "message"), "usage")
+
+	var total int64
+
+	for _, field := range []string{"input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"} {
+		count, _ := usage[field].(float64) //nolint:errcheck // a missing or ill-typed count reads as 0
+		if count > 0 {
+			total += int64(count)
+		}
+	}
+
+	return total
 }
 
 // stopOf returns the cap that a result line reports in its subtype, or "" for any other line.

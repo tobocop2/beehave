@@ -243,6 +243,12 @@ func triesRule(v starlark.Value) error {
 	return OutputTries(tries)
 }
 
+func contextRule(v starlark.Value) error {
+	percent, _ := starlark.AsInt32(v) //nolint:errcheck // the unpack check has refused a value that the destination cannot take
+
+	return ContextPercent(percent)
+}
+
 func ownDraftRule(v starlark.Value) error {
 	_, err := OwnDraft(v)
 
@@ -329,7 +335,7 @@ func agentParams() []Param {
 		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), opt(LabelKeyword, KindText), ruled("timeout", KindText, durationRule("timeout")),
-		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), ruled("max_context_percent", KindInt, contextRule), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 		ruled(dataKeyword, KindDict, dataRule), ruled("skill", KindText, skillRule),
 	}
 }

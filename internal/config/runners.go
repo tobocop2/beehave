@@ -56,6 +56,9 @@ type agents struct {
 	RetentionDays int
 	// TraceParent passes a W3C TRACEPARENT to each agent process, built from the run and the step. The default is false: no trace variable reaches an agent.
 	TraceParent bool
+	// ContextWindowTokens is the context window of the agent model in tokens. The max_context_percent of a step counts against it. The default is DefaultContextWindowTokens.
+	// 0 means the window is unknown, and no context limit fires.
+	ContextWindowTokens int
 }
 
 // runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
@@ -70,7 +73,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?", "trace_parent?", "max_week_budget_usd?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?", "trace_parent?", "max_week_budget_usd?", "context_window_tokens?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -98,7 +101,7 @@ func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) err
 	budget, runBudget, treeBudget, weekBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD), number(f.agents.MaxWeekBudgetUSD)
 	var mode starlark.Value = starlark.String(f.agents.Concurrency)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode, &f.agents.TraceParent, &weekBudget); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode, &f.agents.TraceParent, &weekBudget, &f.agents.ContextWindowTokens); err != nil {
 		return err
 	}
 

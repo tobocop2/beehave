@@ -51,6 +51,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `agent` | `inputs` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
 | `agent` | `label` | #497: new, a free text for the ledger and the status line | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `max_budget_usd` | unchanged | 1: `examples/swarm/workflow.star` |
+| `agent` | `max_context_percent` | #873: new, the share of the context window in percent at which the step stops with the stop `context` | 1: `examples/swarm/workflow.star` |
 | `agent` | `model` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
 | `agent` | `name` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
 | `agent` | `output_tries` | unchanged | 3: `examples/remediation/workflow.star`, `examples/research/workflow.star` and 1 more |

@@ -36,6 +36,8 @@ type AgentRequest struct {
 	Protect     []string
 	// MaxBudget is the most dollars that the run may spend, passed to the budget option of the agent CLI. 0 means the step sets no cap.
 	MaxBudget float64
+	// MaxContextPercent is the share of the context window, in percent, at which the run stops with the stop reason context. 0 means the step sets no limit.
+	MaxContextPercent int
 	// NoEdits starts the agent so that it cannot edit files. Shell commands stay allowed.
 	NoEdits bool
 	// Sandbox is the sandbox the shell of the step runs in, or nil for none.

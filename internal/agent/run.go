@@ -37,6 +37,8 @@ const (
 	// A cap crossed on the last line (read after the process exited) ends the run as OutcomeBudgetCap too.
 	OutcomeTurnCap   Outcome = "turn-cap"
 	OutcomeBudgetCap Outcome = "budget-cap"
+	// OutcomeContextCap means the context of the run reached Spec.MaxContextPercent of Spec.ContextWindow, and the runner stopped the run.
+	OutcomeContextCap Outcome = "context-cap"
 	// OutcomeLimited means a provider limit (a rate limit or a spend limit) refused more work, and Result.Limit says which. The caller sets it from the
 	// output of the CLI, whatever the exit code.
 	OutcomeLimited Outcome = "limited"
@@ -66,6 +68,7 @@ var (
 	errIdleTimeout  = errors.New("idle timeout")
 	errTurnCap      = errors.New("turn cap")
 	errBudgetCap    = errors.New("budget cap")
+	errContextCap   = errors.New("context cap")
 )
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
@@ -90,8 +93,12 @@ type Spec struct {
 	// A profile without the turn flag has no turns of its own: the runner counts the shell calls of the run, and a call past MaxTurns ends the run with OutcomeTurnCap.
 	MaxTurns  int
 	MaxBudget float64
-	Log       io.Writer
-	OnStart   func(pid int)
+	// MaxContextPercent and ContextWindow cap the context of one run: the runner ends it with OutcomeContextCap on the first line whose context figure
+	// (Seen.Context) is at or past MaxContextPercent percent of ContextWindow tokens. 0 in either means no cap. An adapter that reports no figure never reaches it.
+	MaxContextPercent int
+	ContextWindow     int64
+	Log               io.Writer
+	OnStart           func(pid int)
 	// BeforeStart, when set, runs after every check that can refuse the run and just before the CLI starts. A refused run never calls it.
 	// The note it returns is added to the result of the run. Its time does not count against Timeout: the total limit starts again after it.
 	BeforeStart func(ctx context.Context) string
@@ -627,9 +634,7 @@ func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *reda
 		log = io.Discard
 	}
 
-	if spec.MaxTurns > 0 && spec.Adapter.Profile().TurnsFlag == "" {
-		log = &stepCounter{out: log, adapter: spec.Adapter, limit: spec.MaxTurns, cancel: cancel, seen: map[string]bool{}}
-	}
+	log = newContextCounter(spec, newStepCounter(spec, log, cancel), cancel)
 
 	counter := newSpendCounter(spec, log, cancel)
 	if counter != nil {
@@ -669,6 +674,8 @@ func outcomeOf(cause error) Outcome {
 		return OutcomeTurnCap
 	case errors.Is(cause, errBudgetCap):
 		return OutcomeBudgetCap
+	case errors.Is(cause, errContextCap):
+		return OutcomeContextCap
 	}
 
 	return OutcomeCancelled

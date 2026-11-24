@@ -45,6 +45,8 @@ def run_step(name, prompt, inputs):
         inputs = inputs,
         idle_timeout = IDLE_TIMEOUT,
         max_budget_usd = 6,
+        # A lane that fills 80 percent of its context window stops with the stop "context", before the model loses earlier decisions.
+        max_context_percent = 80,
     )
     if done.stop != "":
         fail("REFUSE: the %s step stopped at the %s cap before it finished." % (name, done.stop))
