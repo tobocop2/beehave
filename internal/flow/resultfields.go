@@ -108,7 +108,7 @@ func prHistoryOutputs(pulls []model.PriorPull) map[string]any {
 }
 
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
-// stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
+// stop is "turns", "budget" or "context" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
 // cost_estimated is true when cost_usd is an estimate that beehave made from the tokens of the run, and false when the agent CLI reported the cost.
 // cost_unknown is true when the run used tokens of a model that has no price, so cost_usd holds no dollars for it.

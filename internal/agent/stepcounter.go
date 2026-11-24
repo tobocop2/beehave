@@ -19,6 +19,15 @@ type stepCounter struct {
 	steps   int
 }
 
+// newStepCounter returns the counter in front of out when the runner enforces the turn cap (a cap is set and the profile has no turn flag), and out itself otherwise.
+func newStepCounter(spec Spec, out io.Writer, cancel context.CancelCauseFunc) io.Writer {
+	if spec.MaxTurns <= 0 || spec.Adapter.Profile().TurnsFlag != "" {
+		return out
+	}
+
+	return &stepCounter{out: out, adapter: spec.Adapter, limit: spec.MaxTurns, cancel: cancel, seen: map[string]bool{}}
+}
+
 func (c *stepCounter) Write(data []byte) (int, error) {
 	n, err := c.out.Write(data)
 

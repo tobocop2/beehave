@@ -1294,7 +1294,7 @@ def _lane(item, project, round_settings):
         **scope
     )
 
-    # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
+    # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
     capped(implement, "implement", item)
     kept_history(implement, "implement", item)
 

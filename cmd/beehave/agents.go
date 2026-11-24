@@ -72,6 +72,8 @@ type agents struct {
 	maxWeekBudget float64
 	// traceParent is agents.trace_parent: each agent process gets a TRACEPARENT of its run and step.
 	traceParent bool
+	// contextWindow is agents.context_window_tokens, the window that the context percent of a step counts against. 0 means unknown: no context limit fires.
+	contextWindow int64
 	// prices is the price table that estimates the cost of a CLI that reports tokens and no dollars.
 	prices agent.Prices
 	// home returns the home folder of the owner, which a sandboxed step cannot read.
@@ -110,8 +112,8 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		repos:    repos,
 		modules:  moduleFiller(opts),
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
-		traceParent: cfg.Agents.TraceParent,
-		prices:      agent.DefaultPrices(),
+		traceParent: cfg.Agents.TraceParent, contextWindow: int64(cfg.Agents.ContextWindowTokens),
+		prices: agent.DefaultPrices(),
 	}
 }
 
@@ -175,6 +177,7 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env, Redact: request.Redact,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
+		MaxContextPercent: request.MaxContextPercent, ContextWindow: a.contextWindow,
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
 		Traceparent: a.traceparentOf(request),
 	}
@@ -551,7 +554,8 @@ func describe(adapter agent.Adapter, folder, dir string, tap *sessionTap, result
 	stop := tap.stopped()
 	// The runner ends a run as a budget cap when the dollars on the output pass the cap, or when a capped run reported none. The cap is an outcome: the run
 	// still produced a session, a message and commands, and the violations check must see them. The run may have been killed before it named a session.
-	budgetCap := result.Outcome == agent.OutcomeBudgetCap
+	// The context limit is an outcome of the runner in the same way, and the run may have been killed before it named a session.
+	budgetCap := result.Outcome == agent.OutcomeBudgetCap || result.Outcome == agent.OutcomeContextCap
 	// A provider limit is an outcome in the same way, whatever the exit code, and its error result is no failure of the agent.
 	result, limited := limitedBy(result, tap.limited())
 

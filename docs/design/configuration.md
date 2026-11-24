@@ -25,6 +25,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 | `concurrency` | The mode of the cap of the agents queue: `"static"` or `"adaptive"`. | Default `"static"`: the queue holds `max_concurrent`. Any other value is refused. | `BEEHAVE_AGENTS_CONCURRENCY` |
 | `max_turns` | The cap of turns for one agent run. | 0 means no cap. | |
 | `max_budget_usd` | The cap of dollars for one agent run. | 0 means no cap. | |
+| `context_window_tokens` | The context window of the agent model in tokens. The `max_context_percent` of an `agent` call counts against it. | Default 200000. 0 means the window is unknown, and no context limit fires. A negative value is refused. A model with a larger window needs the key set. | |
 | `max_run_budget_usd` | The cap of dollars for the agent steps of one run in all. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD` |
 | `max_tree_budget_usd` | The cap of dollars for the agent steps of an item tree in all: the root run and every run it spawns. A spawned run uses the cap of its root. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD` |
 | `max_week_budget_usd` | The cap of dollars for the agent steps of all items in any seven days. The sum counts the agent steps that ended in the last seven days, and a step that ended exactly seven days ago counts. | 0 means no cap. A `retention_days` from 1 to 6 is refused with a week cap, because it deletes finished runs before they leave the window. Two steps that start at once can both start under the cap. | `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD` |
