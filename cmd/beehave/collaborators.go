@@ -1309,6 +1309,31 @@ func (p pulls) Preflight(ctx context.Context, project, item string, req prefligh
 	return preflight.Check(ctx, built, req, hold)
 }
 
+// ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
+func (p pulls) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	number, err := anyState(ctx, built, item)
+	if err != nil || number == 0 {
+		return model.PullFacts{}, err
+	}
+
+	return built.PullRead(ctx, number)
+}
+
+// IssueAssignees reads who holds an issue of the project, on its own repository when repo names one.
+func (p pulls) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return built.IssueAssignees(ctx, repo, number)
+}
+
 // anyState returns the number of the pull request of the item: the open one on its branch, then an open one that names it, then the merged one, then the newest closed one. It is 0 when there is none.
 func anyState(ctx context.Context, built forge.Forge, item string) (int, error) {
 	number, err := listed(ctx, built, item, "open")

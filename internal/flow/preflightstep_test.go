@@ -15,6 +15,8 @@ import (
 
 // fakePreflight answers each call with result and err, and records what it was asked.
 type fakePreflight struct {
+	noReads
+
 	mu     sync.Mutex
 	result preflight.Result
 	err    error
@@ -223,6 +225,30 @@ func (p preflightOver) Preflight(ctx context.Context, _, _ string, req preflight
 
 	return preflight.Check(ctx, p.world, req, hold)
 }
+
+// ReadPull reads the pull request that the fake holds, as the reader of the engine does.
+func (p preflightOver) ReadPull(ctx context.Context, _, _ string) (model.PullFacts, error) {
+	view, err := p.world.PRView(ctx, testPull)
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	return view.Read(testPull)
+}
+
+// IssueAssignees reads the issue on the fake.
+func (p preflightOver) IssueAssignees(ctx context.Context, _, repo string, number int) ([]string, error) {
+	return p.world.IssueAssignees(ctx, repo, number)
+}
+
+// noReads is the part of a preflight fake that finds no pull request and no issue holder.
+type noReads struct{}
+
+func (noReads) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+	return model.PullFacts{}, nil
+}
+
+func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, error) { return nil, nil }
 
 // goneBranch is a forge whose head branch is no longer on the remote.
 type goneBranch struct{ *shipWorld }

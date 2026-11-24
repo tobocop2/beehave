@@ -660,3 +660,13 @@ type dryPreflight struct{}
 func (dryPreflight) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
 	return preflight.Result{Stop: preflight.Unchanged, Summary: "dry run"}, nil
 }
+
+// ReadPull finds an open pull request that nobody holds, so the claim stops of a dry run pass.
+func (dryPreflight) ReadPull(_ context.Context, _, _ string) (model.PullFacts, error) {
+	return model.PullFacts{Number: 1, State: "OPEN", Head: "dry-run", Base: "main", Author: "dry-run"}, nil
+}
+
+// IssueAssignees finds an issue that nobody holds.
+func (dryPreflight) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
+}

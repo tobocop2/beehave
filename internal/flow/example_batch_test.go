@@ -21,6 +21,8 @@ import (
 // remoteBranches is a preflight reader over the branches on the remote: the head of each branch, and no entry for a branch that is gone.
 // It gives the stops that the real check gives for a branch that is gone and for a head that is not the head the call expects.
 type remoteBranches struct {
+	noReads
+
 	mu    sync.Mutex
 	heads map[string]string
 	asked []string

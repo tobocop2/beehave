@@ -203,7 +203,7 @@ func newCheckWorkflowCommand(ctx context.Context, env map[string]string, registr
 
 // flags adds --project and --config to the command.
 func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
-	command.Flags().StringVar(&p.project, projectFlag, "", "a project of the config: refuse each call of gate, merge or preflight when the project has no repository")
+	command.Flags().StringVar(&p.project, projectFlag, "", "a project of the config: refuse each call of gate, merge, preflight, pr_read or issue_assignees when the project has no repository")
 	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
 
 	return command

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 )
 
@@ -44,6 +45,18 @@ func (p *turningPreflight) Preflight(ctx context.Context, project, item string, 
 	}
 
 	return preflightOver{p.world}.Preflight(ctx, project, item, req, hold)
+}
+
+func (p *turningPreflight) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
+	p.mu.Lock()
+	world := p.world
+	p.mu.Unlock()
+
+	return preflightOver{world}.ReadPull(ctx, project, item)
+}
+
+func (p *turningPreflight) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
+	return preflightOver{p.world}.IssueAssignees(ctx, project, repo, number)
 }
 
 // stopLoopRig is the example rig with a review that asks for changes on every pass and a forge that turns at the call turnAt.
