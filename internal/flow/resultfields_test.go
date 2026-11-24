@@ -45,6 +45,8 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"agent":           keysOf(agentOutputs("", "", "", "", "", "", agent.Spend{}, false, false, nil)),
 		"command":         keysOf(commandOutputs(CommandOutput{}, 1)),
 		"earlier_calls":   keysOf(earlierOutputs(0)),
+		"earlier_reads":   keysOf(earlierReadsOutputs(nil)),
+		"pr_closing":      keysOf(prClosingOutputs(closingRead{})),
 		"gate":            keysOf(gateOutputs(true, "", "", "", nil, nil, nil)),
 		"facts":           keysOf(factsOutputs(model.Project{})),
 		"item_comment":    keysOf(commentOutputs("")),

@@ -15,15 +15,16 @@ import (
 // with no bump of a module breaks the test, unless the change also rewrites the entry of the current versions, which a review sees in the diff.
 // A change behind a patch leaves the base lists alone, so it needs no new entry.
 var goldenRecorded = map[string]string{
-	"core18.agent15.tracker2.forge6.land9.gate6.host1.round5":  "87c995bf3380115401d3164685d0c9c00a088e12c1c8132d8bb5c513b744b4a9",
-	"core18.agent15.tracker2.forge7.land9.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core18.agent15.tracker2.forge7.land10.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core18.agent15.tracker2.forge7.land11.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core18.agent15.tracker2.forge7.land12.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core19.agent15.tracker2.forge7.land12.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core19.agent15.tracker2.forge7.land13.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
-	"core19.agent15.tracker3.forge8.land13.gate6.host1.round5": "d2e27aa5bab908ddda26f2481fd7ce7b9cbf9a743889dfb322edb84b73dfc6a1",
-	"core19.agent15.tracker4.forge9.land13.gate6.host1.round6": "c0437bb0e8c2a569677e50e4dc410a5a99b8c1fe1a579c25ca0d6b9b48550bd6",
+	"core18.agent15.tracker2.forge6.land9.gate6.host1.round5":   "87c995bf3380115401d3164685d0c9c00a088e12c1c8132d8bb5c513b744b4a9",
+	"core18.agent15.tracker2.forge7.land9.gate6.host1.round5":   "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core18.agent15.tracker2.forge7.land10.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core18.agent15.tracker2.forge7.land11.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core18.agent15.tracker2.forge7.land12.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core19.agent15.tracker2.forge7.land12.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core19.agent15.tracker2.forge7.land13.gate6.host1.round5":  "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core19.agent15.tracker3.forge8.land13.gate6.host1.round5":  "d2e27aa5bab908ddda26f2481fd7ce7b9cbf9a743889dfb322edb84b73dfc6a1",
+	"core19.agent15.tracker4.forge9.land13.gate6.host1.round6":  "c0437bb0e8c2a569677e50e4dc410a5a99b8c1fe1a579c25ca0d6b9b48550bd6",
+	"core20.agent15.tracker4.forge10.land13.gate6.host1.round6": "b75c8dd18ff96322209c22013bd57d35ad10428f2543b4c9632525c9058a15a3",
 }
 
 // goldenDigest is the digest of the base lists, the shapes and the kinds. It covers each golden list of the step tests, not only the lists of goldenFlow.
