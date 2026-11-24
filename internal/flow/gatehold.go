@@ -240,6 +240,10 @@ func (e *Engine) reopenJob(ctx dbos.Context, job, queue string) error {
 		return ownedGate(err)
 	}
 
+	if e.jobStopped != nil {
+		e.jobStopped(ctx)
+	}
+
 	return resumeJob(ctx, job, queue)
 }
 

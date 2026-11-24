@@ -67,6 +67,13 @@ type holdRig struct {
 func newHoldRig(t *testing.T, gated stopGate) holdRig {
 	t.Helper()
 
+	return newStoppedHoldRig(t, gated, nil)
+}
+
+// newStoppedHoldRig is a hold rig whose engine calls stopped in a gate run between the recorded stop of the build job and its resume. A nil stopped calls nothing.
+func newStoppedHoldRig(t *testing.T, gated stopGate, stopped func(engine *Engine, ctx dbos.Context)) holdRig {
+	t.Helper()
+
 	h := newHarness(t)
 	h.forge.state = review.Standing{Number: testPull, Head: "A"}
 	h.slots = gateCounts(map[string]*atomic.Int32{"box": slotCount(1)})
@@ -76,6 +83,10 @@ func newHoldRig(t *testing.T, gated stopGate) holdRig {
 
 	engine, err := NewEngine(t.Context(), h.opts, deps)
 	require.NoError(t, err)
+
+	if stopped != nil {
+		engine.jobStopped = func(ctx dbos.Context) { stopped(engine, ctx) }
+	}
 
 	probe := waitProbe{engine: engine, lost: make(chan error, 1)}
 	dbos.RegisterWorkflow(engine.ctx, gateQueuer{engine}.queue, dbos.WithWorkflowName("test-queue-gate"))
@@ -950,6 +961,130 @@ func TestGateHold_ARestartAfterTheReopenOfTheJobReplaysTheReopenAndRunsTheJobOnc
 	require.NoError(t, err)
 	assert.Equal(t, 1, countSteps(steps, "DBOS.resumeWorkflow"), "the gate reopened its job once")
 	assert.Equal(t, 1, countSteps(steps, jobStopStepName), "the gate waited for the stop of its job once")
+}
+
+func TestGateHold_ACancelOfTheGateBetweenTheStopOfItsJobAndTheResumeOpensNoJob(t *testing.T) {
+	t.Parallel()
+
+	gated := newStopGate("1")
+
+	var fired atomic.Bool
+
+	canceled := make(chan error, 1)
+
+	rig := newStoppedHoldRig(t, gated, func(engine *Engine, ctx dbos.Context) {
+		if !fired.CompareAndSwap(false, true) {
+			return
+		}
+
+		id, err := dbos.GetWorkflowID(ctx)
+		if err == nil {
+			err = dbos.CancelWorkflows(engine.ctx, []string{id}, dbos.WithCancelChildren())
+		}
+
+		canceled <- err
+	})
+
+	ended := rig.queue("1")
+	rig.expect(t, "start 1")
+
+	gate, ok, err := rig.client.readGate("1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	running := rig.attemptsOfRunningJob(t)
+
+	require.NoError(t, rig.client.HoldGate("1"))
+	rig.h.tick(t)
+	receive(t, running)
+
+	require.NoError(t, rig.client.ReleaseGate("1"))
+	require.NoError(t, receive(t, canceled), "the gate is canceled after its stop step is recorded and before the resume")
+	require.Error(t, receive(t, ended).err)
+
+	require.Never(t, func() bool {
+		rows, err := rig.engine.store().List(dbos.WithFilterWorkflowIDs(gate.job.ID))
+
+		return err != nil || len(rows) != 1 || rows[0].Status != dbos.WorkflowStatusCancelled || len(gated.events) > 0
+	}, 3*storePoll, 100*time.Millisecond, "the resume of a canceled gate is refused: the job stays canceled and no program starts")
+}
+
+func TestGateHold_ARestartInTheSecondReopenOfAGateReplaysBothReopensAndRunsTheJobOnce(t *testing.T) {
+	t.Parallel()
+
+	gated := newStopGate("1")
+
+	reached := make(chan struct{}, 1)
+
+	// A replay passes the hook too, so the hook stops the engine only once the second stop step is recorded and its resume is not.
+	rig := newStoppedHoldRig(t, gated, func(engine *Engine, ctx dbos.Context) {
+		id, err := dbos.GetWorkflowID(ctx)
+		if err != nil {
+			return
+		}
+
+		steps, err := dbos.GetWorkflowSteps(engine.ctx, id)
+		if err == nil && countSteps(steps, jobStopStepName) == 2 && countSteps(steps, "DBOS.resumeWorkflow") == 1 {
+			reached <- struct{}{}
+			<-ctx.Done()
+		}
+	})
+
+	ended := rig.queue("1")
+	rig.expect(t, "start 1")
+
+	gate, ok, err := rig.client.readGate("1")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	for cycle := range 2 {
+		running := rig.attemptsOfRunningJob(t)
+
+		require.NoError(t, rig.client.HoldGate("1"))
+		rig.h.tick(t)
+		receive(t, running)
+		require.NoError(t, rig.client.ReleaseGate("1"))
+
+		if cycle == 0 {
+			rig.expect(t, "start 1")
+		}
+	}
+
+	receive(t, reached)
+
+	steps, err := dbos.GetWorkflowSteps(rig.engine.ctx, gate.row.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, countSteps(steps, jobStopStepName), "the second stop step is recorded under the same name as the first")
+	require.Equal(t, 1, countSteps(steps, "DBOS.resumeWorkflow"), "the engine stops before the second resume")
+
+	require.NoError(t, rig.engine.Shutdown())
+	require.Error(t, receive(t, ended).err)
+
+	deps := rig.h.deps()
+	deps.Gate = gated
+
+	second, err := NewEngine(t.Context(), rig.h.opts, deps)
+	require.NoError(t, err)
+	dbos.RegisterWorkflow(second.ctx, gateQueuer{second}.queue, dbos.WithWorkflowName("test-queue-gate"))
+	require.NoError(t, second.Launch())
+	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
+
+	rig.expect(t, "start 1")
+	rig.let("1")
+	rig.expect(t, "end 1")
+
+	waitOn(t, condition(func() bool {
+		rows, err := second.store().List(dbos.WithFilterWorkflowIDs(gate.row.ID))
+
+		return err == nil && len(rows) == 1 && rows[0].Status == dbos.WorkflowStatusSuccess
+	}))
+
+	require.Never(t, func() bool { return len(gated.events) > 0 }, 3*storePoll, 100*time.Millisecond, "the replay keeps both recorded stop steps and reopens the job once more")
+
+	steps, err = dbos.GetWorkflowSteps(second.ctx, gate.row.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, countSteps(steps, jobStopStepName), "the replay records no third stop step")
+	assert.Equal(t, 2, countSteps(steps, "DBOS.resumeWorkflow"), "each cycle resumes the job once")
 }
 
 func TestGateHold_AHoldRefusesAGateWhoseJobWasCanceledAndReportsAGateThatTheStoreDoesNotHold(t *testing.T) {
