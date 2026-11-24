@@ -1,4 +1,4 @@
-package workflow_test
+package remediation_test
 
 import (
 	"go/ast"
@@ -24,7 +24,7 @@ var (
 
 const (
 	conformanceColumns = 7
-	exampleDir         = "../../examples/remediation"
+	exampleDir         = "."
 	repoRoot           = "../.."
 	// whereWords is the form of Where: the file, the builtin and the name of the call.
 	whereWords = 3
@@ -130,7 +130,7 @@ func calls(t *testing.T) map[string]bool {
 
 	found := map[string]bool{}
 
-	for file, path := range map[string]string{"workflow.star": filepath.Join(exampleDir, "workflow.star"), "review_fix.star": "lib/review_fix.star"} {
+	for file, path := range map[string]string{"workflow.star": filepath.Join(exampleDir, "workflow.star"), "review_fix.star": filepath.Join(repoRoot, "internal", "workflow", "lib", "review_fix.star")} {
 		text, err := os.ReadFile(path) //nolint:gosec // the test names its own example files
 		require.NoError(t, err)
 

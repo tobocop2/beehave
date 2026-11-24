@@ -57,9 +57,6 @@ func allowedExampleReaders() []string {
 		"internal/flow/queueloop_test.go",
 		"internal/flow/restart_text_test.go",
 		"internal/flow/round_rig_test.go",
-		"internal/merge/example_test.go",
-		"internal/workflow/check_paths_test.go",
-		"internal/workflow/conformance_test.go",
 	}
 }
 
