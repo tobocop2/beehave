@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -205,7 +206,7 @@ func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolin
 func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) (stepResult, error) {
 	plan.tries.start()
 
-	out, err := s.writes().Run(ctx, plan.request)
+	out, err := s.writes().Run(attemptKey(ctx, plan.tries.n), plan.request)
 
 	switch {
 	case err != nil && plan.tries.returned(ctx, err, s.e.retryable):
@@ -217,6 +218,18 @@ func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) 
 	}
 
 	return commandRecord(name, out, plan.stops, plan.tries.n), nil
+}
+
+// attemptKey gives try n of a retried step a job key of its own, so a host that holds the failed job of try 1 starts a new job for try 2.
+// A step that runs again after a crash counts its tries from 1 again. On Slurm that finds the job of the try that the crash cut short, because accounting keeps ended jobs.
+// On ssh, Wait released the unit of try 1, so a crash during try 2 runs try 1 again. A context with no key stays as it is.
+func attemptKey(ctx context.Context, n int) context.Context {
+	key := host.JobKey(ctx)
+	if key == "" {
+		return ctx
+	}
+
+	return withJobKey(ctx, key+":"+strconv.Itoa(n))
 }
 
 // commandRecord is the record of a command step: the output, and the stop when the exit code is one of stops.

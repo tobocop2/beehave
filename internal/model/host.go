@@ -131,6 +131,9 @@ type JobID string
 type JobSpec struct {
 	Name    string
 	Command string
+	// Key names the call that submits the job. A Submit with the Key of a job that the host already holds returns that job and starts none.
+	// An empty Key starts a new job at each Submit.
+	Key string
 	// Folder is the absolute path of the folder that the job works in. Wait and Cancel bank only this folder, so a job never reads the clone of another job.
 	// Empty means the job has no folder of its own, and they bank the whole work root.
 	Folder string
