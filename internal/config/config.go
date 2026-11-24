@@ -37,6 +37,9 @@ const (
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
 const maxReviewPollMinutes = 10080
 
+// DefaultContextWindowTokens is the default of agents.context_window_tokens: the context window of the agent model, in tokens. A model with a larger window needs the key set.
+const DefaultContextWindowTokens = 200000
+
 // DefaultReviewLookbackDays is the default of agents.review_lookback_days: the days that the review poll looks back for replies. The engine uses it when its options give none.
 // maxReviewLookbackDays is one year.
 const (
@@ -83,7 +86,7 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, Concurrency: ConcurrencyStatic, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays},
+		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, Concurrency: ConcurrencyStatic, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays, ContextWindowTokens: DefaultContextWindowTokens},
 		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
 		Projects: map[string]Project{},
 	}
@@ -292,6 +295,10 @@ func (c Config) limitProblems(runnersPath string) Problems {
 
 	if c.Agents.MaxReviewConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_review_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxReviewConcurrent))
+	}
+
+	if c.Agents.ContextWindowTokens < 0 {
+		problems = append(problems, refuse("agents.context_window_tokens must be 0 (unknown, so no context limit fires) or more. Set it in %s.", runnersPath))
 	}
 
 	return problems

@@ -633,6 +633,26 @@ func TestLoadFolder_AgentsMaxTurnsAndBudgetDefaultToNoCapAndRefuseANegative(t *t
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD")
 }
 
+func TestLoadFolder_AgentsContextWindowDefaultsToTheDefaultWindowTakesAValueAndRefusesANegative(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.Equal(t, config.DefaultContextWindowTokens, cfg.Agents.ContextWindowTokens)
+
+	cfg, problems = loadRunnersText(t, "agents(context_window_tokens = 1000000)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 1000000, cfg.Agents.ContextWindowTokens)
+
+	cfg, problems = loadRunnersText(t, "agents(context_window_tokens = 0)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 0, cfg.Agents.ContextWindowTokens, "0 means the window is unknown")
+
+	_, problems = loadRunnersText(t, "agents(context_window_tokens = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.context_window_tokens must be 0")
+}
+
 func TestLoadFolder_AgentsMaxRunBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadValue(t *testing.T) {
 	t.Parallel()
 

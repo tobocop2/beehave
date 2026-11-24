@@ -18,6 +18,8 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"agent max_budget_usd negative", `agent("p", "m", max_budget_usd = -1)`, "agent: max_budget_usd must be 0 (no cap) or more, in dollars"},
 		{"agent max_budget_usd text", `agent("p", "m", max_budget_usd = "5")`, "agent: max_budget_usd must be a number of dollars"},
 		{"agent max_budget_usd none", `agent("p", "m", max_budget_usd = None)`, "agent: max_budget_usd must be a number of dollars"},
+		{"agent max_context_percent over 100", `agent("p", "m", max_context_percent = 101)`, "agent: max_context_percent must be a whole number from 0 (no limit) to 100"},
+		{"agent max_context_percent negative", `agent("p", "m", max_context_percent = -1)`, "agent: max_context_percent must be a whole number from 0 (no limit) to 100"},
 		{"command timeout", `command(run = ["x"], timeout = "1 hour")`, `command: timeout is "1 hour", which is not a duration`},
 		{"gate timeout", `gate(timeout = "later")`, `gate: timeout is "later", which is not a duration`},
 		{"wait timeout text", `wait(question = "q", timeout = "soon")`, `wait: timeout is "soon", which is not a duration`},
@@ -139,6 +141,9 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    agent(\"p\", \"m\", output_tries = 1, timeout = D, allow_paths = [D])\n"+
 		"    agent(\"p\", \"m\", max_budget_usd = 2.5)\n"+
 		"    agent(\"p\", \"m\", max_budget_usd = 0)\n"+
+		"    agent(\"p\", \"m\", max_context_percent = 0)\n"+
+		"    agent(\"p\", \"m\", max_context_percent = 80)\n"+
+		"    agent(\"p\", \"m\", max_context_percent = 100)\n"+
 		"    agent(\"p\", \"m\", label = \"fix 1/5\")\n"+
 		"    agent(\"p\", \"m\", data = {\"base_reds\": [\"a\"]})\n"+
 		"    agent(\"p\", \"m\", data = None)\n"+

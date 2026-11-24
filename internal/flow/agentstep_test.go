@@ -1042,6 +1042,7 @@ func TestAgentStep_ARunThatACapStoppedIsNotAFailureAndTheOutputStopNamesTheCap(t
 	}{
 		{agent.OutcomeTurnCap, "show [turns]"},
 		{agent.OutcomeBudgetCap, "show [budget]"},
+		{agent.OutcomeContextCap, "show [context]"},
 		{agent.OutcomeExited, "show []"},
 	} {
 		rig := newAgentRig(t)
@@ -1054,6 +1055,29 @@ func TestAgentStep_ARunThatACapStoppedIsNotAFailureAndTheOutputStopNamesTheCap(t
 		require.NoError(t, err, tc.outcome)
 		assert.Equal(t, []string{tc.show}, rig.h.commands.ran(), tc.outcome)
 	}
+}
+
+func TestAgentStep_TheContextPercentOfTheCallGoesToTheAgentRequest(t *testing.T) {
+	t.Parallel()
+
+	for percent, want := range map[string]int{"80": 80, "0": 0} {
+		rig := newAgentRig(t)
+		rig.reply("", exited)
+
+		_, err := rig.run(t, agentFlow("max_context_percent = "+percent+", "), "x")
+
+		require.NoError(t, err)
+		require.Len(t, rig.h.agents.seen(), 1)
+		assert.Equal(t, want, rig.h.agents.seen()[0].MaxContextPercent, percent)
+	}
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(""), "x")
+
+	require.NoError(t, err)
+	assert.Zero(t, rig.h.agents.seen()[0].MaxContextPercent, "a call with no keyword sets no limit")
 }
 
 func TestAgentStep_AReplayAfterTheAgentEndedKeepsTheViolationItRecorded(t *testing.T) {

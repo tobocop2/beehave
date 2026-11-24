@@ -129,6 +129,15 @@ func OutputTries(n int) error {
 	return nil
 }
 
+// ContextPercent refuses a context limit that is not a whole number of percent from 0 to 100. 0 means no limit.
+func ContextPercent(n int) error {
+	if n < 0 || n > 100 {
+		return errors.New("max_context_percent must be a whole number from 0 (no limit) to 100")
+	}
+
+	return nil
+}
+
 // StopCodes reads the stop_on_rc list. Each code must be a whole number from 1 to 255.
 func StopCodes(v starlark.Value) ([]int, error) {
 	return ListOfEach(v, func(item starlark.Value) (int, error) {
