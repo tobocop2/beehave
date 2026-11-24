@@ -76,6 +76,8 @@ type Entry struct {
 	Idle bool
 	// LoadsSkills is true for an agent whose CLI has a line that loads a skill before the first turn.
 	LoadsSkills bool
+	// Windows are the usage windows of an agent, from the shortest to the longest, each with the default cap. A pool cap names one of them. An agent that cannot report usage declares none.
+	Windows []model.WindowSpec
 }
 
 // Adapters is the registry of every adapter of a build: the names that the config accepts, by kind, with the entry of each name.

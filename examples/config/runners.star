@@ -11,13 +11,14 @@
 # and store it with:
 #   security add-generic-password -s <keychain> -a $USER -w
 
-# pool() sets the usage caps, in percent. `beehave run` picks the Claude runner that is under
+# pool() sets the usage caps, in percent. Each argument names a usage window that an agent reports.
+# Claude reports five_hour and seven_day. `beehave run` picks the Claude runner that is under
 # both caps, with the lowest seven-day use, then the lowest five-hour use. A runner whose usage
 # cannot be read, or that is not logged in, is never picked; `beehave doctor` names it. When no runner is under both caps, the run stops
 # with exit 3 and names the earliest reset time. Both arguments are optional. Call pool() once.
 pool(
-    five_hour_max = 90,
-    seven_day_max = 95,
+    five_hour = 90,
+    seven_day = 95,
 )
 
 # max_concurrent in agents() is the global limit on agent processes. A laptop wants 2, a

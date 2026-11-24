@@ -17,7 +17,7 @@ func resetConfig() config.Config {
 	return config.Config{
 		Projects: map[string]config.Project{"p": {}},
 		Runners:  []model.Runner{{Name: "a", Agent: "claude"}, {Name: "b", Agent: "claude"}},
-		Pool:     config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:    claudePools(),
 	}
 }
 
@@ -25,10 +25,10 @@ var resetTime = time.Date(2026, 11, 20, 5, 0, 0, 0, time.UTC)
 
 func resetRead(_ context.Context, runner model.Runner) model.Reading {
 	if runner.Name == "a" {
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: 100, ResetsAt: resetTime}, SevenDay: model.Window{Percent: 10}})
+		return claudeUsage(model.Window{Percent: 100, ResetsAt: resetTime}, model.Window{Percent: 10})
 	}
 
-	return model.Known(model.Usage{FiveHour: model.Window{Percent: 10}, SevenDay: model.Window{Percent: 10}})
+	return claudeUsage(model.Window{Percent: 10}, model.Window{Percent: 10})
 }
 
 func TestLoginsReset_ReadsTheUsageOfThatLoginAndGivesItsEarliestReset(t *testing.T) {
