@@ -173,7 +173,6 @@ func TestLoadFixture_AnUnknownFieldAnUnknownBuiltinAndAWrongTypeAreRefusedWithTh
 		"an unknown builtin":         {`{"frobnicate:x": [{}]}`, `frobnicate:x`},
 		"the merge key":              {`{"merge": [{}]}`, `merge`},
 		"a field of no wait":         {`{"wait:ask": {"verdict": "go"}}`, `unknown field "verdict"`},
-		"a key twice":                {`{"agent:review": [{}], "gate:check": {}, "agent:review": [{}]}`, `the key "agent:review" is in the file more than once`},
 		"a wrong type":               {`{"agent:review": [{"outputs": {"verdict": 7}}]}`, `agent:review`},
 		"a top level that is a list": {`[]`, `a JSON object`},
 		"text that is no JSON":       {`not json`, `fixture.json`},
@@ -193,23 +192,34 @@ func TestLoadFixture_AnUnknownFieldAnUnknownBuiltinAndAWrongTypeAreRefusedWithTh
 	}
 }
 
-func TestLoadFixture_ADuplicateKeyIsFoundOnlyAtTheTopLevelAndDataThatEndsEarlyHasNone(t *testing.T) {
+func TestLoadFixture_ANameThatAnObjectHoldsTwiceIsRefusedAtEveryDepthAndTheSameNameInTwoObjectsIsNot(t *testing.T) {
 	t.Parallel()
 
 	for name, test := range map[string]struct{ text, want string }{
-		"a key twice after a list":       {`{"a": [1, {"a": 2}], "b": {"a": 1}, "a": 3}`, "a"},
-		"a name that repeats inside":     {`{"a": {"x": 1, "x": 2}, "b": [{"x": 1}, {"x": 2}]}`, ""},
-		"no key":                         {`{}`, ""},
-		"no data":                        {``, ""},
-		"a key with no value":            {`{"a"`, ""},
-		"a name that is no text":         {`{1: 2}`, ""},
-		"a value that ends too early":    {`{"a": [`, ""},
-		"a first key and a second twice": {`{"a": 1, "b": 2, "b": 3}`, "b"},
+		"a key twice at the top":       {`{"agent:review": [{}], "gate:check": {}, "agent:review": [{}]}`, `duplicate object member name "agent:review"`},
+		"an output twice in a result":  {`{"agent:review": [{"outputs": {"verdict": "changes", "verdict": "approve"}}]}`, `duplicate object member name "verdict"`},
+		"a field twice in a result":    {`{"gate:check": {"passed": false, "passed": true}}`, `duplicate object member name "passed"`},
+		"a name twice in a later list": {`{"wait:ask": [{"answer": "a"}, {"answer": "b", "answer": "c"}]}`, `duplicate object member name "answer"`},
+		"a name in two results":        {`{"wait:ask": [{"answer": "a"}, {"answer": "b"}], "wait:again": {"answer": "c"}}`, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, test.want, duplicateKey([]byte(test.text)))
+			path := filepath.Join(t.TempDir(), "fixture.json")
+			require.NoError(t, os.WriteFile(path, []byte(test.text), 0o600))
+
+			_, err := LoadFixture(path)
+
+			if test.want == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "fixture.json")
+			assert.Contains(t, err.Error(), test.want)
+			assert.Contains(t, err.Error(), "more than once")
 		})
 	}
 }

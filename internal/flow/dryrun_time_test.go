@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// thirtySeconds is the time of each call in the tests that end at once. A run that waited for one call would take this long.
-const thirtySeconds = "30s"
+// tenMinutes is the time of each call in the tests that end at once. A run that waited for one call would take this long.
+const tenMinutes = "10m"
 
 func TestDryRun_ASleepAWaitAndARecvEndAtOnce(t *testing.T) {
 	t.Parallel()
 
-	const text = "def main(item):\n    n = sleep(\"" + thirtySeconds + "\", name = \"nap\")\n    w = wait(name = \"ask\", question = \"Go?\", timeout = \"" + thirtySeconds + "\")\n    r = recv(topic = \"done\", timeout = \"" + thirtySeconds + "\", name = \"got\")\n" +
+	const text = "def main(item):\n    n = sleep(\"" + tenMinutes + "\", name = \"nap\")\n    w = wait(name = \"ask\", question = \"Go?\", timeout = \"" + tenMinutes + "\")\n    r = recv(topic = \"done\", timeout = \"" + tenMinutes + "\", name = \"got\")\n" +
 		"    if n.slept != 0 or not w.timed_out or not r.timed_out:\n        fail(\"WRONG RESULTS: %s %s %s\" % (n.slept, w.timed_out, r.timed_out))\n"
 
 	var out bytes.Buffer
@@ -24,7 +24,7 @@ func TestDryRun_ASleepAWaitAndARecvEndAtOnce(t *testing.T) {
 
 	require.NoError(t, DryRun(t.Context(), dryFile(t, text), "12", map[string]string{}, &out), out.String())
 
-	assert.Less(t, time.Since(started), 60*time.Second, "the three calls that waited 30 seconds each would take 90 seconds")
+	assert.Less(t, time.Since(started), 60*time.Second, "a call that waited its 10 minutes would take far longer, so a leak of any one call fails here")
 	assert.Contains(t, out.String(), "sleep:nap#1/start", "the marker step of the sleep stays")
 	assert.Contains(t, out.String(), "sleep:nap#1:", "the sleep prints its step")
 	assert.Contains(t, out.String(), "wait:deadline", "the record of the deadline of the wait stays")
@@ -47,7 +47,7 @@ func TestDryRun_AWaitWithNoDeadlineAndNoEntryIsRefused(t *testing.T) {
 func TestDryRun_AFixtureAnswersAWaitWithNoDeadlineAndAWaitWithOne(t *testing.T) {
 	t.Parallel()
 
-	const text = "def main(item):\n    a = wait(name = \"ask\", question = \"Go?\")\n    b = wait(name = \"again\", question = \"Go?\", timeout = \"" + thirtySeconds + "\")\n" +
+	const text = "def main(item):\n    a = wait(name = \"ask\", question = \"Go?\")\n    b = wait(name = \"again\", question = \"Go?\", timeout = \"" + tenMinutes + "\")\n" +
 		"    if a.timed_out or a.answer != \"go\" or b.timed_out or b.answer != \"yes\":\n        fail(\"WRONG ANSWERS: %r %r\" % (a, b))\n"
 
 	out, err := dryWithFixture(t, text, `{"wait:ask": {"answer": "go"}, "wait:again": [{"answer": "yes"}]}`)
@@ -68,7 +68,7 @@ func TestDryRun_AFixtureWaitThatTimesOutGivesNoAnswer(t *testing.T) {
 func TestDryRun_AFixtureGivesTheValueOfARecvAndEndsAnotherOneTimedOut(t *testing.T) {
 	t.Parallel()
 
-	const text = "def main(item):\n    a = recv(topic = \"done\", timeout = \"" + thirtySeconds + "\", name = \"got\")\n    b = recv(topic = \"done\", timeout = \"" + thirtySeconds + "\", name = \"late\")\n" +
+	const text = "def main(item):\n    a = recv(topic = \"done\", timeout = \"" + tenMinutes + "\", name = \"got\")\n    b = recv(topic = \"done\", timeout = \"" + tenMinutes + "\", name = \"late\")\n" +
 		"    if a.timed_out or a.value != \"x\" or not b.timed_out:\n        fail(\"WRONG VALUES: %r %r\" % (a, b))\n"
 
 	out, err := dryWithFixture(t, text, `{"recv:got": {"value": "x"}}`)
@@ -79,7 +79,7 @@ func TestDryRun_AFixtureGivesTheValueOfARecvAndEndsAnotherOneTimedOut(t *testing
 func TestDryRun_AWaitEntryNoCallUsedIsRefusedAtTheEndOfACleanRun(t *testing.T) {
 	t.Parallel()
 
-	out, err := dryWithFixture(t, "def main(item):\n    wait(name = \"ask\", question = \"Go?\", timeout = \""+thirtySeconds+"\")\n", `{"wait:ask": [{"answer": "go"}, {"answer": "go"}]}`)
+	out, err := dryWithFixture(t, "def main(item):\n    wait(name = \"ask\", question = \"Go?\", timeout = \""+tenMinutes+"\")\n", `{"wait:ask": [{"answer": "go"}, {"answer": "go"}]}`)
 
 	require.Error(t, err)
 	assert.Contains(t, out, "wait:ask")
@@ -89,7 +89,7 @@ func TestDryRun_AWaitEntryNoCallUsedIsRefusedAtTheEndOfACleanRun(t *testing.T) {
 func TestDryRun_AWaitPastTheEndOfItsListIsRefused(t *testing.T) {
 	t.Parallel()
 
-	const text = "def main(item):\n    wait(name = \"ask\", question = \"Go?\", timeout = \"" + thirtySeconds + "\")\n    wait(name = \"ask\", question = \"Go?\", timeout = \"" + thirtySeconds + "\")\n"
+	const text = "def main(item):\n    wait(name = \"ask\", question = \"Go?\", timeout = \"" + tenMinutes + "\")\n    wait(name = \"ask\", question = \"Go?\", timeout = \"" + tenMinutes + "\")\n"
 
 	out, err := dryWithFixture(t, text, `{"wait:ask": [{"answer": "go"}]}`)
 
@@ -100,8 +100,8 @@ func TestDryRun_AWaitPastTheEndOfItsListIsRefused(t *testing.T) {
 func TestDryRun_AWaitAndARecvWithNoNameTakeTheKeyOfTheBuiltinAndARecvPastTheEndOfItsListIsRefused(t *testing.T) {
 	t.Parallel()
 
-	const text = "def main(item):\n    a = wait(question = \"Go?\")\n    b = recv(topic = \"done\", timeout = \"" + thirtySeconds + "\")\n" +
-		"    if a.answer != \"go\" or b.value != \"x\":\n        fail(\"WRONG: %r %r\" % (a, b))\n    recv(topic = \"done\", timeout = \"" + thirtySeconds + "\")\n"
+	const text = "def main(item):\n    a = wait(question = \"Go?\")\n    b = recv(topic = \"done\", timeout = \"" + tenMinutes + "\")\n" +
+		"    if a.answer != \"go\" or b.value != \"x\":\n        fail(\"WRONG: %r %r\" % (a, b))\n    recv(topic = \"done\", timeout = \"" + tenMinutes + "\")\n"
 
 	out, err := dryWithFixture(t, text, `{"wait": {"answer": "go"}, "recv": [{"value": "x"}]}`)
 

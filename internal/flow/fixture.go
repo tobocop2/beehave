@@ -3,6 +3,7 @@ package flow
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"maps"
@@ -67,7 +68,7 @@ const (
 	fixtureRecv  = "recv"
 )
 
-// LoadFixture reads the fixture file at the path. It refuses an unknown key, an unknown field, a key that the file holds twice and a value of the wrong type, and names the file in each message.
+// LoadFixture reads the fixture file at the path. It refuses an unknown key, an unknown field, a name that an object of the file holds twice and a value of the wrong type, and names the file in each message.
 func LoadFixture(path string) (Fixture, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // G304: the path is the file that the owner names with --fixture
 	if err != nil {
@@ -90,70 +91,19 @@ func LoadFixture(path string) (Fixture, error) {
 	return loaded, nil
 }
 
-// parseCalls reads the JSON object of the file into the raw value of each key, and refuses a key that the object holds twice.
+// parseCalls reads the JSON object of the file into the raw value of each key, and refuses a name that any object of the file holds twice.
 func parseCalls(path string, data []byte) (map[string]json.RawMessage, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, fmt.Errorf("fixture %s: the file must hold a JSON object of calls: %w", path, err)
 	}
 
-	if key := duplicateKey(data); key != "" {
-		return nil, fmt.Errorf("fixture %s: the key %q is in the file more than once: keep one key, and put the results of both in its list", path, key)
+	// jsontext refuses a name that an object holds twice, at every depth.
+	if _, err := jsontext.NewDecoder(bytes.NewReader(data)).ReadValue(); err != nil {
+		return nil, fmt.Errorf("fixture %s: a name is in the file more than once, so keep one: %w", path, err)
 	}
 
 	return top, nil
-}
-
-// duplicateKey returns the first top-level key that the JSON object holds twice, or "" for none. The caller has already checked that the data is one JSON object.
-// At depth 1 the tokens alternate between a key and a value; a value that is an object or a list ends when the depth returns to 1.
-func duplicateKey(data []byte) string {
-	seen := map[string]bool{}
-
-	for _, key := range topLevelKeys(data) {
-		if seen[key] {
-			return key
-		}
-
-		seen[key] = true
-	}
-
-	return ""
-}
-
-// topLevelKeys lists the keys of the JSON object in file order, with each repeat.
-func topLevelKeys(data []byte) []string {
-	dec := json.NewDecoder(bytes.NewReader(data))
-
-	if _, err := dec.Token(); err != nil {
-		return nil
-	}
-
-	var keys []string
-
-	for {
-		key, ok := nextKey(dec)
-		if !ok {
-			return keys
-		}
-
-		keys = append(keys, key)
-	}
-}
-
-// nextKey reads the next key of the object and skips its value. It reports false at the end of the object and at data that ends early.
-func nextKey(dec *json.Decoder) (string, bool) {
-	if !dec.More() {
-		return "", false
-	}
-
-	key, err := dec.Token()
-	if err != nil {
-		return "", false
-	}
-
-	var skipped json.RawMessage
-
-	return fmt.Sprint(key), dec.Decode(&skipped) == nil
 }
 
 // add decodes the value of one key into the table of its builtin.
