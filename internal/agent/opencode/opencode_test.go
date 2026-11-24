@@ -49,6 +49,15 @@ func TestProfile_HasNoNativeCapsAndStreamsItsCost(t *testing.T) {
 	assert.True(t, p.StreamsCost)
 }
 
+func TestProfile_DeclaresNoUsageWindowBecauseTheUsageIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, opencode.New().Profile().Windows)
+
+	_, known := opencode.New().ReadUsage(t.Context(), model.Runner{Name: "o", Agent: opencode.Name}).Usage()
+	assert.False(t, known)
+}
+
 func TestAgent_AnAdapterWithNoSandboxEndsItsStepNotStartedInASandboxedRun(t *testing.T) {
 	t.Parallel()
 

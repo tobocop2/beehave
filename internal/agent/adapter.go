@@ -54,6 +54,9 @@ type Profile struct {
 	// A CLI older than SupportedFrom can fail to load the hook of Guard, and then it runs every shell command with no check and exits with code 0.
 	SupportedFrom   string
 	SupportedBefore string
+	// Windows are the usage windows that ReadUsage reports, from the shortest to the longest, each with the default cap of a pool. A reading holds these windows only, in this order.
+	// A profile of a CLI that cannot report usage has none. Two agents that declare one name declare one default.
+	Windows []model.WindowSpec
 	// VersionArgs are arguments that only a CLI of the version From or later takes. The runner adds each entry whose From is at or below the version that the
 	// CLI prints, after Args and before the model. A profile with VersionArgs sets the supported range, so the version is always read.
 	VersionArgs []VersionArgs

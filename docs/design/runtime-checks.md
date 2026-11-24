@@ -67,11 +67,15 @@ A refusal of the ledger and a failed read are exit code 2.
 
 ### The pick
 
-A runner has room when both windows are under their caps from `config.Pool`. The adaptive limit of the queue `agents` (`agents.concurrency = "adaptive"`) adds one phase only when every runner of the agent kind has room. A runner that reads unknown has no room. The pick order is:
+A runner has room when each window of its usage is under the cap of that window in the pool of its agent (`config.Pool`). A window with no cap does not limit the runner, and a cap on a window that the usage lacks does nothing. The adaptive limit of the queue `agents` (`agents.concurrency = "adaptive"`) adds one phase only when every runner of the agent kind has room. A runner that reads unknown has no room.
+
+An agent lists its windows from the shortest to the longest. The pick compares the last window first. For Claude the pick order is:
 
 1. the lowest seven-day use,
 2. then the lowest five-hour use,
 3. then the first runner in config order.
+
+The refusal lists the caps of the agent in the sorted order of the window names.
 
 A runner whose usage is unknown is never picked.
 
@@ -108,7 +112,7 @@ A provider limit that stops a run after the pick is not a new pick. The step wai
 
 `pool` reads no usage. It takes a `Reader` function value and reads all runners at the same time, so the whole read takes one timeout. A reader that panics gives an unknown reading and leaves the others.
 
-The window types `Window`, `Usage` and `Reading` live in `model`, because the reader is a layer 1 package and layer 1 cannot import `pool`. A `Reading` holds usage or a reason. Its zero value is unknown.
+A `Usage` holds a list of named windows, each with the percent used and the reset time. The profile of the adapter declares the names and the default caps (`Windows`), and the usage of a reading holds those windows only, in that order. The window types `Window`, `Usage` and `Reading` live in `model`, because the reader is a layer 1 package and layer 1 cannot import `pool`. A `Reading` holds usage or a reason. Its zero value is unknown.
 
 ### The Claude reader
 

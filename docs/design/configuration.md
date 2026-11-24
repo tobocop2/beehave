@@ -36,12 +36,18 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 
 ### `pool(...)`
 
-`pool(...)` sets the usage caps of the Claude runners, in percent. Call it once. Both keys are optional. `beehave run` picks the runner that is under both caps.
+`pool(...)` sets the usage caps of the runners, in percent. Call it once. Each key is the name of a usage window that an agent reports, and each key is optional. `beehave run` picks the runner that is under every cap of its agent.
+
+Each agent declares its windows and the default cap of each. A cap applies to every agent that declares its window. A cap on a window that the agent of a runner does not report does not apply to that runner. Two agents that declare one window name declare one default.
+
+A key that no agent declares is refused, and the message lists the names. The keys `five_hour_max` and `seven_day_max` of earlier versions are refused too, and the message names the new form.
 
 | Key | Meaning | Default and limits | Override |
 | --- | --- | --- | --- |
-| `five_hour_max` | The cap for the five-hour usage of a runner. | Default 90. Above 0 and up to 100. | `BEEHAVE_POOL_FIVE_HOUR_MAX` |
-| `seven_day_max` | The cap for the seven-day usage of a runner. | Default 95. Above 0 and up to 100. | `BEEHAVE_POOL_SEVEN_DAY_MAX` |
+| `five_hour` | The cap for the five-hour usage of a Claude runner. | Default 90. Above 0 and up to 100. | `BEEHAVE_POOL_FIVE_HOUR_MAX` |
+| `seven_day` | The cap for the seven-day usage of a Claude runner. | Default 95. Above 0 and up to 100. | `BEEHAVE_POOL_SEVEN_DAY_MAX` |
+
+The override of a window is `BEEHAVE_POOL_<NAME>_MAX`, with the name of the window in upper case.
 
 ### `runner(...)`
 

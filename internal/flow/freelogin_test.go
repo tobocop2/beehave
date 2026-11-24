@@ -48,10 +48,10 @@ func (p *poolLogins) Pick(ctx context.Context, _, item string, busy []string, _ 
 	}
 
 	read := func(context.Context, model.Runner) model.Reading {
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: 10}, SevenDay: model.Window{Percent: 10}})
+		return model.Known(model.Usage{Windows: []model.Window{{Name: "five_hour", Percent: 10}, {Name: "seven_day", Percent: 10}}})
 	}
 
-	runner, err := pool.Select(ctx, p.runners, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, claude.Name, read, busy...)
+	runner, err := pool.Select(ctx, p.runners, config.Pool{"five_hour": 90, "seven_day": 95}, claude.Name, read, busy...)
 	if err != nil {
 		return "", err
 	}

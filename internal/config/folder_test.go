@@ -71,7 +71,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 		{Name: "claude-a", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/a")},
 		{Name: "claude-b", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/b")},
 	}, cfg.Runners)
-	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
+	require.Equal(t, config.Pool{"five_hour": 90, "seven_day": 95}, cfg.Pools["claude"])
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
 	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(exampleConfig, "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth},
@@ -498,17 +498,18 @@ func TestLoadFolder_ARunnerConfigDirNeedsAHomeFolderForTilde(t *testing.T) {
 func TestLoadFolder_Pool(t *testing.T) {
 	t.Parallel()
 
-	cfg, problems := loadRunnersText(t, "pool(five_hour_max = 50, seven_day_max = 100)\n")
+	cfg, problems := loadRunnersText(t, "pool(five_hour = 50, seven_day = 100)\n")
 	require.Empty(t, problems)
-	require.Equal(t, config.Pool{FiveHourMax: 50, SevenDayMax: 100}, cfg.Pool)
+	require.Equal(t, config.Pool{"five_hour": 50, "seven_day": 100}, cfg.Pools["claude"])
 
-	cfg, problems = loadRunnersText(t, "pool(five_hour_max = 12.5)\n")
+	cfg, problems = loadRunnersText(t, "pool(five_hour = 12.5)\n")
 	require.Empty(t, problems)
-	require.Equal(t, config.Pool{FiveHourMax: 12.5, SevenDayMax: 95}, cfg.Pool, "a missing argument keeps its default")
+	require.Equal(t, config.Pool{"five_hour": 12.5, "seven_day": 95}, cfg.Pools["claude"], "a missing argument keeps its default")
 
-	cfg, problems = loadRunnersText(t, "pool(seven_day_max = 10)\n")
+	cfg, problems = loadRunnersText(t, "pool(seven_day = 10)\n")
 	require.Empty(t, problems)
-	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 10}, cfg.Pool)
+	require.Equal(t, config.Pool{"five_hour": 90, "seven_day": 10}, cfg.Pools["claude"])
+	require.Empty(t, cfg.Pools["opencode"], "an agent with no usage window has no caps")
 }
 
 func TestLoadFolder_ABadPoolIsRefused(t *testing.T) {
@@ -519,12 +520,14 @@ func TestLoadFolder_ABadPoolIsRefused(t *testing.T) {
 		text  string
 		words string
 	}{
-		{"zero", "pool(five_hour_max = 0)\n", "`five_hour_max` in the pool block must be a number above 0 and up to 100"},
-		{"negative", "pool(seven_day_max = -1)\n", "`seven_day_max` in the pool block"},
-		{"over_one_hundred", "pool(five_hour_max = 100.5)\n", "`five_hour_max` in the pool block"},
-		{"a_string", "pool(five_hour_max = \"high\")\n", `for parameter "five_hour_max": got string, want int or float`},
-		{"a_boolean", "pool(five_hour_max = True)\n", `runners.star:1:5: pool: for parameter "five_hour_max": got bool`},
-		{"unknown_argument", "pool(three_hour_max = 5)\n", `pool: unexpected keyword argument "three_hour_max"`},
+		{"zero", "pool(five_hour = 0)\n", "`five_hour` in the pool block must be a number above 0 and up to 100"},
+		{"negative", "pool(seven_day = -1)\n", "`seven_day` in the pool block"},
+		{"over_one_hundred", "pool(five_hour = 100.5)\n", "`five_hour` in the pool block"},
+		{"a_string", "pool(five_hour = \"high\")\n", `for parameter "five_hour": got string, want int or float`},
+		{"a_boolean", "pool(five_hour = True)\n", `runners.star:1:5: pool: for parameter "five_hour": got bool`},
+		{"unknown_argument", "pool(three_hour = 5)\n", "`three_hour` is not a usage window of any agent. Use one of: five_hour, seven_day."},
+		{"old_five_hour_key", "pool(five_hour_max = 5)\n", "`five_hour_max` is not a pool key. Write `five_hour = N` to cap the five_hour window."},
+		{"old_seven_day_key", "pool(seven_day_max = 5)\n", "Write `seven_day = N` to cap the seven_day window."},
 		{"repeated_pool_call", "pool()\npool()\n", "runners.star:2:5: block `pool` appears twice"},
 		{"not_a_call", "pool = 3\n", "runners.star:1:1: `pool` is a variable, and a config file takes none."},
 	}
@@ -544,7 +547,7 @@ func TestLoadFolder_ABadPoolIsRefused(t *testing.T) {
 func TestLoadFolder_PoolCapOfExactlyOneHundredPasses(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadRunnersText(t, "pool(five_hour_max = 100, seven_day_max = 0.1)\n")
+	_, problems := loadRunnersText(t, "pool(five_hour = 100, seven_day = 0.1)\n")
 
 	require.Empty(t, problems)
 }
@@ -801,14 +804,14 @@ func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_concurrent = 2)\npool(five_hour_max = 50)\n")
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_concurrent = 2)\npool(five_hour = 50)\n")
 
 	cfg, problems := loadFolder(dir, map[string]string{
 		"BEEHAVE_AGENTS_MAX_CONCURRENT": "6", "BEEHAVE_POOL_FIVE_HOUR_MAX": "70", "BEEHAVE_POOL_SEVEN_DAY_MAX": "80.5", "REPO": "ignored",
 	})
 	require.Empty(t, problems)
 	require.Equal(t, 6, cfg.Agents.MaxConcurrent)
-	require.Equal(t, config.Pool{FiveHourMax: 70, SevenDayMax: 80.5}, cfg.Pool)
+	require.Equal(t, config.Pool{"five_hour": 70, "seven_day": 80.5}, cfg.Pools["claude"])
 
 	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": ""})
 	require.Empty(t, problems)
@@ -834,7 +837,7 @@ func TestLoadFolder_AnOverlayValueIsValidated(t *testing.T) {
 		{"zero_for_max_review_concurrent", map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "0"}, "agents.max_review_concurrent must be 1 or more"},
 		{"text_for_five_hour_cap", map[string]string{"BEEHAVE_POOL_FIVE_HOUR_MAX": "lots"}, "BEEHAVE_POOL_FIVE_HOUR_MAX=lots is not a number"},
 		{"text_for_seven_day_cap", map[string]string{"BEEHAVE_POOL_SEVEN_DAY_MAX": "lots"}, "BEEHAVE_POOL_SEVEN_DAY_MAX=lots is not a number"},
-		{"cap_over_one_hundred", map[string]string{"BEEHAVE_POOL_SEVEN_DAY_MAX": "101"}, "`seven_day_max` in the pool block"},
+		{"cap_over_one_hundred", map[string]string{"BEEHAVE_POOL_SEVEN_DAY_MAX": "101"}, "`seven_day` in the pool block"},
 	}
 
 	for _, tc := range tests {

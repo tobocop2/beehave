@@ -19,17 +19,29 @@ func TestLogins_HeadroomIsFalseWithNoReaderAndTakesTheAnswerOfTheReaderOtherwise
 	assert.False(t, logins{room: func(context.Context) bool { return false }}.Headroom(t.Context()))
 }
 
+// claudePools holds the default caps of the Claude windows.
+func claudePools() map[model.Agent]config.Pool {
+	return map[model.Agent]config.Pool{claude.Name: {"five_hour": 90, "seven_day": 95}}
+}
+
+// claudeUsage is a reading of the two windows of Claude, the five-hour window first.
+func claudeUsage(five, seven model.Window) model.Reading {
+	five.Name, seven.Name = "five_hour", "seven_day"
+
+	return model.Known(model.Usage{Windows: []model.Window{five, seven}})
+}
+
 func TestPoolRoom_ReadsEveryRunnerOfTheAgentAgainstTheUsageCaps(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
 		Runners: []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
-		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:   claudePools(),
 	}
 
 	reading := func(percent map[string]float64) func(context.Context, model.Runner) model.Reading {
 		return func(_ context.Context, runner model.Runner) model.Reading {
-			return model.Known(model.Usage{FiveHour: model.Window{Percent: percent[runner.Name]}, SevenDay: model.Window{Percent: 1}})
+			return claudeUsage(model.Window{Percent: percent[runner.Name]}, model.Window{Percent: 1})
 		}
 	}
 
