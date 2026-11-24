@@ -286,7 +286,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `stream` | `name` | #853: new | 1: `examples/supervisor/workflow.star` |
 | `stream` | `run` | #853: new, a run that `spawn` returned | 1: `examples/supervisor/workflow.star` |
 | `stream` | `timeout` | #853: new, required | 1: `examples/supervisor/workflow.star` |
-| `struct` | `-` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
+| `struct` | `-` | unchanged | 17: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 15 more |
 | `wait` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
 | `wait` | `name` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
