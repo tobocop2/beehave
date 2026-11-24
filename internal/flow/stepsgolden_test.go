@@ -44,6 +44,7 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: commit_body,commit_subject,committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
+		"base_tip: commit,tree",
 		"board_card: status",
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
@@ -51,12 +52,13 @@ var goldenShapes = map[string][]string{
 		"earlier_reads: reads",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
 		"first_of: kind,message,outcome,run,runs",
-		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
+		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,step,steps,tree",
 		"gather: results",
 		"host_teardown: down,reason",
 		"host_up: host,started",
 		"integration_pull: number,state",
 		"issue_assignees: assignees",
+		"issue_state: state",
 		"item_comment: id",
 		"item_create: created,id",
 		"item_list: items",
@@ -101,8 +103,8 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
-		"issue_assignees", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "login", "now",
+		"agent", "base_tip", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
+		"issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "login", "now",
 		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }

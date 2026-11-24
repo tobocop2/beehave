@@ -153,3 +153,106 @@ func TestDryRun_APRClosingReadGivesAPullRequestThatClosesNoIssue(t *testing.T) {
 
 	assert.Contains(t, out.String(), "pr_closing:c#1")
 }
+
+func TestPRClosing_ReadsThePullRequestWithTheNumberItNames(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{pullClosing: map[int][]model.IssueRef{41: {model.OwnIssue(13), model.OwnIssue(12), "other-org/other-repo#3", model.OwnIssue(12)}}}
+	h.queue = q
+	h.forge.closing = [][]int{{99}}
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = 41, name = "c")`)), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"True", "#12,#13,other-org/other-repo#3.", "True"}, seenBy(t, h), "found, the issues sorted with no repeat, and a forge")
+	assert.Equal(t, []int{41}, q.closingAsked, "the call reads the number it names, once")
+	assert.Zero(t, h.forge.closingReads, "a call with pr reads no pull request of an item")
+	assert.Contains(t, stepNames(t, engine), "pr_closing:c#1")
+}
+
+func TestPRClosing_ACallWithBothAnItemAndAPullRequestIsRefusedBeforeAnyRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{}
+	h.queue = q
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(item = "9", pr = 41)`)), modeOff())
+
+	require.ErrorContains(t, err, "pass `item` or `pr`, not both")
+	assert.Empty(t, q.closingAsked)
+	assert.Zero(t, h.forge.closingReads)
+}
+
+func TestPRClosing_ANegativePullRequestNumberIsRefusedBeforeAnyRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{}
+	h.queue = q
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = -1)`)), modeOff())
+
+	require.ErrorContains(t, err, "`pr` is -1")
+	assert.Empty(t, q.closingAsked)
+}
+
+func TestPRClosing_ACallWithAPullRequestNumberAndABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
+	t.Parallel()
+
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = 41)`)), modeOff())
+
+	require.ErrorIs(t, err, errNoClosingReader)
+}
+
+func TestPRClosing_AReadOfAPullRequestNumberThatFailsFailsTheStepAndNeverGivesAnEmptySet(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.queue = &fakeQueue{closingErr: errFake}
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = 41)`)), modeOff())
+
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "read the issues that pull request 41 closes")
+	assert.Empty(t, h.commands.ranBy(testItem), "the run ends at the read")
+}
+
+func TestPRClosing_AProjectWithNoForgeGivesForgeFalseForAPullRequestNumberToo(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.queue = &fakeQueue{closingErr: forgepkg.ErrNoForge}
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = 41)`)), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"False", ".", "False"}, seenBy(t, h))
+}
+
+func TestPRClosing_AReplayOfAReadByNumberReturnsTheFirstReadNotAFreshOne(t *testing.T) {
+	t.Parallel()
+
+	file := writeFlow(t, "def main(item):\n    c = pr_closing(pr = 41, name = \"c\")\n    wait(name = \"ask\", question = \"go?\")\n    command(name = \"seen\", run = [\"seen\", \",\".join(c.issues)])\n")
+	h := newHarness(t)
+	q := &fakeQueue{pullClosing: map[int][]model.IssueRef{41: {model.OwnIssue(12)}}}
+	h.queue = q
+	interrupted(t, h, file)
+
+	q.mu.Lock()
+	q.pullClosing[41] = []model.IssueRef{model.OwnIssue(99)}
+	q.mu.Unlock()
+
+	next := h.engine(t)
+	client := h.client(t, testVersion)
+	done := runInBackground2(next, file)
+
+	waitOn(t, ownerAsks(t, h))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "yes"}))
+	require.NoError(t, receive(t, done).err)
+
+	assert.Equal(t, []string{"#12"}, seenBy(t, h), "the issues of the first read come back, whatever the forge says now")
+	assert.Equal(t, []int{41}, q.closingAsked, "the replay reads the forge no second time")
+}

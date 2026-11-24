@@ -526,6 +526,16 @@ def recorded_scope(item):
 
     return pr_closing(name = "scope", item = item).issues
 
+def integration_reads(base, pr, numbers):
+    """Returns the reads that the audit of a batch needs: the tip of the base, the state of each issue number and the issues that the pull request number pr closes.
+    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
+    tip = base_tip(base = base, name = "batch-tip")
+    states = {}
+    for number in numbers:
+        states[number] = issue_state(number = number, name = "batch-issue-%d" % number).state
+
+    return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
+
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
     A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""
