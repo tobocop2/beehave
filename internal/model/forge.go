@@ -170,7 +170,7 @@ func logins(accounts []Account) []string {
 	return out
 }
 
-// names lists the name of each label. A null name is the empty text.
+// names lists the name of each label. A label with no name reads as the word null.
 func names(tags []label) []string {
 	var out []string
 	for _, tag := range tags {
@@ -276,7 +276,7 @@ func (p PullRequest) nullFields() []string {
 	return nulls
 }
 
-// IncompletePull is the refusal of a typed read that lacks the state, the head or the base. Facts holds what the read did give, and Missing names each field it lacked.
+// IncompletePull is the refusal of a typed read that lacks the state, the head, the base, the draft flag, the label list or the assignee list. Facts holds what the read did give, and Missing names each field it lacked.
 type IncompletePull struct {
 	Facts   PullFacts
 	Missing []string

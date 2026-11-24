@@ -34,6 +34,20 @@ func TestClaimStop_ALabelWithACommaHoldsWhenOneOfItsPartsIsTheHoldLabel(t *testi
 	assert.Contains(t, got.line, "False|HELD|9|", "the label list is split at a comma, as before")
 }
 
+func TestClaimStop_AnAssigneeThatCanBeReadStopsBeforeALinkThatCannot(t *testing.T) {
+	t.Parallel()
+
+	fake := pullFake(func(f *model.PullFacts) {
+		f.Assignees = []string{"maintainer"}
+		f.Unread = []string{"cannot read the link #99999999999999999999 in the body"}
+	})
+
+	got := claimRun(t, fake, `name = "a", `+ownerLogins)
+
+	require.NoError(t, got.err)
+	assert.Contains(t, got.line, "False|ASSIGNED|11|STOP: #7 is assigned to 'maintainer'", "the assignee that is read stops the item, as before")
+}
+
 func TestClaimStop_AReadWithNoAssigneeListOrABadLinkIsRefusedOnlyWithOwnLogins(t *testing.T) {
 	t.Parallel()
 

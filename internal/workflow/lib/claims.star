@@ -53,7 +53,7 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
     own is {"logins": [...]}. A pull request of another author, and an assignee of the pull request or of a linked issue who is not in the list, claim the item. An empty list checks neither.
     hold is the label that holds an item, and an empty hold holds nothing. own_draft is the number of the draft that the run opened itself, and that draft is no stop. Zero means that every draft stops.
     name makes the step names of the call unique. A stop of the item of the run shows as the step claim_stop:<name> in the result of the run.
-    A read that fails, or a read with no draft flag or label list, ends the run with an error and never passes. With own logins set, so does a read with no assignee list or a body link that is not an int.
+    A read that fails, or a read with no draft flag or label list, ends the run with an error and never passes. With own logins set, so does a read with no assignee list or a body link that is not an int, unless an assignee of the pull request that is not own can be read: that assignee stops first.
     """
     if type(own) != "dict":
         fail("REFUSE: claim_stop got own %r. Pass a dict such as {\"logins\": [\"owner\"]}." % (own,))
@@ -66,7 +66,7 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
 
     logins = [login.lower() for login in own.get("logins", []) if login != ""]
     if logins:
-        if pull.unread:
+        if pull.unread and _foreign(pull.assignees, logins) == "":
             fail("cannot read #%d: %s" % (pull.number, "; ".join(pull.unread)))
         stop = _assigned(name, id, pull, logins)
         if stop:

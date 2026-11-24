@@ -191,10 +191,10 @@ func SandboxWith(host, stdin string, processes int) error {
 // holdKeyword is the keyword and the status name `hold`.
 const holdKeyword = "hold"
 
-// ClaimKeywords are the keywords that preflight no longer takes, because claim_stop in the workflow library takes them.
+// ClaimKeywords are the keywords that claim_stop in the workflow library takes and that preflight refuses.
 func ClaimKeywords() []string { return []string{holdKeyword, "own", "own_draft"} }
 
-// PreflightClaimRefusal is the sentence for a preflight call that passes a claim keyword. It names the library function that took the keyword over.
+// PreflightClaimRefusal is the sentence for a preflight call that passes a claim keyword. It names the library function that takes the keyword.
 func PreflightClaimRefusal(keyword string) string {
 	stop := "The claim stops"
 	if keyword == "own_draft" {
