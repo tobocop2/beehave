@@ -11,6 +11,8 @@
 #   DEADLINE_MIN optional, default 480: the most minutes that the swarm starts new runs.
 #   BATCH        optional, default 8: the number of finished pull requests that starts a landing pass.
 
+load("@beehave//queue.star", "queue")
+
 HOLD = "hold"
 TIERS = ["P0", "P1", "P2", "P3"]
 RESOLVES = 2

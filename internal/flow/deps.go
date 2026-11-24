@@ -394,7 +394,7 @@ type Deps struct {
 	Reader reader
 	// Batch serves merge. A nil Batch means the build cannot run it.
 	Batch batchHost
-	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.
+	// Queue serves item_list, pr_list, pr_state and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a call of those builtins fails.
 	Queue queueReader
 	// Others lists the other orchestrators at the start of a run. A nil Others means the build cannot list them: the run lists none.
 	Others orchestrators

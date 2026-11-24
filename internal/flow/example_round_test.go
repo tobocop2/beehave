@@ -275,7 +275,7 @@ func TestRound_ATimeoutReturnsTheStateWaitingWithTheBaseAndThePullRequestAndCuts
 
 	require.NoError(t, json.Unmarshal(result.Value, &value))
 	assert.Equal(t, roundValue{State: "waiting", Base: "main", PR: 9}, value)
-	assert.NotContains(t, strings.Join(stepNames(t, engine), " "), "queue:round-queue-2#", "a timeout ends the round and starts no second pass")
+	assert.NotContains(t, strings.Join(stepNames(t, engine), " "), "item_list:round-queue-2-items#", "a timeout ends the round and starts no second pass")
 
 	assert.Empty(t, commandsNamed(rig, cutProgram), "a timeout is a STOP and cuts nothing")
 }
@@ -291,9 +291,9 @@ func TestRound_AContinueStartsAnotherPassThatAsksTheQueueAgain(t *testing.T) {
 	require.NoError(t, err)
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
-	assert.Contains(t, joined, "queue:round-queue-1#")
-	assert.Contains(t, joined, "queue:round-queue-2#", "the answer CONTINUE starts the second pass")
-	assert.NotContains(t, joined, "queue:round-queue-3#", "the answer STOP after it ends the round")
+	assert.Contains(t, joined, "item_list:round-queue-1-items#")
+	assert.Contains(t, joined, "item_list:round-queue-2-items#", "the answer CONTINUE starts the second pass")
+	assert.NotContains(t, joined, "item_list:round-queue-3-items#", "the answer STOP after it ends the round")
 }
 
 func TestRound_TheFileOfTheExampleReadsNoEnvironmentVariable(t *testing.T) {

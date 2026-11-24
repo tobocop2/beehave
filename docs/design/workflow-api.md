@@ -12,7 +12,7 @@ Every builtin and every keyword that the engine registers has one use in `exampl
 
 A second test checks that `workflow.Builtins` and the registry hold the same builtins.
 
-A use counts only when an entry reaches it. The entries are the code at the top of each file, the functions `main` and `finish` of each file that runs (a file that another file loads does not run), and each function that the keyword `entry` of a call lists. The keyword `entry` lists a string, a parameter that a call fills with a string, or a variable: a variable lists the strings of the values that it is bound to. A function is reached when reached code reads its name, in a call or as a value. The test binds each name with the resolver of `go.starlark.net`, as `beehave check workflow` does. A keyword of a call, an attribute, a local variable and a string are no reads. A function that no entry reaches gives no use. One exception stays: `pr_state` (all its keywords) and `item_create.shared` are used only by `foreign_followup` of the remediation example, and `pr_take` (all its keywords) only by `take_over` of the same file. No entry calls them while the engine refuses every foreign pull request, and #438 wires it in. The test names these pairs and fails when an entry reaches one of them, so the exception ends with #438.
+A use counts only when an entry reaches it. The entries are the code at the top of each file, the functions `main` and `finish` of each file that runs (a file that another file loads does not run), and each function that the keyword `entry` of a call lists. The keyword `entry` lists a string, a parameter that a call fills with a string, or a variable: a variable lists the strings of the values that it is bound to. A function is reached when reached code reads its name, in a call or as a value. The test binds each name with the resolver of `go.starlark.net`, as `beehave check workflow` does. A keyword of a call, an attribute, a local variable and a string are no reads. A function that no entry reaches gives no use. One exception stays: `item_create.shared` is used only by `foreign_followup` of the remediation example, and `pr_take` (all its keywords) only by `take_over` of the same file. No entry calls them while the engine refuses every foreign pull request, and #438 wires it in. The test names these pairs and fails when an entry reaches one of them, so the exception ends with #438.
 
 Two more tests read this page. One checks that the Use column of each row gives the count of files and the first two files of the calls, and that the Change column holds `unchanged` or `#<number>: <text>`. The other checks that the table of `facts()` holds the ten fields that the check of workflow files and the `facts` struct hold.
 
@@ -155,6 +155,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_create` | `severity` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `shared` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `title` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `item_list` | `-` | #498: new, reads the open items of the project, with one tracker label | 1: `internal/workflow/lib/queue.star` |
+| `item_list` | `label` | #498: new | 1: `internal/workflow/lib/queue.star` |
+| `item_list` | `name` | #498: new | 1: `internal/workflow/lib/queue.star` |
 | `item_read` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `of` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -188,6 +191,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_history` | `-` | #700: new, the pull requests of the item in every state, with the closing comment of each closed or merged one | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `item` | #501: new, reads the pull requests of another item, such as the parent | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `name` | #700: new | 1: `examples/remediation/workflow.star` |
+| `pr_list` | `-` | #498: new, reads the open pull requests of the project, on one base | 1: `internal/workflow/lib/queue.star` |
+| `pr_list` | `base` | #498: new | 1: `internal/workflow/lib/queue.star` |
+| `pr_list` | `name` | #498: new | 1: `internal/workflow/lib/queue.star` |
 | `pr_open` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `body` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -195,9 +201,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_open` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `parent` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `title` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_state` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_state` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_state` | `pr` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_state` | `-` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/queue.star` |
+| `pr_state` | `name` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/queue.star` |
+| `pr_state` | `pr` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/queue.star` |
 | `pr_take` | `-` | #381: new, the engine posts the notice for a pull request of somebody else, or takes it, as the writer | 1: `examples/remediation/workflow.star` |
 | `pr_take` | `grace` | #381: new | 1: `examples/remediation/workflow.star` |
 | `pr_take` | `idle` | #381: new | 1: `examples/remediation/workflow.star` |
@@ -226,10 +232,6 @@ The Change column says how the pair differs from the contract that the five piec
 | `push` | `expect` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `push` | `head` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `push` | `name` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `queue` | `-` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
-| `queue` | `hold` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
-| `queue` | `label` | unchanged | 1: `examples/remediation/workflow.star` |
-| `queue` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `recv` | `-` | #588: new, waits for the next message of a topic on the inbox of the run | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `name` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `timeout` | #588: new, required | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
@@ -251,6 +253,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `round_sync` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
 | `sandbox` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `sandbox` | `network` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
+| `run_read` | `-` | #498: new, reads the free slots and the last run of each listed item | 1: `internal/workflow/lib/queue.star` |
+| `run_read` | `items` | #498: new | 1: `internal/workflow/lib/queue.star` |
+| `run_read` | `name` | #498: new | 1: `internal/workflow/lib/queue.star` |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run, of a child run or of the open run of an item of the project | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
 | `send` | `name` | #588: new | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
 | `send` | `to` | #854: `"item:<id>"` added to `"parent"` and a run that `spawn` returned | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
@@ -271,7 +276,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `stream` | `name` | #853: new | 1: `examples/supervisor/workflow.star` |
 | `stream` | `run` | #853: new, a run that `spawn` returned | 1: `examples/supervisor/workflow.star` |
 | `stream` | `timeout` | #853: new, required | 1: `examples/supervisor/workflow.star` |
-| `struct` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
+| `struct` | `-` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
 | `wait` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
 | `wait` | `name` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |

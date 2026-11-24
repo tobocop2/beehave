@@ -87,8 +87,8 @@ func TestExampleQueue_TheAuditOfEachPassRunsAfterItsQueueReadAndBeforeItsSpawn(t
 	require.NoError(t, err)
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
-	assert.Positive(t, strings.Index(joined, "queue:round-queue-1#"), joined)
-	assert.Less(t, strings.Index(joined, "queue:round-queue-1#"), strings.Index(joined, "agent:queue-audit-1#"), "the audit judges the rows of the queue read of its pass")
+	assert.Positive(t, strings.Index(joined, "item_list:round-queue-1-items#"), joined)
+	assert.Less(t, strings.Index(joined, "item_list:round-queue-1-items#"), strings.Index(joined, "agent:queue-audit-1#"), "the audit judges the rows of the queue read of its pass")
 	assert.Less(t, strings.Index(joined, "agent:queue-audit-1#"), strings.Index(joined, "spawn:round-spawn-1#"))
 }
 
