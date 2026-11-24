@@ -407,6 +407,8 @@ func (g batchGate) Run(ctx context.Context, in batch.GateInput) (batch.GateOutco
 
 	for run := 1; ; run++ {
 		ran, err := g.s.e.queueExclusive(ctx, queued)
+		g.s.noteGateHost(ran)
+
 		if err != nil || ran.Lost == nil {
 			return ran.Batch, err
 		}
