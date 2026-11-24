@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
@@ -39,7 +40,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, hostName(project), project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, stepsKey(project.GateSteps), project.TestReport, hostName(project), project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
 
 	return key, nil
 }
@@ -104,6 +105,24 @@ func (g Gate) versions(ctx context.Context, dir string, pins []Pin) (string, boo
 }
 
 // digest hashes the parts with their lengths, so that two lists of parts never give the same text.
+// stepsKey is the text of the gate list in the key: each step as its quoted name and command, and its timeout only when it has one, so a list
+// with no timeouts keeps the text, and so the key, that it had before steps had timeouts.
+func stepsKey(steps []model.GateSpec) string {
+	parts := make([]string, 0, len(steps))
+
+	for _, spec := range steps {
+		if spec.Timeout == 0 {
+			parts = append(parts, fmt.Sprintf("%q", struct{ Name, Command string }{spec.Name, spec.Command}))
+
+			continue
+		}
+
+		parts = append(parts, fmt.Sprintf("%q", struct{ Name, Command, Timeout string }{spec.Name, spec.Command, spec.Timeout.String()}))
+	}
+
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
 func digest(parts ...string) string {
 	sum := sha256.New()
 	for _, part := range parts {
