@@ -536,10 +536,22 @@ def integration_reads(base, pr, numbers):
 
     return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
 
-def land_one(member, base, repo, gated, expect_tree, name):
-    """Merges one pull request with the result of a gate call of this run. The engine posts the statuses of the gate and merges only when the base tip has the tree expect_tree.
+def land_one(member, base, repo, own, forbid_text, gated, expect_tree, name):
+    """Merges one pull request with the result of a gate call of this run, under the same guards as the list call of the round: the hold label, the own identity and the forbidden text.
+    The engine posts the statuses of the gate and merges only when the tree that the merge makes is the tree of the gate and the base tip has the tree expect_tree.
     No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    return merge(member = member, base = base, repo = repo, gate = gated, gated_tree = gated.tree, expect_tree = expect_tree, name = name)
+    return merge(
+        name = name,
+        member = member,
+        base = base,
+        repo = repo,
+        hold = "hold",
+        own = own,
+        forbid_text = forbid_text,
+        gate = gated,
+        gated_tree = gated.tree,
+        expect_tree = expect_tree,
+    )
 
 def hand_to_owner(prs, base, repo, name):
     """Marks the pull requests ready and waits until the owner merges them. No entry calls it yet: the hand-off of the batch still uses the keyword of merge (#503)."""

@@ -33,9 +33,7 @@ func (s *script) recordGate(label string, outputs map[string]any) (starlark.Valu
 		return nil, err
 	}
 
-	if err := s.keepGate(recorded); err != nil {
-		return nil, err
-	}
+	s.keepGate(recorded)
 
 	return result(recorded)
 }

@@ -54,6 +54,7 @@ var goldenShapes = map[string][]string{
 		"first_of: kind,message,outcome,run,runs",
 		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,step,steps,tree",
 		"gather: results",
+		"hand_off: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
 		"host_teardown: down,reason",
 		"host_up: host,started",
 		"integration_pull: number,state",
@@ -65,7 +66,7 @@ var goldenShapes = map[string][]string{
 		"item_read: comments,fields,found,id,parent",
 		"item_status: id,status",
 		"item_stop: recorded",
-		"merge: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
+		"merge: commit,deferred,findings,gates,host_loss,host_losses,merged,moved,note,reason,rejected,status,tip,tree,unproven",
 		"pr_closing: forge,found,issues",
 		"pr_comment: number",
 		"pr_history: pulls",
@@ -122,8 +123,8 @@ func TestStepsVersion_EveryBuiltinWithResultFieldsRecordsUnderAKindOfTheTable(t 
 	t.Parallel()
 
 	for _, name := range workflow.Results() {
-		if name == "merge" {
-			continue // its steps are named batch:<name>.<kind> and the golden list of its steps holds them
+		if name == "merge" || name == handOffKeyword {
+			continue // the steps of both are named batch:<name>.<kind> and the golden list of the steps of merge holds them
 		}
 
 		assert.Contains(t, moduleRegistry(t).Kinds(), name, "the builtin %s has result fields and no step kind", name)

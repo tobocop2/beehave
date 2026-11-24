@@ -33,15 +33,16 @@ func decodeGate(outputs map[string]any) (record gateRecord, err error) {
 }
 
 // keepGate remembers the gate that a call recorded, by its step name, so a merge can check a gate value against it. A replay of the call keeps it again.
-func (s *script) keepGate(outputs map[string]any) error {
+// A record that does not decode is not kept, so a merge that names its step finds no gate and refuses: the trust fails closed.
+func (s *script) keepGate(outputs map[string]any) {
 	step, isText := outputs[stepField].(string)
 	if !isText || step == "" {
-		return nil
+		return
 	}
 
 	record, err := decodeGate(outputs)
 	if err != nil {
-		return fmt.Errorf("the record of gate step %s: %w", step, err)
+		return
 	}
 
 	if s.gates == nil {
@@ -49,8 +50,6 @@ func (s *script) keepGate(outputs map[string]any) error {
 	}
 
 	s.gates[step] = record
-
-	return nil
 }
 
 // trustedGate returns the record of the gate that the `gate` value of a merge call names. Only a gate that this run recorded counts, so a value that a workflow made up has no record.

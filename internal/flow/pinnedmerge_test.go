@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +12,24 @@ import (
 
 // pinned writes a call of merge with `member` after a gate call that records the step gate:g#1. extra holds more arguments, each followed by a comma,
 // and gateArg replaces the gate argument. The report command shows the three answers of the call.
+// The call first checks out the merge of main and the head of the item, so the gate runs on the tree that the merge makes.
 func (r *batchRig) pinned(item, gateArg, extra string) string {
+	r.onMergeOf(item)
+
+	return r.pinnedOnCheckout(item, gateArg, extra)
+}
+
+// onMergeOf checks out, detached, a commit of the tree that merging the head of the item into main makes. The test gate reports the tree of the checkout.
+func (r *batchRig) onMergeOf(item string) {
+	r.t.Helper()
+
+	tree := r.repo.must(r.t, "merge-tree", "--write-tree", "main", r.heads[item])
+	commit := r.repo.must(r.t, "commit-tree", tree, "-p", r.repo.must(r.t, "rev-parse", "main"), "-p", r.heads[item], "-m", "merge")
+	r.repo.must(r.t, "switch", "-q", "--detach", commit)
+}
+
+// pinnedOnCheckout is pinned with no change of the checkout.
+func (r *batchRig) pinnedOnCheckout(item, gateArg, extra string) string {
 	return `g = gate(name = "g")
 out = merge(member = struct(item = "` + item + `", head = "` + r.heads[item] + `", closes = []), base = "main", repo = "o/r", gate = ` + gateArg + `, ` + extra + `name = "m")
 command(name = "report", run = ["report", str(out.merged), out.status, out.reason])
@@ -36,7 +55,7 @@ func TestMerge_AMemberWithAPassedGateOfThisRunMergesAndGetsItsStatuses(t *testin
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 	assert.Equal(t, []string{"beehave/gate success " + rig.heads["1"]}, rig.merger.statusesGiven())
 	require.Len(t, rig.merger.given, 1)
-	assert.Equal(t, tree, rig.merger.given[0].GatedTree, "the merge compares the base tree with the tree of the gate")
+	assert.Equal(t, rig.repo.must(t, "rev-parse", "HEAD^{tree}"), rig.merger.given[0].GatedTree, "the merge compares the base tree with the tree of the gate")
 	assert.Equal(t, []string{"report True merged "}, filterReport(rig.h.commands.ran()))
 }
 
@@ -44,6 +63,8 @@ func TestMerge_AnApprovedMemberAlsoGetsTheReviewStatus(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
+	rig.onMergeOf("1")
+
 	body := `g = gate(name = "g")
 out = merge(member = struct(item = "1", head = "` + rig.heads["1"] + `", approved = True, closes = [7]), base = "main", repo = "o/r", gate = g, gated_tree = g.tree, name = "m")
 `
@@ -180,6 +201,83 @@ func TestMerge_ATipWithAnotherTreeThanExpectTreeIsUnsettledAndNothingMerges(t *t
 	assert.Empty(t, rig.merger.statusesGiven(), "no status")
 	assert.Empty(t, rig.host.intents, "the pull request is not read for a tip that moved")
 	assert.Equal(t, []string{"report False unsettled the base moved while the batch ran; run the batch again"}, filterReport(rig.h.commands.ran()))
+}
+
+func TestMerge_AGateOfThisRunOnAnotherTreeThanTheMergeMakesPostsNoStatusAndMergesNothing(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.repo.must(t, "switch", "-q", "m3") // the gate runs on the head of item 3, and the call merges item 1
+
+	_, err := rig.walk(t, rig.pinnedOnCheckout("1", "g", `gated_tree = g.tree, expect_tree = "`+rig.mainTree(t)+`", `))
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.statusesGiven(), "no status is posted for a gate that ran on another tree")
+	assert.Empty(t, rig.merger.landed())
+	assert.Empty(t, rig.merger.given, "the merge call is never made")
+	assert.Contains(t, filterReport(rig.h.commands.ran())[0], "refused the gate ran on the tree")
+}
+
+func TestMerge_AMemberThatConflictsWithTheBaseTipIsRefusedBeforeAnyStatus(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.repo.must(t, "switch", "-q", "main")
+	rig.repo.must(t, "switch", "-q", "-c", "clash")
+	require.NoError(t, os.WriteFile(filepath.Join(rig.repo.dir, "README"), []byte("clash\n"), 0o600))
+	rig.repo.must(t, "commit", "-q", "-am", "clash")
+
+	head := rig.repo.must(t, "rev-parse", "HEAD")
+
+	rig.repo.must(t, "switch", "-q", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(rig.repo.dir, "README"), []byte("main moved\n"), 0o600))
+	rig.repo.must(t, "commit", "-q", "-am", "main moved")
+
+	rig.heads["9"] = head
+	body := `g = gate(name = "g")
+out = merge(member = struct(item = "9", head = "` + head + `", closes = []), base = "main", repo = "o/r", gate = g, gated_tree = g.tree, name = "m")
+command(name = "report", run = ["report", out.status, out.reason])
+`
+
+	_, err := rig.walk(t, body)
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.statusesGiven())
+	assert.Contains(t, filterReport(rig.h.commands.ran())[0], "conflicts with the base tip")
+}
+
+func TestMerge_AGitThatFailsOrAHeadThatIsNotInTheRepositoryEndsTheCallBeforeAnyStatus(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.host.gitErr = errFake
+
+	_, err := rig.walk(t, rig.pinned("1", "g", `gated_tree = g.tree, `))
+
+	require.ErrorIs(t, err, errFake)
+	assert.Empty(t, rig.merger.statusesGiven())
+
+	rig = newBatchRig(t)
+	_, err = rig.walk(t, `g = gate(name = "g")
+out = merge(member = struct(item = "1", head = "`+strings.Repeat("a", 40)+`", closes = []), base = "main", repo = "o/r", gate = g, gated_tree = g.tree, name = "m")
+`)
+
+	require.Error(t, err)
+	assert.Empty(t, rig.merger.statusesGiven())
+	assert.Empty(t, rig.merger.landed())
+}
+
+func TestMerge_ACallWithAGateAndNoExpectTreeIsBoundToTheTreeOfTheMergeAllTheSame(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.repo.must(t, "switch", "-q", "m3")
+
+	_, err := rig.walk(t, rig.pinnedOnCheckout("1", "g", `gated_tree = g.tree, `))
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.statusesGiven())
+	assert.Empty(t, rig.merger.landed())
 }
 
 func TestMerge_ACallWithNoGateMergesWithNoStatusAndNoTreeProof(t *testing.T) {
@@ -384,16 +482,40 @@ func TestMerge_AFailedReadOfTheTipAfterTheMergeEndsTheCallWithTheNameOfTheCall(t
 	assert.ErrorContains(t, err, `merge "m"`)
 }
 
-func TestKeepGate_ARecordThatIsNotAGateRecordIsAnErrorThatNamesTheStep(t *testing.T) {
+func TestKeepGate_ARecordThatDoesNotDecodeOrNamesNoStepIsNotKeptSoAMergeFindsNoGate(t *testing.T) {
 	t.Parallel()
 
 	s := &script{}
 
-	require.ErrorContains(t, s.keepGate(map[string]any{stepField: "g#1", "passed": "yes"}), "the record of gate step g#1")
-	require.ErrorContains(t, s.keepGate(map[string]any{stepField: "g#2", "head": make(chan int)}), "the record of gate step g#2")
-	assert.Empty(t, s.gates, "a record that did not decode is not kept")
-	require.NoError(t, s.keepGate(map[string]any{"passed": true}), "an output with no step names no gate")
-	assert.Empty(t, s.gates)
+	s.keepGate(map[string]any{stepField: "g#1", "passed": "yes"})
+	s.keepGate(map[string]any{stepField: "g#2", "head": make(chan int)})
+	s.keepGate(map[string]any{"passed": true})
+	assert.Empty(t, s.gates, "nothing of the three is kept")
+
+	s.keepGate(map[string]any{stepField: "g#3", "passed": true, "tree": "t"})
+	assert.Equal(t, gateRecord{Passed: true, Tree: "t"}, s.gates["g#3"])
+}
+
+func TestMerge_ACallThatTheCheckDoesNotSeeIsRefusedByTheRunWithTheSameForm(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct{ args, want string }{
+		"prs with member":        {args: `"base": "main", "prs": [], "member": struct(item = "1", head = "h", closes = [])`, want: "not both"},
+		"empty base":             {args: `"member": struct(item = "1", head = "h", closes = []), "base": "" + ""`, want: "base must not be empty"},
+		"neither prs nor member": {args: `"base": "main"`, want: "needs `prs` or `member`"},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newBatchRig(t)
+			_, err := rig.walk(t, `merge(**dict({"repo": "o/r", "name": "m", `+c.args+`}))`)
+
+			require.ErrorContains(t, err, c.want)
+			assert.Empty(t, rig.merger.landed())
+		})
+	}
 }
 
 func TestHandOff_TheBuiltinTakesNoKeywordOfALanding(t *testing.T) {

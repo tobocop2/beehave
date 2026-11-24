@@ -762,16 +762,59 @@ func (b *batchBase) intent(ctx context.Context, m batch.Member) (intentRead, err
 		return intentRead{}, err
 	}
 
-	if want := b.call.expectTree; want != "" && tip.Tree != want {
+	if b.call.expectTree != "" && tip.Tree != b.call.expectTree {
 		return intentRead{Moved: true}, nil
 	}
 
+	return b.readIntent(ctx, m, tip)
+}
+
+// readIntent reads the pull request of the member against the tip, then checks that the gate belongs to the member.
+func (b *batchBase) readIntent(ctx context.Context, m batch.Member, tip batch.Tip) (intentRead, error) {
 	intent, err := b.s.e.deps.Batch.Intent(ctx, b.s.in.Project, m.Item, b.call.settings.Repo, b.call.settings.Base, tip.Tree, b.s.e.deps.Clock.now())
 	if errors.Is(err, ErrMemberNotOpen) {
 		return intentRead{Refused: err.Error()}, nil
 	}
 
-	return intentRead{Intent: intent}, err
+	if err != nil {
+		return intentRead{}, err
+	}
+
+	refused, err := b.gateBinding(ctx, m, tip)
+
+	return intentRead{Intent: intent, Refused: refused}, err
+}
+
+// mergeMade is the result of merging the head of the member into the base tip without a working copy.
+func (b *batchBase) mergeMade(ctx context.Context, m batch.Member, tip batch.Tip) (batch.MergeResult, error) {
+	git, err := b.s.e.deps.Batch.Git(ctx, b.s.in.Project, b.s.in.Item)
+	if err != nil {
+		return batch.MergeResult{}, err
+	}
+
+	return git.MergeTree(ctx, tip.Commit, m.Head)
+}
+
+// gateBinding says why the gate of a call with `gate` does not belong to the member, or gives an empty text. The tree that the merge makes is the tree of the
+// base tip with the head of the member merged in, so that is the tree that the gate must have run on. The check comes before any status is posted.
+func (b *batchBase) gateBinding(ctx context.Context, m batch.Member, tip batch.Tip) (string, error) {
+	if b.call.gatedTree == "" {
+		return "", nil
+	}
+
+	made, err := b.mergeMade(ctx, m, tip)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case made.Conflict:
+		return fmt.Sprintf("the head of item %s conflicts with the base tip, so no gate ran on the tree that the merge makes", m.Item), nil
+	case made.Tree != b.call.gatedTree:
+		return fmt.Sprintf("the gate ran on the tree %s, and the merge of item %s makes the tree %s. Run the gate on the tree that the merge makes", b.call.gatedTree, m.Item, made.Tree), nil
+	}
+
+	return "", nil
 }
 
 // readSeparator comes between a step name and the number of a later read. An item id has no "@", so the name of a later read of one item
