@@ -296,7 +296,7 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 // exclusiveGate runs the gate of a call as a child workflow on the exclusive queue, so no merge of the repository starts while it runs,
 // and returns its outputs. The gate call records them as its own step, so a replay reads them and runs no gate again.
 func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[string]any, error) {
-	in := ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
+	in := ExclusiveInput{Kind: kindGate, Call: callKey(kindGate, label), Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
 
 	ran, err := s.e.queueExclusive(s.ctx, in)
 	s.noteGateHost(ran)
@@ -398,7 +398,10 @@ func (e *Engine) finishProjectGate(ctx context.Context, in ExclusiveInput, start
 		return gateFinish{}, "", err
 	}
 
-	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, start.Job)
+	job := start.Job
+	job.Call = in.Call
+
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, job)
 	if errors.Is(err, host.ErrLost) && ctx.Err() == nil {
 		return gateFinish{Lost: lostJobOf(in, start, err)}, "", nil
 	}

@@ -111,7 +111,7 @@ func TestCheckWorkflowDryRun_APlainRunWithoutTheFlagPrintsNoSteps(t *testing.T) 
 	assert.Empty(t, stdout)
 }
 
-func TestCheckWorkflowDryRun_TheRedGateFlagMakesAWorkflowThatStopsAtARedGateExitOneAndTheDefaultExitsZero(t *testing.T) {
+func TestCheckWorkflowDryRun_ARedGateInTheFixtureMakesAWorkflowThatStopsAtARedGateExitOneAndTheDefaultExitsZero(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -121,7 +121,9 @@ func TestCheckWorkflowDryRun_TheRedGateFlagMakesAWorkflowThatStopsAtARedGateExit
 	code, _, _ := runDry(t, map[string]string{}, file)
 	require.Equal(t, 0, code)
 
-	code, stdout, _ := runDry(t, map[string]string{}, "--red-gate", file)
+	writeConfig(t, dir, "red.json", `{"gate:check": [{"passed": false}]}`)
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--fixture", filepath.Join(dir, "red.json"), file)
 	require.Equal(t, 1, code)
 	assert.Contains(t, stdout, "the gate is red")
 }
@@ -250,7 +252,7 @@ func TestCheckWorkflowDryRun_TheOldFlagsAreRefused(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, "workflow.star", lintAndFixFile)
 
-	for _, flag := range []string{"--send-back"} {
+	for _, flag := range []string{"--send-back", "--red-gate"} {
 		code, _, stderr := runDry(t, map[string]string{}, flag, filepath.Join(dir, "workflow.star"))
 
 		require.NotEqual(t, 0, code, flag)

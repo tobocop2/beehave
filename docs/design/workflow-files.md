@@ -936,21 +936,22 @@ It checks that:
 
 #### The dry run and the fixture
 
-`beehave check workflow --dry-run` runs the file for one item over fakes. Every agent call ends as done, and every review approves.
+`beehave check workflow --dry-run` runs the file for one item over fakes. Every agent call ends as done, every review approves, and every gate passes.
 
-`--fixture <file.json>` scripts the result of each agent call. It needs `--dry-run`; without it the command exits 2.
+`--fixture <file.json>` scripts the result of each agent call and each gate call. It needs `--dry-run`; without it the command exits 2.
 
 ```json
 {
   "agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}],
-  "agent:fix": {}
+  "agent:fix": {},
+  "gate:check": [{"passed": false}, {"passed": true}]
 }
 ```
 
-- A key is `agent` for a call with no name, or `agent:<name>` for the call with that name. Any other key is refused when the file loads.
+- A key is the builtin (`agent` or `gate`) for a call with no name, or `agent:<name>` or `gate:<name>` for the call with that name. Any other key is refused when the file loads, and so is `merge`: the gate of a merge is not scripted and always passes.
 - A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes.
-- A result is `{"outputs": {"<output>": "<text>"}}`. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
-- With a fixture, an agent call whose key the file does not list fails the run and names the keys of the file. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
+- An agent result is `{"outputs": {"<output>": "<text>"}}`. A gate result is `{"passed": <bool>}`; a gate that does not pass is red with one failed step. A result with no `passed` field passes. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
+- With a fixture, an agent call or a gate call whose key the file does not list fails the run and names the keys of the file. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
 - An unknown key, an unknown field and a value of the wrong type exit 2 and name the file.
 
 ### Examples

@@ -20,6 +20,12 @@ type Fixture struct {
 	keys   []string
 	shapes map[string]fixtureShape
 	agents map[string]fixtureCalls[agentResult]
+	gates  map[string]fixtureCalls[gateResult]
+}
+
+// gateResult is the scripted result of one gate call. A result with no passed field passes.
+type gateResult struct {
+	Passed *bool `json:"passed"`
 }
 
 // agentResult is the scripted result of one agent call. A declared output that Outputs does not name keeps the base value of the dry run.
@@ -39,8 +45,11 @@ type fixtureShape struct {
 	object  bool
 }
 
-// fixtureAgent is the builtin of the keys that script an agent call.
-const fixtureAgent = "agent"
+// fixtureAgent and fixtureGate are the builtins of the keys that script an agent call and a gate call.
+const (
+	fixtureAgent = "agent"
+	fixtureGate  = "gate"
+)
 
 // LoadFixture reads the fixture file at the path. It refuses an unknown key, an unknown field and a value of the wrong type, and names the file in each message.
 func LoadFixture(path string) (Fixture, error) {
@@ -54,7 +63,7 @@ func LoadFixture(path string) (Fixture, error) {
 		return Fixture{}, fmt.Errorf("fixture %s: the file must hold a JSON object of calls: %w", path, err)
 	}
 
-	loaded := Fixture{file: path, keys: slices.Sorted(maps.Keys(top)), shapes: map[string]fixtureShape{}, agents: map[string]fixtureCalls[agentResult]{}}
+	loaded := Fixture{file: path, keys: slices.Sorted(maps.Keys(top)), shapes: map[string]fixtureShape{}, agents: map[string]fixtureCalls[agentResult]{}, gates: map[string]fixtureCalls[gateResult]{}}
 
 	for _, key := range loaded.keys {
 		if err := loaded.add(key, top[key]); err != nil {
@@ -69,14 +78,20 @@ func LoadFixture(path string) (Fixture, error) {
 func (f *Fixture) add(key string, raw json.RawMessage) error {
 	builtin, _, _ := strings.Cut(key, ":")
 
-	if builtin != fixtureAgent {
-		return fmt.Errorf("the builtin must be %s", fixtureAgent)
+	switch builtin {
+	case fixtureAgent:
+		calls, err := decodeCalls[agentResult](raw)
+		f.agents[key], f.shapes[key] = calls, calls.shape()
+
+		return err
+	case fixtureGate:
+		calls, err := decodeCalls[gateResult](raw)
+		f.gates[key], f.shapes[key] = calls, calls.shape()
+
+		return err
 	}
 
-	calls, err := decodeCalls[agentResult](raw)
-	f.agents[key], f.shapes[key] = calls, calls.shape()
-
-	return err
+	return fmt.Errorf("the builtin must be %s or %s", fixtureAgent, fixtureGate)
 }
 
 // decodeCalls reads a list of results, or one object, and refuses a field that the result does not have.
@@ -165,6 +180,34 @@ func (r *fixtureRun) agentOutputs(call string, declared []string) (map[string]st
 	}
 
 	return result.Outputs, r.declares(key, number, result.Outputs, declared)
+}
+
+// gatePassed counts one gate call and returns whether the fixture lets it pass. call is the key of the gate call, such as gate:check.
+// A gate with no key, which is the gate of a merge, is not scripted and passes.
+func (r *fixtureRun) gatePassed(call string) (bool, error) {
+	if r == nil || call == "" {
+		return true, nil
+	}
+
+	result, _, err := nextResult(r, call, r.gates)
+
+	switch {
+	case err != nil:
+		return false, err
+	case result == nil:
+		return false, r.unlisted(call)
+	}
+
+	return result.Passed == nil || *result.Passed, nil
+}
+
+// callKey is the key of a call of the builtin: its name, then a colon and the label when the call has one.
+func callKey(builtin, label string) string {
+	if label == "" {
+		return builtin
+	}
+
+	return builtin + ":" + label
 }
 
 // declares refuses an output that the result sets and the call does not declare.
