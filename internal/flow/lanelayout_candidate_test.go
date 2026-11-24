@@ -55,12 +55,15 @@ func TestLaneLayout_TheInnerLoopIsScopedAndTheFullGateRunsOncePerCandidate(t *te
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",
 		}},
 		"the_first_review_sends_back": {nil, `{
-  "agent:implement": {}, "agent:scoped-review-implement": [{"outputs": {"verdict": "changes"}}], "agent:fix-scoped-2": {}, "agent:scoped-review-2": {}, "agent:candidate-review": {}
+  "agent:implement": {}, "agent:scoped-review-implement": [{"outputs": {"verdict": "changes"}}], "agent:fix-scoped-2": {}, "agent:scoped-review-2": {}, "agent:candidate-review": {}, "gate:candidate-gate": {}
 }`, []string{
 			"agent implement", "agent scoped-review-implement", "agent fix-scoped-2", "agent scoped-review-2",
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",
 		}},
-		"the_first_gate_is_red": {[]DryOption{WithRedGate()}, "", []string{
+		"the_first_gate_is_red": {nil, `{
+  "gate:candidate-gate": [{"passed": false}, {"passed": true}],
+  "agent:implement": {}, "agent:scoped-review-implement": {}, "agent:fix-scoped-1": {}, "agent:scoped-review-1": {}, "agent:candidate-review": {}
+}`, []string{
 			"agent implement", "agent scoped-review-implement", "gate candidate-gate",
 			"agent fix-scoped-1", "agent scoped-review-1",
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",

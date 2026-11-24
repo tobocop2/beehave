@@ -144,6 +144,8 @@ type GateJob struct {
 	Head string `json:"head,omitempty"`
 	// Plan is what the job runs and the steps that it reports, fixed when the job text was made. Run judges the job by it.
 	Plan gatepkg.Plan `json:"plan"`
+	// Call is the key of the gate call that asked for the job, such as gate:check. The engine sets it when it calls Run and records it nowhere. It is empty for a batch gate.
+	Call string `json:"-"`
 }
 
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.
