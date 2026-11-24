@@ -107,7 +107,7 @@ func copyIntoWork(ts *testscript.TestScript, name, parent, folder string, args [
 	}
 }
 
-// cmdScript is "script <name> [<to>]": it copies scripts/<name> of the repository to the path <to> in the work folder (default: <name>).
+// cmdScript is "script <path> [<to>]": it copies scripts/<path> of the repository to <to> (default <path>) in the work folder.
 func cmdScript(ts *testscript.TestScript, _ bool, args []string) {
 	copyIntoWork(ts, "script", filepath.Join("..", ".."), "scripts", args)
 }

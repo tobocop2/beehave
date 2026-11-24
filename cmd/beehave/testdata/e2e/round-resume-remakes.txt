@@ -11,7 +11,7 @@ exec git -C origin checkout -q main
 exec git -C origin rev-parse integration/r1
 cp stdout base-tip
 
-example local/project.star config/projects/local.star
+fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
 subst flow/round.star
 

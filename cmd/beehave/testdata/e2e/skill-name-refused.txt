@@ -9,7 +9,7 @@ exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m s
 subst runners.star
 subst fake/claude
 cp runners.star config/runners.star
-example local/project.star config/projects/local.star
+fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
 replace config/projects/local.star 'base_branch = "main",' 'base_branch = "main", repo = "example/local", forge = "github", vars = {"round": {"base": "main", "owner": "owner", "lane_cap": 1, "fix_rounds": 1, "label": "round", "steps": {"implement": {"runner": "oc"}}}, "mutation_command": ["sh", "mutation.sh"]},'
 chmod 755 fake/claude
