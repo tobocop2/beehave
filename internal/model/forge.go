@@ -126,6 +126,26 @@ type PullRequest struct {
 	ReviewRequests []reviewRequest `json:"reviewRequests"`
 }
 
+// PullFacts is the typed read of one pull request: its number, state, head commit, base branch, author login and assignee logins.
+type PullFacts struct {
+	Number    int
+	State     string
+	Head      string
+	Base      string
+	Author    string
+	Assignees []string
+}
+
+// Facts is the typed read of the view: a field the view lacks is empty.
+func (p PullRequest) Facts() PullFacts {
+	facts := PullFacts{Number: p.Number, State: Deref(p.State), Head: Deref(p.HeadRefOid), Base: Deref(p.BaseRefName), Author: p.Author.Login}
+	for _, who := range p.Assignees {
+		facts.Assignees = append(facts.Assignees, who.Login)
+	}
+
+	return facts
+}
+
 // PriorPull is one pull request of an item in any state. MergedAt is empty when it never merged; ClosingComment is the body of its last comment made at or before its close, empty for an open one.
 type PriorPull struct {
 	Number         int    `json:"number"`

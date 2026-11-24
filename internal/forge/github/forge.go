@@ -121,6 +121,23 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 	return view, nil
 }
 
+// PullRead returns the state, head commit, base branch, author and assignees of one pull request. A read with no state, head or base is refused.
+func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
+	view, err := f.PRView(ctx, pr, "number", "state", "headRefOid", "baseRefName", "author", "assignees")
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	facts := view.Facts()
+	facts.Number = pr
+
+	if facts.State == "" || facts.Head == "" || facts.Base == "" {
+		return model.PullFacts{}, forge.Refuse("cannot read pull request %d: the read has no state, head or base", pr)
+	}
+
+	return facts, nil
+}
+
 // CloneURL is the HTTPS address of the repository.
 func (f *Forge) CloneURL() string { return "https://github.com/" + f.repo + ".git" }
 

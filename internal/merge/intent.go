@@ -26,15 +26,10 @@ type Intent struct {
 	Skew        time.Duration
 }
 
-// NewIntent makes the intent from a read of the pull request. It writes nothing to the forge.
-// A read that lacks the state, the head or the base is an error, because an intent with a hole proves nothing.
-func NewIntent(view model.PullRequest, baseTipTree string, now time.Time) (Intent, error) {
-	state, head, base := model.Deref(view.State), model.Deref(view.HeadRefOid), model.Deref(view.BaseRefName)
-	if state == "" || head == "" || base == "" {
-		return Intent{}, fmt.Errorf("cannot make an intent for #%d: the read has no state, head or base", view.Number)
-	}
-
-	return Intent{PR: view.Number, Head: head, Base: base, BaseTipTree: baseTipTree, State: state, Time: now}, nil
+// NewIntent makes the intent from the typed read of the pull request. It writes nothing to the forge.
+// The read refuses a hole in the state, the head or the base, so the intent holds all three.
+func NewIntent(facts model.PullFacts, baseTipTree string, now time.Time) Intent {
+	return Intent{PR: facts.Number, Head: facts.Head, Base: facts.Base, BaseTipTree: baseTipTree, State: facts.State, Time: now}
 }
 
 var errNoMergeTime = errors.New("no readable merge time")
