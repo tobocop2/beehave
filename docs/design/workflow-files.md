@@ -242,26 +242,22 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 #### `pr_comment`
 
-`pr_comment(text, key, forbid_text, integration)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+`pr_comment(text, key, forbid_text)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
 
 #### `pr_open`
 
-`pr_open(title, base, body, issue, parent, forbid_text, integration, name)` opens the draft pull request of the item and returns `number`, `created` and `stack`.
+`pr_open(title, base, body, parent, forbid_text, name)` opens the draft pull request of the item and returns `number`, `created` and `stack`.
 
 - The branch of the item must be on the remote already.
 - The forge looks for an open pull request on that branch first, and opens one only when there is none. A resume after a lost step record therefore opens no second pull request, and `created` is then false.
 - The step needs a forge that implements `forge.Opener` (`CreatePR`, `LinkStack`). With a forge that does not, it fails with an error that says so.
 - In a dry run it shows the dry-run pull request and writes nothing.
 
-The body is `body` plus one closing line that the engine picks from the base:
+The call writes the body as given. The engine adds no closing line, and it does not read the base to change the text. The workflow writes the line it wants in `body`, such as `Closes #12` for a pull request into the trunk and `Addresses #12` for any other base.
 
-| Case | Closing line |
-| --- | --- |
-| The base is the default branch. | `Closes #N` |
-| Any other base. | `Addresses #N` |
-| `issue` is 0 or left out. | No line. |
+`body` is used only when the call opens the pull request. A pull request that exists already keeps its body, and the call writes nothing to it.
 
-`body` is used only when the call opens the pull request. A pull request that exists already keeps its body, and the call owns only the closing line. It corrects a line for the issue that has the wrong keyword in place, adds the line at the end when the body has none, keeps every other line, and writes only when the body changes.
+The arguments `issue` and `integration` are gone. A call that passes one fails at the check, and the message names the new form.
 
 The `parent` argument:
 
@@ -332,9 +328,9 @@ A sandboxed agent holds no forge tool and no credential. The workflow passes `pu
 
 #### Closing keywords in posted text
 
-`pr_comment` and `pr_open` refuse text with a closing keyword (`Closes`, `Fixes`, `Resolves` and their forms, with an issue). The check reads the text of the comment, and the title and the body of the pull request. It uses the same keywords as the guard of `merge`. The refusal happens before the post and names the argument and the issue.
+The engine has no closing-keyword rule for `pr_comment` and `pr_open`. A workflow that wants one passes the keywords in `forbid_text`, and the refusal is the one of every other `forbid_text` pattern. `examples/remediation/workflow.star` keeps the list in `CLOSING_KEYWORDS` and adds it to `forbid_text` of `pr_open`, `pr_comment` and `merge` for a base that is not the trunk (`project.base_branch`).
 
-Only the integration pull request may close an issue. A call for that pull request sets `integration = True`. The line that `pr_open` adds from `issue` is not part of the text and is not checked.
+`forbid_text` tests one line at a time, so a keyword and its number on two lines is not seen. The merge guard reads the commit messages with the grammar that sees it.
 
 ### `forbid_text` on public text
 
@@ -487,9 +483,11 @@ A run that `spawn` started reads the hold of its item in the tracker again befor
 
 ### `merge`
 
-`merge(prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name)` lands a list of `struct(item, head, approved)` with one gate run on the union tree of the base tip and all heads. It splits the list when the gate is red. A forge with a native merge queue needs no `merge`.
+`merge(prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name)` lands a list of `struct(item, head, approved, own_draft, closes)` with one gate run on the union tree of the base tip and all heads. It splits the list when the gate is red. A forge with a native merge queue needs no `merge`.
 
 `approved` is an optional bool of each member, and a member that leaves it out is not approved. It applies to that member only: a pull request of an `own` identity merges only when its own member sets `approved = True`. The call has no `approved` of its own, so the approval of one member never reaches another. A value that is not a bool fails the call and names the field.
+
+`closes` is a required list of issue numbers of each member: the issues that its pull request must close. Each number is 1 or more, and none repeats. Write `closes = []` for a member that closes nothing. A member with no `closes`, or a value that is not such a list, fails the call and the check. The merge guard refuses the member when the forge lists other issues (see Closing references in the merge design).
 
 `own_draft` is an optional int of each member: the number of the draft that the run opened for it. The pull request of a member stays a draft until the merge marks it ready, and the guards of the merge run before that step. The draft guard passes only when the pull request has the number `own_draft`, and the ready step then marks it ready after the guards, as it does for any draft. A member that leaves it out, or a draft with another number, is refused as before. `merge` has no `allow_ready` of its own. The value follows the same rule as `own_draft` of `preflight`: the check and the run refuse zero, a negative number and any other type, and the error names the member. A call with `hand_off` reads no `own_draft`: the call marks each pull request ready itself.
 

@@ -171,7 +171,6 @@ The Change column says how the pair differs from the contract that the five piec
 | `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_comment` | `integration` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `key` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `text` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -181,8 +180,6 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_open` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `body` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `integration` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `issue` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `parent` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `title` | unchanged | 1: `examples/remediation/workflow.star` |
