@@ -60,7 +60,7 @@ func (r *batchRig) call(items, extra string) string {
 	var prs []string
 
 	for _, item := range strings.Fields(items) {
-		prs = append(prs, `struct(item = "`+item+`", head = "`+r.heads[item]+`")`)
+		prs = append(prs, `struct(item = "`+item+`", head = "`+r.heads[item]+`", closes = [])`)
 	}
 
 	return `out = merge(prs = [` + strings.Join(prs, ", ") + `], base = "main", repo = "o/r", ` + extra + `name = "b")
@@ -99,6 +99,21 @@ func TestBatchMerge_ThreeMembersOneRedTwoLandOnAGreenGate(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{"1", "3"}, rig.host.intents)
+}
+
+func TestBatchMerge_TheClosesOfAMemberReachTheMergeOfThatMemberOnly(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	body := `out = merge(prs = [struct(item = "1", head = "` + rig.heads["1"] + `", closes = [12, 7]), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])], base = "main", repo = "o/r", name = "b")
+`
+
+	_, err := rig.walk(t, body)
+
+	require.NoError(t, err)
+	require.Len(t, rig.merger.given, 2)
+	assert.Equal(t, []int{12, 7}, rig.merger.given[0].Closes)
+	assert.Empty(t, rig.merger.given[1].Closes)
 }
 
 func TestBatchMerge_TheGateOfTheUnionRunsOnTheHostThatTheRunChose(t *testing.T) {
@@ -367,7 +382,7 @@ func TestBatchMerge_EachMemberMergesWithItsOwnApproval(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
-	prs := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True), struct(item = "3", head = "` + rig.heads["3"] + `")]`
+	prs := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True, closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])]`
 
 	_, err := rig.walk(t, `out = merge(prs = `+prs+`, base = "main", repo = "o/r", name = "b")`)
 
@@ -478,7 +493,7 @@ func TestBatchMerge_ACallThatTheBuildOrTheArgumentsCannotServeFailsWithAFix(t *t
 		return `merge(prs = ` + prs + `, base = "main", repo = "o/r", name = "b")`
 	}
 	member := func(r *batchRig, extra string) string {
-		return `struct(item = "1", head = "` + r.heads["1"] + `"` + extra + `)`
+		return `struct(item = "1", head = "` + r.heads["1"] + `", closes = []` + extra + `)`
 	}
 
 	cases := map[string]struct {

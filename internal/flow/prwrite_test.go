@@ -39,7 +39,7 @@ func TestPRWrite_ACrashBetweenEachWriteAndItsRecordRepeatsTheCallWithTheSameKey(
 
 	const (
 		comment = testProject + "|" + testItem + "|" + testRun + ":take|taken"
-		open    = testProject + "|" + testItem + "|Fix|text|5|main|"
+		open    = testProject + "|" + testItem + "|Fix|text|main|"
 	)
 
 	tests := map[string]struct {
@@ -48,7 +48,7 @@ func TestPRWrite_ACrashBetweenEachWriteAndItsRecordRepeatsTheCallWithTheSameKey(
 		want         string
 	}{
 		"pr_comment": {`pr_comment(text = "taken", key = "take", name = "c")`, "comment", func(f *fakeForge) []string { return f.notes }, comment},
-		"pr_open":    {`pr_open(title = "Fix", body = "text", issue = 5, base = "main", name = "c")`, "open", func(f *fakeForge) []string { return f.opened }, open},
+		"pr_open":    {`pr_open(title = "Fix", body = "text", base = "main", name = "c")`, "open", func(f *fakeForge) []string { return f.opened }, open},
 	}
 
 	for name, tt := range tests {

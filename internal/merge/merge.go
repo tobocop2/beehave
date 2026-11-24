@@ -155,13 +155,10 @@ type Request struct {
 	AllowReady    bool
 	// OwnDraft is the number of the draft that the caller opened. The draft guard accepts that pull request, and the ready step marks it ready after the guards.
 	OwnDraft int
-	// AuditClosing turns on the audit of the closing references. Names are the issues the item names: the pull request must close exactly those.
-	AuditClosing bool
-	Names        []int
+	// Names are the issues that the caller says the pull request closes: it must close exactly those, and an empty list means none.
+	Names []int
 	// Kept are issues that the owner kept by an answer. A closing keyword in a commit message may name them besides Names.
 	Kept []model.IssueRef
-	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
-	Unaudited string
 	// Credentialed is true when the project declares a writer credential. Such a merge needs a base whose protection requires the gate, the review and a pull request.
 	// ForgeName names the forge in the refusal for a forge that cannot read the protection.
 	Credentialed bool

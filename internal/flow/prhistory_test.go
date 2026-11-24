@@ -38,6 +38,20 @@ func TestPRHistory_ReadsThePullRequestsOfTheItemInEveryState(t *testing.T) {
 	assert.Contains(t, stepNames(t, engine), "pr_history:history#1")
 }
 
+func TestPRHistory_TheKeywordItemReadsThePullRequestsOfThatItem(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.forge.history = []model.PriorPull{{Number: 3, Title: "parent", State: "OPEN", Branch: "bb-4", Base: "main"}}
+	flow := "def main(item):\n    h = pr_history(name = \"parent-history\", item = \"bb-4\")\n    command(name = \"seen\", run = [\"seen\"] + [p[\"title\"] for p in h.pulls])\n"
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testProject + "|bb-4"}, h.forge.historyAsked, "the read names the item of the keyword, not the item of the run")
+	assert.Equal(t, []string{"parent"}, seenBy(t, h))
+}
+
 func TestPRHistory_AnItemWithNoPullRequestGetsAnEmptyList(t *testing.T) {
 	t.Parallel()
 

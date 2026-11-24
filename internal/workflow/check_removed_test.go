@@ -47,3 +47,26 @@ func TestCheck_AKeywordThatTheAPIRemovedIsRefusedByNameWithTheBuiltinThatTookIt(
 		})
 	}
 }
+
+func TestCheckWorkflow_PROpenRefusesIssueAndNamesBody(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    pr_open(title = \"t\", base = \"main\", body = \"b\", issue = 12)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_open takes no argument issue. Write the closing line in body, such as Closes #12.")
+
+	got = checkText(t, "def main(item):\n    pr_open(title = \"t\", base = \"main\", integration = True)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_open takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue.")
+}
+
+func TestCheckWorkflow_PRCommentRefusesIntegrationAndNamesForbidText(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    pr_comment(text = \"t\", key = \"k\", integration = True)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_comment takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue.")
+}

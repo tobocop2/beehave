@@ -56,6 +56,9 @@ func StatusValues() []string { return []string{"open", "closed", "hold"} }
 // ofKeyword is the keyword of item_read that names the item to read.
 const ofKeyword = "of"
 
+// itemKeyword names the item whose pull requests pr_history reads. It is the item of the run when the call leaves it out.
+const itemKeyword = "item"
+
 // ItemTargets lists the values of the of argument of an item_read call: the item of the run, or its parent.
 func ItemTargets() []string { return []string{"self", "parent"} }
 
@@ -443,7 +446,7 @@ func readSignatures() map[string][]Param {
 	return map[string][]Param{
 		itemReadName:  {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
 		prStateName:   {req("pr", KindInt), opt(nameKeyword, KindText)},
-		prHistoryName: {opt(nameKeyword, KindText)},
+		prHistoryName: {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 	}
 }
 
@@ -457,8 +460,8 @@ func itemSignatures() map[string][]Param {
 			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), opt("severity", KindText), opt("operator", KindBool), forbidText(), opt("shared", KindBool), label,
 		},
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
-		prCommentName:  {filled("text"), filled("key"), forbidText(), opt("integration", KindBool), label},
-		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), forbidText(), opt("integration", KindBool), label},
+		prCommentName:  {filled("text"), filled("key"), forbidText(), label},
+		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("parent", KindText), forbidText(), label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), {Name: "own_draft", Kind: KindInt, AsValue: true, Rule: ownDraftRule}, label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
 	}

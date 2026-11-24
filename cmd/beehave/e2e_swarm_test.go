@@ -384,12 +384,8 @@ func (swarmForgeAt) Reviews(context.Context, int) ([]model.Review, error) { retu
 
 func (f swarmForgeAt) IssueState(context.Context, int) (string, error) { return "", errFake }
 
-// ClosingRefs fails, unless the file closing-ok exists in the forge folder: then no pull request closes an issue, and the base is the base of the forge.
+// ClosingRefs reports that no pull request closes an issue, and that the base is the base of the forge.
 func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	if _, err := os.Stat(f.path("closing-ok")); err != nil {
-		return model.ClosingRefs{}, errFake
-	}
-
 	return model.ClosingRefs{BaseBranch: f.base(), DefaultBranch: "main"}, nil
 }
 

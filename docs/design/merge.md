@@ -119,13 +119,13 @@ The first read asks for every field in one call. The tip of the base is read at 
 
 #### Closing references
 
-The closing-references guard runs only for an item of the GitHub tracker whose id is a plain positive number, the number of its issue. For any other item, the merge prints one line that says no audit ran. A project that the config lacks is an error before the request exists.
+The closing-references guard runs for every member. Each member of `prs` carries a required `closes` list of issue numbers, and the guard compares it with the issues that the forge lists. A member that closes nothing has `closes = []`. A member with no `closes` fails at the check. A project that the config lacks is an error before the request exists.
 
-The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the issue of the item, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
+The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the `closes` list, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
 
 GitHub lists no issues for a pull request into a branch other than the default branch. For such a pull request, the forge reads the closing keywords of the body and of the commit messages instead. The keywords are `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` and `resolved`, in any case, with an optional colon, and a number written as `#N`, `owner/repo#N` or an issue URL. A keyword for another repository is read as the full reference `owner/repo#N`, and the guard of the item does not compare it. The scope check holds it (see Scope check). A pull request with more than 100 commits is refused, because the later messages are unknown.
 
-A member of a batch always skips the guard, because its base is the integration branch. The read after `merge` covers it.
+A member of a batch is audited like any other member. The read after `merge` covers the issues of the batch as a whole.
 
 The audit does not report a close of an issue in another repository. The scope check asks the owner about it, and a commit message with such a keyword is refused unless the owner kept it.
 
@@ -215,7 +215,7 @@ A replay with an integration pull request writes the row `- #N merged at SHA` on
 
 `EditBody` reads a body, applies an edit and writes the result. For the whole read and write, it holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder, so two writers never lose a row. The lock is released on every exit, a failed write included.
 
-The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the merge row, the closing line of `pr_open`) can write a body without the check.
+The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the merge row, the body of `pr_open`) can write a body without the check.
 
 - The author must be the login of the token that the forge command line uses.
 - A body of another author is never edited.

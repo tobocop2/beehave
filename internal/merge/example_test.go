@@ -3,12 +3,14 @@ package merge_test
 import (
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/closing"
 	"github.com/tobocop2/beehave/internal/workflow/workflowtest"
 )
 
@@ -68,4 +70,40 @@ func TestAttribution_TheExampleForbidsTheFourAttributionMarks(t *testing.T) {
 	assert.Equal(t,
 		[]string{"(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"},
 		patterns)
+}
+
+func TestExample_ClosingKeywordsMatchTheGrammarOfTheMerge(t *testing.T) {
+	t.Parallel()
+
+	text, err := os.ReadFile("../../examples/remediation/workflow.star")
+	require.NoError(t, err)
+
+	patterns, err := workflowtest.Constant("workflow.star", text, "CLOSING_KEYWORDS")
+	require.NoError(t, err)
+	require.Len(t, patterns, 1)
+
+	rules := compiled(patterns)
+	words := []string{"close", "Closes", "CLOSED", "fix", "fixes", "Fixed", "resolve", "resolves", "resolved", "closing", "unfixed", "prefix", "address", "fixes:", "Fixes:"}
+	refs := []string{"#12", "o/r#12", "o.x/r-y_z#7", "https://github.com/o/r/issues/12", "http://github.com/o/r/issues/3", "#", "12", "other#1", "o/r/s#4", "https://example.com/o/r/issues/1"}
+	joins := []string{" ", "  ", "\t", ": ", "", "-"}
+	frames := []string{"%s", "see %s now", "(%s)", "x%s", "Part of #3. %s", "and %s, %s"}
+
+	checked := 0
+
+	for _, word := range words {
+		for _, join := range joins {
+			for _, ref := range refs {
+				for _, frame := range frames {
+					line := strings.ReplaceAll(frame, "%s", word+join+ref)
+					want := len(closing.References(line)) > 0
+
+					assert.Equal(t, want, rules[0].MatchString(line), "%q", line)
+
+					checked++
+				}
+			}
+		}
+	}
+
+	assert.Greater(t, checked, 1000)
 }
