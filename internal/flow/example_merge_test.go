@@ -41,6 +41,7 @@ type shipWorld struct {
 	committer model.Committer
 	checks    []model.Check
 	writes    []string
+	listed    []int // the issues the forge lists for the pull request: the fake lists the ones the member names
 }
 
 func (w *shipWorld) PRView(context.Context, int, ...string) (model.PullRequest, error) {
@@ -103,7 +104,7 @@ func (w *shipWorld) IssueAssignees(context.Context, string, int) ([]string, erro
 }
 
 func (w *shipWorld) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: w.listed}, nil
 }
 
 func (*shipWorld) BranchRef(context.Context, string) (string, bool, error) {
@@ -169,8 +170,10 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 			return merge.Result{}, err
 		}
 
+		world.listed = settings.Closes
+
 		return merge.Run(ctx, world, merge.Request{
-			PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+			Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 			Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
 		}), nil
@@ -292,8 +295,10 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 		return merge.Result{}, err
 	}
 
+	m.worlds[item].listed = settings.Closes
+
 	got := merge.Run(ctx, m.worlds[item], merge.Request{
-		PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+		Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,

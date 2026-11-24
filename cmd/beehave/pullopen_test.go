@@ -170,7 +170,7 @@ func TestPullsOpen_OpensOneDraftAndAResumeFindsIt(t *testing.T) {
 	t.Parallel()
 
 	f := newOpenForge()
-	req := flow.OpenRequest{Title: "Fix 5", Body: "text", Issue: 5, Base: "round-1"}
+	req := flow.OpenRequest{Title: "Fix 5", Body: "text", Base: "round-1"}
 
 	first, err := openOver(f).Open(t.Context(), "p", "bb-5", req)
 	require.NoError(t, err)
@@ -181,58 +181,39 @@ func TestPullsOpen_OpensOneDraftAndAResumeFindsIt(t *testing.T) {
 	assert.False(t, again.Created)
 	assert.Equal(t, first.Number, again.Number)
 	require.Len(t, f.created, 1, "a resume opens no second pull request")
-	assert.Equal(t, model.NewPull{Head: "bb-5", Base: "round-1", Title: "Fix 5", Body: "text\n\nAddresses #5"}, f.created[0])
-	assert.Empty(t, f.setBody, "the body already holds the text, so nothing is written again")
+	assert.Equal(t, model.NewPull{Head: "bb-5", Base: "round-1", Title: "Fix 5", Body: "text"}, f.created[0])
+	assert.Empty(t, f.setBody, "the body is not written again")
 }
 
-func TestPullsOpen_TheClosingKeywordFollowsTheBase(t *testing.T) {
+func TestPullsOpen_TheBodyOfANewPullRequestIsTheBodyOfTheCallWhateverTheBaseIs(t *testing.T) {
 	t.Parallel()
 
-	for base, want := range map[string]string{"main": "text\n\nCloses #5", "round-1": "text\n\nAddresses #5"} {
-		f := newOpenForge()
-		_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "text", Issue: 5, Base: base})
-		require.NoError(t, err)
-		require.Len(t, f.created, 1)
-		assert.Equal(t, want, f.created[0].Body, base)
+	for _, base := range []string{"main", "round-1"} {
+		for _, body := range []string{"text", "text\n\nCloses #5", "text\n\nAddresses #5", ""} {
+			f := newOpenForge()
+			_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: body, Base: base})
+			require.NoError(t, err)
+			require.Len(t, f.created, 1)
+			assert.Equal(t, body, f.created[0].Body, base)
+		}
 	}
-
-	f := newOpenForge()
-	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "text", Base: "main"})
-	require.NoError(t, err)
-	assert.Equal(t, "text", f.created[0].Body, "no issue, no keyword")
 }
 
-func TestPullsOpen_AResumeKeepsTheBodyAPersonWroteAndAddsOnlyTheClosingLine(t *testing.T) {
+func TestPullsOpen_AnOpenPullRequestIsNotWrittenWhateverItsBodyHolds(t *testing.T) {
 	t.Parallel()
 
-	f := newOpenForge()
-	f.open["bb-5"] = 9
-	f.bodies[9] = "what a person wrote\n\nsee also #3"
+	for _, held := range []string{"what a person wrote\n\nsee also #3", "intro\nCloses #5\noutro", "Addresses #5", ""} {
+		f := newOpenForge()
+		f.open["bb-5"] = 9
+		f.bodies[9] = held
 
-	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "body of the workflow", Issue: 5, Base: "round-1"})
-	require.NoError(t, err)
-	assert.False(t, got.Created)
-	assert.Equal(t, []string{"what a person wrote\n\nsee also #3\n\nAddresses #5"}, f.setBody, "the workflow body is for a new pull request only")
-}
-
-func TestPullsOpen_AWrongKeywordIsCorrectedInPlaceAndEveryOtherLineStays(t *testing.T) {
-	t.Parallel()
-
-	f := newOpenForge()
-	f.open["bb-5"] = 9
-	f.bodies[9] = "intro\nCloses #5\nCloses #7\noutro"
-
-	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "round-1"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"intro\nAddresses #5\nCloses #7\noutro"}, f.setBody)
-
-	// A body with the right line, and a call with no issue, write nothing.
-	_, err = openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "round-1"})
-	require.NoError(t, err)
-
-	_, err = openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1"})
-	require.NoError(t, err)
-	assert.Len(t, f.setBody, 1)
+		got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "body of the workflow", Base: "round-1"})
+		require.NoError(t, err)
+		assert.False(t, got.Created)
+		assert.Empty(t, f.setBody, held)
+		assert.Equal(t, held, f.bodies[9], held)
+		assert.Empty(t, f.created, held)
+	}
 }
 
 func TestPullsOpen_AResumeAfterACrashBetweenTheCreateAndTheLinkLinksTheStack(t *testing.T) {
@@ -244,7 +225,7 @@ func TestPullsOpen_AResumeAfterACrashBetweenTheCreateAndTheLinkLinksTheStack(t *
 	f.bodies[9] = "Addresses #5"
 	f.stacks[20], f.stacks[9] = "S_0", ""
 
-	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "round-1", Parent: "bb-4"})
+	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
 	require.NoError(t, err)
 	assert.False(t, got.Created)
 	assert.Equal(t, 9, got.Number)
@@ -252,16 +233,16 @@ func TestPullsOpen_AResumeAfterACrashBetweenTheCreateAndTheLinkLinksTheStack(t *
 	assert.Equal(t, "S_1", got.Stack)
 }
 
-func TestPullsOpen_AStackedChildSaysAddressesEvenWhenTheGivenBaseIsTheDefaultBranch(t *testing.T) {
+func TestPullsOpen_AStackedChildIsBasedOnTheBranchOfItsParentAndKeepsTheBodyOfTheCall(t *testing.T) {
 	t.Parallel()
 
 	f := newOpenForge()
 	f.open["bb-4"] = 20
 
-	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "main", Parent: "bb-4"})
+	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "text", Base: "main", Parent: "bb-4"})
 	require.NoError(t, err)
 	assert.Equal(t, "bb-4", f.created[0].Base)
-	assert.Equal(t, "Addresses #5", f.created[0].Body)
+	assert.Equal(t, "text", f.created[0].Body)
 }
 
 func TestPullsOpen_ADependentGoesIntoTheStackOfItsParent(t *testing.T) {
@@ -270,7 +251,7 @@ func TestPullsOpen_ADependentGoesIntoTheStackOfItsParent(t *testing.T) {
 	f := newOpenForge()
 	f.open["bb-4"] = 20
 
-	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "round-1", Parent: "bb-4"})
+	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
 	require.NoError(t, err)
 	assert.Equal(t, "S_1", got.Stack)
 	assert.Equal(t, []string{"20>51"}, f.linked)
@@ -279,7 +260,7 @@ func TestPullsOpen_ADependentGoesIntoTheStackOfItsParent(t *testing.T) {
 	assert.Equal(t, "bb-4", f.created[0].Base, "the dependent is based on the branch of its parent")
 
 	// A resume finds both pull requests in one stack and links nothing.
-	again, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Issue: 5, Base: "round-1", Parent: "bb-4"})
+	again, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
 	require.NoError(t, err)
 	assert.Equal(t, "S_1", again.Stack)
 	assert.Len(t, f.linked, 1)
@@ -434,11 +415,8 @@ func TestPullsOpen_AFailedCallOfTheForgeIsAnErrorAndNeverAGuess(t *testing.T) {
 	}{
 		{"PRList:open:bb-4", func(*openForge) {}},
 		{"PRList:merged:bb-4", func(*openForge) {}},
-		{"DefaultBranch", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"PRList:open:bb-5", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"CreatePR", func(f *openForge) { f.open["bb-4"] = 20 }},
-		{"PRBody", func(f *openForge) { f.open["bb-4"], f.open["bb-5"] = 20, 9 }},
-		{"SetBody", func(f *openForge) { f.open["bb-4"], f.open["bb-5"] = 20, 9; f.bodies[9] = "old" }},
 		{"StackID:20", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"StackID:51", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"LinkStack", func(f *openForge) { f.open["bb-4"] = 20 }},
@@ -460,7 +438,7 @@ func TestPullsOpen_AFailedCallOfTheForgeIsAnErrorAndNeverAGuess(t *testing.T) {
 			f.fail = map[string]bool{tt.key: true}
 			tt.setup(f)
 
-			_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "x", Issue: 5, Base: "round-1", Parent: "bb-4"})
+			_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Body: "x", Base: "round-1", Parent: "bb-4"})
 			require.ErrorIs(t, err, errFake)
 		})
 	}

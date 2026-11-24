@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/review"
-	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 var (
@@ -1283,7 +1281,7 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 		return merge.Result{}, err
 	}
 
-	req := p.request(project, found, item, number, head, settings, rules)
+	req := p.request(found, number, head, settings, rules)
 	req.Post = posting(found.Project, built.Forge, settings.Statuses)
 
 	return judge(ctx, built, req), nil
@@ -1392,14 +1390,11 @@ func newestListed(ctx context.Context, built forge.Forge, item, state string) (i
 }
 
 // request is the merge request of one pull request: the settings of the step, and the runners of the config as own identities.
-// The id of an item of the GitHub tracker is the number of its issue, so that issue is the one the pull request must close, and the closing
-// references of the pull request are audited against it. An id of any other tracker is a free name, not an issue number, so the audit is off for it,
-// and the request carries the line that says so. The caller passes the project it has already found, so a project that beehave does not know never gets here.
-func (p pulls) request(name string, project config.Project, item string, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
-	names, unaudited := audited(name, project.Tracker, item)
-
+// The closing references of the pull request are audited against the issues that the step names for the member. The caller passes the project it has already found,
+// so a project that beehave does not know never gets here.
+func (p pulls) request(project config.Project, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
 	return merge.Request{
-		AuditClosing: names != nil, Names: names, Kept: settings.Kept, Unaudited: unaudited,
+		Names: settings.Closes, Kept: settings.Kept,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
@@ -1429,23 +1424,6 @@ func repoRefusal(err error) (merge.Result, bool) {
 	lines := []string{wrong.Error()}
 
 	return merge.Result{Stop: merge.Refused, Lines: lines, Refusal: lines}, true
-}
-
-// scopeStillAsks ends the line of an item with no audit: the scope check of the run does not read the item id, so it still holds.
-const scopeStillAsks = "The scope check of the run still asks the owner about a closing issue that is new since the first review, in this repository or another."
-
-// audited returns the issues that the item names, or the line that says why the audit is off.
-func audited(project string, tracker model.TrackerName, item string) ([]int, string) {
-	named, err := strconv.Atoi(item)
-
-	switch {
-	case tracker != storegithub.Tracker:
-		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran. %s", tracker, project, scopeStillAsks)
-	case err != nil || named <= 0 || strconv.Itoa(named) != item:
-		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran. %s", item, project, scopeStillAsks)
-	}
-
-	return []int{named}, ""
 }
 
 // repoError says that a merge step names a repository other than the one of the project. Its text is the line to show.

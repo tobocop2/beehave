@@ -27,7 +27,7 @@ func TestBatchMerge_EachMergeOfAGreenUnionCarriesTheGateStatusOfItsHeadAndTheRev
 	t.Parallel()
 
 	rig := newBatchRig(t)
-	prs := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True), struct(item = "3", head = "` + rig.heads["3"] + `")]`
+	prs := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True, closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])]`
 
 	_, err := rig.walk(t, `out = merge(prs = `+prs+`, base = "main", repo = "o/r", name = "b")`)
 

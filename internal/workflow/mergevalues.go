@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -17,12 +18,17 @@ const approvedField = "approved"
 // ownDraftField is the optional int field of a member of prs: the number of the draft that the run opened, which the merge guard for drafts accepts.
 const ownDraftField = "own_draft"
 
+// closesField is the required list field of a member of prs: the issues that the pull request must close.
+const closesField = "closes"
+
 // PullRequest is one member of the prs argument of a merge call. Approved is true when another step accepted the head of this member.
 // OwnDraft is the number of the draft that the run opened for this member, or zero when the member names none.
+// Closes holds the issues that the pull request must close, and nothing else: an empty list means it closes no issue.
 type PullRequest struct {
 	Item, Head string
 	Approved   bool
 	OwnDraft   int
+	Closes     []int
 }
 
 // errNoPullRequest is returned for a prs argument with no member.
@@ -90,21 +96,67 @@ func pullRequest(entry starlark.Value) (PullRequest, error) {
 	}
 
 	member := PullRequest{Item: item, Head: head}
-	err = member.readOptional(pr)
+	err = member.readFields(pr)
 
 	return member, err
 }
 
-// readOptional reads the optional fields approved and own_draft of a member struct. The first wrong field is the error.
-func (m *PullRequest) readOptional(pr *starlarkstruct.Struct) (err error) {
+// readFields reads the fields approved, own_draft and closes of a member struct. The first wrong field is the error.
+func (m *PullRequest) readFields(pr *starlarkstruct.Struct) (err error) {
 	if m.Approved, err = prApproved(pr); err != nil {
 		return err
 	}
 
-	m.OwnDraft, err = prOwnDraft(pr)
+	if m.OwnDraft, err = prOwnDraft(pr); err != nil {
+		return err
+	}
+
+	m.Closes, err = prCloses(pr)
 
 	return err
 }
+
+// prCloses reads the required list field closes of a member struct: issue numbers of 1 or more, each once. A value that only the run knows is left to the run.
+func prCloses(pr *starlarkstruct.Struct) ([]int, error) {
+	value, err := pr.Attr(closesField)
+	if err != nil {
+		return nil, fmt.Errorf("a member of `prs` has no `%s`. Write closes = [12] for the issues the pull request closes, or closes = [] for none", closesField)
+	}
+
+	if _, later := value.(computed); later {
+		return nil, nil
+	}
+
+	list, isList := value.(*starlark.List)
+	if !isList {
+		return nil, errCloses
+	}
+
+	return closesNumbers(list)
+}
+
+// closesNumbers reads the issue numbers of a closes list. A number that only the run knows is skipped.
+func closesNumbers(list *starlark.List) ([]int, error) {
+	var numbers []int
+
+	for i := range list.Len() {
+		if _, later := list.Index(i).(computed); later {
+			continue
+		}
+
+		number, err := starlark.AsInt32(list.Index(i))
+		if err != nil || number < 1 || slices.Contains(numbers, int(number)) {
+			return nil, errCloses
+		}
+
+		numbers = append(numbers, int(number))
+	}
+
+	return numbers, nil
+}
+
+// errCloses is the refusal for a closes field that is not a list of different issue numbers.
+var errCloses = errors.New("`closes` of a member of `prs` must be a list of issue numbers, each 1 or more and none twice. Write closes = [12], or closes = [] for none")
 
 // prOwnDraft reads the optional field own_draft of a member struct with the rule of the own_draft keyword of preflight. A member that leaves it out names no draft.
 func prOwnDraft(pr *starlarkstruct.Struct) (int, error) {

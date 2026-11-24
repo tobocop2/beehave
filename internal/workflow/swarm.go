@@ -182,11 +182,25 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 		return "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}."
 	case builtin == spawnName && keyword == DebounceKeyword:
 		return "spawn takes no argument debounce. debounce is an option of beehave run."
+	case removedPRArgument(builtin, keyword) != "":
+		return removedPRArgument(builtin, keyword)
 	case len(allowed) == 0:
 		return fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, keyword)
 	}
 
 	return fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, keyword, strings.Join(allowed, ", "))
+}
+
+// removedPRArgument is the sentence for an argument that pr_open or pr_comment no longer takes. It is empty for any other keyword.
+func removedPRArgument(builtin, keyword string) string {
+	switch {
+	case (builtin == prOpenName || builtin == prCommentName) && keyword == "integration":
+		return builtin + " takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue."
+	case builtin == prOpenName && keyword == "issue":
+		return "pr_open takes no argument issue. Write the closing line in body, such as Closes #12."
+	}
+
+	return ""
 }
 
 // argument returns the expression of a keyword or of the positional argument at index. It is nil when the call leaves the argument out.

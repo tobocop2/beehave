@@ -164,7 +164,7 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    command(run = [\"x\"], host = \"h\", slots = \"mutation\", retries = 0)\n"+
 		"    write(run = [\"x\"], retries = 2, backoff = \"1s\")\n"+
 		"    spawn(items = [\"a\"], retries = 3)\n"+
-		"    merge(prs = [struct(item = \"a\", head = \"h\")], base = \"b\", repo = \"r\", name = \"n\", integration = 7, own = {})\n"+
+		"    merge(prs = [struct(item = \"a\", head = \"h\", closes = [])], base = \"b\", repo = \"r\", name = \"n\", integration = 7, own = {})\n"+
 		"    preflight(own = {\"logins\": [\"me\"]})\n")
 
 	assert.Empty(t, got)

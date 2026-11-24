@@ -297,7 +297,7 @@ func members(v starlark.Value) ([]batch.Member, error) {
 
 	list := make([]batch.Member, len(prs))
 	for i, pr := range prs {
-		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft}
+		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft, Closes: pr.Closes}
 	}
 
 	return list, nil
@@ -627,12 +627,12 @@ func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
 	}, dbos.WithStepMaxRetries(stepRetries))
 }
 
-// memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues and the statuses are facts about this
+// memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues, the closed issues and the statuses are facts about this
 // member only, so the call settings never carry them.
 func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, kept []model.IssueRef, statuses []model.CommitStatus) MergeSettings {
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept = prefixTree, intent, m.Approved, kept
-	settings.OwnDraft, settings.Statuses = m.OwnDraft, statuses
+	settings.OwnDraft, settings.Statuses, settings.Closes = m.OwnDraft, statuses, m.Closes
 
 	return settings
 }

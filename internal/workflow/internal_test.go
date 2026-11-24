@@ -14,7 +14,7 @@ func TestPullRequests_SkipsAComputedMemberAndAComputedField(t *testing.T) {
 	t.Parallel()
 
 	member := starlarkstruct.FromKeywords(starlarkstruct.Default, []starlark.Tuple{
-		{starlark.String("item"), computed{}}, {starlark.String("head"), computed{}}, {starlark.String("approved"), computed{}},
+		{starlark.String("item"), computed{}}, {starlark.String("head"), computed{}}, {starlark.String("approved"), computed{}}, {starlark.String("closes"), computed{}},
 	})
 
 	got, err := PullRequests(starlark.NewList([]starlark.Value{computed{}, member}))

@@ -35,7 +35,23 @@ func TestExampleUses_TheDraftPullRequestCarriesTheBodyOfTheItem(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, rig.h.forge.opened, 1)
-	assert.Contains(t, rig.h.forge.opened[0], "|a title|a body|12|integration|")
+	assert.Contains(t, rig.h.forge.opened[0], "|a title|a body\n\nAddresses #12|integration|")
+}
+
+func TestExample_TheClosingLineFollowsTheBaseAndTheClosingKeywordsAreForbiddenOffTheTrunk(t *testing.T) {
+	t.Parallel()
+
+	for base, want := range map[string]string{"main": "Closes #12", "integration": "Addresses #12"} {
+		rig, file := exampleRig(t, func(int) string { return "approve" })
+		setRoundOf(&rig.project, "base", base)
+		rig.baseAt(t, base)
+
+		_, err := runPipeline(rig.h.engine(t), file)
+
+		require.NoError(t, err, base)
+		require.Len(t, rig.h.forge.opened, 1, base)
+		assert.Contains(t, rig.h.forge.opened[0], "|a title|a body\n\n"+want+"|"+base+"|", base)
+	}
 }
 
 func TestExampleUses_AnItemWhoseBodyClosesAnIssueIsRefusedWhenTheBaseIsNotTheTrunk(t *testing.T) {
@@ -47,7 +63,7 @@ func TestExampleUses_AnItemWhoseBodyClosesAnIssueIsRefusedWhenTheBaseIsNotTheTru
 	_, err := runPipeline(rig.h.engine(t), file)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "closing keyword", "only the pull request into the trunk may close an issue")
+	assert.Contains(t, err.Error(), "forbid_text", "only the pull request into the trunk may close an issue")
 	assert.Empty(t, rig.h.forge.opened)
 }
 
@@ -63,7 +79,7 @@ func TestExampleUses_AnItemWhoseBodyClosesAnIssueOpensItsPullRequestWhenTheBaseI
 
 	require.NoError(t, err)
 	require.Len(t, rig.h.forge.opened, 1)
-	assert.Contains(t, rig.h.forge.opened[0], "|Closes #9|")
+	assert.Contains(t, rig.h.forge.opened[0], "|Closes #9\n\nCloses #12|")
 }
 
 func TestExampleUses_AnApprovedItemGetsTheApprovalAndThePlanAsOneKeyedCommentOnItsPullRequest(t *testing.T) {
@@ -196,7 +212,7 @@ func TestExampleUses_ThePlanThatClosesAnIssueIsRefusedInTheApprovalCommentWhenTh
 
 	_, err := runPipeline(rig.h.engine(t), file)
 
-	require.ErrorContains(t, err, "closing keyword", "only the pull request into the trunk may close an issue")
+	require.ErrorContains(t, err, "forbid_text", "only the pull request into the trunk may close an issue")
 	assert.Empty(t, rig.h.forge.notes)
 }
 

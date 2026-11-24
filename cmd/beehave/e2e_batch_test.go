@@ -201,7 +201,7 @@ func (f fileForge) IssueState(context.Context, int) (string, error) {
 }
 
 func (f fileForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main"}, nil
 }
 
 func (f fileForge) BranchRef(ctx context.Context, branch string) (string, bool, error) {
@@ -342,7 +342,7 @@ const handStar = `def main(item):
         base = "main",
         repo = "example/shop",
         hand_off = True,
-        prs = [struct(item = "m1", head = %q)],
+        prs = [struct(item = "m1", head = %q, closes = [])],
     )
     if out.merged != ["m1"] or out.rejected or out.moved:
         fail("the owner did not land m1: merged=%%s rejected=%%s moved=%%s" %% (out.merged, out.rejected, out.moved))
@@ -376,7 +376,7 @@ func cmdBatchSetup(ts *testscript.TestScript, _ bool, _ []string) {
 		run("add", file)
 		run("commit", "-q", "-m", "add "+file)
 		head := run("rev-parse", "HEAD")
-		fmt.Fprintf(&members, "            struct(item = %q, head = %q),\n", name, head)
+		fmt.Fprintf(&members, "            struct(item = %q, head = %q, closes = []),\n", name, head)
 		first = cmp.Or(first, head)
 
 		run("checkout", "-q", "main")

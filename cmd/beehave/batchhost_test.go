@@ -110,7 +110,7 @@ func (f hostForge) PullRead(ctx context.Context, number int) (model.PullFacts, e
 }
 
 func (f hostForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main"}, nil
 }
 
 func (f hostForge) BranchRef(context.Context, string) (string, bool, error) {

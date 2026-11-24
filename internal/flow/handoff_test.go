@@ -175,7 +175,7 @@ func (r *handRig) body(items, extra string) string {
 	var prs []string
 
 	for _, item := range strings.Fields(items) {
-		prs = append(prs, `struct(item = "`+item+`", head = "`+r.heads[item]+`")`)
+		prs = append(prs, `struct(item = "`+item+`", head = "`+r.heads[item]+`", closes = [])`)
 	}
 
 	return `out = merge(prs = [` + strings.Join(prs, ", ") + `], base = "main", repo = "o/r", hand_off = True, ` + extra + `name = "b")
