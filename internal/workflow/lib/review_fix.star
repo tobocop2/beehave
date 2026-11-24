@@ -4,6 +4,11 @@
 
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "zsh-expansion", "laptop-copy"]
 
+load("@beehave//claims.star", "claim_stop")
+
+# The keys of a guard that claim_stop takes. The preflight call takes the others.
+CLAIM_KEYS = ["hold", "own", "own_draft"]
+
 # A reviewer is read-only: it must not fix, commit or push. The kind git-write refuses every git command that changes a repository.
 REVIEW_FORBID = FORBID + ["git-write"]
 
@@ -79,12 +84,18 @@ def checked_steps(steps, design_prompt):
 def stopped_before(item, name, head, guard):
     """Asks the forge about the pull request of the item right before an agent of the loop starts.
     The head is the head of the worktree that the agent works on. A pull request that is merged, closed, held, a draft,
-    on another base, without its branch or at another head is a stop: it returns the result of the call, and the loop starts no agent."""
+    on another base, without its branch or at another head is a stop, and so is a claim of another login, a hold or a draft: it returns the result of the call, and the loop starts no agent.
+    The call of preflight comes first, then claim_stop with the keys hold, own and own_draft of the guard."""
     if not guard:
         return None
 
-    check = preflight(name = name, id = item.id, head = head, **guard)
-    return None if check.ok else check
+    engine = {key: value for key, value in guard.items() if key not in CLAIM_KEYS}
+    claims = {key: value for key, value in guard.items() if key in CLAIM_KEYS}
+    check = preflight(name = name, id = item.id, head = head, **engine)
+    if not check.ok:
+        return check
+    claim = claim_stop(name = name, id = item.id, **claims)
+    return None if claim.ok else claim
 
 # A gate with no failed step and an unknown step gave no verdict about the code: it is void, not red. The loop reruns a void gate
 # void_reruns times at once (default VOID_RERUNS). Each rerun is a new gate step, so the engine records each, and a replay never reads an old void as the answer.
@@ -552,7 +563,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, f
     rounds caps the candidates. With 0 the loop runs no agent and ends exhausted at the head of the implementer. checks lists functions of one argument, the passed gate, that run after the checks before review and before the full review.
     Each returns an empty text for a clean head, or the findings as text, which send the candidate back to a fix.
     review_check is a function of one argument, the full review, that runs after each full review whose verdict is not reject. A reason ends the loop: held holds it.
-    guard holds the settings of the preflight call before every agent of the loop: base, hold, own and own_draft (the number of the draft that the run opened, which is no stop). A stop ends the loop with stopped set.
+    guard holds the settings of the checks before every agent of the loop: base for preflight, and hold, own and own_draft (the number of the draft that the run opened, which is no stop) for claim_stop. A stop ends the loop with stopped set.
     protect lists the directories that no command of a review or a fix may write in. allow lists the globs that a fix may change, and None is no scope. A list that before_review refuses stops the item before the first step of the loop.
     design_prompt turns on the design round: each review then writes the output `mechanism`. review_outputs lists more outputs of the full review, and fix_outputs lists more outputs of each fix.
     lane_check is a function of one argument, the lane (the result of the implement or fix agent) that made the candidate head. It runs after the checks before review and before checks.

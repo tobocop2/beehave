@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -30,21 +29,6 @@ type fake struct {
 	branchErr  error
 	fields     []string
 	branches   []string
-	// issues maps repo#number to the logins that hold the issue; a key in unread fails. asked lists the keys that were read.
-	issues map[string][]string
-	unread map[string]bool
-	asked  []string
-}
-
-func (f *fake) IssueAssignees(_ context.Context, repo string, number int) ([]string, error) {
-	key := repo + "#" + strconv.Itoa(number)
-	f.asked = append(f.asked, key)
-
-	if f.unread[key] {
-		return nil, errDown
-	}
-
-	return f.issues[key], nil
 }
 
 func (f *fake) PRView(_ context.Context, _ int, fields ...string) (model.PullRequest, error) {
@@ -65,18 +49,9 @@ func (f *fake) BranchRef(_ context.Context, branch string) (string, bool, error)
 }
 
 type pull struct {
-	state  string
-	draft  bool
-	labels []string
-	base   string
-	gone   bool
-	author string
-	// body is the text of the pull request, assigned holds it, reviewers reviewed it.
-	body      string
-	assigned  []string
-	reviewers []string
-	// requested holds the logins that were asked to review and have not yet.
-	requested []string
+	state string
+	base  string
+	gone  bool
 }
 
 func open() pull { return pull{state: "OPEN", base: "main"} }
@@ -84,112 +59,25 @@ func open() pull { return pull{state: "OPEN", base: "main"} }
 func (p pull) fake(t *testing.T) *fake {
 	t.Helper()
 
-	labels := []map[string]string{}
-	for _, name := range p.labels {
-		labels = append(labels, map[string]string{"name": name})
-	}
-
-	accounts := func(names []string) []map[string]string {
-		list := []map[string]string{}
-		for _, name := range names {
-			list = append(list, map[string]string{"login": name})
-		}
-
-		return list
-	}
-
-	reviews := []map[string]any{}
-	for _, name := range p.reviewers {
-		reviews = append(reviews, map[string]any{"author": map[string]string{"login": name}, "state": "COMMENTED"})
-	}
-
 	data, err := json.Marshal(map[string]any{
-		"number": 1, "state": p.state, "isDraft": p.draft, "mergedAt": nil,
-		"headRefOid": head, "headRefName": "feature", "baseRefName": p.base, "labels": labels, "author": map[string]string{"login": p.author},
-		"body": p.body, "assignees": accounts(p.assigned), "reviews": reviews, "reviewRequests": accounts(p.requested),
+		"number": 1, "state": p.state, "mergedAt": nil, "headRefOid": head, "headRefName": "feature", "baseRefName": p.base,
 	})
 	require.NoError(t, err)
 
-	return &fake{view: string(data), branchGone: p.gone, issues: map[string][]string{}, unread: map[string]bool{}}
+	return &fake{view: string(data), branchGone: p.gone}
 }
 
-func summary(state, draft, base, labels string) string {
-	return "pr 1  state " + state + "  draft " + draft + "  head " + head + "  ref feature  base " + base + "  labels [" + labels + "]"
+func summary(state, base string) string {
+	return "pr 1  state " + state + "  head " + head + "  ref feature  base " + base
 }
 
 func check(t *testing.T, f *fake, req preflight.Request) preflight.Result {
 	t.Helper()
 
-	result, err := preflight.Check(context.Background(), f, req, "hold")
+	result, err := preflight.Check(context.Background(), f, req)
 	require.NoError(t, err)
 
 	return result
-}
-
-func TestCheck_HoldsOnTheLabelItIsGiven(t *testing.T) {
-	t.Parallel()
-
-	p := open()
-	p.labels = []string{"blocked", "P1"}
-
-	held, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "blocked")
-	require.NoError(t, err)
-	assert.Equal(t, preflight.Held, held.Stop)
-	assert.Equal(t, "STOP: #1 now carries the 'blocked' label. A product decision is open; nothing merges.", held.Lines[0])
-
-	other, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "hold")
-	require.NoError(t, err)
-	assert.True(t, other.OK(), "the label hold is not the label blocked")
-}
-
-func TestCheck_AnOpenPullRequestOfAnotherAuthorClaimsTheItem(t *testing.T) {
-	t.Parallel()
-
-	p := open()
-	p.author = "someone"
-
-	claimed := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"owner"}})
-	assert.Equal(t, preflight.Claimed, claimed.Stop)
-	assert.Equal(t, 10, claimed.Stop.Code())
-	assert.Contains(t, claimed.Lines[0], "someone")
-
-	mine := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"someone", "owner"}})
-	assert.True(t, mine.OK(), "a pull request of an own login claims nothing")
-
-	unchecked := check(t, p.fake(t), preflight.Request{PR: 1})
-	assert.True(t, unchecked.OK(), "an empty own list checks no author")
-}
-
-func TestCheck_TheAuthorMatchIgnoresCase(t *testing.T) {
-	t.Parallel()
-
-	p := open()
-	p.author = "owner"
-
-	result := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"Owner"}})
-
-	assert.True(t, result.OK(), "forge logins ignore case, so Owner is owner")
-}
-
-func TestCheck_AnAuthorWithNoLoginIsNotOwn(t *testing.T) {
-	t.Parallel()
-
-	result := check(t, open().fake(t), preflight.Request{PR: 1, Own: []string{"owner"}})
-
-	assert.Equal(t, preflight.Claimed, result.Stop, "a missing login cannot be shown to be ours")
-}
-
-func TestCheck_AnEmptyHoldLabelHoldsNothing(t *testing.T) {
-	t.Parallel()
-
-	for _, labels := range [][]string{nil, {"hold"}} {
-		p := open()
-		p.labels = labels
-
-		result, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "")
-		require.NoError(t, err)
-		assert.True(t, result.OK(), labels)
-	}
 }
 
 func TestCheck_ReadsThePullRequestOnceWithTheFieldsTheChecksNeed(t *testing.T) {
@@ -198,10 +86,7 @@ func TestCheck_ReadsThePullRequestOnceWithTheFieldsTheChecksNeed(t *testing.T) {
 	f := open().fake(t)
 	check(t, f, preflight.Request{PR: 1})
 
-	assert.Equal(t, []string{
-		"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository", "author",
-		"body", "assignees", "reviews", "reviewRequests",
-	}, f.fields)
+	assert.Equal(t, []string{"number", "state", "mergedAt", "headRefOid", "headRefName", "baseRefName"}, f.fields)
 	assert.Equal(t, []string{"feature"}, f.branches)
 }
 
@@ -211,28 +96,17 @@ func TestCheck_AnUnchangedPullRequestReportsOK(t *testing.T) {
 	result := check(t, open().fake(t), preflight.Request{PR: 1})
 
 	assert.Equal(t, preflight.Unchanged, result.Stop)
-	assert.Equal(t, summary("OPEN", "false", "main", ""), result.Summary)
+	assert.Equal(t, summary("OPEN", "main"), result.Summary)
 	assert.Equal(t, []string{"OK: #1 is unchanged in every respect this checks."}, result.Lines)
 	assert.True(t, result.OK())
-}
-
-func TestCheck_TheSummaryListsEveryLabel(t *testing.T) {
-	t.Parallel()
-
-	p := open()
-	p.labels = []string{"bug", "P1"}
-
-	assert.Equal(t, summary("OPEN", "false", "main", "bug,P1"), check(t, p.fake(t), preflight.Request{PR: 1}).Summary)
 }
 
 func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 	t.Parallel()
 
-	merged, closed, held, draft, gone, retarget := open(), open(), open(), open(), open(), open()
+	merged, closed, gone, retarget := open(), open(), open(), open()
 	merged.state, merged.gone = "MERGED", true
 	closed.state = "CLOSED"
-	held.labels = []string{"hold"}
-	draft.draft = true
 	gone.gone = true
 	retarget.base = "other-base"
 
@@ -259,15 +133,6 @@ func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 			"  Recovery: do NOT push, which would recreate it silently. Branch from the current tip of",
 			"  'main', re-apply the work, and open a new pull request.",
 		}},
-		{"held", held, preflight.Request{PR: 1}, preflight.Held, 9, []string{
-			"STOP: #1 now carries the 'hold' label. A product decision is open; nothing merges.",
-			"  Recovery: write the judgement on the issue and move to the next item.",
-		}},
-		{"draft", draft, preflight.Request{PR: 1}, preflight.Draft, 8, []string{
-			"STOP: #1 is a DRAFT. It is not mergeable and may be mid-rework by its author.",
-			"  Recovery: review it if you were sent to review it, but do not merge and do not push",
-			"  without saying so on the pull request first.",
-		}},
 		{"head_moved", open(), preflight.Request{PR: 1, ExpectHead: other}, preflight.HeadMoved, 5, []string{
 			"STOP: the head moved. You expected " + other + "; the head is now " + head + ".",
 			"  Recovery: a review of the old SHA does not describe this one. Re-read the diff between",
@@ -292,43 +157,13 @@ func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 	}
 }
 
-func TestCheck_ADraftIsNoStopOnlyWhenItIsTheDraftTheCallerOpened(t *testing.T) {
-	t.Parallel()
-
-	draft := pull{state: "OPEN", draft: true, base: "main"}
-	held := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main"}
-	tests := []struct {
-		name string
-		p    pull
-		req  preflight.Request
-		want preflight.Stop
-	}{
-		{"own_number", draft, preflight.Request{PR: 1, OwnDraft: 1}, preflight.Unchanged},
-		{"other_number", draft, preflight.Request{PR: 1, OwnDraft: 2}, preflight.Draft},
-		{"no_number", draft, preflight.Request{PR: 1}, preflight.Draft},
-		{"own_number_under_hold", held, preflight.Request{PR: 1, OwnDraft: 1}, preflight.Held},
-		{"own_number_with_moved_head", draft, preflight.Request{PR: 1, OwnDraft: 1, ExpectHead: other}, preflight.HeadMoved},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.Equal(t, tt.want, check(t, tt.p.fake(t), tt.req).Stop)
-		})
-	}
-}
-
 func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T) {
 	t.Parallel()
 
-	all := pull{state: "MERGED", draft: true, labels: []string{"hold"}, base: "other", gone: true}
-	heldDraft := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main"}
-	goneHeld := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main", gone: true}
-	foreignHeld := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main", author: "someone"}
-	foreignGone := pull{state: "OPEN", base: "main", author: "someone", gone: true}
+	all := pull{state: "MERGED", base: "other", gone: true}
 	closedGone := pull{state: "CLOSED", base: "main", gone: true}
+	goneMoved := pull{state: "OPEN", base: "other", gone: true}
 	moved := pull{state: "OPEN", base: "other"}
-	draftMoved := pull{state: "OPEN", draft: true, base: "main"}
 
 	tests := []struct {
 		name string
@@ -338,11 +173,7 @@ func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T)
 	}{
 		{"merged_over_everything", all, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.Merged},
 		{"closed_over_branch", closedGone, preflight.Request{PR: 1}, preflight.Closed},
-		{"branch_over_hold_and_draft", goneHeld, preflight.Request{PR: 1}, preflight.BranchGone},
-		{"claim_over_hold_and_draft", foreignHeld, preflight.Request{PR: 1, Own: []string{"owner"}}, preflight.Claimed},
-		{"branch_over_claim", foreignGone, preflight.Request{PR: 1, Own: []string{"owner"}}, preflight.BranchGone},
-		{"hold_over_draft", heldDraft, preflight.Request{PR: 1}, preflight.Held},
-		{"draft_over_head", draftMoved, preflight.Request{PR: 1, ExpectHead: other}, preflight.Draft},
+		{"branch_over_head_and_base", goneMoved, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.BranchGone},
 		{"head_over_base", moved, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.HeadMoved},
 		{"base_alone", moved, preflight.Request{PR: 1, ExpectBase: "main"}, preflight.BaseChanged},
 	}
@@ -352,16 +183,6 @@ func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T)
 
 			assert.Equal(t, tt.want, check(t, tt.p.fake(t), tt.req).Stop)
 		})
-	}
-}
-
-func TestCheck_AWordInsideALabelDoesNotHold(t *testing.T) {
-	t.Parallel()
-
-	for _, label := range []string{"on-hold-ish", "holdout", "Hold", "wait-hold"} {
-		p := open()
-		p.labels = []string{label}
-		assert.True(t, check(t, p.fake(t), preflight.Request{PR: 1}).OK(), label)
 	}
 }
 
@@ -380,36 +201,28 @@ func TestCheck_AShortOrLongSHAIsRefusedRatherThanCompared(t *testing.T) {
 		assert.Equal(t, preflight.Refused, result.Stop, sha)
 		assert.Equal(t, 2, result.Stop.Code())
 		assert.Equal(t, []string{"REFUSE: the expected head needs the full 40-character SHA, got '" + sha + "'."}, result.Lines)
-		assert.Equal(t, summary("OPEN", "false", "main", ""), result.Summary)
+		assert.Equal(t, summary("OPEN", "main"), result.Summary)
 	}
 }
 
 func TestCheck_AnAnswerThatCannotBeUsedIsARefusal(t *testing.T) {
 	t.Parallel()
 
-	const tail = `"headRefName":"feature","labels":[]}`
-
 	tests := map[string]string{
-		"empty":         "",
-		"null":          "null",
-		"an_array":      "[]",
-		"not_json":      "not json",
-		"no_labels":     `{"state":"OPEN","isDraft":false}`,
-		"labels_object": `{"state":"OPEN","isDraft":false,"labels":{}}`,
-		"labels_null":   `{"state":"OPEN","isDraft":false,"labels":null}`,
-		"no_state":      `{"isDraft":false,` + tail,
-		"null_state":    `{"state":null,"isDraft":false,` + tail,
-		"int_state":     `{"state":3,"isDraft":false,` + tail,
-		"no_draft":      `{"state":"OPEN",` + tail,
-		"null_draft":    `{"state":"OPEN","isDraft":null,` + tail,
-		"string_draft":  `{"state":"OPEN","isDraft":"false",` + tail,
-		"no_head_ref":   `{"state":"OPEN","isDraft":false,"labels":[]}`,
+		"empty":       "",
+		"null":        "null",
+		"an_array":    "[]",
+		"not_json":    "not json",
+		"no_state":    `{"headRefName":"feature"}`,
+		"null_state":  `{"state":null,"headRefName":"feature"}`,
+		"int_state":   `{"state":3,"headRefName":"feature"}`,
+		"no_head_ref": `{"state":"OPEN"}`,
 	}
 	for name, view := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := preflight.Check(context.Background(), &fake{view: view}, preflight.Request{PR: 1}, "hold")
+			_, err := preflight.Check(context.Background(), &fake{view: view}, preflight.Request{PR: 1})
 
 			var unread *preflight.ReadError
 			require.ErrorAs(t, err, &unread)
@@ -421,11 +234,11 @@ func TestCheck_AnAnswerThatCannotBeUsedIsARefusal(t *testing.T) {
 func TestCheck_AFailedReadIsARefusalThatKeepsItsCause(t *testing.T) {
 	t.Parallel()
 
-	_, err := preflight.Check(context.Background(), &fake{viewErr: errDown}, preflight.Request{PR: 1}, "hold")
+	_, err := preflight.Check(context.Background(), &fake{viewErr: errDown}, preflight.Request{PR: 1})
 	require.ErrorIs(t, err, errDown)
 	assert.Equal(t, "cannot read #1", err.Error())
 
-	_, err = preflight.Check(context.Background(), &fake{view: `{"state":"OPEN","isDraft":false,"headRefName":"f","labels":[]}`, branchErr: errDown}, preflight.Request{PR: 1}, "hold")
+	_, err = preflight.Check(context.Background(), &fake{view: `{"state":"OPEN","headRefName":"f"}`, branchErr: errDown}, preflight.Request{PR: 1})
 	require.ErrorIs(t, err, errDown)
 	assert.Equal(t, "cannot read the branch f of #1", err.Error())
 }
@@ -433,12 +246,20 @@ func TestCheck_AFailedReadIsARefusalThatKeepsItsCause(t *testing.T) {
 func TestCheck_AMissingOtherFieldReadsAsNullInTheSummary(t *testing.T) {
 	t.Parallel()
 
-	f := &fake{view: `{"state":"OPEN","isDraft":false,"headRefName":"feature","labels":[{}]}`}
+	f := &fake{view: `{"state":"OPEN","headRefName":"feature"}`}
 
 	result := check(t, f, preflight.Request{PR: 1})
 
-	assert.Equal(t, "pr 1  state OPEN  draft false  head null  ref feature  base null  labels [null]", result.Summary)
+	assert.Equal(t, "pr 1  state OPEN  head null  ref feature  base null", result.Summary)
 	assert.True(t, result.OK())
+}
+
+func TestCheck_ALabelOrADraftFlagOrAnAuthorIsNoStop(t *testing.T) {
+	t.Parallel()
+
+	f := &fake{view: `{"state":"OPEN","headRefName":"feature","isDraft":true,"labels":[{"name":"hold"}],"author":{"login":"someone"},"assignees":[{"login":"x"}]}`}
+
+	assert.True(t, check(t, f, preflight.Request{PR: 1}).OK(), "the claim stops belong to claim_stop")
 }
 
 func TestStop_IsAClosedSetWithTheCodesACallerBranchesOn(t *testing.T) {
@@ -446,8 +267,7 @@ func TestStop_IsAClosedSetWithTheCodesACallerBranchesOn(t *testing.T) {
 
 	codes := map[preflight.Stop]int{
 		preflight.Unchanged: 0, preflight.Refused: 2, preflight.Merged: 3, preflight.Closed: 4, preflight.HeadMoved: 5,
-		preflight.BaseChanged: 6, preflight.BranchGone: 7, preflight.Draft: 8, preflight.Held: 9, preflight.Claimed: 10,
-		preflight.Assigned: 11,
+		preflight.BaseChanged: 6, preflight.BranchGone: 7,
 	}
 	for stop, code := range codes {
 		assert.Equal(t, code, stop.Code(), stop.String())
