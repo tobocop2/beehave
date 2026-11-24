@@ -551,14 +551,26 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	heard, err := s.listen(plan)
+	got, err := s.hearAnswer(plan)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.durableWith("wait", plan.label, waitZeros(), func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: answerOutputs(heard.answer, heard.answers, heard.timedOut)}, nil
+		return stepResult{Outputs: answerOutputs(got.answer, got.answers, got.timedOut)}, nil
 	})
+}
+
+// hearAnswer takes the answer of a wait. A build with Waits asks it, after the record of the deadline, and asks no one; any other build listens for the owner.
+func (s *script) hearAnswer(plan waitPlan) (heard, error) {
+	if s.e.deps.Waits == nil {
+		return s.listen(plan)
+	}
+
+	_, err := s.e.endOf(s.ctx, plan.deadline)
+	answer, askErr := s.e.deps.Waits.Wait(plan.label, plan.deadline > 0)
+
+	return answer, errors.Join(err, askErr)
 }
 
 // refuseEnv returns an error for a variable that a file cannot read: one of the engine, or a secret by its name or its value.

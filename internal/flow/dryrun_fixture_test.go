@@ -171,6 +171,7 @@ func TestLoadFixture_AnUnknownFieldAnUnknownBuiltinAndAWrongTypeAreRefusedWithTh
 		"an unknown field":           {`{"agent:review": [{"verdict": "changes"}]}`, `unknown field "verdict"`},
 		"an unknown builtin":         {`{"frobnicate:x": [{}]}`, `frobnicate:x`},
 		"the merge key":              {`{"merge": [{}]}`, `merge`},
+		"a field of no wait":         {`{"wait:ask": {"verdict": "go"}}`, `unknown field "verdict"`},
 		"a wrong type":               {`{"agent:review": [{"outputs": {"verdict": 7}}]}`, `agent:review`},
 		"a top level that is a list": {`[]`, `a JSON object`},
 		"text that is no JSON":       {`not json`, `fixture.json`},

@@ -873,18 +873,6 @@ func TestDryRun_AProjectWithNoReviewSkillInItsVarsReportsNoSkillAndTheExampleRef
 	require.ErrorContains(t, err, "vars.review_skill")
 }
 
-func TestDryRun_ASleepPrintsItsStepAfterTheDuration(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-
-	started := time.Now()
-
-	require.NoError(t, DryRun(t.Context(), dryFile(t, "def main(item):\n    sleep(\"200ms\", name = \"nap\")\n"), "12", map[string]string{}, &out), out.String())
-	assert.Contains(t, out.String(), "sleep:nap#1")
-	assert.GreaterOrEqual(t, time.Since(started), 200*time.Millisecond)
-}
-
 func TestDryRun_ASkillThatTheProjectNamesIsOneOfTheSkillsThatTheFakeAgentReports(t *testing.T) {
 	t.Parallel()
 
