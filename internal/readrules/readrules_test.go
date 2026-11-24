@@ -77,7 +77,6 @@ var rules = map[string]rule{
 
 	"internal/preflight.Reader.PRView":            {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "viewErr"},
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},
-	"internal/preflight.Reader.IssueAssignees":    {Proof: "TestPreflight_AFailedReadOfALinkedIssueIsNotClean", Needle: "unread"},
 	"internal/review.Reader.ReadyMarks":           {Proof: "TestPoll_AFailedReadOfTheReadyMarksOfADraftStopsThePoll", Needle: "ReadyMarks"},
 	"internal/forge.AssigneeReads.IssueAssignees": {NotHeld: assigneesHeld},
 	"internal/forge.ReadyReads.ReadyMarks":        {NotHeld: readyHeld},

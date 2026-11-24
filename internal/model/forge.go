@@ -149,23 +149,51 @@ func (p PullRequest) Facts() PullFacts {
 		facts.Draft = *p.IsDraft
 	}
 
-	for _, who := range p.Assignees {
-		facts.Assignees = append(facts.Assignees, who.Login)
-	}
-
-	for _, tag := range p.Labels {
-		facts.Labels = append(facts.Labels, OrNull(tag.Name))
-	}
-
-	for _, review := range p.Reviews {
-		facts.Reviewers = append(facts.Reviewers, review.Author.Login)
-	}
-
-	for _, ask := range p.ReviewRequests {
-		facts.Reviewers = append(facts.Reviewers, ask.Login)
-	}
+	facts.Assignees = logins(p.Assignees)
+	facts.Labels = names(p.Labels)
+	facts.Reviewers = append(authors(p.Reviews), requested(p.ReviewRequests)...)
 
 	return facts
+}
+
+// logins lists the login of each account.
+func logins(accounts []Account) []string {
+	var out []string
+	for _, who := range accounts {
+		out = append(out, who.Login)
+	}
+
+	return out
+}
+
+// names lists the name of each label. A null name is the empty text.
+func names(tags []label) []string {
+	var out []string
+	for _, tag := range tags {
+		out = append(out, OrNull(tag.Name))
+	}
+
+	return out
+}
+
+// authors lists the login of the author of each review.
+func authors(reviews []pullReview) []string {
+	var out []string
+	for _, review := range reviews {
+		out = append(out, review.Author.Login)
+	}
+
+	return out
+}
+
+// requested lists the login of each review request.
+func requested(asks []reviewRequest) []string {
+	var out []string
+	for _, ask := range asks {
+		out = append(out, ask.Login)
+	}
+
+	return out
 }
 
 // Read is the typed read of pull request number pr from a view of the fields number, state, headRefOid, baseRefName, author, assignees, isDraft, labels, body, reviews and reviewRequests.
@@ -182,6 +210,11 @@ func (p PullRequest) Read(pr int) (PullFacts, error) {
 
 	facts.Links = links
 
+	return facts, facts.incomplete(p.nullFields())
+}
+
+// nullFields names the fields that the view gave as null and that a typed read needs: the draft flag, the label list and the assignee list.
+func (p PullRequest) nullFields() []string {
 	var nulls []string
 
 	for _, field := range []struct {
@@ -193,7 +226,7 @@ func (p PullRequest) Read(pr int) (PullFacts, error) {
 		}
 	}
 
-	return facts, facts.incomplete(nulls)
+	return nulls
 }
 
 // IncompletePull is the refusal of a typed read that lacks the state, the head or the base. Facts holds what the read did give, and Missing names each field it lacked.

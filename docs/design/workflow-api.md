@@ -127,6 +127,10 @@ The Change column says how the pair differs from the contract that the five piec
 | `integration_pull` | `into` | #381: new | 1: `examples/remediation/workflow.star` |
 | `integration_pull` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
 | `integration_pull` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
+| `issue_assignees` | `-` | #499: new, returns the logins that hold an issue, on the repository of the link | 1: `internal/workflow/lib/claims.star` |
+| `issue_assignees` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `issue_assignees` | `number` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `issue_assignees` | `repo` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
@@ -151,6 +155,12 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_status` | `id` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
 | `item_status` | `name` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
 | `item_status` | `status` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
+| `item_stop` | `-` | #499: new, records a stop of the item in the result of the run | 1: `internal/workflow/lib/claims.star` |
+| `item_stop` | `code` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `item_stop` | `id` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `item_stop` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `item_stop` | `reason` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `item_stop` | `step` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
 | `merge` | `-` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `base` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
@@ -186,6 +196,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_open` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `parent` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `title` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_read` | `-` | #499: new, returns the facts of the pull request of an item: state, draft flag, labels, author, assignees, reviewers and linked issues | 1: `internal/workflow/lib/claims.star` |
+| `pr_read` | `id` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `pr_read` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `pr_state` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_state` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_state` | `pr` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -199,11 +212,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `preflight` | `-` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `preflight` | `base` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `preflight` | `head` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `preflight` | `hold` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `preflight` | `id` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `preflight` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
-| `preflight` | `own` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
-| `preflight` | `own_draft` | #814: the draft that the run opened is no stop of its loop | 1: `examples/remediation/workflow.star` |
 | `progress` | `-` | #589: new, reads what each child run published under a key, and does not wait | 1: `examples/planner/workflow.star` |
 | `progress` | `key` | #589: new | 1: `examples/planner/workflow.star` |
 | `progress` | `name` | #589: new | 1: `examples/planner/workflow.star` |
@@ -262,7 +272,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `stream` | `name` | #853: new | 1: `examples/supervisor/workflow.star` |
 | `stream` | `run` | #853: new, a run that `spawn` returned | 1: `examples/supervisor/workflow.star` |
 | `stream` | `timeout` | #853: new, required | 1: `examples/supervisor/workflow.star` |
-| `struct` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
+| `struct` | `-` | unchanged | 16: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 14 more |
 | `wait` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
 | `wait` | `name` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |

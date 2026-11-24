@@ -1291,7 +1291,7 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
 // An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
-func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
 	built, err := p.forgeOf(project)
 	if err != nil {
 		return preflight.Result{}, err
@@ -1308,7 +1308,7 @@ func (p pulls) Preflight(ctx context.Context, project, item string, req prefligh
 
 	req.PR = number
 
-	return preflight.Check(ctx, built, req, hold)
+	return preflight.Check(ctx, built, req)
 }
 
 // ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.

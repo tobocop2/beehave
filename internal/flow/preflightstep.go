@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -18,7 +19,7 @@ import (
 // ReadPull finds the pull request of the item the same way and returns its facts. Facts with number 0 mean that the item has no pull request in any state.
 // IssueAssignees returns the logins that hold an issue. An empty repo is the repository of the project. A failed read is an error, never an empty list.
 type preflighter interface {
-	Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error)
+	Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error)
 	ReadPull(ctx context.Context, project, item string) (model.PullFacts, error)
 	IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error)
 }
@@ -34,14 +35,14 @@ func preflightOutputs(result preflight.Result) map[string]any {
 	}
 
 	return map[string]any{
-		"ok": result.OK(), "stop": result.Stop.String(), "code": result.Stop.Code(), reasonKey: reason,
+		"ok": result.OK(), "stop": result.Stop.String(), codeField: result.Stop.Code(), reasonKey: reason,
 	}
 }
 
 // preflight reads the pull request of the item and returns the first stop in the fixed order of the preflight package.
 // A read that fails ends the step with an error, because the call then knows nothing.
 func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	req, hold, label, id, err := preflightArgs(b, args, kwargs)
+	req, label, id, err := preflightArgs(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +55,7 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, err
 	}
 
-	value, err := s.durable("preflight", label, s.ask(id, req, hold))
+	value, err := s.durable("preflight", label, s.ask(id, req))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}
@@ -75,30 +76,25 @@ func (s *script) beforeReview(id, label string) error {
 	return s.fixScope(label)
 }
 
-// preflightArgs reads the keywords of a preflight call: the request, the hold label, the name of the step and the id of the item to read.
+// preflightArgs reads the keywords of a preflight call: the request, the name of the step and the id of the item to read.
 // The id is empty when the call leaves it out, and the call then reads the item of the run.
-func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, hold, label, id string, err error) {
-	var own, draft starlark.Value
-
-	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label, "id": &id, ownDraftKeyword: &draft,
-	}); err != nil {
-		return req, "", "", "", err
+// A claim keyword is refused with the name of claim_stop, also when a splat of a dict brings it.
+func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, label, id string, err error) {
+	for _, pair := range kwargs {
+		if key, isText := pair[0].(starlark.String); isText && slices.Contains(workflow.ClaimKeywords(), key.GoString()) {
+			return req, "", "", errors.New(workflow.PreflightClaimRefusal(key.GoString()))
+		}
 	}
 
-	if req.OwnDraft, err = workflow.OwnDraft(draft); err != nil {
-		return req, "", "", "", err
-	}
+	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, nameKeyword: &label, idKeyword: &id})
 
-	req.Own, _, err = workflow.OwnerIdentity(own)
-
-	return req, hold, label, id, err
+	return req, label, id, err
 }
 
 // ask is the recorded read of one preflight call, on the pull request of the item with the id.
-func (s *script) ask(id string, req preflight.Request, hold string) func(context.Context, string) (stepResult, error) {
+func (s *script) ask(id string, req preflight.Request) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
-		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req, hold)
+		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req)
 
 		return stepResult{Outputs: preflightOutputs(result)}, err
 	}
@@ -120,7 +116,7 @@ func stopOf(label string, value starlark.Value) *Stopped {
 		return nil
 	}
 
-	number, _ := workflow.Optional[starlark.Int](out["code"])
+	number, _ := workflow.Optional[starlark.Int](out[codeField])
 	code, _ := number.Int64()
 	reason, _ := workflow.Optional[starlark.String](out[reasonKey])
 

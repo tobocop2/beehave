@@ -182,6 +182,8 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 		return "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}."
 	case builtin == spawnName && keyword == DebounceKeyword:
 		return "spawn takes no argument debounce. debounce is an option of beehave run."
+	case builtin == preflightName && slices.Contains(ClaimKeywords(), keyword):
+		return PreflightClaimRefusal(keyword)
 	case len(allowed) == 0:
 		return fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, keyword)
 	}

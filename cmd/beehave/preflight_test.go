@@ -29,40 +29,6 @@ func (f *preflightForge) PRView(_ context.Context, pr int, _ ...string) (model.P
 	return model.Decode[model.PullRequest]("test", `{"number":`+strconv.Itoa(pr)+`,"state":"`+f.state+`","isDraft":false,"headRefName":"bb-1","baseRefName":"integration","headRefOid":"abc","labels":[],"assignees":[],"body":"`+f.body+`"}`)
 }
 
-// assigneeForge is a forge that reads assignees: the issues map holds the logins of each issue number.
-type assigneeForge struct {
-	preflightForge
-
-	issues map[int][]string
-}
-
-func (f *assigneeForge) IssueAssignees(_ context.Context, _ string, number int) ([]string, error) {
-	return f.issues[number], nil
-}
-
-func TestPulls_PreflightReadsALinkedIssueOnAForgeThatReadsAssignees(t *testing.T) {
-	t.Parallel()
-
-	f := &assigneeForge{preflightForge: preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 4}}}, state: "OPEN"}, body: "Closes #7"}, issues: map[int][]string{7: {"maintainer"}}}
-	over := pulls{projects: map[string]config.Project{"p": {}}, forge: func(model.Project) (forge.Forge, error) { return f, nil }}
-
-	result, err := over.Preflight(t.Context(), "p", "bb-1", preflight.Request{Own: []string{"me"}}, "")
-
-	require.NoError(t, err)
-	assert.Equal(t, preflight.Assigned, result.Stop)
-	assert.Contains(t, result.Lines[0], "knows=no")
-}
-
-func TestPulls_PreflightRefusesALinkedIssueOnAForgeThatCannotReadAssignees(t *testing.T) {
-	t.Parallel()
-
-	f := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 4}}}, state: "OPEN"}, body: "Closes #7"}
-
-	_, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{Own: []string{"me"}}, "")
-
-	require.ErrorIs(t, err, errNoOptionalRead)
-}
-
 // over is the pulls of project p over the forge.
 func (f *preflightForge) over() pulls {
 	return pulls{
@@ -88,7 +54,7 @@ func TestPulls_PreflightReadsAClosedPullRequestAsAStop(t *testing.T) {
 
 	f := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"closed": {{Number: 4}}}, state: "CLOSED"}}
 
-	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "hold")
+	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 
 	require.NoError(t, err)
 	assert.Equal(t, preflight.Closed, result.Stop)
@@ -100,7 +66,7 @@ func TestPulls_PreflightOfAnItemWithManyClosedPullRequestsReadsTheNewestOne(t *t
 
 	f := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"closed": {{Number: 9}, {Number: 4}}}, state: "CLOSED"}}
 
-	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "hold")
+	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 
 	require.NoError(t, err)
 	assert.Equal(t, preflight.Closed, result.Stop)
@@ -112,7 +78,7 @@ func TestPulls_PreflightOfAnItemWithManyOpenPullRequestsStillFails(t *testing.T)
 
 	f := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 9}, {Number: 4}}}, state: "OPEN"}}
 
-	_, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "hold")
+	_, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 
 	require.ErrorIs(t, err, errManyPull)
 }
@@ -122,7 +88,7 @@ func TestPulls_PreflightPrefersTheOpenPullRequestOverAnOlderClosedOne(t *testing
 
 	f := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 8}}, "closed": {{Number: 4}}}, state: "OPEN"}}
 
-	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{ExpectBase: "integration", ExpectHead: "abc"}, "hold")
+	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{ExpectBase: "integration", ExpectHead: "abc"})
 
 	require.NoError(t, err)
 	assert.Equal(t, []int{8}, f.reads)
@@ -134,7 +100,7 @@ func TestPulls_PreflightOfAnItemWithNoPullRequestFindsNothingChanged(t *testing.
 
 	f := &preflightForge{}
 
-	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "hold")
+	result, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 
 	require.NoError(t, err)
 	assert.True(t, result.OK())
@@ -165,7 +131,7 @@ func TestPulls_PreflightFailsWhenTheClosedListFailsAfterTheOthersFindNothing(t *
 		forge:    func(model.Project) (forge.Forge, error) { return f, nil },
 	}
 
-	_, err := over.Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "")
+	_, err := over.Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 
 	require.ErrorIs(t, err, errFake)
 	assert.Contains(t, err.Error(), "find the pull request of item bb-1")
@@ -175,10 +141,10 @@ func TestPulls_PreflightFailsWhenTheListFailsOrTheProjectIsUnknown(t *testing.T)
 	t.Parallel()
 
 	failing := &preflightForge{pullForge: pullForge{listErr: errFake}}
-	_, err := failing.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, "")
+	_, err := failing.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
 	require.ErrorIs(t, err, errFake)
 
-	_, err = (&preflightForge{}).over().Preflight(t.Context(), "zzz", "bb-1", preflight.Request{}, "")
+	_, err = (&preflightForge{}).over().Preflight(t.Context(), "zzz", "bb-1", preflight.Request{})
 	require.ErrorIs(t, err, errUnknownProject)
 }
 
@@ -208,7 +174,7 @@ func (f *searchForge) run(t *testing.T, item string) preflight.Result {
 		forge:    func(model.Project) (forge.Forge, error) { return f, nil },
 	}
 
-	result, err := over.Preflight(t.Context(), "p", item, preflight.Request{Own: []string{"me"}}, "")
+	result, err := over.Preflight(t.Context(), "p", item, preflight.Request{})
 	require.NoError(t, err)
 
 	return result
@@ -222,8 +188,8 @@ func TestPulls_PreflightFindsAnOpenPullRequestThatNamesTheItemOnAnotherBranch(t 
 
 	result := f.run(t, "7")
 
-	assert.Equal(t, preflight.Claimed, result.Stop, "a pull request on a branch that is not the item still claims the item")
-	assert.Equal(t, []int{31}, f.reads)
+	assert.True(t, result.OK())
+	assert.Equal(t, []int{31}, f.reads, "a pull request on a branch that is not the item is the pull request of the item")
 	assert.Contains(t, f.searched[0], "open")
 }
 
@@ -233,7 +199,9 @@ func TestPulls_PreflightFindsAPullRequestThatNamesAnItemIdInItsTitle(t *testing.
 	f := &searchForge{found: []model.PullRequest{{Number: 32, Title: "bb-1: fix the parser"}}}
 	f.state = "OPEN"
 
-	assert.Equal(t, preflight.Claimed, f.run(t, "bb-1").Stop)
+	f.run(t, "bb-1")
+
+	assert.Equal(t, []int{32}, f.reads)
 }
 
 func TestPulls_PreflightIgnoresAPullRequestThatNamesAnotherItemWithTheSameDigits(t *testing.T) {
@@ -287,7 +255,7 @@ func TestPulls_PreflightFailsWhenTheSearchFails(t *testing.T) {
 		forge:    func(model.Project) (forge.Forge, error) { return f, nil },
 	}
 
-	_, err := over.Preflight(t.Context(), "p", "7", preflight.Request{}, "")
+	_, err := over.Preflight(t.Context(), "p", "7", preflight.Request{})
 
 	require.ErrorIs(t, err, errFake)
 	assert.Contains(t, err.Error(), "search the pull requests that name item 7")
@@ -300,10 +268,9 @@ func TestPulls_PreflightFindsAnOpenPullRequestThatNamesTheItemBehindAClosedOneOn
 	f.state = "OPEN"
 	f.listed = map[string][]model.PullRequest{"closed": {{Number: 5}}}
 
-	result := f.run(t, "7")
+	f.run(t, "7")
 
-	assert.Equal(t, preflight.Claimed, result.Stop, "an old closed pull request on the branch does not hide a live one that names the item")
-	assert.Equal(t, []int{31}, f.reads)
+	assert.Equal(t, []int{31}, f.reads, "an old closed pull request on the branch does not hide a live one that names the item")
 }
 
 func TestPulls_PreflightFailsWhenTheBranchHasManyMergedPullRequests(t *testing.T) {
@@ -313,7 +280,7 @@ func TestPulls_PreflightFailsWhenTheBranchHasManyMergedPullRequests(t *testing.T
 	f.state = "OPEN"
 	f.listed = map[string][]model.PullRequest{"merged": {{Number: 4}, {Number: 5}}}
 
-	_, err := f.over().Preflight(t.Context(), "p", "7", preflight.Request{}, "")
+	_, err := f.over().Preflight(t.Context(), "p", "7", preflight.Request{})
 
 	require.ErrorIs(t, err, errManyPull)
 }
@@ -325,5 +292,7 @@ func TestPulls_PreflightFindsAnOpenPullRequestThatNamesTheItemBehindAMergedOneOn
 	f.state = "OPEN"
 	f.listed = map[string][]model.PullRequest{"merged": {{Number: 4}}}
 
-	assert.Equal(t, preflight.Claimed, f.run(t, "7").Stop)
+	f.run(t, "7")
+
+	assert.Equal(t, []int{31}, f.reads)
 }

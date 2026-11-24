@@ -23,7 +23,7 @@ type readsFake struct {
 	failIssue bool
 }
 
-func (f *readsFake) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
+func (f *readsFake) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
 
@@ -123,7 +123,7 @@ func TestIssueAssignees_AFailedReadNamesTheIssueAndAnIssueBelowOneIsRefused(t *t
 	_, err := walkBody(t, h, "issue_assignees(repo = \"acme/tools\", number = 9)\n")
 
 	require.ErrorIs(t, err, errFake)
-	assert.ErrorContains(t, err, "cannot read the assignees of acme/tools#9")
+	require.ErrorContains(t, err, "cannot read the assignees of acme/tools#9")
 
 	fake := &readsFake{}
 	h, _ = readsHarness(t, fake)

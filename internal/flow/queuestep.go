@@ -13,7 +13,6 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -35,6 +34,9 @@ const (
 
 // holdStep is the name of the step that reads the hold of an item at the start of a run that spawn started.
 const holdStep = kindHold + ":start"
+
+// heldCode is the exit code of a stop for a held item. It is the code that claim_stop gives for the hold label.
+const heldCode = 9
 
 var errNoQueue = &absentError{message: "this build cannot read the open work. Use a build that sets a queue reader", step: "read the open work of the project"}
 
@@ -378,7 +380,7 @@ func queuedValue(got queued) (*starlarkstruct.Struct, error) {
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			"value":  value,
 			itemName: starlark.String(row.Item), stateField: starlark.String(row.State), severityField: starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
-			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
+			parentKeyword: starlark.String(row.Parent), authorField: starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
 			"labels": textList(row.Labels), "stop_step": starlark.String(row.StopStep), "stop_reason": starlark.String(row.StopReason),
 		})
 	}
@@ -395,7 +397,7 @@ func openPullsValue(pulls []openPull) *starlark.List {
 	for i, pull := range pulls {
 		values[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			numberField: starlark.MakeInt(pull.Number), "branch": starlark.String(pull.Branch), baseKeyword: starlark.String(pull.Base),
-			"author": starlark.String(pull.Author), "draft": starlark.Bool(pull.Draft), titleKeyword: starlark.String(pull.Title), itemName: starlark.String(pull.Item),
+			authorField: starlark.String(pull.Author), "draft": starlark.Bool(pull.Draft), titleKeyword: starlark.String(pull.Title), itemName: starlark.String(pull.Item),
 		})
 	}
 
@@ -419,7 +421,7 @@ func (s *script) holdAtStart() error {
 	}
 
 	if held {
-		s.stopped = &Stopped{Step: "queue", RC: preflight.Held.Code(), Output: "item " + s.in.Item + " is on hold"}
+		s.stopped = &Stopped{Step: "queue", RC: heldCode, Output: "item " + s.in.Item + " is on hold"}
 
 		return errStopped
 	}
