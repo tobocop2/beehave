@@ -42,6 +42,9 @@ type PhaseInput struct {
 	// MaxBudget is the max_budget_usd of the step. It is left out of a recorded phase for a step that sets none.
 	MaxBudget float64 `json:"max_budget_usd,omitempty"`
 
+	// MaxContextPercent is the max_context_percent of the step. It is left out of a recorded phase for a step that sets none.
+	MaxContextPercent int `json:"max_context_percent,omitempty"`
+
 	// NoEdits is true for a step with edits = False. Such a step runs on the review queue. It is left out of a recorded phase for a step that may edit, so a stored phase keeps its form.
 	NoEdits bool `json:"no_edits,omitempty"`
 
@@ -196,7 +199,7 @@ func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInpu
 	return AgentRequest{
 		Run: in.Run, Call: in.Call, Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Redact: e.redact, Lost: lost,
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
+		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, MaxContextPercent: in.MaxContextPercent, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
 		DataFile: data,
 	}
 }
@@ -491,7 +494,7 @@ func phaseEnd(in PhaseInput, out PhaseOutput, now time.Time) error {
 		return limitEnd(in, *out.Limit, now)
 	}
 
-	if out.Outcome == agent.OutcomeTurnCap || out.Outcome == agent.OutcomeBudgetCap {
+	if out.Outcome == agent.OutcomeTurnCap || out.Outcome == agent.OutcomeBudgetCap || out.Outcome == agent.OutcomeContextCap {
 		return nil
 	}
 

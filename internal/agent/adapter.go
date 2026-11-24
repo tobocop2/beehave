@@ -83,6 +83,8 @@ type Stop string
 const (
 	StopTurns  Stop = "turns"
 	StopBudget Stop = "budget"
+	// StopContext is the stop of a run that the runner ended at the context limit of the step. The CLI never reports it.
+	StopContext Stop = "context"
 )
 
 // LimitKind names the provider limit that refused more work.
@@ -204,11 +206,14 @@ type Denial struct {
 // a limit is near reports none.
 // Denied is the reason why the provider refused more work in a way that no wait cures, such as usage credits that the account does not have or a pause of
 // the organization, or empty when the line reports none. A line with Denied reports no Limit.
+// Context is the tokens in the context window after the turn that the line closes: the input tokens plus the cache read and cache creation tokens of that turn.
+// It is 0 when the line reports none, and for a CLI that cannot report it; the context limit of a step then never fires. A line of a sub-agent reports none.
 // Said is the message texts and the tool calls of an assistant line, for the stream that a reader follows. A tool call reads "<tool>: <target>".
 type Seen struct {
 	Cost      float64
 	Spent     float64
 	Usage     Tokens
+	Context   int64
 	Stop      Stop
 	Failed    string
 	Shell     []Call
