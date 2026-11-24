@@ -118,7 +118,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 - The sleep is the durable sleep of the workflow library. The library records the wake time. A run that stops during the sleep and continues later sleeps only the time left, and a wake time in the past ends the sleep at once.
 - The call records the steps `sleep:<name>#<n>/start` (a marker with no value) and `sleep:<name>#<n>`, with the library record `DBOS.sleep` between them. The marker tells the call from the other sleeps of the engine. `beehave status` shows `sleeps until <time>` for a run that is in the sleep.
 - A cancel of the run ends the sleep, as it ends a wait.
-- A dry run sleeps the real duration, as a dry run of `wait` waits its real timeout. Use a short duration in a file that you check with `--dry-run`.
+- A dry run sleeps no time. The call records its marker step `sleep:<name>#<n>/start` and returns `slept` 0, and the record `DBOS.sleep` does not appear. A dry run ends `wait` and `recv` at once in the same way (see `beehave check workflow`).
 - `sleep` records `slept` once, so a replay returns the first value. After a stop in the middle of the sleep, `slept` is the time that the second execution slept.
 
 ### `facts`
@@ -933,6 +933,30 @@ It checks that:
 - The check reports `<param>.<name>` when the name is not an item field: `id`, `title` or `body`, the same for every tracker.
 - A helper function that receives the item is not tracked, and neither is a function in a loaded file.
 - A missing prompt file, or a field that the item lacks, fails the step when it runs, with the file, the line and the column of the call.
+
+#### The dry run and the fixture
+
+`beehave check workflow --dry-run` runs the file for one item over fakes. Every agent call ends as done, every review approves, and every gate passes.
+
+A dry run takes no real time at a `sleep`, a `wait` or a `recv`. A call with no entry in the fixture times out at once, with `timed_out` true. A `wait` with no `timeout` and no entry hangs for ever in a real run, so a dry run refuses it and says that it has no deadline.
+
+`--fixture <file.json>` scripts the result of each agent call, gate call, wait call and recv call. It needs `--dry-run`; without it the command exits 2.
+
+```json
+{
+  "agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}],
+  "agent:fix": {},
+  "gate:check": [{"passed": false}, {"passed": true}],
+  "wait:ask": {"answer": "go"},
+  "recv:got": {"value": "x"}
+}
+```
+
+- A key is the builtin (`agent`, `gate`, `wait` or `recv`) for a call with no name, or `agent:<name>`, `gate:<name>`, `wait:<name>` or `recv:<name>` for the call with that name. Any other key is refused when the file loads, and so is `merge`: the gate of a merge is not scripted and always passes.
+- A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes.
+- An agent result is `{"outputs": {"<output>": "<text>"}}`. A gate result is `{"passed": <bool>}`; a gate that does not pass is red with one failed step. A result with no `passed` field passes. A wait result is `{"answer": "<text>", "timed_out": <bool>}`, and a recv result is `{"value": <JSON>, "timed_out": <bool>}`; `timed_out` is false unless the result sets it. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
+- With a fixture, an agent call or a gate call whose key the file does not list fails the run and names the keys of the file. A wait or a recv that the file does not list takes the default above. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
+- An unknown key, an unknown field and a value of the wrong type exit 2 and name the file.
 
 ### Examples
 

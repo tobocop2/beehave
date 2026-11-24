@@ -72,7 +72,8 @@ func dryReading() func() time.Time {
 
 // dryChoice holds what the caller chose for a dry run.
 type dryChoice struct {
-	redGate, sendBack bool
+	// script is the state of the fixture of the run, or nil for a run that scripts nothing.
+	script *fixtureRun
 	// voidGates is the number of the first gates that give no verdict.
 	voidGates        int
 	vars             map[string]any
@@ -88,15 +89,13 @@ type dryChoice struct {
 // DryOption is a choice for a dry run.
 type DryOption func(*dryChoice)
 
-// WithRedGate makes the first gate of the dry run red, with one failed step, so that the run walks the fix round of the workflow. Each later gate passes.
-func WithRedGate() DryOption { return func(c *dryChoice) { c.redGate = true } }
-
 // WithVoidGates makes the first count gates of the dry run void: each one did not run, so its step is unknown and it gives no verdict. Each later gate passes.
 // The command beehave check has no flag for it: the option is for tests of the library.
 func WithVoidGates(count int) DryOption { return func(c *dryChoice) { c.voidGates = count } }
 
-// WithSendBack makes the first review of the dry run end with the verdict changes, so that the run walks a send-back and a fix round. Each later review approves.
-func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } }
+// WithFixture scripts the agent, gate, wait and recv calls of the dry run from the fixture, so that a review rejects twice and then approves, or a gate is red once.
+// With a fixture, an agent call or a gate call whose key the file does not list fails the run. The gate of a merge has no key and always passes.
+func WithFixture(fixture Fixture) DryOption { return func(c *dryChoice) { c.script = fixture.start() } }
 
 // WithVars gives the facts of the dry run the vars of a project. The vars are static config, so the dry run reads them as a real run does. Every other fact stays empty.
 func WithVars(vars map[string]any) DryOption { return func(c *dryChoice) { c.vars = vars } }
@@ -132,7 +131,7 @@ func chooseDry(options []DryOption) dryChoice {
 // The engine gets only the fakes of this file, so no forge, agent, tracker or host is reachable. A step that needs a collaborator the fakes lack fails.
 // A failed run prints the failed step and its error, and returns the error.
 // The dry fakes return fixed values and never reach a real service. The fakes of the tests keep their own knobs and are a separate set.
-// Every gate passes, unless the call has WithRedGate.
+// Every gate passes, unless the fixture scripts it.
 func DryRun(ctx context.Context, file, item string, env map[string]string, out io.Writer, options ...DryOption) (err error) {
 	chosen := chooseDry(options)
 
@@ -153,7 +152,22 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 	runErr := dryWalk(ctx, opts, deps, item, file, chosen.entry, chosen.sandbox)
 	last, printErr := printDrySteps(ctx, opts, out)
 
-	return errors.Join(printErr, dryFailure(out, last, runErr))
+	return errors.Join(printErr, dryFailure(out, last, runErr), dryLeftover(out, chosen.script, runErr))
+}
+
+// dryLeftover reports each result of the fixture that no call used. A run that failed or ended early reports none, because it did not reach the calls that would use them.
+func dryLeftover(out io.Writer, script *fixtureRun, runErr error) error {
+	if runErr != nil {
+		return nil
+	}
+
+	err := script.leftover()
+	if err != nil {
+		// A failed write has no recovery.
+		_, _ = fmt.Fprintf(out, "error: %v\n", err)
+	}
+
+	return err
 }
 
 // dryPrepare makes the worktree of the item in the folder of the run and returns the fakes that serve it, with the skills that the file checks for.
@@ -231,16 +245,12 @@ func onlyAbsent(err error) bool {
 
 // dryDeps holds the only collaborators of a dry run. Each one answers from a fixed value and touches nothing outside the folder of the run.
 func dryDeps(tree, head, item string, chosen dryChoice) Deps {
-	agents := dryAgents{skills: chosen.skills}
-	if chosen.sendBack {
-		agents.sendBack = new(atomic.Bool)
-		agents.sendBack.Store(true)
-	}
-
-	gate := newDryGate(tree, head, chosen.redGate)
+	agents := dryAgents{skills: chosen.skills, script: chosen.script}
+	gate := newDryGate(tree, head, chosen.script)
 	gate.void = chosen.voidGates
 
 	return Deps{
+		Waits:  dryWaits{script: chosen.script},
 		Agents: agents, Gate: gate, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Rounds: dryRounds{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots, SkillLine: drySkillLine,
@@ -354,10 +364,10 @@ func dryLine(n int, step dbos.StepInfo) string {
 }
 
 // dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve, the output open empty, any other output 0).
-// With sendBack set, the first agent that declares a verdict writes changes instead; the flag then clears.
+// The fixture of the run, when there is one, sets the outputs of a call by its key.
 type dryAgents struct {
-	sendBack *atomic.Bool
-	skills   []string
+	script *fixtureRun
+	skills []string
 }
 
 // outputVerdict is the output of a review call that holds its verdict. verdictChanges is the verdict of a head that needs a commit.
@@ -375,8 +385,13 @@ const (
 )
 
 func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, error) {
+	set, err := a.script.agentOutputs(request.Call, request.Outputs)
+	if err != nil {
+		return agent.Result{}, err
+	}
+
 	if len(request.Outputs) > 0 {
-		raw := a.outputs(request.Outputs)
+		raw := a.outputs(request.Outputs, set)
 
 		if err := errors.Join(os.MkdirAll(filepath.Dir(request.OutputFile), dryDirMode), os.WriteFile(request.OutputFile, raw, dryFileMode)); err != nil {
 			return agent.Result{}, fmt.Errorf("write the fake outputs: %w", err)
@@ -386,15 +401,14 @@ func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, e
 	return agent.Result{Outcome: agent.OutcomeExited, Session: "dry-session", Transcript: "/dry.jsonl", Text: "dry run: no agent ran", Skills: a.skills}, nil
 }
 
-// outputs is the content of the output file: one string for each declared output.
-func (a dryAgents) outputs(declared []string) []byte {
-	sendBack := a.sendBack != nil && slices.Contains(declared, outputVerdict) && a.sendBack.Swap(false)
+// outputs is the content of the output file: one string for each declared output, the one that the fixture set or else the base value.
+func (dryAgents) outputs(declared []string, set map[string]string) []byte {
 	fields := make([]string, 0, len(declared))
 
 	for _, name := range declared {
-		value := dryOutput(name)
-		if sendBack && name == outputVerdict {
-			value = verdictChanges
+		value, named := set[name]
+		if !named {
+			value = dryOutput(name)
 		}
 
 		fields = append(fields, strconv.Quote(name)+":"+strconv.Quote(value))
@@ -418,17 +432,17 @@ func dryOutput(name string) string {
 	return "0"
 }
 
-// dryGate runs on the commit of the dry-run folder and passes. With red set, its first run is red, with one failed step, so that a dry run walks the fix round of a workflow.
+// dryGate runs on the commit of the dry-run folder and passes. The fixture, when there is one, scripts a gate call by its key: a result with passed false is red, with one failed step.
 // A gate with a base gets a clean check record: one new test and a clean secret scan. With void set, its first void runs give no verdict: the step is unknown.
 type dryGate struct {
 	dir, head string
-	red       bool
+	script    *fixtureRun
 	void      int
 	runs      *atomic.Int32
 }
 
-func newDryGate(dir, head string, red bool) dryGate {
-	return dryGate{dir: dir, head: head, red: red, runs: new(atomic.Int32)}
+func newDryGate(dir, head string, script *fixtureRun) dryGate {
+	return dryGate{dir: dir, head: head, script: script, runs: new(atomic.Int32)}
 }
 
 func (dryGate) Key(context.Context, string, string, string, string, string) (GateKey, error) {
@@ -448,15 +462,15 @@ func (g dryGate) Submit(ctx context.Context, _, _, _, base, _, _ string, _ model
 }
 
 func (g dryGate) Run(_ context.Context, _, _, _ string, job GateJob) (GateResult, error) {
-	result := GateResult{Passed: true, Head: g.head, Tree: dryTree, Steps: []GateStep{{Name: gatepkg.StepCommand, Status: passStatus}}}
 	run := int(g.runs.Add(1))
-	if run == 1 && g.red {
-		result.Passed, result.Steps = false, []GateStep{{Name: gatepkg.StepCommand, Status: failStatus}}
+
+	passed, err := g.script.gatePassed(job.Call)
+	if err != nil {
+		return GateResult{}, err
 	}
 
-	if run <= g.void {
-		result.Passed, result.Steps = false, []GateStep{{Name: gatepkg.StepCommand, Status: unknownStatus}}
-	}
+	result := GateResult{Head: g.head, Tree: dryTree}
+	result.Passed, result.Steps = dryVerdict(passed, run <= g.void)
 
 	if job.Plan.Base != "" {
 		result.Checks = &GateChecks{NewTests: []string{dryNewTest}, New: 1, Secrets: new(int), Complete: true, Revert: model.RevertPass, RevertCases: 1}
@@ -464,6 +478,29 @@ func (g dryGate) Run(_ context.Context, _, _, _ string, job GateJob) (GateResult
 
 	return result, nil
 }
+
+// dryVerdict is the verdict and the steps of one fake gate run. A void run gives no verdict, so its step is unknown. Any other run that does not pass fails its step.
+func dryVerdict(passed, void bool) (bool, []GateStep) {
+	status := passStatus
+
+	switch {
+	case void:
+		status = unknownStatus
+	case !passed:
+		status = failStatus
+	}
+
+	return status == passStatus, []GateStep{{Name: gatepkg.StepCommand, Status: status}}
+}
+
+// dryWaits ends every wait and recv at once. The fixture gives the answer of a call; a call with no entry times out, or is refused when it has no deadline to time out on.
+type dryWaits struct{ script *fixtureRun }
+
+func (w dryWaits) Wait(label string, deadline bool) (heard, error) {
+	return w.script.wait(label, deadline)
+}
+
+func (w dryWaits) Recv(label string) (envelope, bool, error) { return w.script.recv(label) }
 
 type dryLogins struct{}
 

@@ -204,7 +204,7 @@ func TestDryRun_ARedGateRunEndsAWorkflowThatStopsAtARedGateWithAnError(t *testin
 
 	var out bytes.Buffer
 
-	err := DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out, WithRedGate())
+	err := DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out, WithFixture(fixtureOf(t, `{"gate:check": [{"passed": false}]}`)))
 
 	require.Error(t, err)
 	assert.Contains(t, out.String(), "the gate is red")
@@ -217,7 +217,7 @@ func TestDryRun_TheFirstGateIsRedAndTheRunWalksAFixRoundBeforeTheGatePasses(t *t
 
 	const text = "def main(item):\n    g = gate(name = \"check\")\n    if not g.passed:\n        agent(name = \"fix\", prompt = \"p.md\", model = \"sonnet\")\n        gate(name = \"check\")\n"
 
-	require.NoError(t, DryRun(t.Context(), dryFileWithPrompt(t, text), "12", nil, &out, WithRedGate()), out.String())
+	require.NoError(t, DryRun(t.Context(), dryFileWithPrompt(t, text), "12", nil, &out, WithFixture(fixtureOf(t, `{"gate:check": [{"passed": false}, {"passed": true}], "agent:fix": {}}`))), out.String())
 
 	got := out.String()
 	fix := strings.Index(got, "agent:fix")
@@ -242,10 +242,10 @@ func dryFileWithPrompt(t *testing.T, text string) string {
 	return flow
 }
 
-func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testing.T) {
+func TestDryGate_EveryRunPassesWithAPassedStepWhenNoFixtureScriptsIt(t *testing.T) {
 	t.Parallel()
 
-	gate := newDryGate(t.TempDir(), "h", false)
+	gate := newDryGate(t.TempDir(), "h", nil)
 
 	for range 2 {
 		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
@@ -255,21 +255,59 @@ func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testin
 	}
 }
 
-func TestDryGate_WithTheRedGateTheFirstRunIsRedWithAFailedStepAndEveryLaterRunPasses(t *testing.T) {
+func TestDryGate_AScriptedGateGivesRedThenGreen(t *testing.T) {
 	t.Parallel()
 
-	gate := newDryGate(t.TempDir(), "h", true)
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:check": [{"passed": false}, {"passed": true}]}`).start())
+	job := GateJob{Call: "gate:check"}
 
-	red, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+	red, err := gate.Run(t.Context(), "p", "i", "", job)
 	require.NoError(t, err)
 	assert.False(t, red.Passed)
 	assert.Equal(t, []GateStep{{Name: "command", Status: "fail"}}, red.Steps)
 
+	green, err := gate.Run(t.Context(), "p", "i", "", job)
+	require.NoError(t, err)
+	assert.True(t, green.Passed)
+	assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
+
+	_, err = gate.Run(t.Context(), "p", "i", "", job)
+	require.ErrorContains(t, err, "gate:check call 3")
+}
+
+func TestDryGate_AGateCallWithNoNameIsNotScriptedAndPassesWithoutCountingACall(t *testing.T) {
+	t.Parallel()
+
+	script := fixtureOf(t, `{"gate:check": [{"passed": false}]}`).start()
+	gate := newDryGate(t.TempDir(), "h", script)
+
+	green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+
+	require.NoError(t, err)
+	assert.True(t, green.Passed)
+	require.ErrorContains(t, script.leftover(), "gate:check")
+}
+
+func TestDryGate_AGateCallWhoseKeyTheFileDoesNotListIsRefusedWithTheKeysOfTheFile(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:other": {}}`).start())
+
+	_, err := gate.Run(t.Context(), "p", "i", "", GateJob{Call: "gate:check"})
+
+	require.ErrorContains(t, err, "gate:check has no entry")
+	require.ErrorContains(t, err, "[gate:other]")
+}
+
+func TestDryGate_AnObjectGateResultWithNoFieldPassesEveryCall(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:check": {}}`).start())
+
 	for range 2 {
-		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{Call: "gate:check"})
 		require.NoError(t, err)
 		assert.True(t, green.Passed)
-		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
 	}
 }
 
@@ -312,6 +350,13 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 	}, remediationStepNames(t))
 }
 
+// remediationRedGate scripts the pipeline of the remediation example: the gate of the candidate is red once, and every agent call takes the base result.
+const remediationRedGate = `{
+  "gate:candidate-gate": [{"passed": false}, {"passed": true}],
+  "agent:plan": {}, "agent:implement": {}, "agent:implement-sweep": {}, "agent:scoped-review-implement": {},
+  "agent:fix-scoped-1": {}, "agent:scoped-review-1": {}, "agent:candidate-review": {}
+}`
+
 func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound(t *testing.T) {
 	t.Parallel()
 
@@ -330,7 +375,7 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound
 		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5",
 		"agent:candidate-review#7/render", "agent:candidate-review#7/clear1", "phase", "DBOS.getResult", "agent:candidate-review#7/read1", "pr_comment:approved#1",
 		"worktree", "release",
-	}, remediationStepNames(t, WithRedGate()))
+	}, remediationStepNames(t, WithFixture(fixtureOf(t, remediationRedGate))))
 }
 
 func TestPrintDrySteps_FailsWhenTheStoreCannotOpenAndWhenTheClientIsClosed(t *testing.T) {
@@ -540,7 +585,7 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 	head, err := dryRepo(t.Context(), dir, t.TempDir())
 	require.NoError(t, err)
 
-	gate := newDryGate(dir, head, false)
+	gate := newDryGate(dir, head, nil)
 
 	job, err := gate.Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.NoError(t, err)
@@ -552,11 +597,11 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 	require.NoError(t, err)
 	assert.Equal(t, parent, base)
 
-	landing, err := newDryGate(filepath.Join(dir, "none"), head, false).Submit(t.Context(), "p", "i", "", "", "", "", model.Slot{})
+	landing, err := newDryGate(filepath.Join(dir, "none"), head, nil).Submit(t.Context(), "p", "i", "", "", "", "", model.Slot{})
 	require.NoError(t, err, "a gate with no base touches no repository")
 	assert.Empty(t, landing.Plan.Base)
 
-	_, err = newDryGate(dir, "no-such-commit", false).Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
+	_, err = newDryGate(dir, "no-such-commit", nil).Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.ErrorContains(t, err, "git exited")
 }
 
@@ -766,10 +811,10 @@ func countStep(names []string, prefix string) int {
 	return n
 }
 
-func TestDryRun_WithSendBackTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
+func TestDryRun_AFixtureThatRejectsTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
 	t.Parallel()
 
-	names := reviewStepNames(t, WithSendBack())
+	names := reviewStepNames(t, WithFixture(fixtureOf(t, `{"agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}], "agent:fix": {}}`)))
 
 	assert.Equal(t, 2, countStep(names, "agent:review"), names)
 	assert.Equal(t, 1, countStep(names, "agent:fix"), names)
@@ -794,7 +839,7 @@ func reviewStepNames(t *testing.T, options ...DryOption) []string {
 	return names
 }
 
-func TestDryRun_WithoutSendBackTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
+func TestDryRun_WithNoFixtureTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
 	t.Parallel()
 
 	names := reviewStepNames(t)
@@ -826,18 +871,6 @@ func TestDryRun_AProjectWithNoReviewSkillInItsVarsReportsNoSkillAndTheExampleRef
 	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryPipeline, WithVars(vars))
 
 	require.ErrorContains(t, err, "vars.review_skill")
-}
-
-func TestDryRun_ASleepPrintsItsStepAfterTheDuration(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-
-	started := time.Now()
-
-	require.NoError(t, DryRun(t.Context(), dryFile(t, "def main(item):\n    sleep(\"200ms\", name = \"nap\")\n"), "12", map[string]string{}, &out), out.String())
-	assert.Contains(t, out.String(), "sleep:nap#1")
-	assert.GreaterOrEqual(t, time.Since(started), 200*time.Millisecond)
 }
 
 func TestDryRun_ASkillThatTheProjectNamesIsOneOfTheSkillsThatTheFakeAgentReports(t *testing.T) {
