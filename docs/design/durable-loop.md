@@ -389,7 +389,7 @@ A `reject` from a scoped review or the full review ends the loop at once with no
 
 #### The `guard` argument
 
-The argument `guard` of `review_fix` is a dict of `base`, `hold` and `own`. It turns on a `preflight` call before every review, design and fix agent. The calls are named `before-scoped-review-<candidate>`, `before-fix-<candidate>`, `before-design-<candidate>` and `before-review-<candidate>`.
+The argument `guard` of `review_fix` is a dict of `base`, `hold`, `own` and `own_draft`. It turns on a `preflight` call with `base`, then a `claim_stop` call with `hold`, `own` and `own_draft`, before every review, design and fix agent. The calls are named `before-scoped-review-<candidate>`, `before-fix-<candidate>`, `before-design-<candidate>` and `before-review-<candidate>`.
 
 - The call passes the head that the next agent reads, which is the head of the worktree. So a loop with a pull request needs each fix pushed before the next review.
 - A stop is a result. The loop returns `stopped = true` and starts no more agents.

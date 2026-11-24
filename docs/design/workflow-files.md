@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `item_comment`, `item_create`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -200,6 +200,9 @@ The `item_` builtins change or read the tracker of the project.
 | `item_status(id, status, name)` | `id`, `status` |
 | `item_comment(id, text, key, forbid_text, name)` | `id` |
 | `item_read(of, name)` | `found`, `id`, `fields`, `comments`, `parent` |
+| `item_stop(step, code, reason, id, name)` | `recorded` |
+
+`item_stop` records the stop of an item in the result of the run, as the stop of a command does: the step, the exit code and the reason. It writes nothing to the tracker. `code` is 1 or more, and `step` and `reason` are not empty. The stop counts only for the item of the run. When `id` names another item, the call records nothing and returns `recorded` false. The library function `claim_stop` calls it.
 
 The `key` is required, and the engine joins it to the run id. `item_create` with `shared = True` is the one exception.
 
@@ -243,6 +246,19 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 #### `pr_comment`
 
 `pr_comment(text, key, forbid_text, integration)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+
+#### `pr_read`
+
+`pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers` and `links`.
+
+- The call finds the pull request as `preflight` does: the open one on the branch of the item, then an open one that names the item, then the merged one, then the newest closed one. An item with no pull request gives `found` false and empty lists.
+- `reviewers` lists the logins that reviewed the pull request or were asked to. `links` lists the issues that the body names with `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related`. Each link is a dict with `repo` and `number`. An empty `repo` is the repository of the pull request.
+- A read that fails ends the step with an error. A pull request with no draft flag, no label list or no assignee list is refused, because a null would pass as a pull request that nothing holds.
+- A project with no repository refuses the call. A build with no reader fails the call and names the fix.
+
+#### `issue_assignees`
+
+`issue_assignees(repo, number, name)` returns `assignees`: the logins that hold an issue. An empty `repo` is the repository of the project, and any other `repo` is read on that repository. `number` is 1 or more. A read that fails ends the step with an error that names the issue, and is never an issue that nobody holds. A forge that cannot read assignees refuses the call.
 
 #### `pr_open`
 
@@ -384,25 +400,16 @@ The four steps that post public text (`item_create`, `item_comment`, `pr_comment
 
 ### `preflight`
 
-`preflight(head, base, hold, own, id, own_draft, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
+`preflight(head, base, id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
 
 It checks, in this order:
 
 1. Merged or closed.
 2. The head branch.
-3. The assignees. A login that is not in `own["logins"]` and holds the pull request, or an issue that the pull request body links, gives ASSIGNED, exit code 11. An empty `own` checks no assignee.
-4. The author. An open pull request by a login that is not in `own["logins"]` gives CLAIMED, exit code 10. An empty `own` checks no author.
-5. The `hold` label.
-6. A draft. The keyword `own_draft` is the number of a draft that the run opened itself, and that one draft is no stop. A call that leaves it out stops at every draft, so the intake keeps the stop for a pull request that somebody else may rework. The value must be a whole number of 1 or more: the check and the run refuse zero, a negative number and any other type. The loop of the example passes the number that `pr_open` returned, so a draft with another number still stops the loop. The child run returns that number as the field `pr` of its value, and the batch intake of the round passes it, because the pull request stays a draft until the merge marks it ready.
-7. The expected head.
-8. The expected base.
+3. The expected head.
+4. The expected base.
 
-The assignee check reads the pull request and each linked issue once. A link is a `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related` keyword with `#N`, `owner/repo#N` or the URL of an issue. The call reads a link to another repository on that repository.
-
-- A read that fails ends the step with an error. A failed read is not a clean item.
-- The read of the assignees of an issue is optional for a forge. A forge without it is refused when the body has a link.
-- The reason of ASSIGNED names the holder and ends with `knows=yes` or `knows=no`. The value is `yes` only when the holder opened the pull request or reviews it.
-- The reason also gives the recovery: leave the item to the holder, or ask the holder first.
+The claim stops are not in `preflight`. The library function `claim_stop` holds them, and a workflow calls it after `preflight`. A call of `preflight` with the argument `hold`, `own` or `own_draft` is refused, by `beehave check workflow` and by the run, with a message that names `claim_stop`.
 
 - A keyword that the call leaves out checks nothing of its kind. An item with no pull request passes.
 - A stop is a result and not an error, so the workflow decides what to do with it. `code` is the exit code of the stop.
@@ -416,8 +423,25 @@ The assignee check reads the pull request and each linked issue once. A link is 
 If no open pull request has the item as its head branch, the call searches the open pull requests for one that names the item in its title or body.
 
 - Any `#N` mention in an open pull request counts, as in "Closes #7", "see #7" or "follow-up to #7". A passing mention makes the item not free, which is the safe direction.
-- Such a pull request gives CLAIMED, and it outranks a merged or closed pull request on the branch.
+- Such a pull request is the pull request of the item for `preflight`, `pr_read` and `claim_stop`, and it outranks a merged or closed pull request on the branch.
 - A search that fails ends the step with an error.
+
+#### `claim_stop`
+
+`claim_stop` is a function of the library: `load("@beehave//claims.star", "claim_stop")`. `claim_stop(name, id, hold, own, own_draft)` reads the pull request of the item with `pr_read` and returns `ok`, `stop`, `code` and `reason`, as `preflight` does. It checks, in this order:
+
+1. The assignees. A login that is not in `own["logins"]` and holds the pull request, or an issue that the pull request body links, gives ASSIGNED, exit code 11. The call reads each link with `issue_assignees`. The reason names the holder and ends with `knows=yes` or `knows=no`. The value is `yes` only when the holder opened the pull request or reviews it.
+2. The author. An open pull request by a login that is not in `own["logins"]` gives CLAIMED, exit code 10.
+3. The `hold` label gives HELD, exit code 9. An empty `hold` holds nothing.
+4. A draft gives DRAFT, exit code 8. `own_draft` is the number of a draft that the run opened itself, and that one draft is no stop. A call that leaves it out stops at every draft. The value must be a whole number of 0 or more. The loop of the example passes the number that `pr_open` returned, so a draft with another number still stops the loop. The child run returns that number as the field `pr` of its value, and the batch intake of the round passes it, because the pull request stays a draft until the merge marks it ready.
+
+An empty `own` checks no assignee and no author.
+
+- A workflow calls `preflight` first and `claim_stop` only when `preflight` passes, so a merged or closed pull request, a gone branch, a moved head and a changed base outrank every claim stop.
+- A pull request that is not open and an item with no pull request give a clear result.
+- A read that fails, or a read with no draft flag, label list or assignee list, ends the step with an error. A failed read is not a clean item.
+- A stop of the item of the run goes into the `stopped` field of the result of the run, under the step `claim_stop:<name>`.
+- The reason also gives the recovery: leave the item to the holder, or ask the holder first.
 
 #### Other orchestrators
 
