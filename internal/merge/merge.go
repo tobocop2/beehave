@@ -159,6 +159,8 @@ type Request struct {
 	Names []int
 	// Kept are issues that the owner kept by an answer. A closing keyword in a commit message may name them besides Names.
 	Kept []model.IssueRef
+	// Pinned is the set of closing issues that a check read before the merge. The pull request must close exactly those, own and other repositories. Nil pins no set; an empty list pins no issue.
+	Pinned []model.IssueRef
 	// Credentialed is true when the project declares a writer credential. Such a merge needs a base whose protection requires the gate, the review and a pull request.
 	// ForgeName names the forge in the refusal for a forge that cannot read the protection.
 	Credentialed bool

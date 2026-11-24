@@ -107,11 +107,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `earlier_calls` | `-` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `call` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `name` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
-| `earlier_reads` | `-` | #500: new, returns the recorded results of the earlier steps of one kind and name, newest run first | 1: `examples/remediation/workflow.star` |
-| `earlier_reads` | `item` | #500: new | 1: `examples/remediation/workflow.star` |
-| `earlier_reads` | `kind` | #500: new | 1: `examples/remediation/workflow.star` |
-| `earlier_reads` | `name` | #500: new | 1: `examples/remediation/workflow.star` |
-| `earlier_reads` | `own_run` | #500: new | 1: `examples/remediation/workflow.star` |
+| `earlier_reads` | `-` | #500: new, returns the recorded results of the earlier steps of one kind and name, newest run first | 1: `internal/workflow/lib/scope.star` |
+| `earlier_reads` | `item` | #500: new | 1: `internal/workflow/lib/scope.star` |
+| `earlier_reads` | `kind` | #500: new | 1: `internal/workflow/lib/scope.star` |
+| `earlier_reads` | `name` | #500: new | 1: `internal/workflow/lib/scope.star` |
+| `earlier_reads` | `own_run` | #500: new | 1: `internal/workflow/lib/scope.star` |
 | `env` | `-` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
 | `env` | `default` | unchanged | 13: `examples/approvals/policy.star`, `examples/desk/eval.star` and 11 more |
 | `env` | `name` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
@@ -204,9 +204,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
 | `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
-| `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 1: `examples/remediation/workflow.star` |
-| `pr_closing` | `item` | #500: new | 1: `examples/remediation/workflow.star` |
-| `pr_closing` | `name` | #500: new | 1: `examples/remediation/workflow.star` |
+| `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
+| `pr_closing` | `item` | #500: new | 1: `internal/workflow/lib/scope.star` |
+| `pr_closing` | `name` | #500: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
 | `pr_closing` | `pr` | #503: new, reads the pull request with this number in place of the pull request of an item | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -301,11 +301,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `stream` | `name` | #853: new | 1: `examples/supervisor/workflow.star` |
 | `stream` | `run` | #853: new, a run that `spawn` returned | 1: `examples/supervisor/workflow.star` |
 | `stream` | `timeout` | #853: new, required | 1: `examples/supervisor/workflow.star` |
-| `struct` | `-` | unchanged | 17: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 15 more |
-| `wait` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
+| `struct` | `-` | unchanged | 18: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 16 more |
+| `wait` | `-` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 11 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
-| `wait` | `name` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 10 more |
-| `wait` | `question` | unchanged | 8: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 6 more |
+| `wait` | `name` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 11 more |
+| `wait` | `question` | unchanged | 9: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 7 more |
 | `wait` | `quorum` | unchanged | 1: `examples/approvals/workflow.star` |
 | `wait` | `remind` | unchanged | 1: `examples/approvals/workflow.star` |
 | `wait` | `timeout` | unchanged | 7: `examples/approvals/workflow.star`, `examples/incident/workflow.star` and 5 more |

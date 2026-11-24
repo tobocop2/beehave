@@ -46,7 +46,7 @@ type RunProgress struct {
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Label is the label of the latest agent step that has one, as the workflow wrote it. It is empty for a run with no labeled agent step.
 	Label string `json:"label,omitempty"`
-	// ScopeOff is true when the run could not fix a scope because its project has no forge, so no merge of the run checks for a new closing issue.
+	// ScopeOff is true when a pr_closing step of the run found that its project has no forge, so the run cannot check for a new closing issue.
 	ScopeOff bool `json:"scope_off,omitempty"`
 }
 
