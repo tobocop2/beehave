@@ -67,14 +67,12 @@ func TestGateSlot_AProgramGateQueuedOnABuildHostRunsItsHostJobInTheGateClassWith
 	assert.True(t, h.commands.requests[0].Gate)
 }
 
-func TestCommandSlot_ACommandWithAClassRunsWithTheCountThatTheHostGrantsItAndACommandWithNoClassWithNone(t *testing.T) {
+func TestCommandSlot_ACommandWithAClassRunsWithTheCountThatTheHostGrantsItAndACommandWithNoClassTheCountOfTheDefaultClass(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	h.slots = func(_, _, class string) (SlotGrant, error) {
-		require.Equal(t, "mutation", class)
-
-		return SlotGrant{Host: "box", Count: 4}, nil
+		return SlotGrant{Host: "box", Count: map[string]int{"mutation": 4, "default": 2}[class]}, nil
 	}
 
 	_, err := walkBody(t, h, "command(name = \"mutate\", run = [\"x\"], host = \"build\", slots = \"mutation\")\ncommand(name = \"plain\", run = [\"y\"], host = \"build\")\n")
@@ -83,6 +81,6 @@ func TestCommandSlot_ACommandWithAClassRunsWithTheCountThatTheHostGrantsItAndACo
 	require.Len(t, h.commands.requests, 2)
 	assert.Equal(t, "mutation", h.commands.requests[0].SlotClass)
 	assert.Equal(t, 4, h.commands.requests[0].SlotCount)
-	assert.Empty(t, h.commands.requests[1].SlotClass)
-	assert.Zero(t, h.commands.requests[1].SlotCount)
+	assert.Equal(t, "default", h.commands.requests[1].SlotClass)
+	assert.Equal(t, 2, h.commands.requests[1].SlotCount)
 }
