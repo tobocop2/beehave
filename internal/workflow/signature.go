@@ -51,7 +51,7 @@ type Param struct {
 }
 
 // StatusValues lists the values of the status argument of an item_status call.
-func StatusValues() []string { return []string{"open", "closed", "hold"} }
+func StatusValues() []string { return []string{"open", "closed", holdKeyword} }
 
 // ofKeyword is the keyword of item_read that names the item to read.
 const ofKeyword = "of"
@@ -252,12 +252,6 @@ func contextRule(v starlark.Value) error {
 	return ContextPercent(percent)
 }
 
-func ownDraftRule(v starlark.Value) error {
-	_, err := OwnDraft(v)
-
-	return err
-}
-
 func ownRule(v starlark.Value) error {
 	_, _, err := OwnerIdentity(v)
 
@@ -426,7 +420,7 @@ func swarmSignatures() map[string][]Param {
 	return map[string][]Param{
 		mergeName: {
 			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule, Members: true},
-			filled("base"), filled("repo"), opt("hold", KindText), ruled("own", KindDict, ownRule),
+			filled("base"), filled("repo"), opt(holdKeyword, KindText), ruled("own", KindDict, ownRule),
 			forbidText(), words("gate_run"), opt("integration", KindInt), opt("hand_off", KindBool),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
@@ -437,16 +431,19 @@ func swarmSignatures() map[string][]Param {
 		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
 		cancelName:  {req("run", KindAny), label},
 		spawnName:   {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
-		queueName:   {label, opt("hold", KindText), opt("label", KindText)},
+		queueName:   {label, opt(holdKeyword, KindText), opt("label", KindText)},
 	}
 }
 
 // readSignatures holds the builtins that read the tracker, the forge or the item folder.
 func readSignatures() map[string][]Param {
 	return map[string][]Param{
-		itemReadName:  {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
-		prStateName:   {req("pr", KindInt), opt(nameKeyword, KindText)},
-		prHistoryName: {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
+		itemReadName:       {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
+		prStateName:        {req("pr", KindInt), opt(nameKeyword, KindText)},
+		prHistoryName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
+		prReadName:         {opt("id", KindText), opt(nameKeyword, KindText)},
+		issueAssigneesName: {opt("repo", KindText), req("number", KindInt), opt(nameKeyword, KindText)},
+		itemStopName:       {filled("step"), req("code", KindInt), filled("reason"), opt("id", KindText), opt(nameKeyword, KindText)},
 	}
 }
 
@@ -462,7 +459,7 @@ func itemSignatures() map[string][]Param {
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
 		prCommentName:  {filled("text"), filled("key"), forbidText(), label},
 		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("parent", KindText), forbidText(), label},
-		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), {Name: "own_draft", Kind: KindInt, AsValue: true, Rule: ownDraftRule}, label},
+		preflightName:  {opt("head", KindText), opt("base", KindText), opt("id", KindText), label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
 	}
 }

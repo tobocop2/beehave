@@ -77,7 +77,6 @@ var rules = map[string]rule{
 
 	"internal/preflight.Reader.PRView":            {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "viewErr"},
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},
-	"internal/preflight.Reader.IssueAssignees":    {Proof: "TestPreflight_AFailedReadOfALinkedIssueIsNotClean", Needle: "unread"},
 	"internal/review.Reader.ReadyMarks":           {Proof: "TestPoll_AFailedReadOfTheReadyMarksOfADraftStopsThePoll", Needle: "ReadyMarks"},
 	"internal/forge.AssigneeReads.IssueAssignees": {NotHeld: assigneesHeld},
 	"internal/forge.ReadyReads.ReadyMarks":        {NotHeld: readyHeld},
@@ -209,6 +208,8 @@ var rules = map[string]rule{
 	"internal/flow.merger.Poll":                   {NotHeld: inAdapter},
 	"internal/flow.pollReader.Source":             {NotHeld: inAdapter},
 	"internal/flow.preflighter.Preflight":         {NotHeld: inAdapter},
+	"internal/flow.preflighter.ReadPull":          {Proof: "TestPRRead_AFailedReadEndsTheItemAndABuildWithNoReaderNamesTheFix", Needle: "err"},
+	"internal/flow.preflighter.IssueAssignees":    {Proof: "TestIssueAssignees_AFailedReadNamesTheIssueAndAnIssueBelowOneIsRefused", Needle: "err"},
 	"internal/flow.forge.Pull":                    {NotHeld: inAdapter},
 	"internal/flow.forge.ClosingIssues":           {NotHeld: inAdapter},
 	"internal/flow.forge.Comment":                 {NotHeld: inAdapter},

@@ -112,6 +112,18 @@ func TestRun_TheStateHeadAndBaseCheckDecidesOnTheTypedRead(t *testing.T) {
 	assert.Equal(t, merge.Done, w.run(request()).Stop, "the view alone is not what the check reads")
 }
 
+func TestRun_ABodyLinkThatIsNotAnIntIsNoRefusalOfTheMerge(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t).set(t, map[string]any{"body": "refs #99999999999999999999", "labels": []any{}, "assignees": []any{}})
+	w.strict = true
+
+	result := w.run(request())
+
+	assert.Equal(t, merge.Done, result.Stop, "the merge reads no link, so a link that cannot be read does not stop it")
+	assert.Equal(t, []string{"MergePR 5 " + sha}, w.writes)
+}
+
 func TestRun_AReadWithNoStateHeadOrBaseIsAPermanentRefusalWithABeforeLine(t *testing.T) {
 	t.Parallel()
 

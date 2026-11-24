@@ -184,6 +184,8 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 		return "spawn takes no argument debounce. debounce is an option of beehave run."
 	case removedPRArgument(builtin, keyword) != "":
 		return removedPRArgument(builtin, keyword)
+	case builtin == preflightName && slices.Contains(ClaimKeywords(), keyword):
+		return PreflightClaimRefusal(keyword)
 	case len(allowed) == 0:
 		return fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, keyword)
 	}

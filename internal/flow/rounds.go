@@ -382,7 +382,7 @@ func (s *script) takeOf(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	var idle, grace, step string
 
 	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		prKeyword: &req.Request.PR, "me": &req.Me, "idle": &idle, "grace": &grace, "step": &step, nameKeyword: &label,
+		prKeyword: &req.Request.PR, "me": &req.Me, "idle": &idle, "grace": &grace, stepField: &step, nameKeyword: &label,
 	})
 	if err != nil {
 		return req, label, err
@@ -414,7 +414,7 @@ func takeArguments(builtin string, pr int, step string) error {
 func (s *script) takeWrite(req TakeRequest) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, name string) (stepResult, error) {
 		result, err := s.writes().Take(ctx, s.in.Project, req)
-		recorded := stepResult{Outputs: map[string]any{"code": result.Code, "lines": nonNil(result.Lines)}}
+		recorded := stepResult{Outputs: map[string]any{codeField: result.Code, "lines": nonNil(result.Lines)}}
 
 		if result.Code != 0 {
 			recorded.Stopped = refusedStop(name, result.Lines)

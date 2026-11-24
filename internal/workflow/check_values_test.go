@@ -106,7 +106,6 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"merge own logins element", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"logins": [1]})`, "merge: own.logins must hold strings only"},
 		{"merge own emails text", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"emails": "a@b"})`, "merge: own.emails must be a list of strings"},
 		{"merge own element", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"emails": [None]})`, "merge: own.emails must hold strings only"},
-		{"preflight own element", `preflight(own = {"logins": [True]})`, "preflight: own.logins must hold strings only"},
 		{"command retries negative", `command(run = ["x"], retries = -1)`, "command: retries is -1. Use a whole number from 0 to 10"},
 		{"command retries above 10", `command(run = ["x"], retries = 11)`, "command: retries is 11. Use a whole number from 0 to 10"},
 		{"command backoff zero", `command(run = ["x"], retries = 1, backoff = "0s")`, `command: backoff is "0s", which must be above zero`},
@@ -165,7 +164,7 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    write(run = [\"x\"], retries = 2, backoff = \"1s\")\n"+
 		"    spawn(items = [\"a\"], retries = 3)\n"+
 		"    merge(prs = [struct(item = \"a\", head = \"h\", closes = [])], base = \"b\", repo = \"r\", name = \"n\", integration = 7, own = {})\n"+
-		"    preflight(own = {\"logins\": [\"me\"]})\n")
+		"    preflight(head = \"h\", base = \"b\")\n")
 
 	assert.Empty(t, got)
 }

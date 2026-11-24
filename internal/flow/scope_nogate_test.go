@@ -49,7 +49,7 @@ func TestPreflight_ARunWithNoGateFixesItsScopeAtTheFirstReviewReadAndFixesItOnce
 	h, _, _ := preflightHarness(t, preflight.Result{})
 	h.forge.closing = [][]int{{12}, {12, 13}}
 
-	_, err := walkBody(t, h, "preflight(name = \"a\", hold = \"hold\")\npreflight(name = \"b\", hold = \"hold\")\n")
+	_, err := walkBody(t, h, "preflight(name = \"a\")\npreflight(name = \"b\")\n")
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, h.forge.closingReads, "the first review read fixes the scope and the second reads nothing")
@@ -74,7 +74,7 @@ func TestPreflight_AScopeReadThatFailsEndsTheItemBeforeTheReviewRead(t *testing.
 	h, fake, _ := preflightHarness(t, preflight.Result{})
 	h.forge.closingErr = errFake
 
-	_, err := walkBody(t, h, "preflight(name = \"a\", hold = \"hold\")\n")
+	_, err := walkBody(t, h, "preflight(name = \"a\")\n")
 
 	require.ErrorIs(t, err, errFake)
 	assert.Empty(t, fake.asked, "the scope is fixed before the review read, so a failed read of it reads no review")
@@ -85,7 +85,7 @@ func TestPreflight_AReadOfAnotherItemFixesNoScopeOfTheRunItem(t *testing.T) {
 
 	h, _, _ := preflightHarness(t, preflight.Result{})
 
-	_, err := walkBody(t, h, "preflight(name = \"a\", id = \"7\", hold = \"hold\")\n")
+	_, err := walkBody(t, h, "preflight(name = \"a\", id = \"7\")\n")
 
 	require.NoError(t, err)
 	assert.Zero(t, h.forge.closingReads, "the pull request of another item is no first review of the run item")

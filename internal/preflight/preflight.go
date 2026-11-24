@@ -1,14 +1,13 @@
 // Package preflight asks whether the pull request a caller is about to act on is still the one it expects.
 // One read of the pull request and one read of its head branch give a Stop, or none.
+// The claim stops (assigned, claimed, held and draft) are not here: the library function claim_stop decides them.
 package preflight
 
 import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
-	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -17,18 +16,13 @@ const shaLength = 40
 
 // fields returns what the checks read from the pull request.
 func fields() []string {
-	return []string{
-		"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository", "author",
-		"body", "assignees", "reviews", "reviewRequests",
-	}
+	return []string{"number", "state", "mergedAt", "headRefOid", "headRefName", "baseRefName"}
 }
 
 // Reader is the part of the forge that preflight reads. The caller passes the forge of the project.
-// IssueAssignees returns the logins that hold an issue. An empty repo is the repository of the pull request, and any other repo is read on that repository.
 type Reader interface {
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
-	IssueAssignees(ctx context.Context, repo string, number int) ([]string, error)
 }
 
 // Stop is the reason a caller must not go on, or Unchanged. The value of a Stop is its exit code.
@@ -43,15 +37,11 @@ const (
 	HeadMoved   Stop = 5
 	BaseChanged Stop = 6
 	BranchGone  Stop = 7
-	Draft       Stop = 8
-	Held        Stop = 9
-	Claimed     Stop = 10
-	Assigned    Stop = 11
 )
 
 // Stops returns every value of Stop.
 func Stops() []Stop {
-	return []Stop{Unchanged, Refused, Merged, Closed, HeadMoved, BaseChanged, BranchGone, Draft, Held, Claimed, Assigned}
+	return []Stop{Unchanged, Refused, Merged, Closed, HeadMoved, BaseChanged, BranchGone}
 }
 
 // Code returns the exit code of the stop. A value outside the set is Refused.
@@ -66,8 +56,7 @@ func (s Stop) Code() int {
 func (s Stop) String() string {
 	names := map[Stop]string{
 		Unchanged: "UNCHANGED", Refused: "REFUSED", Merged: "MERGED", Closed: "CLOSED", HeadMoved: "HEAD MOVED",
-		BaseChanged: "BASE CHANGED", BranchGone: "BRANCH GONE", Draft: "DRAFT", Held: "HELD", Claimed: "CLAIMED",
-		Assigned: "ASSIGNED",
+		BaseChanged: "BASE CHANGED", BranchGone: "BRANCH GONE",
 	}
 	if name, ok := names[s]; ok {
 		return name
@@ -77,14 +66,10 @@ func (s Stop) String() string {
 }
 
 // Request names the pull request. ExpectHead is the full SHA the caller expects, ExpectBase the branch it gated against; an empty one is not checked.
-// OwnDraft is the number of the draft that the caller opened itself: that one draft is no stop. Zero means every draft is a stop.
-// Own lists the logins of the caller. An open pull request by any other login claims the item, and so does an assignee of the pull request or of a linked issue that is not in the list. An empty list checks no author and no assignee.
 type Request struct {
 	PR         int
 	ExpectHead string
 	ExpectBase string
-	OwnDraft   int
-	Own        []string
 }
 
 // Result is the verdict: the stop, a one-line summary of the pull request, and the lines to show.
@@ -101,17 +86,12 @@ func (r Result) OK() bool { return r.Stop == Unchanged }
 type ReadError struct {
 	PR     int
 	Branch string
-	Link   string
 	Cause  error
 }
 
 func (e *ReadError) Error() string {
 	if e.Branch != "" {
 		return fmt.Sprintf("cannot read the branch %s of #%d", e.Branch, e.PR)
-	}
-
-	if e.Link != "" {
-		return fmt.Sprintf("cannot read the assignees of %s, linked from #%d. Check the access to that repository, then run again.", e.Link, e.PR)
 	}
 
 	return fmt.Sprintf("cannot read #%d", e.PR)
@@ -122,33 +102,24 @@ func (e *ReadError) Unwrap() error { return e.Cause }
 
 // view is the pull request as the checks read it. Every field a check decides on is set.
 type view struct {
-	pr     int
-	state  string
-	draft  bool
-	head   string
-	ref    string
-	base   string
-	labels string
-	author string
-	body   string
-	// assignees hold the pull request. reviewers are the logins that reviewed it or were asked to.
-	assignees []string
-	reviewers []string
+	pr    int
+	state string
+	head  string
+	ref   string
+	base  string
 }
 
-// Check judges the pull request against the request. The order is the state, the branch, the assignees, the author, the labels, the draft flag, then the head and the base.
+// Check judges the pull request against the request. The order is the state, the branch, then the head and the base.
 // A merged pull request still shows a head that looks fine, so the state comes first.
-// A pull request that carries the whole label hold is held. An empty hold holds nothing.
-func Check(ctx context.Context, r Reader, req Request, hold string) (Result, error) {
+func Check(ctx context.Context, r Reader, req Request) (Result, error) {
 	v, err := read(ctx, r, req)
 	if err != nil {
 		return Result{}, err
 	}
 
-	summary := fmt.Sprintf("pr %d  state %s  draft %t  head %s  ref %s  base %s  labels [%s]",
-		v.pr, v.state, v.draft, v.head, v.ref, v.base, v.labels)
+	summary := fmt.Sprintf("pr %d  state %s  head %s  ref %s  base %s", v.pr, v.state, v.head, v.ref, v.base)
 
-	stop, lines, err := judge(ctx, r, v, req, hold)
+	stop, lines, err := judge(ctx, r, v, req)
 	if err != nil {
 		return Result{}, err
 	}
@@ -166,7 +137,7 @@ func verdict(v view, summary string, stop Stop, lines []string) Result {
 }
 
 // judge returns the first stop in the order, or Unchanged. Only the branch check reads the forge again.
-func judge(ctx context.Context, r Reader, v view, req Request, hold string) (Stop, []string, error) {
+func judge(ctx context.Context, r Reader, v view, req Request) (Stop, []string, error) {
 	if stop, lines := stateStop(v); stop != Unchanged {
 		return stop, lines, nil
 	}
@@ -175,21 +146,12 @@ func judge(ctx context.Context, r Reader, v view, req Request, hold string) (Sto
 		return stop, lines, err
 	}
 
-	if stop, lines, err := heldStop(ctx, r, v, req); err != nil || stop != Unchanged {
-		return stop, lines, err
-	}
-
-	if stop, lines := labelStop(v, hold, req.OwnDraft); stop != Unchanged {
-		return stop, lines, nil
-	}
-
 	stop, lines := expectationStop(v, req)
 
 	return stop, lines, nil
 }
 
-// read reads the pull request. A missing state, draft flag, branch name or label list is a refusal, because a null would pass as an open, ready pull request.
-// A missing assignee list is a refusal too, when the caller names its own logins: a null would pass as a pull request that nobody holds.
+// read reads the pull request. A missing state or branch name is a refusal, because a null would pass as an open pull request.
 func read(ctx context.Context, r Reader, req Request) (view, error) {
 	pr := req.PR
 
@@ -198,72 +160,17 @@ func read(ctx context.Context, r Reader, req Request) (view, error) {
 		return view{}, &ReadError{PR: pr, Cause: err}
 	}
 
-	if !complete(pull, req) {
+	if pull.State == nil || pull.HeadRefName == nil {
 		return view{}, &ReadError{PR: pr}
 	}
 
-	return viewOf(pr, pull), nil
-}
-
-// viewOf copies the fields of a complete pull request.
-func viewOf(pr int, pull model.PullRequest) view {
 	return view{
-		pr:     pr,
-		state:  *pull.State,
-		draft:  *pull.IsDraft,
-		head:   model.OrNull(model.Deref(pull.HeadRefOid)),
-		ref:    *pull.HeadRefName,
-		base:   model.OrNull(model.Deref(pull.BaseRefName)),
-		labels: labelNames(pull),
-		author: pull.Author.Login,
-		body:   pull.Body,
-
-		assignees: logins(pull.Assignees),
-		reviewers: reviewers(pull),
-	}
-}
-
-// complete reports whether the pull request holds every field the checks decide on.
-func complete(pull model.PullRequest, req Request) bool {
-	if pull.State == nil || pull.IsDraft == nil || pull.HeadRefName == nil || pull.Labels == nil {
-		return false
-	}
-
-	return len(req.Own) == 0 || pull.Assignees != nil
-}
-
-func logins(accounts []model.Account) []string {
-	names := make([]string, len(accounts))
-	for i, account := range accounts {
-		names[i] = account.Login
-	}
-
-	return names
-}
-
-// reviewers lists the logins that sent a review or were asked for one.
-func reviewers(pull model.PullRequest) []string {
-	var names []string
-
-	for _, review := range pull.Reviews {
-		names = append(names, review.Author.Login)
-	}
-
-	for _, ask := range pull.ReviewRequests {
-		names = append(names, ask.Login)
-	}
-
-	return names
-}
-
-// labelNames joins the label names with commas. A label with no name reads as null.
-func labelNames(pull model.PullRequest) string {
-	names := make([]string, len(pull.Labels))
-	for i, label := range pull.Labels {
-		names[i] = model.OrNull(label.Name)
-	}
-
-	return strings.Join(names, ",")
+		pr:    pr,
+		state: *pull.State,
+		head:  model.OrNull(model.Deref(pull.HeadRefOid)),
+		ref:   *pull.HeadRefName,
+		base:  model.OrNull(model.Deref(pull.BaseRefName)),
+	}, nil
 }
 
 func stateStop(v view) (Stop, []string) {
@@ -308,39 +215,6 @@ func branchStop(v view) (Stop, []string) {
 		"  Recovery: do NOT push, which would recreate it silently. Branch from the current tip of",
 		fmt.Sprintf("  '%s', re-apply the work, and open a new pull request.", v.base),
 	}
-}
-
-// claimStop is the stop for an open pull request of a login that is not in own. Somebody else is already on the item.
-func claimStop(v view, own []string) (Stop, []string) {
-	if len(own) == 0 || merge.IsOwn(v.author, own) {
-		return Unchanged, nil
-	}
-
-	return Claimed, []string{
-		fmt.Sprintf("STOP: #%d is open and its author is '%s', who is not on the list of own logins. The item is claimed.", v.pr, model.OrNull(v.author)),
-		"  Recovery: leave the item to its author and move to the next item.",
-	}
-}
-
-// labelStop holds the hold label and the draft flag. A hold is a product decision opening, so it outranks a draft.
-// The draft that the caller opened itself, by number, is no stop.
-func labelStop(v view, hold string, ownDraft int) (Stop, []string) {
-	if hold != "" && slices.Contains(strings.Split(v.labels, ","), hold) {
-		return Held, []string{
-			fmt.Sprintf("STOP: #%d now carries the '%s' label. A product decision is open; nothing merges.", v.pr, hold),
-			"  Recovery: write the judgement on the issue and move to the next item.",
-		}
-	}
-
-	if v.draft && v.pr != ownDraft {
-		return Draft, []string{
-			fmt.Sprintf("STOP: #%d is a DRAFT. It is not mergeable and may be mid-rework by its author.", v.pr),
-			"  Recovery: review it if you were sent to review it, but do not merge and do not push",
-			"  without saying so on the pull request first.",
-		}
-	}
-
-	return Unchanged, nil
 }
 
 // expectationStop compares the head and the base with what the caller expects. Only a full SHA is compared:

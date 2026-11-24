@@ -55,6 +55,8 @@ type hostForge struct {
 	// pullReads counts the typed reads when it is set. readNumber is the number the typed read answers with, in place of the number asked for, when it is not zero.
 	pullReads  *int
 	readNumber int
+	// rawRead is the JSON of the view that the typed read decodes and reads as the forge reads it, with its refusals, in place of the view of the fake.
+	rawRead string
 	// draft is the isDraft field of the view, nil when the forge sends none. closed is what the list of closed pull requests holds.
 	draft  *bool
 	closed []model.PullRequest
@@ -97,6 +99,15 @@ func pullFactsOf(number int, view model.PullRequest, err error) (model.PullFacts
 func (f hostForge) PullRead(ctx context.Context, number int) (model.PullFacts, error) {
 	if f.pullReads != nil {
 		*f.pullReads++
+	}
+
+	if f.rawRead != "" {
+		view, err := model.Decode[model.PullRequest]("test", f.rawRead)
+		if err != nil {
+			return model.PullFacts{}, err
+		}
+
+		return view.Read(number)
 	}
 
 	view, err := f.PRView(ctx, number)
@@ -352,6 +363,32 @@ func TestBatchHost_IntentReadsAnOpenPullRequestOnce(t *testing.T) {
 	assert.Equal(t, "tip-tree", intent.BaseTipTree)
 	assert.Equal(t, "OPEN", intent.State)
 	assert.Equal(t, now, intent.Time)
+}
+
+func TestBatchHost_IntentIsNoRefusalOfAListOrALinkThatTheMergeDoesNotRead(t *testing.T) {
+	t.Parallel()
+
+	const lists = `"isDraft":false,"labels":[],"assignees":[]`
+
+	for name, raw := range map[string]string{
+		"no assignee list": `{"state":"OPEN","headRefOid":"` + gated + `","baseRefName":"main","isDraft":false,"labels":[]}`,
+		"no label list":    `{"state":"OPEN","headRefOid":"` + gated + `","baseRefName":"main","isDraft":false,"assignees":[]}`,
+		"no draft flag":    `{"state":"OPEN","headRefOid":"` + gated + `","baseRefName":"main","labels":[],"assignees":[]}`,
+		"a bad body link":  `{"state":"OPEN","headRefOid":"` + gated + `","baseRefName":"main",` + lists + `,"body":"refs #99999999999999999999"}`,
+	} {
+		f := hostForge{state: "OPEN", viewHead: gated, listed: []model.PullRequest{{Number: 9}}, rawRead: raw}
+
+		intent, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
+
+		require.NoError(t, err, name)
+		assert.Equal(t, gated, intent.Head, name)
+	}
+
+	f := hostForge{state: "OPEN", viewHead: gated, listed: []model.PullRequest{{Number: 9}}, rawRead: `{"state":"OPEN","baseRefName":"main","isDraft":false,"labels":[],"assignees":[]}`}
+
+	_, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
+
+	require.ErrorContains(t, err, "the read has no head", "a read with no head stays a refusal")
 }
 
 func TestBatchHost_IntentRefusesAPullRequestThatIsNotOpen(t *testing.T) {
