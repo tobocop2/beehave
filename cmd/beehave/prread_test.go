@@ -100,6 +100,42 @@ func TestPRRead_FailsWhenAReadFailsOrTheProjectIsUnknown(t *testing.T) {
 	require.ErrorIs(t, err, errUnknownProject)
 }
 
+func TestPRRead_AReadWithNoAssigneeListOrABadLinkGivesFactsThatNameWhatIsUnread(t *testing.T) {
+	t.Parallel()
+
+	listed := map[string][]model.PullRequest{"open": {{Number: 4}}}
+	facts := model.PullFacts{Number: 4, State: "OPEN", Author: "dev"}
+
+	for name, tc := range map[string]struct {
+		err  error
+		want []string
+	}{
+		"no assignee list": {&model.IncompletePull{Facts: facts, Missing: []string{"assignees"}}, []string{"the read has no assignees"}},
+		"a bad link":       {&model.LinkError{Facts: facts, Cause: errFake}, []string{errFake.Error()}},
+	} {
+		f := &readForge{pullForge: pullForge{listed: listed}, readErr: tc.err}
+
+		got, err := f.over().ReadPull(t.Context(), "p", "7")
+
+		require.NoError(t, err, name)
+		assert.Equal(t, tc.want, got.Unread, name)
+		assert.Equal(t, "dev", got.Author, name)
+	}
+
+	for name, err := range map[string]error{
+		"no label list":                  &model.IncompletePull{Facts: facts, Missing: []string{"labels"}},
+		"no draft flag":                  &model.IncompletePull{Facts: facts, Missing: []string{"draft"}},
+		"no assignee list and no head":   &model.IncompletePull{Facts: facts, Missing: []string{"head", "assignees"}},
+		"no assignee list and no labels": &model.IncompletePull{Facts: facts, Missing: []string{"labels", "assignees"}},
+	} {
+		f := &readForge{pullForge: pullForge{listed: listed}, readErr: err}
+
+		_, got := f.over().ReadPull(t.Context(), "p", "7")
+
+		require.Error(t, got, name+" stays an error")
+	}
+}
+
 func TestIssueAssignees_ReadsALinkedIssueOnItsRepository(t *testing.T) {
 	t.Parallel()
 

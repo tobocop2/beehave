@@ -6,17 +6,18 @@ CLAIMED = ("CLAIMED", 10)
 HELD = ("HELD", 9)
 DRAFT = ("DRAFT", 8)
 
-def _clear():
-    return struct(ok = True, stop = "UNCHANGED", code = 0, reason = "")
+def _clear(number = 0):
+    reason = "OK: the item has no pull request yet." if number == 0 else "OK: #%d is unchanged in every respect this checks." % number
+    return struct(ok = True, stop = "UNCHANGED", code = 0, reason = reason)
 
 def _is_own(login, logins):
     """An empty login is never own. Forge logins ignore case."""
     return login != "" and login.lower() in logins
 
 def _foreign(assignees, logins):
-    """The first assignee that is not own, or an empty text."""
+    """The first assignee that is not own, or an empty text. An assignee with an empty login ends the search, and no one holds."""
     for login in assignees:
-        if login != "" and not _is_own(login, logins):
+        if not _is_own(login, logins):
             return login
     return ""
 
@@ -52,7 +53,7 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
     own is {"logins": [...]}. A pull request of another author, and an assignee of the pull request or of a linked issue who is not in the list, claim the item. An empty list checks neither.
     hold is the label that holds an item, and an empty hold holds nothing. own_draft is the number of the draft that the run opened itself, and that draft is no stop. Zero means that every draft stops.
     name makes the step names of the call unique. A stop of the item of the run shows as the step claim_stop:<name> in the result of the run.
-    A read that fails, or a read with no draft flag, label list or assignee list, ends the run with an error and never passes.
+    A read that fails, or a read with no draft flag or label list, ends the run with an error and never passes. With own logins set, so does a read with no assignee list or a body link that is not an int.
     """
     if type(own) != "dict":
         fail("REFUSE: claim_stop got own %r. Pass a dict such as {\"logins\": [\"owner\"]}." % (own,))
@@ -61,10 +62,12 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
 
     pull = pr_read(name = name, id = id)
     if not pull.found or pull.state != "OPEN":
-        return _clear()
+        return _clear(pull.number)
 
     logins = [login.lower() for login in own.get("logins", []) if login != ""]
     if logins:
+        if pull.unread:
+            fail("cannot read #%d: %s" % (pull.number, "; ".join(pull.unread)))
         stop = _assigned(name, id, pull, logins)
         if stop:
             return stop
@@ -73,7 +76,7 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
                 "STOP: #%d is open and its author is '%s', who is not on the list of own logins. The item is claimed." % (pull.number, pull.author or "null"),
                 "  Recovery: leave the item to its author and move to the next item.",
             ])
-    if hold != "" and hold in pull.labels:
+    if hold != "" and hold in ",".join(pull.labels).split(","):
         return _stop(name, id, HELD, [
             "STOP: #%d now carries the '%s' label. A product decision is open; nothing merges." % (pull.number, hold),
             "  Recovery: write the judgement on the issue and move to the next item.",
@@ -84,4 +87,4 @@ def claim_stop(name, id = "", hold = "", own = {}, own_draft = 0):
             "  Recovery: review it if you were sent to review it, but do not merge and do not push",
             "  without saying so on the pull request first.",
         ])
-    return _clear()
+    return _clear(pull.number)

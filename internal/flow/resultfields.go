@@ -117,7 +117,7 @@ func prReadOutputs(facts model.PullFacts) map[string]any {
 	return map[string]any{
 		"found": facts.Number != 0, numberField: facts.Number, stateField: facts.State, "draft": facts.Draft, "labels": append([]string{}, facts.Labels...),
 		authorField: facts.Author, assigneesField: append([]string{}, facts.Assignees...), "reviewers": append([]string{}, facts.Reviewers...),
-		"links": append([]model.IssueLink{}, facts.Links...),
+		"links": append([]model.IssueLink{}, facts.Links...), "unread": append([]string{}, facts.Unread...),
 	}
 }
 

@@ -111,7 +111,7 @@ func trackerResultFields() map[string][]string {
 		prStateName:        {stateField},
 		pushName:           {headField},
 		prHistoryName:      {"pulls"},
-		prReadName:         {"found", numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links"},
+		prReadName:         {"found", numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links", "unread"},
 		itemStopName:       {"recorded"},
 		issueAssigneesName: {"assignees"},
 	}

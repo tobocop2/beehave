@@ -1321,7 +1321,31 @@ func (p pulls) ReadPull(ctx context.Context, project, item string) (model.PullFa
 		return model.PullFacts{}, err
 	}
 
-	return built.PullRead(ctx, number)
+	facts, err := built.PullRead(ctx, number)
+
+	return unreadAs(facts, err)
+}
+
+// unreadAs turns the two refusals that only a call with own logins needs into facts that name what they lack: a null assignee list and a body link that is not an int.
+// Every other refusal stays an error.
+func unreadAs(facts model.PullFacts, err error) (model.PullFacts, error) {
+	var (
+		hole *model.IncompletePull
+		link *model.LinkError
+	)
+
+	switch {
+	case errors.As(err, &hole) && slices.Equal(hole.Missing, []string{"assignees"}):
+		hole.Facts.Unread = []string{"the read has no assignees"}
+
+		return hole.Facts, nil
+	case errors.As(err, &link):
+		link.Facts.Unread = []string{link.Error()}
+
+		return link.Facts, nil
+	default:
+		return facts, err
+	}
 }
 
 // IssueAssignees reads who holds an issue of the project, on its own repository when repo names one.

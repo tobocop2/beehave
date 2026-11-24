@@ -219,7 +219,7 @@ func (h batchHost) Intent(ctx context.Context, project, item, repo, _, tipTree s
 		return merge.Intent{}, err
 	}
 
-	facts, err := built.PullRead(ctx, number)
+	facts, err := model.WithoutListRefusals(built.PullRead(ctx, number))
 	if err != nil {
 		return merge.Intent{}, fmt.Errorf("read the pull request of item %s: %w", item, err)
 	}

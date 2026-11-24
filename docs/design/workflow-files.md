@@ -249,11 +249,11 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 #### `pr_read`
 
-`pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers` and `links`.
+`pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers`, `links` and `unread`.
 
 - The call finds the pull request as `preflight` does: the open one on the branch of the item, then an open one that names the item, then the merged one, then the newest closed one. An item with no pull request gives `found` false and empty lists.
 - `reviewers` lists the logins that reviewed the pull request or were asked to. `links` lists the issues that the body names with `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related`. Each link is a dict with `repo` and `number`. An empty `repo` is the repository of the pull request.
-- A read that fails ends the step with an error. A pull request with no draft flag, no label list or no assignee list is refused, because a null would pass as a pull request that nothing holds.
+- A read that fails ends the step with an error. A pull request with no draft flag or no label list is refused, because a null would pass as a pull request that nothing holds. A pull request with no assignee list, or a body link whose number is not an int, is not refused: `unread` names what the read could not give, and `claim_stop` ends the step with an error when it has own logins to compare. `unread` is an empty list for a clean read.
 - A project with no repository refuses the call. A build with no reader fails the call and names the fix.
 
 #### `issue_assignees`
@@ -435,7 +435,8 @@ An empty `own` checks no assignee and no author.
 
 - A workflow calls `preflight` first and `claim_stop` only when `preflight` passes, so a merged or closed pull request, a gone branch, a moved head and a changed base outrank every claim stop.
 - A pull request that is not open and an item with no pull request give a clear result.
-- A read that fails, or a read with no draft flag, label list or assignee list, ends the step with an error. A failed read is not a clean item.
+- A read that fails, or a read with no draft flag or label list, ends the step with an error. A failed read is not a clean item. With `own` logins set, a read with no assignee list or with a body link that is not an int ends the step with an error too.
+- A clear result has the reason `OK: #<number> is unchanged in every respect this checks.`, or `OK: the item has no pull request yet.` when there is none. A label name is split at a comma, so the label `a,hold` holds with `hold` = `hold`, as the preflight did.
 - A stop of the item of the run goes into the `stopped` field of the result of the run, under the step `claim_stop:<name>`.
 - The reason also gives the recovery: leave the item to the holder, or ask the holder first.
 

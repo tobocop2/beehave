@@ -28,6 +28,8 @@ type remoteBranches struct {
 	asked []string
 	// drafts is the number of the pull request of each item whose pull request is a draft. A read for such an item gives that draft, and claim_stop stops at it unless the call names that number as its own draft.
 	drafts map[string]int
+	// assigned is the logins that hold the pull request of each item. A read for such an item gives an open pull request that they hold, and the merge itself checks no assignee.
+	assigned map[string][]string
 
 	// before runs at the start of each call, with no lock held. The round rig holds the turn of a member here: the preflight holds no queue slot.
 	before func(ctx context.Context, item string)
@@ -37,6 +39,10 @@ type remoteBranches struct {
 func (r *remoteBranches) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if holders := r.assigned[item]; len(holders) > 0 {
+		return model.PullFacts{Number: testPull, State: "OPEN", Author: shipOwner, Assignees: holders}, nil
+	}
 
 	if r.drafts[item] == 0 {
 		return model.PullFacts{}, nil

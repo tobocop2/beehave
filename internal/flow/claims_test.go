@@ -35,6 +35,13 @@ type claimOutcome struct {
 	err    error
 }
 
+// clearLine is the result of claim_stop for the open pull request 7 that nothing stops, and noPullLine the result for an item with no pull request.
+// Both carry the reason that the preflight builtin gave before the claim stops moved to the library.
+const (
+	clearLine  = "True|UNCHANGED|0|OK: #7 is unchanged in every respect this checks."
+	noPullLine = "True|UNCHANGED|0|OK: the item has no pull request yet."
+)
+
 // ownerLogins is the own dict of the claim tests.
 const ownerLogins = `own = {"logins": ["owner", "bot"]}`
 
@@ -80,11 +87,11 @@ func TestClaimStop_AHeldLabelStopsWithCode9(t *testing.T) {
 
 	got = claimRun(t, held, `name = "a"`)
 
-	assert.Equal(t, "True|UNCHANGED|0|", got.line, "a call with no hold holds nothing")
+	assert.Equal(t, clearLine, got.line, "a call with no hold holds nothing")
 
 	got = claimRun(t, held, `name = "a", hold = "holdup"`)
 
-	assert.Equal(t, "True|UNCHANGED|0|", got.line, "the whole label is compared")
+	assert.Equal(t, clearLine, got.line, "the whole label is compared")
 }
 
 func TestClaimStop_AForeignAuthorClaimsTheItemWithCode10(t *testing.T) {
@@ -97,8 +104,8 @@ func TestClaimStop_AForeignAuthorClaimsTheItemWithCode10(t *testing.T) {
 	require.NoError(t, got.err)
 	assert.Equal(t, "False|CLAIMED|10|STOP: #7 is open and its author is 'someone', who is not on the list of own logins. The item is claimed.;   Recovery: leave the item to its author and move to the next item.", got.line)
 
-	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, foreign, `name = "a"`).line, "no own list checks no author")
-	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, pullFake(func(f *model.PullFacts) { f.Author = "Owner" }), `name = "a", `+ownerLogins).line, "forge logins ignore case")
+	assert.Equal(t, clearLine, claimRun(t, foreign, `name = "a"`).line, "no own list checks no author")
+	assert.Equal(t, clearLine, claimRun(t, pullFake(func(f *model.PullFacts) { f.Author = "Owner" }), `name = "a", `+ownerLogins).line, "forge logins ignore case")
 
 	nobody := claimRun(t, pullFake(func(f *model.PullFacts) { f.Author = "" }), `name = "a", `+ownerLogins)
 
@@ -118,8 +125,8 @@ func TestClaimStop_AnAssigneeOutsideOwnStopsWithCode11(t *testing.T) {
 
 	own := claimRun(t, pullFake(func(f *model.PullFacts) { f.Assignees = []string{"Owner"} }), `name = "a", `+ownerLogins)
 
-	assert.Equal(t, "True|UNCHANGED|0|", own.line)
-	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, assigned, `name = "a"`).line, "no own list checks no assignee")
+	assert.Equal(t, clearLine, own.line)
+	assert.Equal(t, clearLine, claimRun(t, assigned, `name = "a"`).line, "no own list checks no assignee")
 }
 
 func TestClaimStop_AnAssigneeOfALinkedIssueStopsAndKnowsIsRecorded(t *testing.T) {
@@ -178,7 +185,7 @@ func TestClaimStop_ADraftIsAStopUnlessItIsTheOwnDraft(t *testing.T) {
 	require.NoError(t, got.err)
 	assert.Equal(t, "False|DRAFT|8|STOP: #7 is a DRAFT. It is not mergeable and may be mid-rework by its author.;   Recovery: review it if you were sent to review it, but do not merge and do not push;   without saying so on the pull request first.", got.line)
 
-	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, draft, `name = "a", own_draft = 7`).line, "the draft that the run opened is no stop")
+	assert.Equal(t, clearLine, claimRun(t, draft, `name = "a", own_draft = 7`).line, "the draft that the run opened is no stop")
 	assert.Contains(t, claimRun(t, draft, `name = "a", own_draft = 8`).line, "DRAFT", "another draft is a stop")
 }
 
@@ -238,7 +245,7 @@ func TestClaimStop_AMissingAssigneeOrLabelListIsRefused(t *testing.T) {
 func TestClaimStop_AnItemWithNoPullRequestPasses(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, &readsFake{}, `name = "a", hold = "hold", `+ownerLogins).line)
+	assert.Equal(t, noPullLine, claimRun(t, &readsFake{}, `name = "a", hold = "hold", `+ownerLogins).line)
 
 	for _, state := range []string{"MERGED", "CLOSED"} {
 		gone := pullFake(func(f *model.PullFacts) {
@@ -247,7 +254,7 @@ func TestClaimStop_AnItemWithNoPullRequestPasses(t *testing.T) {
 
 		got := claimRun(t, gone, `name = "a", hold = "hold", `+ownerLogins)
 
-		assert.Equal(t, "True|UNCHANGED|0|", got.line, "a pull request that is "+state+" is for the preflight call to report")
+		assert.Equal(t, clearLine, got.line, "a pull request that is "+state+" is for the preflight call to report")
 		assert.Nil(t, got.stop)
 	}
 }
@@ -267,7 +274,7 @@ func TestClaimStop_AStopIsRecordedOnTheResultOfTheRun(t *testing.T) {
 
 	other := claimRun(t, pullFake(func(f *model.PullFacts) { f.Labels = []string{"hold"} }), `name = "a", hold = "hold", id = "other"`)
 
-	assert.Equal(t, "True|UNCHANGED|0|", other.line, "the item other has no pull request in the fake")
+	assert.Equal(t, noPullLine, other.line, "the item other has no pull request in the fake")
 	assert.Nil(t, other.stop)
 
 	clean := claimRun(t, pullFake(nil), `name = "a", hold = "hold", `+ownerLogins)

@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -140,6 +142,8 @@ type PullFacts struct {
 	Labels    []string
 	Links     []IssueLink
 	Reviewers []string
+	// Unread names what a lenient read could not give: the assignee list, or a link of the body. A caller that needs it refuses the facts.
+	Unread []string
 }
 
 // Facts is the typed read of the view: a field the view lacks is empty. The links of the body are not read here, because a link can be refused: see Read.
@@ -205,13 +209,56 @@ func (p PullRequest) Read(pr int) (PullFacts, error) {
 
 	links, err := BodyLinks(p.Body)
 	if err != nil {
-		return PullFacts{}, err
+		if hole := facts.incomplete(p.nullFields()); hole != nil {
+			return facts, hole
+		}
+
+		return facts, &LinkError{Facts: facts, Cause: err}
 	}
 
 	facts.Links = links
 
 	return facts, facts.incomplete(p.nullFields())
 }
+
+// WithoutListRefusals is a typed read as the merge needs it: a read that only lacks the draft flag, the label list or the assignee list, or whose body has a link
+// that is not an int, gives the facts it did read and no error. The merge uses none of those. Any other refusal stays.
+func WithoutListRefusals(facts PullFacts, err error) (PullFacts, error) {
+	var (
+		hole *IncompletePull
+		link *LinkError
+	)
+
+	switch {
+	case errors.As(err, &link):
+		return link.Facts, nil
+	case errors.As(err, &hole) && onlyListFields(hole.Missing):
+		return hole.Facts, nil
+	default:
+		return facts, err
+	}
+}
+
+// onlyListFields is true when every missing field is the draft flag, the label list or the assignee list.
+func onlyListFields(missing []string) bool {
+	for _, name := range missing {
+		if !slices.Contains([]string{"draft", "labels", "assignees"}, name) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// LinkError is the refusal of a read whose body has a link with a number that is not an int. Facts holds what the read did give, with no links.
+type LinkError struct {
+	Facts PullFacts
+	Cause error
+}
+
+func (e *LinkError) Error() string { return e.Cause.Error() }
+
+func (e *LinkError) Unwrap() error { return e.Cause }
 
 // nullFields names the fields that the view gave as null and that a typed read needs: the draft flag, the label list and the assignee list.
 func (p PullRequest) nullFields() []string {

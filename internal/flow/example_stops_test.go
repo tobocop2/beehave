@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,30 @@ func TestExampleLoop_TheDraftThatTheRunOpenedIsNotAStopOfItsLoop(t *testing.T) {
 	assert.Len(t, spy.pulled, len(spy.asked), "each check is followed by a read of the claims, and the loop accepts the draft that pr_open returned")
 }
 
+// stopLoopBound is the time that a run of a stop test has. A loop that does not stop runs on, so the bound turns that into a failure of the test and no hang.
+const stopLoopBound = 90 * time.Second
+
+// runPipelineWithin is runPipeline that fails the test when the run does not end within bound.
+func runPipelineWithin(t *testing.T, engine *Engine, file string, bound time.Duration) (ItemResult, error) {
+	t.Helper()
+
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := runPipeline(engine, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		return got.result, got.err
+	case <-time.After(bound):
+		t.Fatalf("the run did not end within %s: the loop did not stop at the stop", bound)
+
+		return ItemResult{}, nil
+	}
+}
+
 func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +156,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 
 			rig, file, _ := stopLoopRig(t, tc.turnAt, tc.over, tc.gone)
 
-			result, err := runPipeline(rig.h.engine(t), file)
+			result, err := runPipelineWithin(t, rig.h.engine(t), file, stopLoopBound)
 
 			require.NoError(t, err, "a stop is a result and not an error")
 			assert.Equal(t, tc.models, rig.models(), "no agent starts after the stop")

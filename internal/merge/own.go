@@ -92,7 +92,7 @@ func (a *attempt) readFirst() *refusal {
 
 // pins makes the typed read. A read that lacks the state, the head or the base is no failed read: the facts it did give go on to the guards, which refuse on the empty value.
 func pins(ctx context.Context, forge Pins, pr int) (model.PullFacts, error) {
-	facts, err := forge.PullRead(ctx, pr)
+	facts, err := model.WithoutListRefusals(forge.PullRead(ctx, pr))
 
 	var hole *model.IncompletePull
 	if errors.As(err, &hole) {

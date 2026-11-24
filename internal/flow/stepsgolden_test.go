@@ -65,7 +65,7 @@ var goldenShapes = map[string][]string{
 		"pr_comment: number",
 		"pr_history: pulls",
 		"pr_open: created,number,stack",
-		"pr_read: assignees,author,draft,found,labels,links,number,reviewers,state",
+		"pr_read: assignees,author,draft,found,labels,links,number,reviewers,state,unread",
 		"pr_state: state",
 		"pr_take: code,lines",
 		"preflight: code,ok,reason,stop",
