@@ -1349,6 +1349,7 @@ type fakeForge struct {
 	pushErr error
 	// history is what History answers; historyErr fails it. historyAsked holds each History call as project|item.
 	history      []model.PriorPull
+	historyOf    map[string][]model.PriorPull // the answer for an item that it names. Any other item gets history.
 	historyErr   error
 	historyAsked []string
 }
@@ -1369,6 +1370,10 @@ func (f *fakeForge) History(_ context.Context, project, item string) ([]model.Pr
 	defer f.mu.Unlock()
 
 	f.historyAsked = append(f.historyAsked, project+"|"+item)
+
+	if pulls, named := f.historyOf[item]; named {
+		return pulls, f.historyErr
+	}
 
 	return f.history, f.historyErr
 }

@@ -35,6 +35,17 @@ A call uses a keyword when it names the keyword, when it passes the value at the
 | `tracker` | The tracker adapter. |
 | `vars` | The dict of the project settings: the people, the rules, the limits, the board and the settings of a round. |
 
+## The fields of a member of `merge`
+
+A member of the list `prs` of `merge` is a `struct`. It is not a keyword, so the table below has no row for its fields.
+
+| Field | Meaning |
+|---|---|
+| `item` | The item of the pull request. |
+| `head` | The head commit that the gate ran on. |
+| `approved` | True when the review approved the head. |
+| `closes` | Required. The list of the issue numbers that the pull request must close. Each number is 1 or more, and none repeats. The merge refuses a pull request when the issues that the forge lists as closed by it differ from this list. Write `closes = []` for a pull request that closes none. |
+
 ## The builtins and keywords
 
 The Change column says how the pair differs from the contract that the five pieces of the API shrink started with. The Use column gives the number of files that use the pair and the first two.
@@ -175,6 +186,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_comment` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `-` | #700: new, the pull requests of the item in every state, with the closing comment of each closed or merged one | 1: `examples/remediation/workflow.star` |
+| `pr_history` | `item` | #501: new, reads the pull requests of another item, such as the parent | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `name` | #700: new | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `base` | unchanged | 1: `examples/remediation/workflow.star` |

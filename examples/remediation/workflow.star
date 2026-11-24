@@ -511,13 +511,24 @@ def issue_number(id):
 
     return 0
 
-def closing_line(project, base, id):
-    """Returns the closing line of the body of a pull request for the item `id` into `base`: Closes for the trunk, Addresses for any other branch, so a round branch never closes an issue before the integration pull request lands. An id that is no issue number gets no line."""
+def stacked_on_open_parent(parent):
+    """Reports whether the item has a parent whose pull request is open. The engine bases the pull request of such an item on the branch of its parent, so its base is not the base of the round."""
+    if parent.id == "":
+        return False
+
+    for pull in pr_history(name = "parent-history", item = parent.id).pulls:
+        if pull["state"] == "OPEN":
+            return True
+
+    return False
+
+def closing_line(project, base, id, stacked):
+    """Returns the closing line of the body of a pull request for the item `id`: Closes when the pull request goes into the trunk, Addresses for any other branch (the branch of an open parent included), so a pull request into a branch never closes an issue before the trunk gets it. An id that is no issue number gets no line."""
     number = issue_number(id)
     if number == 0:
         return ""
 
-    return ("Closes" if base == project.base_branch else "Addresses") + " #%d" % number
+    return ("Closes" if base == project.base_branch and not stacked else "Addresses") + " #%d" % number
 
 def with_line(text, line):
     """Returns the text with the line after it, one blank line between them. An empty line leaves the text as it is."""
@@ -526,10 +537,10 @@ def with_line(text, line):
 
     return line if text == "" else text + "\n\n" + line
 
-def closes_of(project, base, id):
-    """Returns the issues that the pull request of the item `id` into `base` closes: the issue of the item for the trunk, and none for any other branch."""
+def closes_of(project, base, id, stacked):
+    """Returns the issues that the pull request of the item `id` closes. It follows closing_line: the issue of the item when the body says Closes, and none otherwise."""
     number = issue_number(id)
-    if number == 0 or base != project.base_branch:
+    if number == 0 or base != project.base_branch or stacked:
         return []
 
     return [number]
@@ -693,8 +704,8 @@ def land(approved, project, round_settings, n):
             continue
 
         # The merge accepts the draft that the run opened, and marks it ready after its guards. The hand-off call reads no draft.
-        # The pull request closes the issue of the item when it goes into the trunk, and nothing else: the body that pr_open wrote says the same.
-        prs.append(struct(item = id, head = head, approved = entry.approved, closes = closes_of(project, base, id), **own_draft))
+        # The pull request closes the issues that its child returned: the body that pr_open wrote says the same, because the child chose both from the base of the pull request.
+        prs.append(struct(item = id, head = head, approved = entry.approved, closes = entry.closes, **own_draft))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
@@ -1067,7 +1078,7 @@ def approved_runs(q, round_settings):
     for r in listed_rows(q, round_settings):
         value = r.value
         if type(value) == "dict" and value.get("approved") == True and value.get("head", "") != "":
-            found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0)))
+            found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0), closes = value.get("closes", [])))
 
     return found
 
@@ -1220,10 +1231,10 @@ def _move_card(project, stage, pr = 0, issue = 0):
     else:
         board_card(name = name, board = int(board["number"]), status = board[stage], owner = owner, pr = pr)
 
-def item_value(item, head, approved, reason, host_losses, pr = 0):
+def item_value(item, head, approved, reason, host_losses, pr = 0, closes = []):
     """The value that a child run returns to the round: the item, the head it reached, whether the review approved it, why not when it did not,
-    the highest host_losses that a gate of the child read, and the number of the draft that the child opened (0 when it opened none)."""
-    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr}
+    the highest host_losses that a gate of the child read, the number of the draft that the child opened (0 when it opened none), and the issues that the body of the draft closes."""
+    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr, "closes": closes}
 
 def sweep(project):
     """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane).
@@ -1358,12 +1369,14 @@ def _lane(item, project, round_settings):
     # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the engine pushed.
     # The engine opens the draft pull request of the item once (a resume finds the open one) and,
     # when the item has a parent, links it into the native stack of the pull request of that item. The call writes the body as given, and a pull request that exists is kept.
-    # The body is the text of the item and its closing line: `Closes #N` when the base is the trunk and `Addresses #N` on any other. An item id that is not an issue number gets no line.
+    # The body is the text of the item and its closing line: `Closes #N` when the pull request goes into the trunk and `Addresses #N` on any other branch, the branch of an open parent included.
+    # The call writes the body once, so the child returns the issues it closes, and the round audits the merge against that list. An item id that is not an issue number gets no line.
     # Only the pull request into the trunk may close an issue, so forbid_text holds the closing keywords for any other base.
+    stacked = stacked_on_open_parent(parent)
     draft = pr_open(
         name = "draft",
         title = item.title,
-        body = with_line(item.body, closing_line(project, base, item.id)),
+        body = with_line(item.body, closing_line(project, base, item.id, stacked)),
         base = base,
         parent = parent.id,
         forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
@@ -1481,4 +1494,4 @@ def _lane(item, project, round_settings):
             forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
         )
 
-    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number)
+    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number, closes = closes_of(project, base, item.id, stacked))

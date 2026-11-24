@@ -257,7 +257,7 @@ The call writes the body as given. The engine adds no closing line, and it does 
 
 `body` is used only when the call opens the pull request. A pull request that exists already keeps its body, and the call writes nothing to it.
 
-The arguments `issue` and `integration` are gone. A call that passes one fails at the check, and the message names the new form.
+The call takes no argument `issue` and no argument `integration`. A call that passes one fails at the check, and the message names the form that the call takes.
 
 The `parent` argument:
 
@@ -314,7 +314,7 @@ The `parent` argument:
 
 #### `pr_history`
 
-`pr_history(name)` reads the pull requests of the item of the run in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at` and `closing_comment`.
+`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at` and `closing_comment`.
 
 - The forge lists the pull requests on the branch of the item. For an item that is an issue number, it also lists the pull requests whose title or body names `#N`, and keeps those that name it as a whole word. The two lists join by number.
 - `closing_comment` is the body of the last comment made at or before the close of a closed or merged pull request. A comment after the close does not count. It is empty for an open one and for one with no comment until its close.
