@@ -97,6 +97,9 @@ type script struct {
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 
+	// gateStarted is the cluster that a gate of this run started when host_up had left it for the first gate. It counts as a start of this run for host_teardown.
+	gateStarted string
+
 	// hostChosen is the cluster that host_up recorded. host_teardown stops that cluster when the call names none.
 	hostChosen string
 

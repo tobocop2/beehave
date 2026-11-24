@@ -88,6 +88,8 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 	}{
 		"skypilot": {skypilot.Name, skypilot.Block(), map[string]string{"cloud": "gcp", "region": "us-central1", "instance_type": "n2-standard-8"}, ", idle_minutes = 30"},
 		"ssh":      {ssh.Name, ssh.Block(), machine, ""},
+		// instance_sizes replaces instance_type: the host refuses both together.
+		"skypilot_sizes": {skypilot.Name, skypilot.Block(), map[string]string{"cloud": "gcp", "region": "us-central1", "instance_sizes": "3:n2-standard-4,n2-standard-16"}, ", idle_minutes = 30"},
 	} {
 		keys := everyKey(tc.declared, tc.values)
 
@@ -97,6 +99,10 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 		require.NotNil(t, project.Host.Block, name)
 
 		for _, arg := range tc.declared.Args {
+			if _, wanted := tc.values[arg.Key]; !wanted {
+				continue
+			}
+
 			if arg.Kind == config.WholeArg {
 				got, given := project.Host.Block.Whole(arg.Key)
 				assert.True(t, given, name+" "+arg.Key)
@@ -113,6 +119,33 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 		_, err := newAdapters(nil, nil, nil).host(project.Project)
 
 		require.NoError(t, err, name+": the table builds the host from the block the loader held")
+	}
+}
+
+func TestHostBlocks_ABadSizeTableIsRefusedWhenTheTableBuildsTheHost(t *testing.T) {
+	t.Parallel()
+
+	for name, keys := range map[string]string{
+		"a_last_row_with_a_limit":      `instance_sizes = "3:a,9:b"`,
+		"a_table_and_an_instance_type": `instance_type = "a", instance_sizes = "3:a,b"`,
+	} {
+		project, problems := loadHostProject(t, hostProjectTail+fmt.Sprintf(`, host = host(provider = "skypilot", disk_floor_gb = 50, idle_minutes = 30, skypilot = skypilot(%s))`, keys))
+		require.Empty(t, problems, name+": the loader holds the text and the host judges it")
+
+		err := newAdapters(nil, nil, nil).check(t.Context(), project.Project)
+
+		require.ErrorContains(t, err, "host.skypilot.instance_", name+": the check that `beehave check config` runs for each project")
+	}
+}
+
+func TestHostBlocks_AProviderThatCannotSizeAHostRefusesTheSizeTableAtLoad(t *testing.T) {
+	t.Parallel()
+
+	for _, provider := range []string{"ssh", "slurm"} {
+		_, problems := loadHostProject(t, hostProjectTail+fmt.Sprintf(`, host = host(provider = %q, disk_floor_gb = 50, %s = %s(address = "box.example", instance_sizes = "3:a,b"))`, provider, provider, provider))
+
+		require.NotEmpty(t, problems, provider)
+		assert.Contains(t, fmt.Sprint(problems), "instance_sizes", provider)
 	}
 }
 

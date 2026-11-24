@@ -88,6 +88,8 @@ type ExclusiveOutput struct {
 	Project string `json:"project,omitempty"`
 	// Lost is the host job of a gate or a batch gate whose wait ended as lost, after the wait for its proof. It is nil for every other run.
 	Lost *LostJob `json:"lost,omitempty"`
+	// HostStarted is the cluster that this gate started because host_up had left it for the first gate. It is empty for every other run.
+	HostStarted string `json:"host_started,omitempty"`
 }
 
 // exclusive runs one gate or one merge. The exclusive queue holds one run for each repository at a time,
@@ -358,27 +360,44 @@ func (e *Engine) hostJob(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput, 
 // during the cancel is listed and canceled, or refused by the owner check of its start. A queued job never starts, and a running one stops at the next tick. The wait itself never cancels the job: a cancel by id from a wait that stopped could land after a resume
 // reopened the job, and fail the replay of the gate. A stop of the engine leaves the job for the next start.
 func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) error {
-	handle, err := e.placedJob(ctx, in)
+	handle, started, err := e.placedJob(ctx, in)
+	out.HostStarted = started
+
 	if err != nil {
 		return err
 	}
 
-	return e.awaitJob(ctx, handle, out)
+	err = e.awaitJob(ctx, handle, out)
+	out.HostStarted = started
+
+	return err
 }
 
 // placedJob places the gate of in when it has hosts to choose from, and queues its host job. The placement lock is held from the read of the free slots
 // until the job is queued. One engine owns one state folder, so the lock covers every gate that can read the same host slots.
-func (e *Engine) placedJob(ctx dbos.Context, in ExclusiveInput) (dbos.WorkflowHandle[ExclusiveOutput], error) {
-	if len(in.Hosts) > 0 {
+func (e *Engine) placedJob(ctx dbos.Context, in ExclusiveInput) (handle dbos.WorkflowHandle[ExclusiveOutput], started string, err error) {
+	held := len(in.Hosts) > 0
+	if held {
 		e.placement.Lock()
 		defer e.placement.Unlock()
 	}
 
-	in, err := e.place(ctx, in)
+	in, err = e.place(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
+	if started, err = e.startSizedHost(ctx, in, held); err != nil {
+		return nil, "", err
+	}
+
+	handle, err = e.slottedJob(ctx, in)
+
+	return handle, started, err
+}
+
+// slottedJob queues the host job of a gate in the slot queue of its host.
+func (e *Engine) slottedJob(ctx dbos.Context, in ExclusiveInput) (dbos.WorkflowHandle[ExclusiveOutput], error) {
 	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
 	if err != nil {
 		return nil, err
