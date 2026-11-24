@@ -26,7 +26,7 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.Plan(forgetest.SevenBody, "pr", "view", "7", "-R")
 		run.Plan(toJSON(t, fields{
 			"title": forgetest.SevenTitle, "number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "headRefOid": forgetest.SevenTip, "author": fields{"login": forgetest.SevenReviewer}, "state": forgetest.SevenState, "baseRefName": forgetest.SevenBase, "assignees": []fields{{"login": forgetest.SevenAssignee}},
-			"isDraft": true, "labels": []fields{{"name": forgetest.SevenLabel}}, "body": forgetest.SevenBody, "reviews": []fields{}, "reviewRequests": []fields{{"login": forgetest.SevenAsked}},
+			"isDraft": true, "labels": []fields{{"name": forgetest.SevenHold}}, "body": forgetest.SevenBody, "reviews": []fields{}, "reviewRequests": []fields{{"login": forgetest.SevenAsked}},
 		}), "pr", "view", "7", "--repo")
 
 		whole := func(pr int, drop string) {

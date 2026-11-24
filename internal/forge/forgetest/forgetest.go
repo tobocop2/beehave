@@ -41,8 +41,8 @@ const (
 	SevenState    = "OPEN"
 	SevenBase     = "main"
 	SevenAssignee = "bob"
-	// SevenLabel is the one label of pull request 7, and SevenAsked the login that was asked to review it. Pull request 7 is a draft, and its body links issue 5.
-	SevenLabel = "hold"
+	// SevenHold is the one label that the typed read of pull request 7 gives, and SevenAsked the login that was asked to review it. Pull request 7 is a draft, and its body links issue 5.
+	SevenHold  = "hold"
 	SevenAsked = "carol"
 	// NoHeadPull, NoStatePull, NoBasePull, NoDraftPull, NoLabelsPull and NoAssigneesPull are the pull requests that the fake serves with no head commit, no state, no base branch,
 	// no draft flag, no label list and no assignee list. The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
@@ -183,7 +183,7 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 func SevenFacts() model.PullFacts {
 	return model.PullFacts{
 		Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee},
-		Draft: true, Labels: []string{SevenLabel}, Links: []model.IssueLink{{Number: SevenIssue}}, Reviewers: []string{SevenAsked},
+		Draft: true, Labels: []string{SevenHold}, Links: []model.IssueLink{{Number: SevenIssue}}, Reviewers: []string{SevenAsked},
 	}
 }
 
