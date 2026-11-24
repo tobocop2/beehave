@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/forge/forgetest"
 )
 
 func TestIssueAssignees_ReadsTheLoginsOnTheRepositoryOfTheForgeOrTheOneNamed(t *testing.T) {
@@ -26,6 +28,15 @@ func TestIssueAssignees_ReadsTheLoginsOnTheRepositoryOfTheForgeOrTheOneNamed(t *
 	logins, err = none.IssueAssignees(context.Background(), "", 5)
 	require.NoError(t, err)
 	assert.Empty(t, logins)
+}
+
+func TestOptionalReads_ConformToTheFailedReadRules(t *testing.T) {
+	t.Parallel()
+
+	f, _ := failing(t, "boom")
+
+	forgetest.CheckAssigneeReadsFail(t, f)
+	forgetest.CheckReadyReadsFail(t, f)
 }
 
 func TestIssueAssignees_AFailedReadIsAnErrorNotAnEmptyList(t *testing.T) {
