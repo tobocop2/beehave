@@ -93,8 +93,8 @@ func TestMerge_AMemberWithNoScopeOfItsRunHasNothingToCompare(t *testing.T) {
 	_, err := rig.walk(t, rig.call("1", ""))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"1"}, rig.merger.landed(), "a run with no first review reads no issue and asks nothing")
-	assert.Zero(t, rig.h.forge.closingReads, "nothing is read when there is no scope to compare")
+	assert.Equal(t, []string{"1"}, rig.merger.landed(), "a member of another item has no first review of its own and asks nothing")
+	assert.Equal(t, 1, rig.h.forge.closingReads, "the only read fixes the scope of the run item at the merge call")
 }
 
 func TestMerge_AMemberWhoseIssueReadFailsEndsTheCallAndLandsNothing(t *testing.T) {
@@ -246,7 +246,7 @@ func TestMerge_AMemberOfAnotherItemWithAnEarlierRunWhoseIssuesDidNotGrowAsksNoQu
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
-	assert.Equal(t, 2, rig.h.forge.closingReads, "one read for the first review of item 1 and one for the check before its merge")
+	assert.Equal(t, 3, rig.h.forge.closingReads, "one read for the first review of item 1, one that fixes the scope of the run item at the merge call, and one for the check before the merge")
 }
 
 func TestMerge_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompare(t *testing.T) {
@@ -259,7 +259,7 @@ func TestMerge_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompare(t *testin
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
-	assert.Zero(t, rig.h.forge.closingReads, "a member with no first review reads no issue and asks nothing")
+	assert.Equal(t, 1, rig.h.forge.closingReads, "the one read fixes the scope of the run item at the merge call: a member with no first review has nothing to compare and asks nothing")
 }
 
 func engineRunAs(t *testing.T, rig *batchRig, runItem, items string) (ItemResult, error) {
@@ -460,7 +460,7 @@ func TestMerge_AMemberWhoseGateFixedNoScopeLeavesTheMergeToReadNothing(t *testin
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
-	assert.Equal(t, 1, rig.h.forge.closingReads, "only the read of the gate: the merge has no first review to compare")
+	assert.Equal(t, 2, rig.h.forge.closingReads, "the read of the gate, then the read of the merge call that tries to fix the scope again because no gate fixed one: the merge has no first review to compare")
 }
 
 func TestMerge_ANewRunOfAMemberWithTheSameIssuesAsksNoQuestion(t *testing.T) {

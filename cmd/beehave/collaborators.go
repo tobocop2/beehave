@@ -1191,10 +1191,11 @@ func (p pulls) Pull(ctx context.Context, project, item string) (review.Standing,
 }
 
 // ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: the issues of the repository of the pull request as "#N",
-// and the issues of other repositories as "owner/repo#N". An item with no pull request, and a project with no forge, give found false: there is no scope to fix.
+// and the issues of other repositories as "owner/repo#N". An item with no pull request gives found false: there is no scope to fix yet.
+// A project with no forge is an error that matches forge.ErrNoForge.
 func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error) {
 	built, number, err := p.find(ctx, project, item)
-	if errors.Is(err, forge.ErrNoPull) || errors.Is(err, forge.ErrNoForge) {
+	if errors.Is(err, forge.ErrNoPull) {
 		return nil, false, nil
 	}
 

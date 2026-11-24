@@ -477,6 +477,7 @@ func TestStepLine_AnOutputThatDoesNotDecodeKeepsTheStepAndSaysTheOutputCannotBeR
 		"read wrong shape":    {StepName: "agent:a#1/read1", Output: `{"outputs":5}`},
 		"phase wrong shape":   {StepName: "phase", ChildWorkflowID: "child-1", Output: `[1]`},
 		"output not text":     {StepName: "command:c#1", Output: 42},
+		"scope wrong shape":   {StepName: "scope:s#1", Output: `{"found":"yes"}`},
 	} {
 		line := callLine([]dbos.StepInfo{record}, record.StepName)
 
@@ -485,7 +486,7 @@ func TestStepLine_AnOutputThatDoesNotDecodeKeepsTheStepAndSaysTheOutputCannotBeR
 		assert.Nil(t, line.ExitCode, name)
 	}
 
-	readable := callLine([]dbos.StepInfo{{StepName: "scope:s#1", Output: `anything`}}, "scope:s#1")
+	readable := callLine([]dbos.StepInfo{{StepName: "wait:s#1", Output: `anything`}}, "wait:s#1")
 	assert.False(t, readable.OutputUnreadable, "a step of a kind the view does not decode has nothing to read")
 
 	data, err := json.Marshal(callLine([]dbos.StepInfo{{StepName: "command:c#1", Output: `x`}}, "command:c#1"))
