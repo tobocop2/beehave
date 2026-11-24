@@ -483,9 +483,9 @@ Both builtins match text. They run no command, record no step and need no reposi
 
 #### `queue`
 
-`queue(name, hold, label, base)` reads in this order: `item_list`, `pr_list`, `run_read`, and `pr_state` for each owed foreign row. The steps are named `<name>-items`, `<name>-pulls`, `<name>-runs` and `<name>-state-<item>`. A call with a `label` makes one more `item_list` read, named `<name>-all`, so that a pull request names its item whatever the label of that item.
+`queue(name, hold, label, base)` reads in this order: `item_list`, `pr_list`, `run_read`, and `pr_state` for each owed foreign row. The steps are named `<name>-items`, `<name>-pulls`, `<name>-runs` and `<name>-state-<item>`. A call with a `label` makes one more `item_list` read, named `<name>-all`, so that a pull request names its item whatever the label of that item. A call with a `base` makes one more `pr_list` read with no base, named `<name>-all-pulls`, so that a hold label on a pull request of another base still holds its item. Each extra read costs one list of the tracker or the forge on each call, and only when the argument is set.
 
-`label` keeps the items that carry that tracker label. `base` keeps the pull requests on that base. The workflow passes both. The engine reads no project setting for the choice.
+`label` keeps the rows of the items that carry that tracker label. `base` keeps the pull requests on that base in `pulls`. The workflow passes both. The engine reads no project setting for the choice.
 
 Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step`, `stop_reason` and `value`. A `done` row carries in `value` what its last run returned, whoever started that run; it is None on any other row. The round of the remediation example reads it to land an approved run that the owner started with `beehave run`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
@@ -501,6 +501,8 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 - A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and `pr_state` shows that pull request as `MERGED`. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
+- A foreign record matches its keys whatever their case: `Reason`, `PR` and `Findings` read as `reason`, `pr` and `findings`.
+- `pr`, `author` and `changes_requested` of a row, and the hold of a pull request, come from every open pull request, whatever its base.
 - `pulls` lists every open pull request that `pr_list` returned, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
 - The old `queue` builtin is removed. A file that calls `queue` with no load fails `beehave check workflow` with `undefined: queue` and the load line.
 

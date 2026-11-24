@@ -21,6 +21,7 @@ var goldenRecorded = map[string]string{
 	"core18.agent15.tracker2.forge7.land11.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
 	"core18.agent15.tracker2.forge7.land12.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
 	"core19.agent15.tracker2.forge7.land12.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
+	"core19.agent15.tracker2.forge7.land13.gate6.host1.round5": "600a75b36a1fac86d98d974b8acbfc837447315fabec83a939a2c1dc9f88825e",
 	"core19.agent15.tracker3.forge8.land13.gate6.host1.round6": "0759425dac77e311a5c599fb2095813ade014eddb00cf74fb29467548cf19b2a",
 }
 

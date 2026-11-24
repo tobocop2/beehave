@@ -103,11 +103,8 @@ func prListOutputs(pulls []model.OpenPull) map[string]any {
 		}
 	}
 
-	return map[string]any{pullsKey: listed}
+	return map[string]any{pullsField: listed}
 }
-
-// pullsKey is the field of pr_list that holds the pull requests.
-const pullsKey = "pulls"
 
 // runReadOutputs are the fields of run_read: the last run of each item, in the order asked, and the free slots of the items queue.
 func runReadOutputs(views []runView, free int) map[string]any {

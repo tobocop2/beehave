@@ -9,12 +9,16 @@ def _idle(held):
     return "hold" if held else "ready"
 
 def _foreign(value):
-    """True when a run recorded a foreign review: the reason foreign, the number of the reviewed pull request and open findings."""
+    """The number of the reviewed pull request when a run recorded a foreign review, else 0. A foreign review has the reason foreign, a pull request number and open findings.
+    The keys match whatever their case, as the record of a run decodes."""
     if type(value) != "dict":
-        return False
-    if value.get("reason") != "foreign" or type(value.get("pr")) != "int" or value["pr"] == 0:
-        return False
-    return type(value.get("findings")) == "list" and len(value["findings"]) > 0
+        return 0
+    folded = {k.lower(): v for k, v in value.items()}
+    if folded.get("reason") != "foreign" or type(folded.get("pr")) != "int":
+        return 0
+    if type(folded.get("findings")) != "list" or len(folded["findings"]) == 0:
+        return 0
+    return folded["pr"]
 
 def _settle(run, held, name):
     """The state of a row from the last run of its item. A run that succeeded is done, unless its foreign review is owed another visit or the item is held."""
@@ -22,7 +26,8 @@ def _settle(run, held, name):
     stopped = state == "stopped"
     value = None
     if state == "done":
-        if _foreign(run["value"]) and pr_state(pr = run["value"]["pr"], name = "%s-state-%s" % (name, run["item"])).state == "MERGED":
+        owed = _foreign(run["value"])
+        if owed != 0 and pr_state(pr = owed, name = "%s-state-%s" % (name, run["item"])).state == "MERGED":
             state = _idle(held)
         elif held:
             # A held item is not done: a landing that the round rejected puts the item on hold, and the next pass must not offer it again.
@@ -52,15 +57,19 @@ def _joined(pulls, hold):
 
 def queue(name, hold = "", label = "", base = ""):
     """Reads the open items, the open pull requests and the last run of each item. Returns rows, free and pulls.
-    A `label` other than "" keeps only the items that carry that tracker label. A `base` other than "" keeps only the pull requests on that base.
-    A pull request that names an open item by its branch holds that item when it carries the `hold` label.
+    A `label` other than "" keeps only the rows of the items that carry that tracker label. A `base` other than "" keeps only the pull requests on that base in `pulls`.
+    A pull request that names an open item by its branch holds that item when it carries the `hold` label, whatever its base.
     The reads are recorded steps named <name>-items, <name>-pulls, <name>-runs and <name>-state-<item>, so a replay returns the first answers.
+    A label adds the read <name>-all and a base adds the read <name>-all-pulls: the rows join with every open item and every open pull request.
     The rows are sorted by severity and then by item id. free is the cap of the items queue less its open runs, read before the runs."""
     items = item_list(label = label, name = name + "-items").items
 
     # A pull request names an open item whatever the label of that item, so the label does not narrow this read.
     named = items if label == "" else item_list(name = name + "-all").items
-    pulls = pr_list(base = base, name = name + "-pulls").pulls
+    listed_pulls = pr_list(base = base, name = name + "-pulls").pulls
+
+    # A hold label on a pull request holds its item whatever the base of that pull request, so the base does not narrow the join.
+    pulls = listed_pulls if base == "" else pr_list(name = name + "-all-pulls").pulls
     read = run_read(items = [i["id"] for i in items], name = name + "-runs")
     joined = _joined(pulls, hold)
     rows = []
@@ -81,7 +90,7 @@ def queue(name, hold = "", label = "", base = ""):
             value = settled.value,
         ))
     ids = [i["id"] for i in named]
-    listed = [struct(number = p["number"], branch = p["branch"], base = p["base"], author = p["author"], draft = p["draft"], title = p["title"], item = p["branch"] if p["branch"] in ids else "") for p in pulls]
+    listed = [struct(number = p["number"], branch = p["branch"], base = p["base"], author = p["author"], draft = p["draft"], title = p["title"], item = p["branch"] if p["branch"] in ids else "") for p in listed_pulls]
     return struct(rows = sorted(rows, key = lambda r: (r.severity, r.item)), free = read.free, pulls = listed)
 
 def _severity(row):

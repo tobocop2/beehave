@@ -295,9 +295,14 @@ func TestQueue_ASucceededItemIsDone(t *testing.T) {
 
 // foreignChild runs a child that ends as a foreign review does: with the reason, the recorded pull request and the recorded findings. Then it reads the queue.
 func foreignChild(reason string, pr int, findings string) string {
+	return foreignChildKeyed([3]string{"reason", "pr", "findings"}, reason, pr, findings)
+}
+
+// foreignChildKeyed is foreignChild with the three keys of the record named by the caller.
+func foreignChildKeyed(keys [3]string, reason string, pr int, findings string) string {
 	return queueLoad + `def work(item):
     command(name = "w", run = ["w"])
-    return {"reason": "` + reason + `", "pr": ` + strconv.Itoa(pr) + `, "findings": ` + findings + `}
+    return {"` + keys[0] + `": "` + reason + `", "` + keys[1] + `": ` + strconv.Itoa(pr) + `, "` + keys[2] + `": ` + findings + `}
 
 def main(item):
     gather(spawn(items = ["21"], entry = "work", name = "s"), name = "g")
@@ -318,6 +323,19 @@ func TestQueue_AForeignRowWhosePullRequestMergedWithFindingsOpenIsOfferedAgain(t
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:0", "free=2"}, seenBy(t, h), "a merged pull request with findings open brings the row back")
 	assert.Equal(t, []int{7}, q.stateAsked, "the state is read for the recorded pull request number")
+}
+
+func TestQueue_AForeignRecordWhoseKeysAreInAnotherCaseIsOfferedAgainAsTheRecordDecodes(t *testing.T) {
+	t.Parallel()
+
+	h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
+	q.states = map[int]string{7: "MERGED"}
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChildKeyed([3]string{"Reason", "PR", "Findings"}, "foreign", 7, openFinding)), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21:ready:P1:0", "free=2"}, seenBy(t, h), "the keys match whatever their case, so the merged pull request brings the row back")
+	assert.Equal(t, []int{7}, q.stateAsked)
 }
 
 func TestQueue_AForeignRowThatIsNotOwedAnotherVisitStaysDone(t *testing.T) {
@@ -504,7 +522,42 @@ func TestQueue_ALabelAndABaseAreReadByTheTrackerAndTheForge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21", "8:21"}, seenBy(t, h), "the rows hold the items of the label and the pulls those of the base")
 	assert.Equal(t, []string{"round", ""}, q.labelsAsked, "the label filters the rows, and one read of every item names the item of a pull request")
-	assert.Equal(t, []string{"main"}, q.basesAsked)
+	assert.Equal(t, []string{"main", ""}, q.basesAsked, "the base filters the pulls, and one read of every pull request joins the rows")
+}
+
+// queuePullOn is a pull request with a base and labels.
+func queuePullOn(t *testing.T, number int, branch, base string, labels ...string) model.PullRequest {
+	t.Helper()
+
+	named := make([]map[string]string, len(labels))
+	for i, name := range labels {
+		named[i] = map[string]string{"name": name}
+	}
+
+	text, err := json.Marshal(map[string]any{"number": number, "headRefName": branch, "baseRefName": base, "labels": named, "author": map[string]string{"login": "dave"}})
+	require.NoError(t, err)
+
+	var pull model.PullRequest
+	require.NoError(t, json.Unmarshal(text, &pull))
+
+	return pull
+}
+
+func TestQueue_APullRequestOnAnotherBaseStillHoldsAndJoinsItsItemAndStaysOutOfThePulls(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("20", model.SeverityP1), queueItem("22", model.SeverityP1)},
+		queuePullOn(t, 35, "20", "dev", "hold"), queuePullOn(t, 33, "22", "main"))
+
+	file := queueLoad + `def main(item):
+    q = queue(name = "q", hold = "hold", base = "main")
+    command(name = "seen", run = ["seen"] + [r.item + ":" + r.state + ":" + str(r.pr) + ":" + r.author for r in q.rows] + ["pulls"] + [str(p.number) for p in q.pulls])
+`
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"20:hold:35:dave", "22:ready:33:dave", "pulls", "33"}, seenBy(t, h), "the hold and the pull request of the row come from every base, and pulls lists the base only")
 }
 
 func TestQueue_APullRequestNamesAnItemThatTheLabelLeavesOut(t *testing.T) {
