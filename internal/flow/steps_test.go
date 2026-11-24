@@ -423,7 +423,7 @@ func TestStepLine_TheOutputsTheEngineRecordsDecodeIntoTheFieldsOfTheLine(t *test
 	assert.Equal(t, "approve", read.Verdict)
 	assert.True(t, read.Rewrote)
 
-	other := callLine([]dbos.StepInfo{record("scope:s#1", stepResult{Outputs: map[string]any{"rc": 9, "head": "x"}})}, "scope:s#1")
+	other := callLine([]dbos.StepInfo{record("wait:s#1", stepResult{Outputs: map[string]any{"rc": 9, "head": "x"}})}, "wait:s#1")
 	assert.Nil(t, other.ExitCode, "a step of another kind has no exit code")
 	assert.Empty(t, other.Head)
 }
@@ -477,7 +477,7 @@ func TestStepLine_AnOutputThatDoesNotDecodeKeepsTheStepAndSaysTheOutputCannotBeR
 		"read wrong shape":    {StepName: "agent:a#1/read1", Output: `{"outputs":5}`},
 		"phase wrong shape":   {StepName: "phase", ChildWorkflowID: "child-1", Output: `[1]`},
 		"output not text":     {StepName: "command:c#1", Output: 42},
-		"scope wrong shape":   {StepName: "scope:s#1", Output: `{"found":"yes"}`},
+		"closing wrong shape": {StepName: "pr_closing:s#1", Output: `{"outputs":{"forge":"yes"}}`},
 	} {
 		line := callLine([]dbos.StepInfo{record}, record.StepName)
 

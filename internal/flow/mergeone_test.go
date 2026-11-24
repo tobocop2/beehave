@@ -11,7 +11,7 @@ import (
 // goldenOneMemberSteps are the step names of one merge call that lands one pull request. The call takes the steps of a merge of several pull requests,
 // less the steps of the members that it does not hold.
 var goldenOneMemberSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.scope#1", "batch:b.intent#1", "batch:b.tip#3", "batch:b.prove", "batch:b.issues",
+	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.intent#1", "batch:b.tip#3", "batch:b.prove", "batch:b.issues",
 }
 
 func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T) {
@@ -31,7 +31,7 @@ func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T
 		}
 	}
 
-	assert.False(t, unpatchedChange(goldenOneMemberSteps, recorded), "one pull request takes the same steps as several, one scope check, one intent and one merge for each member")
+	assert.False(t, unpatchedChange(goldenOneMemberSteps, recorded), "one pull request takes the same steps as several, one intent and one merge for each member")
 	assert.Equal(t, []string{"report 1  "}, rig.h.commands.ran(), "the one member is merged and nothing is rejected or deferred")
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 	assert.Equal(t, "README\none.txt", rig.mainFiles(t), "main holds the one member")

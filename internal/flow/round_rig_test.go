@@ -299,6 +299,8 @@ type roundRig struct {
 	project model.Project
 	answer  string   // the answer to the first wait of the round, STOP when empty
 	answers []string // the answers to the waits in order, which win over answer
+	// scopeAnswer is the answer to the question of the scope check, which names no people. The other waits get answer as before.
+	scopeAnswer string
 	// deadlines is the deadline of each wait that run answered, as the status showed it, in order.
 	deadlines []time.Time
 	// questions is the text of each wait that run answered, in order.
@@ -587,7 +589,12 @@ func (r *roundRig) answerOnce(t *testing.T, client *Client, owner *answering) {
 	r.deadlines = append(r.deadlines, view.Deadline)
 	r.questions = append(r.questions, infos[at].Question)
 
-	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: r.answerFor(owner.given)}))
+	reply := Reply{From: shipOwner, Text: r.answerFor(owner.given)}
+	if r.scopeAnswer != "" && strings.Contains(infos[at].Question, "at its first review") {
+		reply = Reply{Text: r.scopeAnswer}
+	}
+
+	require.NoError(t, client.Reply(testItem, reply))
 
 	owner.given++
 	owner.open = true

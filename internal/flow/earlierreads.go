@@ -35,7 +35,12 @@ type stepReader func(ctx dbos.Context, ids []string, prefix string) (any, error)
 
 // earlierReaders maps each step kind that earlier_reads reads to the function that reads it.
 func earlierReaders() map[string]stepReader {
-	return map[string]stepReader{prClosingKind: collect[closingRead], waitStepKind: collect[waitRead]}
+	return map[string]stepReader{prClosingKind: readerOf[closingRead], waitStepKind: readerOf[waitRead]}
+}
+
+// readerOf is the stepReader of the reads of type T.
+func readerOf[T any](ctx dbos.Context, ids []string, prefix string) (any, error) {
+	return collect[T](ctx, ids, prefix)
 }
 
 // earlierReads gives the reads that the recorded steps of a kind and a name made in the other runs of the item, in one recorded step.
@@ -67,16 +72,22 @@ func earlierReadsOutputs(reads any) map[string]any { return map[string]any{reads
 
 // readEarlier reads the steps of the kind and the name in the runs of the item. The kind is one of earlierReaders.
 func (s *script) readEarlier(kind, name, item string, own bool) (any, error) {
-	ids, err := s.earlierRuns(item)
+	ids, err := s.runIDs(item, own)
 	if err != nil {
 		return nil, err
 	}
 
-	if own {
-		ids = slices.Insert(ids, 0, workflowID(s.ctx))
+	return earlierReaders()[kind](s.e.ctx, ids, stepPrefix(kind, name))
+}
+
+// runIDs lists the ids of the earlier runs of the item, newest first, and with own the id of this run before them.
+func (s *script) runIDs(item string, own bool) ([]string, error) {
+	ids, err := s.earlierRuns(item)
+	if err != nil || !own {
+		return ids, err
 	}
 
-	return earlierReaders()[kind](s.e.ctx, ids, stepPrefix(kind, name))
+	return slices.Insert(ids, 0, workflowID(s.ctx)), nil
 }
 
 // earlierRuns lists the ids of the other runs of the item, the newest attempt first. It filters on no state and no attempt number, so a canceled, failed, live or newer run is in the list.
@@ -99,7 +110,7 @@ func (s *script) earlierRuns(item string) ([]string, error) {
 }
 
 // collect reads the typed reads of the steps whose name starts with the prefix, run after run in the order of the ids, the newest step of a run first.
-func collect[T any](ctx dbos.Context, ids []string, prefix string) (any, error) {
+func collect[T any](ctx dbos.Context, ids []string, prefix string) ([]T, error) {
 	reads := []T{}
 
 	for _, id := range ids {

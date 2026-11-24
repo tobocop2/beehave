@@ -185,6 +185,40 @@ func TestExampleBatch_AnItemThatAGuardRefusesIsHeldAndTheOtherItemLands(t *testi
 	assert.Contains(t, notesWithKey(rig.writer, "rejected")[0], "REFUSE: has the label hold")
 }
 
+func TestExampleBatch_AClosingIssueThatIsNewSinceTheFirstReviewMakesTheRoundAskTheOwnerAndAKeepLineLandsTheItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	rig.scopeAnswer = "keep #13"
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	asked := slices.IndexFunc(rig.questions, func(question string) bool {
+		return strings.Contains(question, "closes #13 now, and did not at its first review")
+	})
+	assert.GreaterOrEqual(t, asked, 0, "the scope check of the round asks the owner about the new issue: %v", rig.questions)
+	assert.Equal(t, []string{"1"}, rig.merger.landed(), "the kept issue lets the item land")
+	assert.Empty(t, heldOf(rig.writer))
+}
+
+func TestExampleBatch_AnOwnerAnswerThatIsNotAKeepLineHoldsTheItemWithTheReasonAndLandsNothing(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	rig.scopeAnswer = "no"
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "the rejected member does not land")
+	assert.Equal(t, []string{testProject + "|1|hold"}, heldOf(rig.writer))
+	require.Len(t, notesWithKey(rig.writer, "rejected"), 1)
+	assert.Contains(t, notesWithKey(rig.writer, "rejected")[0], "is new since its first review")
+}
+
 func TestExampleBatch_APushAfterTheReviewRefusesOnlyThatItem(t *testing.T) {
 	t.Parallel()
 
@@ -421,6 +455,28 @@ func TestExampleBatch_AHandOffRoundMarksTheApprovedPullRequestsReadyAndHoldsTheI
 	assert.Equal(t, []string{testProject + "|1|closed"}, closedOf(rig.writer), "the item that the owner merged is recorded as merged")
 	assert.Equal(t, []string{testProject + "|3|hold"}, heldOf(rig.writer), "the item whose head moved holds")
 	assert.Contains(t, strings.Join(rig.writer.notes, "\n"), "the head moved to beef after the head "+rig.heads["3"]+" was marked ready", "the item gets the reason as a comment")
+}
+
+func TestExampleBatch_AHandOffRoundAsksNoScopeQuestionWhenAPullRequestClosesANewIssue(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.setRound("hand_off", true)
+	rig.h.forge.closingOf = map[string][][]int{"1": {{1}, {1, 2}}}
+	rig.host.pr = &handForge{views: map[string][]fakePull{
+		"1": {{State: "OPEN", Draft: true, Head: rig.heads["1"]}, {State: "OPEN", Head: rig.heads["1"]}, {State: "MERGED", Head: rig.heads["1"]}},
+	}, reads: map[string]int{}, draftErr: map[bool]error{}}
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+
+	for _, question := range rig.questions {
+		assert.NotContains(t, question, "at its first review", "the owner merges a hand-off round, so the round asks no scope question")
+	}
+
+	assert.Equal(t, []string{testProject + "|1|closed"}, closedOf(rig.writer), "the pull request that closes a new issue is marked ready and the owner merges it")
+	assert.Empty(t, heldOf(rig.writer))
 }
 
 func TestExampleBatch_OneApprovedItemLandsAsABatchOfOne(t *testing.T) {

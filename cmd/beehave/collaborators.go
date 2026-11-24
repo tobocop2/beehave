@@ -1451,7 +1451,7 @@ func newestListed(ctx context.Context, built forge.Forge, item, state string) (i
 // so a project that beehave does not know never gets here.
 func (p pulls) request(project config.Project, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
 	return merge.Request{
-		Names: settings.Closes, Kept: settings.Kept,
+		Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
