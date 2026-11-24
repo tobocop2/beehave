@@ -79,7 +79,7 @@ func TestRound_FiveHostLossesOfOneRoundOneOnALandingGateHoldTheRoundForTheOwner(
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "wait:round-wait#")
-	assert.NotContains(t, joined, "queue:round-queue-3#", "the pass after the landing is held, so it starts no item")
+	assert.NotContains(t, joined, "item_list:round-queue-3-items#", "the pass after the landing is held, so it starts no item")
 	assert.NotContains(t, joined, "agent:queue-audit-3#")
 	assert.NotContains(t, joined, "round_sync:sync-3#", "the held round starts no sync")
 }
@@ -168,7 +168,7 @@ func TestRound_AChildThatStoppedOnTheHostLossLimitHoldsTheRoundAndLandsNothing(t
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.NotContains(t, joined, "hold-", "the item is not at fault: no hold status")
-	assert.NotContains(t, joined, "queue:round-queue-2#")
+	assert.NotContains(t, joined, "item_list:round-queue-2-items#")
 
 	// The comment and the hold status of an item are steps of the child run of the item, not of the round run.
 	child := strings.Join(stepNamesOf(t, rig.last, lastRunOf(t, rig.last, "1")), " ")
