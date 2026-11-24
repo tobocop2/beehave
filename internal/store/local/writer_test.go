@@ -81,7 +81,7 @@ func TestCreate_FilesAnOpenItemTheTrackerReads(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"id": id, "title": "plan", "body": "the body", "severity": "P?"}, fields)
 
-	items, err := s.OpenItems(t.Context())
+	items, err := s.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "epic", items[0].Parent)
@@ -215,14 +215,14 @@ func TestSetStatus_HoldShowsAsHeldInTheQueueAndClosedLeavesIt(t *testing.T) {
 
 	require.NoError(t, s.SetStatus(t.Context(), id, store.StatusHold))
 
-	items, err := s.OpenItems(t.Context())
+	items, err := s.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.True(t, items[0].Hold)
 
 	require.NoError(t, s.SetStatus(t.Context(), id, store.StatusClosed))
 
-	items, err = s.OpenItems(t.Context())
+	items, err = s.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	assert.Empty(t, items)
 }

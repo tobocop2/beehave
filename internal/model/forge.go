@@ -173,6 +173,56 @@ func (f PullFacts) Check() error {
 	return &IncompletePull{Facts: f, Missing: missing}
 }
 
+// OpenPull is one open pull request as the typed list read gives it: its number, head branch, base branch, author login, draft state, title, label names and review decision.
+// ReviewDecision is empty when the forge shows none.
+type OpenPull struct {
+	Number         int
+	Branch         string
+	Base           string
+	Author         string
+	Draft          bool
+	Title          string
+	Labels         []string
+	ReviewDecision string
+}
+
+// Open is the typed read of a pull request of a list: a field the list lacks is empty.
+func (p PullRequest) Open() OpenPull {
+	open := OpenPull{
+		Number: p.Number, Branch: Deref(p.HeadRefName), Base: Deref(p.BaseRefName), Author: p.Author.Login,
+		Draft: p.IsDraft != nil && *p.IsDraft, Title: p.Title, ReviewDecision: Deref(p.ReviewDecision),
+	}
+
+	for _, one := range p.Labels {
+		open.Labels = append(open.Labels, one.Name)
+	}
+
+	return open
+}
+
+// Check is nil when the pull request holds a number, a head branch and a base branch. Else it is an IncompletePull that names each missing field.
+func (p OpenPull) Check() error {
+	var missing []string
+
+	if p.Number < 1 {
+		missing = append(missing, "number")
+	}
+
+	if p.Branch == "" {
+		missing = append(missing, "branch")
+	}
+
+	if p.Base == "" {
+		missing = append(missing, "base")
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return &IncompletePull{Facts: PullFacts{Number: p.Number, Base: p.Base}, Missing: missing}
+}
+
 // PriorPull is one pull request of an item in any state. MergedAt is empty when it never merged; ClosingComment is the body of its last comment made at or before its close, empty for an open one.
 type PriorPull struct {
 	Number         int    `json:"number"`

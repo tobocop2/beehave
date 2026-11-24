@@ -43,7 +43,9 @@ func (f *fakeItems) Item(context.Context, string) (map[string]string, error) {
 	return nil, f.itemErr
 }
 
-func (f *fakeItems) OpenItems(context.Context) ([]model.Item, error) { return f.items, f.listErr }
+func (f *fakeItems) ItemList(context.Context, string) ([]model.Item, error) {
+	return f.items, f.listErr
+}
 
 func (f *fakeItems) Close() error {
 	f.closed++

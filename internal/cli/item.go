@@ -17,7 +17,7 @@ import (
 type ItemStore interface {
 	Add(ctx context.Context, id, title, body string) error
 	Item(ctx context.Context, id string) (map[string]string, error)
-	OpenItems(ctx context.Context) ([]model.Item, error)
+	ItemList(ctx context.Context, label string) ([]model.Item, error)
 	Close() error
 }
 
@@ -147,7 +147,7 @@ func (f flowCommands) openItems(project model.Project) ([]model.Item, error) {
 	err := f.withItems(project, func(store ItemStore) error {
 		var err error
 
-		items, err = store.OpenItems(f.ctx)
+		items, err = store.ItemList(f.ctx, "")
 
 		return err
 	})

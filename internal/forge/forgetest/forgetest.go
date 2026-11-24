@@ -46,6 +46,26 @@ const (
 	NoBasePull  = 10
 )
 
+// The open pull requests that the fake serves, with the base that each is on: OtherPull is on OtherBase. A list of HoleBase holds a pull request with no head branch,
+// which the typed list read reports as a *model.IncompletePull that names the branch, and still lists. SevenLabel is the one label of pull request 7.
+const (
+	OtherPull  = 11
+	OtherBase  = "dev"
+	HoleBase   = "hole"
+	EmptyBase  = "empty"
+	SevenLabel = "round"
+)
+
+// SevenOpen is pull request 7 as the typed list read gives it.
+func SevenOpen() model.OpenPull {
+	return model.OpenPull{Number: Seven, Branch: SevenBranch, Base: SevenBase, Author: SevenReviewer, Title: SevenTitle, Labels: []string{SevenLabel}, ReviewDecision: "APPROVED"}
+}
+
+// OtherOpen is the draft pull request on OtherBase as the typed list read gives it.
+func OtherOpen() model.OpenPull {
+	return model.OpenPull{Number: OtherPull, Branch: "other", Base: OtherBase, Author: SevenAssignee, Draft: true, Title: "Other work"}
+}
+
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
 // the branch of pull request 7 with its tip, and a branch that does not exist.
 const (
@@ -170,6 +190,64 @@ func checkPullRead(c check, target forge.Forge) {
 	}
 }
 
+// CheckOpenPulls runs the typed list read of the open pull requests: no base lists every one, a base lists only the pull requests on it, a base with none lists none,
+// and a pull request with no head branch is an IncompletePull that names the branch.
+func CheckOpenPulls(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	all, err := target.OpenPulls(context.Background(), "")
+	if err != nil {
+		r.Errorf("OpenPulls: unexpected error: %v", err)
+
+		return
+	}
+
+	check{r: r}.equal(all, []model.OpenPull{SevenOpen(), OtherOpen()}, "OpenPulls of no base")
+
+	checkOpenBases(r, target)
+	checkOpenHole(r, target)
+}
+
+// checkOpenBases checks that a base lists only the pull requests on it, and a base with none lists none.
+func checkOpenBases(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what, base string
+		want       []int
+	}{
+		{"a base", SevenBase, []int{Seven}},
+		{"another base", OtherBase, []int{OtherPull}},
+		{"a base with no pull request", EmptyBase, []int{}},
+	} {
+		pulls, err := target.OpenPulls(context.Background(), one.base)
+		c.noError(err, "OpenPulls")
+
+		if got := pick(pulls, func(v model.OpenPull) int { return v.Number }); !slices.Equal(got, one.want) {
+			r.Errorf("OpenPulls of %s: got %v, want %v", one.what, got, one.want)
+		}
+	}
+}
+
+// checkOpenHole checks that a pull request with no head branch is an IncompletePull that names the branch.
+func checkOpenHole(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	pulls, err := target.OpenPulls(context.Background(), HoleBase)
+
+	var hole *model.IncompletePull
+
+	if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{"branch"}) {
+		r.Errorf("OpenPulls of a pull request with no branch: want an IncompletePull that names it, got %v", err)
+	}
+
+	if got := pick(pulls, func(v model.OpenPull) int { return v.Number }); !slices.Equal(got, []int{OtherPull}) {
+		r.Errorf("OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got %v", got)
+	}
+}
+
 // checkCounts runs the read of the forge's own counts.
 func checkCounts(c check, target forge.Forge) {
 	c.r.Helper()
@@ -189,6 +267,7 @@ func checkStanding(c check, target forge.Forge) {
 
 	checkCounts(c, target)
 	checkPullRead(c, target)
+	CheckOpenPulls(c.r, target)
 
 	ctx := context.Background()
 
@@ -369,6 +448,7 @@ func readCalls(target forge.Forge) []call {
 		{"PRBody", func(ctx context.Context) error { _, err := target.PRBody(ctx, Seven); return err }},
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
 		{"PullRead", func(ctx context.Context) error { _, err := target.PullRead(ctx, Seven); return err }},
+		{"OpenPulls", func(ctx context.Context) error { _, err := target.OpenPulls(ctx, SevenBase); return err }},
 		{"PRList", func(ctx context.Context) error {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err

@@ -86,7 +86,7 @@ func (o ownGate) pull(ctx context.Context, pr int) (model.PullRequest, error) {
 
 // openItems lists the open items of the tracker of the project.
 func (o ownGate) openItems(ctx context.Context) ([]model.Item, error) {
-	return o.items.OpenItems(ctx, o.project.Name)
+	return o.items.ItemList(ctx, o.project.Name, "")
 }
 
 // tip makes the clone of the project when it is missing and reads the commit at the tip of the base branch at the source of the project.

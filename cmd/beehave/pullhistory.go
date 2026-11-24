@@ -17,7 +17,7 @@ const historyFields = "number,title,body,state,headRefName,baseRefName,mergedAt,
 
 // historyListLimit is the limit of each list of the history. The lists hold closed and merged pull requests too, and the search of the forge also matches a longer number,
 // so the limit is the one of the open pull requests and not the one of the open search. A list at the limit is refused, and the run stops.
-const historyListLimit = openPullLimit
+const historyListLimit = forge.OpenPullLimit
 
 // History lists the pull requests of the item in every state: those on its branch and, for an item that is a forge number, those that name it.
 // Each closed or merged one gets the body of its last comment made at or before its close as its closing comment. A project with no forge has none.

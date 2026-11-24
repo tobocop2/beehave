@@ -13,10 +13,16 @@ import (
 	"github.com/tobocop2/beehave/internal/store"
 )
 
-// openItemsTracker is a tracker with two open items, one of them on hold.
-type openItemsTracker struct{ store.Tracker }
+// openItemsTracker is a tracker with two open items, one of them on hold. labels holds the label of each ItemList call.
+type openItemsTracker struct {
+	store.Tracker
 
-func (openItemsTracker) OpenItems(context.Context) ([]model.Item, error) {
+	labels *[]string
+}
+
+func (t openItemsTracker) ItemList(_ context.Context, label string) ([]model.Item, error) {
+	*t.labels = append(*t.labels, label)
+
 	return []model.Item{{ID: "21", Severity: model.SeverityP1}, {ID: "22", Hold: true}}, nil
 }
 
@@ -29,30 +35,45 @@ func queueReadsOver(f forge.Forge, tracker store.Tracker) queueReads {
 	}
 }
 
-func TestQueueReads_OpenItemsListsTheOpenItemsOfTheTrackerOfTheProject(t *testing.T) {
+func TestQueueReads_ItemListListsTheItemsOfTheTrackerOfTheProjectForTheLabel(t *testing.T) {
 	t.Parallel()
 
-	reads := queueReadsOver(nil, openItemsTracker{})
+	var labels []string
 
-	items, err := reads.OpenItems(t.Context(), "p")
+	reads := queueReadsOver(nil, openItemsTracker{labels: &labels})
+
+	items, err := reads.ItemList(t.Context(), "p", "round")
 
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{{ID: "21", Severity: model.SeverityP1}, {ID: "22", Hold: true}}, items)
+	assert.Equal(t, []string{"round"}, labels)
 
-	_, err = reads.OpenItems(t.Context(), "zzz")
+	_, err = reads.ItemList(t.Context(), "zzz", "")
 	require.ErrorIs(t, err, errUnknownProject)
 }
 
-func TestQueueReads_OpenPullsListsTheOpenPullRequestsWithTheirBranchAndLabels(t *testing.T) {
+func TestQueueReads_OpenPullsListsTheOpenPullRequestsOfTheBaseOfTheForgeOfTheProject(t *testing.T) {
 	t.Parallel()
 
-	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}}
+	f := &pullForge{opened: []model.OpenPull{{Number: 7, Branch: "21", Base: "main"}}}
 
-	pullsOpen, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p")
+	pullsOpen, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "main")
 
 	require.NoError(t, err)
-	assert.Equal(t, []model.PullRequest{{Number: 7}}, pullsOpen)
-	assert.Equal(t, [][]string{{"--state", "open", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title"}}, f.asked)
+	assert.Equal(t, []model.OpenPull{{Number: 7, Branch: "21", Base: "main"}}, pullsOpen)
+	assert.Equal(t, []string{"main"}, f.openBases)
+}
+
+func TestQueueReads_APullRequestWithNoHeadBranchStaysInTheListAndIsNoError(t *testing.T) {
+	t.Parallel()
+
+	listed := []model.OpenPull{{Number: 7, Branch: "21", Base: "main"}, {Number: 9, Base: "main"}}
+	f := &pullForge{opened: listed, listErr: model.OpenPull{Number: 9, Base: "main"}.Check()}
+
+	got, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, listed, got)
 }
 
 func TestQueueReads_PullStateReadsTheStateOfAPullRequestOfAnyState(t *testing.T) {
@@ -96,7 +117,7 @@ func TestQueueReads_AFailedListOfPullRequestsIsAnError(t *testing.T) {
 
 	f := &pullForge{listErr: errFake}
 
-	_, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p")
+	_, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "")
 
 	require.ErrorIs(t, err, errFake)
 }
@@ -107,7 +128,7 @@ func TestQueueReads_AFailedTrackerLookupIsAnError(t *testing.T) {
 	reads := queueReadsOver(nil, nil)
 	reads.items.tracker = func(context.Context, model.Project) (store.Tracker, error) { return nil, errFake }
 
-	_, err := reads.OpenItems(t.Context(), "p")
+	_, err := reads.ItemList(t.Context(), "p", "")
 	require.ErrorIs(t, err, errFake)
 }
 
@@ -117,7 +138,7 @@ func TestQueueReads_AFailedForgeLookupIsAnError(t *testing.T) {
 	reads := queueReadsOver(nil, nil)
 	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, errFake }
 
-	_, err := reads.OpenPulls(t.Context(), "p")
+	_, err := reads.OpenPulls(t.Context(), "p", "")
 	require.ErrorIs(t, err, errFake)
 }
 
@@ -127,7 +148,7 @@ func TestQueueReads_AProjectWithNoForgeHasNoOpenPullRequests(t *testing.T) {
 	reads := queueReadsOver(nil, nil)
 	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
 
-	got, err := reads.OpenPulls(t.Context(), "p")
+	got, err := reads.OpenPulls(t.Context(), "p", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, got)

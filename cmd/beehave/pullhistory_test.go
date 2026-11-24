@@ -169,7 +169,7 @@ func TestPulls_HistoryListsThePullRequestsOfTheBranchAndOfTheIssueWithTheirClosi
 		{"--state", "all", "--head", "41", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
 		{"--state", "all", "--search", "#41 in:title,body", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
 	}, f.asked, "each list names the fields that the history reads, the close time among them")
-	assert.Equal(t, []int{openPullLimit, openPullLimit}, f.limits, "the lists of every state get the limit of the open pull requests, not the one of the open search")
+	assert.Equal(t, []int{forge.OpenPullLimit, forge.OpenPullLimit}, f.limits, "the lists of every state get the limit of the open pull requests, not the one of the open search")
 	assert.Equal(t, []int{4, 6, 8}, f.commentsAsked, "an open pull request has no closing comment to read")
 }
 

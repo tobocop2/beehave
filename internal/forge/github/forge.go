@@ -138,6 +138,34 @@ func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
 	return facts, nil
 }
 
+// openPullFields are the fields of gh pr list that the typed list read decodes.
+const openPullFields = "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title"
+
+// OpenPulls lists the open pull requests of the base branch, or every open pull request when base is empty. A pull request with no number, head branch or base branch is a hole.
+// The list holds every pull request, holes included, and the error joins one *model.IncompletePull for each hole, so a caller can use the pull requests it can trust.
+func (f *Forge) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error) {
+	args := []string{"--state", "open", "--json", openPullFields}
+	if base != "" {
+		args = append(args, "--base", base)
+	}
+
+	rows, err := f.PRList(ctx, forge.OpenPullLimit, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	pulls := make([]model.OpenPull, len(rows))
+
+	var holes []error
+
+	for i, row := range rows {
+		pulls[i] = row.Open()
+		holes = append(holes, pulls[i].Check())
+	}
+
+	return pulls, errors.Join(holes...)
+}
+
 // CloneURL is the HTTPS address of the repository.
 func (f *Forge) CloneURL() string { return "https://github.com/" + f.repo + ".git" }
 

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
@@ -39,9 +38,10 @@ const holdStep = kindHold + ":start"
 var errNoQueue = &absentError{message: "this build cannot read the open work. Use a build that sets a queue reader", step: "read the open work of the project"}
 
 // queueReader reads the open work of a project: the open items of its tracker and the open pull requests of its forge.
+// ItemList reads the items that carry the label, or every open item when label is empty. OpenPulls reads the open pull requests on the base, or every one when base is empty.
 type queueReader interface {
-	OpenItems(ctx context.Context, project string) ([]model.Item, error)
-	OpenPulls(ctx context.Context, project string) ([]model.PullRequest, error)
+	ItemList(ctx context.Context, project, label string) ([]model.Item, error)
+	OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error)
 	// PullState reads the state of one pull request, open or not: OPEN, CLOSED or MERGED.
 	PullState(ctx context.Context, project string, pr int) (string, error)
 }
@@ -116,44 +116,51 @@ func (s *script) queue(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 // readQueue reads the tracker and the forge, then the runs of each item, and sorts the rows by severity and item id.
 // A tracked label other than "" keeps only the items that carry that tracker label. The open pull requests are all kept, also those of an item that the label leaves out.
 func (e *Engine) readQueue(ctx context.Context, project, holdLabel, tracked string) (queued, error) {
-	items, err := e.deps.Queue.OpenItems(ctx, project)
-	if err != nil {
-		return queued{}, fmt.Errorf("read the open items of project %s: %w", project, err)
-	}
-
-	pulls, err := e.deps.Queue.OpenPulls(ctx, project)
-	if err != nil {
-		return queued{}, fmt.Errorf("read the open pull requests of project %s: %w", project, err)
-	}
-
-	// The slots are read before the rows. A run that ended before the slots were read shows as not running in the rows, so a caller can tell a slot
-	// that is free from a slot that a run left a moment ago. In the other order, a run could end between the two reads and show as running with a free slot.
-	free, err := e.freeSlots()
+	items, err := e.itemsOf(ctx, project, "")
 	if err != nil {
 		return queued{}, err
 	}
 
-	rows, err := e.queueRows(ctx, withLabel(items, tracked), joinPulls(pulls, holdLabel))
+	pulls, err := e.pullsOf(ctx, project, "")
+	if err != nil {
+		return queued{}, err
+	}
+
+	kept := withLabel(items, tracked)
+
+	// lastRuns reads the slots before the runs, so a slot that a run left a moment ago does not show as taken.
+	runs, free, err := e.lastRuns(itemIDsOf(kept))
+	if err != nil {
+		return queued{}, err
+	}
+
+	rows, err := e.queueRows(ctx, kept, runs, joinPulls(pulls, holdLabel))
 
 	return queued{Rows: rows, Free: free, Pulls: openPulls(pulls, items)}, err
 }
 
+// itemIDsOf lists the ids of the items, in order.
+func itemIDsOf(items []model.Item) []string {
+	ids := make([]string, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+	}
+
+	return ids
+}
+
 // openPulls keeps every open pull request, with the open item that its head branch names. The items are all the open items, before the tracked label.
-func openPulls(pulls []model.PullRequest, items []model.Item) []openPull {
+func openPulls(pulls []model.OpenPull, items []model.Item) []openPull {
 	kept := make([]openPull, 0, len(pulls))
 
 	for _, pull := range pulls {
-		branch := model.Deref(pull.HeadRefName)
 		named := ""
 
-		if slices.ContainsFunc(items, func(item model.Item) bool { return model.ItemBranch(item.ID) == branch }) {
-			named = branch
+		if slices.ContainsFunc(items, func(item model.Item) bool { return model.ItemBranch(item.ID) == pull.Branch }) {
+			named = pull.Branch
 		}
 
-		kept = append(kept, openPull{
-			Number: pull.Number, Branch: branch, Base: model.Deref(pull.BaseRefName), Author: pull.Author.Login,
-			Draft: pull.IsDraft != nil && *pull.IsDraft, Title: pull.Title, Item: named,
-		})
+		kept = append(kept, openPull{Number: pull.Number, Branch: pull.Branch, Base: pull.Base, Author: pull.Author, Draft: pull.Draft, Title: pull.Title, Item: named})
 	}
 
 	return kept
@@ -169,11 +176,11 @@ func withLabel(items []model.Item, tracked string) []model.Item {
 }
 
 // queueRows gives one row for each item, sorted by severity and then by item id.
-func (e *Engine) queueRows(ctx context.Context, items []model.Item, joined map[string]joinedPull) ([]queueRow, error) {
+func (e *Engine) queueRows(ctx context.Context, items []model.Item, runs []runView, joined map[string]joinedPull) ([]queueRow, error) {
 	rows := make([]queueRow, 0, len(items))
 
-	for _, item := range items {
-		row, err := e.rowOf(ctx, item, joined[item.ID])
+	for i, item := range items {
+		row, err := e.rowOf(ctx, item, joined[item.ID], runs[i])
 		if err != nil {
 			return nil, err
 		}
@@ -189,49 +196,28 @@ func (e *Engine) queueRows(ctx context.Context, items []model.Item, joined map[s
 }
 
 // joinPulls groups the open pull requests by their head branch, which is the id of the item. Of many pull requests on one branch, the lowest number counts,
-// and one with the hold label holds the item. A pull request with no head branch joins no item.
-func joinPulls(pulls []model.PullRequest, holdLabel string) map[string]joinedPull {
+// and one with the hold label holds the item.
+func joinPulls(pulls []model.OpenPull, holdLabel string) map[string]joinedPull {
 	joined := map[string]joinedPull{}
 
 	for _, pull := range pulls {
-		if pull.HeadRefName == nil {
-			continue
-		}
-
-		one := joined[*pull.HeadRefName]
+		one := joined[pull.Branch]
 		if one.number == 0 || pull.Number < one.number {
 			one.number = pull.Number
-			one.author = pull.Author.Login
-			one.changesRequested = pull.ReviewDecision != nil && *pull.ReviewDecision == string(model.ReviewChangesRequested)
+			one.author = pull.Author
+			one.changesRequested = pull.ReviewDecision == string(model.ReviewChangesRequested)
 		}
 
-		one.held = one.held || (holdLabel != "" && hasLabel(pull, holdLabel))
-		joined[*pull.HeadRefName] = one
+		one.held = one.held || (holdLabel != "" && slices.Contains(pull.Labels, holdLabel))
+		joined[pull.Branch] = one
 	}
 
 	return joined
 }
 
-// hasLabel reports whether the pull request carries the label.
-func hasLabel(pull model.PullRequest, name string) bool {
-	for _, l := range pull.Labels {
-		if l.Name == name {
-			return true
-		}
-	}
-
-	return false
-}
-
-// rowOf gives the state of one item. It reads the last run with latestRun, as spawn does, so the queue and spawn agree on what is open, failed and done.
-// A hold decides only for an item that spawn could start: the run of an item has its own state.
-func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull) (queueRow, error) {
-	last, found, err := latestRun(e.store(), item.ID)
-	if err != nil {
-		return queueRow{}, err
-	}
-
-	settled, err := e.stateOf(ctx, item.ID, last, found, item.Hold || pull.held)
+// rowOf gives the state of one item from its last run. A hold decides only for an item that spawn could start: the run of an item has its own state.
+func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull, view runView) (queueRow, error) {
+	settled, err := e.stateOf(ctx, view, item.Hold || pull.held)
 	if err != nil {
 		return queueRow{}, err
 	}
@@ -241,54 +227,43 @@ func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull) (q
 
 // rowState is the state of a row and, for a stopped row, the stop that its run ended with.
 type rowState struct {
-	state   string
-	stopped *Stopped
-	value   json.RawMessage
+	state      string
+	stopStep   string
+	stopReason string
+	value      json.RawMessage
 }
 
-// stateOf is the state of an item from its last run, if it has one. A run that succeeded is done, or stopped when its result records a stop, unless it is owed another visit.
-// The result is read as status reads it (settledOf). held is the hold of the item.
-func (e *Engine) stateOf(ctx context.Context, item string, last run, found, held bool) (rowState, error) {
-	switch {
-	case found && !last.terminal():
-		return rowState{state: queueRunning}, nil
-	case found && last.failed():
-		return rowState{state: queueFailed}, nil
-	case found && last.Status.Status == dbos.WorkflowStatusSuccess:
-		settled, err := e.succeededState(ctx, item, last, held)
-		if err == nil && settled.state == queueDone && held {
-			// A held item is not done: a landing that the round rejected puts the item on hold, and the next pass must not offer it again.
-			settled = rowState{state: queueHold}
-		}
-
-		return settled, err
+// stateOf is the state of an item from its last run. A run that succeeded is done, or stopped when its result records a stop, unless it is owed another visit.
+// held is the hold of the item.
+func (e *Engine) stateOf(ctx context.Context, view runView, held bool) (rowState, error) {
+	switch view.State {
+	case queueRunning, queueFailed:
+		return rowState{state: view.State}, nil
+	case queueStopped:
+		return rowState{state: queueStopped, stopStep: view.StopStep, stopReason: view.StopReason}, nil
+	case queueDone:
+		return e.doneState(ctx, view, held)
 	}
 
 	return rowState{state: idleState(held)}, nil
 }
 
-// succeededState is the state of an item whose last run ended with success: stopped when the result records a stop, done, or idle when the run is owed another visit.
-// A result that cannot be read fails the read. A new run of the item replaces that run as the last one, so the error names beehave run.
-func (e *Engine) succeededState(ctx context.Context, item string, last run, held bool) (rowState, error) {
-	state, result, err := settledOf(last.Status)
-	if err != nil {
-		return rowState{}, fmt.Errorf("%w. Run beehave run %s to start a new attempt: the queue reads the new run in its place", err, item)
-	}
-
-	if state == runStopped {
-		return rowState{state: queueStopped, stopped: result.Stopped}, nil
-	}
-
-	revisit, err := e.owesVisit(ctx, last, result)
+// doneState is the state of an item whose last run succeeded: idle when the run is owed another visit, hold when the item is held, else done with the value of the run.
+func (e *Engine) doneState(ctx context.Context, view runView, held bool) (rowState, error) {
+	revisit, err := e.owesVisit(ctx, view)
 	if err != nil {
 		return rowState{}, err
 	}
 
-	if revisit {
+	switch {
+	case revisit:
 		return rowState{state: idleState(held)}, nil
+	case held:
+		// A held item is not done: a landing that the round rejected puts the item on hold, and the next pass must not offer it again.
+		return rowState{state: queueHold}, nil
 	}
 
-	return rowState{state: queueDone, value: result.Value}, nil
+	return rowState{state: queueDone, value: view.Value}, nil
 }
 
 // idleState is the state of an item with no run to settle: hold, or ready.
@@ -310,30 +285,30 @@ type foreignRecord struct {
 // owesVisit reports whether a run that ended with success is owed another visit: its last run ended with the reason foreign, it recorded open findings,
 // and its recorded pull request merged. The state is read for the recorded number: the pull request is not looked up again.
 // A value that is not a foreign record, or a run that recorded no value, owes none.
-func (e *Engine) owesVisit(ctx context.Context, last run, result ItemResult) (bool, error) {
-	recorded, ok := foreignRecordOf(result)
+func (e *Engine) owesVisit(ctx context.Context, view runView) (bool, error) {
+	recorded, ok := foreignRecordOf(view.Value)
 	if !ok {
 		return false, nil
 	}
 
-	project, err := last.project()
+	project, err := view.last.project()
 	if err != nil {
 		return false, err
 	}
 
 	state, err := e.deps.Queue.PullState(ctx, project, recorded.PR)
 	if err != nil {
-		return false, fmt.Errorf("read the state of pull request %d for run %s: %w", recorded.PR, last.Status.ID, err)
+		return false, fmt.Errorf("read the state of pull request %d for run %s: %w", recorded.PR, view.last.Status.ID, err)
 	}
 
 	return state == pullMerged, nil
 }
 
 // foreignRecordOf reads the foreign record in the value of a result. It is false when the result holds no value, or a value that is not a foreign record with a pull request and open findings.
-func foreignRecordOf(result ItemResult) (foreignRecord, bool) {
+func foreignRecordOf(value json.RawMessage) (foreignRecord, bool) {
 	var recorded foreignRecord
 
-	if json.Unmarshal(result.Value, &recorded) != nil {
+	if json.Unmarshal(value, &recorded) != nil {
 		return foreignRecord{}, false
 	}
 
@@ -347,9 +322,7 @@ func rowWith(item model.Item, pull joinedPull, settled rowState) queueRow {
 		Parent: item.Parent, Author: pull.author, ChangesRequested: pull.changesRequested, Labels: append([]string{}, item.Labels...), Value: settled.value,
 	}
 
-	if settled.stopped != nil {
-		row.StopStep, row.StopReason = settled.stopped.Step, model.Clip(settled.stopped.Output, StoppedOutputLimit, "…")
-	}
+	row.StopStep, row.StopReason = settled.stopStep, settled.stopReason
 
 	return row
 }
@@ -410,7 +383,7 @@ func (s *script) holdAtStart() error {
 	}
 
 	held, err := runStep(s.e, s.ctx, holdStep, func(c context.Context) (bool, error) {
-		items, err := s.e.deps.Queue.OpenItems(c, s.in.Project)
+		items, err := s.e.deps.Queue.ItemList(c, s.in.Project, "")
 
 		return slices.ContainsFunc(items, func(i model.Item) bool { return i.ID == s.in.Item && i.Hold }), err
 	})
