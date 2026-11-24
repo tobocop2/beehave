@@ -253,6 +253,34 @@ func trackerCalls(tracker store.Tracker) []call {
 	}
 }
 
+// CheckReaderFails runs both methods of a reader whose commands all fail. Each must return an error and never an empty list or an empty parent.
+func CheckReaderFails(r Reporter, reader store.Reader) {
+	r.Helper()
+
+	check{r: r}.allFail(readerCalls(reader))
+}
+
+func readerCalls(reader store.Reader) []call {
+	return []call{
+		{"Comments", func(ctx context.Context) error { _, err := reader.Comments(ctx, item); return err }},
+		{"Parent", func(ctx context.Context) error { _, err := reader.Parent(ctx, item); return err }},
+	}
+}
+
+// FailedCommandMethods names every method of store.Tracker, store.Reader, store.ClaimRows and store.Writer that the failed-command cases run.
+// A method of those interfaces that is not in the list has no failed-command case.
+func FailedCommandMethods() []string {
+	var names []string
+
+	for _, calls := range [][]call{trackerCalls(nil), readerCalls(nil), rowCalls(nil), writerCalls(nil)} {
+		for _, one := range calls {
+			names = append(names, one.name)
+		}
+	}
+
+	return names
+}
+
 // CheckClaimRowsFail runs every method of claim rows whose commands all fail. Each must return an error and never a guess.
 func CheckClaimRowsFail(r Reporter, rows store.ClaimRows) {
 	r.Helper()
