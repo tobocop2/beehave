@@ -13,7 +13,7 @@ import (
 )
 
 // rowFieldsFlow prints the container, the author and the change request of each row.
-const rowFieldsFlow = `def main(item):
+const rowFieldsFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + ":" + r.parent + ":" + r.author + ":" + str(r.changes_requested) for r in q.rows])
 `
@@ -37,7 +37,7 @@ func TestQueue_ARowCarriesItsContainerAndTheAuthorAndReviewStateOfItsPullRequest
 }
 
 // pullsFlow prints the labels of each row and each open pull request of the queue, field by field.
-const pullsFlow = `def main(item):
+const pullsFlow = queueLoad + `def main(item):
     q = queue(name = "q", label = "tracked")
     rows = [r.item + "=" + ",".join(r.labels) for r in q.rows]
     pulls = ["%d|%s|%s|%s|%s|%s|%s" % (p.number, p.branch, p.base, p.author, p.draft, p.title, p.item) for p in q.pulls]
@@ -98,7 +98,7 @@ func TestQueue_ARowTakesTheAuthorOfTheLowestPullRequestOfItsBranch(t *testing.T)
 }
 
 // stoppedChild runs a child whose command ends it with a stop code, then prints the row of each item. The word ROW stands for the expression of the test.
-const stoppedChild = `def work(item):
+const stoppedChild = queueLoad + `def work(item):
     command(name = "lint", run = ["lint"], stop_on_rc = [2])
 
 def main(item):
@@ -151,7 +151,7 @@ const stopOrWork = `def main(item):
 `
 
 // rowsFlow reads the queue and prints the state of each row.
-const rowsFlow = `def main(item):
+const rowsFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + "|" + r.state for r in q.rows])
 `
@@ -257,7 +257,7 @@ func TestQueue_AStoppedRowNamesTheStepAndTheReasonOfTheStop(t *testing.T) {
 }
 
 // valueFlow prints the state and the value of each row, with none when the value is None.
-const valueFlow = `def main(item):
+const valueFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + "|" + r.state + "|" + (str(r.value).replace(" ", "_") if r.value != None else "none") for r in q.rows])
 `
@@ -312,10 +312,10 @@ func TestQueue_AHeldItemWithASucceededRunIsAHoldRowAndAnItemThatIsNotHeldIsDone(
 	assert.Equal(t, []string{`21|hold|none`, `22|done|{"approved":_True}`}, seenBy(t, h), "a rejected landing holds the item, so the row is hold and carries no value to land")
 }
 
-func TestQueue_ARowWhoseRecordedValueIsNotJSONFailsTheCall(t *testing.T) {
+func TestRunRead_AValueThatIsNotJSONFailsTheCall(t *testing.T) {
 	t.Parallel()
 
-	_, err := queuedValue(queued{Rows: []queueRow{{Item: "21", Value: json.RawMessage("{")}}})
+	_, err := fields(runReadOutputs([]runView{{Item: "21", State: queueDone, Value: json.RawMessage("{")}}, 0))
 
-	require.ErrorContains(t, err, "read the value of the last run of item 21")
+	require.ErrorContains(t, err, "output \"runs\"")
 }

@@ -59,6 +59,9 @@ const ofKeyword = "of"
 // itemKeyword names the item whose pull requests pr_history reads. It is the item of the run when the call leaves it out.
 const itemKeyword = "item"
 
+// ItemsKeyword is the keyword of a call that takes a list of item ids.
+const ItemsKeyword = "items"
+
 // ItemTargets lists the values of the of argument of an item_read call: the item of the run, or its parent.
 func ItemTargets() []string { return []string{"self", "parent"} }
 
@@ -436,8 +439,7 @@ func swarmSignatures() map[string][]Param {
 		},
 		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
 		cancelName:  {req("run", KindAny), label},
-		spawnName:   {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
-		queueName:   {label, opt("hold", KindText), opt("label", KindText)},
+		spawnName:   {{Name: ItemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(ItemsKeyword)}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
 	}
 }
 
@@ -446,6 +448,9 @@ func readSignatures() map[string][]Param {
 	return map[string][]Param{
 		itemReadName:  {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
 		prStateName:   {req("pr", KindInt), opt(nameKeyword, KindText)},
+		itemListName:  {opt("label", KindText), opt(nameKeyword, KindText)},
+		prListName:    {opt("base", KindText), opt(nameKeyword, KindText)},
+		runReadName:   {{Name: ItemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(ItemsKeyword)}, opt(nameKeyword, KindText)},
 		prHistoryName: {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 	}
 }
