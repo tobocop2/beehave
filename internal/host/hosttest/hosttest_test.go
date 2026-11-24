@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/ifacetest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -34,6 +36,7 @@ func (r *recorder) Errorf(format string, args ...any) {
 // memHost is a host in memory. down fails every call. noDisk makes the disk reading unreadable. stuck leaves every job running.
 type memHost struct {
 	down   bool
+	noLog  bool
 	noDisk bool
 	stuck  bool
 	root   string
@@ -103,7 +106,13 @@ func (m *memHost) Cancel(_ context.Context, id model.JobID) error {
 	return m.fail()
 }
 
-func (m *memHost) Log(context.Context, model.JobID) (string, error) { return "", m.fail() }
+func (m *memHost) Log(context.Context, model.JobID) (string, error) {
+	if m.noLog {
+		return "", errDown
+	}
+
+	return "", m.fail()
+}
 
 func (m *memHost) LostProof(context.Context, model.JobID) (model.LostProof, error) {
 	return model.LostProof{}, m.fail()
@@ -210,9 +219,22 @@ func TestTestHost_RunsAgainstAnAdapter(t *testing.T) {
 		m := newMemHost()
 		m.down = mode == hosttest.Broken
 		m.noDisk = mode == hosttest.UnreadableDisk
+		m.noLog = mode == hosttest.UnreadableLog
 
 		return m
 	})
+}
+
+func TestCheckUnreadableLog_AcceptsAnErrorAndFailsAHostThatReadsAnEmptyLog(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	hosttest.CheckUnreadableLog(rec, &memHost{noLog: true, state: model.HostAbsent, jobs: map[model.JobID]model.JobState{}})
+	assert.Empty(t, rec.failures)
+
+	rec = &recorder{}
+	hosttest.CheckUnreadableLog(rec, newMemHost())
+	assert.Equal(t, []string{"Log of a log that cannot be read: want an error from a failed command, got none"}, rec.failures)
 }
 
 func TestCheckBeforeUp(t *testing.T) {
@@ -344,5 +366,27 @@ func TestCheckHostFails_AcceptsABrokenHostAndReportsAGoodOne(t *testing.T) {
 
 	rec = &recorder{}
 	hosttest.CheckHostFails(rec, newMemHost())
-	assert.Len(t, rec.failures, 9)
+	assert.Len(t, rec.failures, 10)
+	assert.Contains(t, rec.failures, "Log: want an error from a failed command, got none")
+}
+
+// TestFailedCommandMethods_CoverEveryMethodOfHost fails when a method of host.Host has no failed-command case.
+func TestFailedCommandMethods_CoverEveryMethodOfHost(t *testing.T) {
+	t.Parallel()
+
+	ran := map[string]bool{}
+	for _, name := range hosttest.FailedCommandMethods() {
+		ran[name] = true
+	}
+
+	declared, err := ifacetest.Methods([]string{"../host.go"}, "Host")
+	require.NoError(t, err)
+
+	for _, name := range declared {
+		assert.True(t, ran[name], "host.Host.%s has no failed-command case", name)
+	}
+
+	for name := range ran {
+		assert.Contains(t, declared, name, "a failed-command case runs %s, which host.Host lacks", name)
+	}
 }
