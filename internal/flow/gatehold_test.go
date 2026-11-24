@@ -282,7 +282,7 @@ func TestGateHold_AHeldGateStaysHeldAcrossARestartOfTheEngine(t *testing.T) {
 	require.NoError(t, second.Launch())
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	require.Never(t, func() bool { return len(gated.events) > 1 }, 3*storePoll, 100*time.Millisecond, "the held gate does not start on the engine that came back")
+	require.Never(t, func() bool { return len(gated.events) > 0 }, 3*storePoll, 100*time.Millisecond, "the held gate does not start on the engine that came back")
 	require.ErrorContains(t, rig.client.HoldGate("1"), "held already")
 
 	require.NoError(t, rig.client.ReleaseGate("1"))
@@ -301,6 +301,11 @@ func TestGateHold_EachCommandRefusesAGateInTheWrongState(t *testing.T) {
 	rig.queue("2")
 	waitOn(t, condition(waitsOnHost(rig.engine, 1)))
 	queueHostGate(rig.engine, "project-9", "9", "A", config.LocalHost)
+	waitOn(t, condition(func() bool {
+		_, open, err := rig.client.readGate("9")
+
+		return err == nil && open
+	}))
 
 	tests := []struct {
 		name string
