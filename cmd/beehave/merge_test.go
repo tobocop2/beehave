@@ -43,6 +43,8 @@ type shipForge struct {
 	tipTree string
 	// readied is true after a SetDraft call marked the pull request ready.
 	readied bool
+	// refsErr fails the read of the closing references.
+	refsErr error
 }
 
 func (f *shipForge) SetDraft(_ context.Context, pr int, draft bool) error {
@@ -118,8 +120,12 @@ func (*shipForge) IssueState(context.Context, int) (string, error) {
 	return "", errFake
 }
 
-func (*shipForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+func (f *shipForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	if f.refsErr != nil {
+		return model.ClosingRefs{}, f.refsErr
+	}
+
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main"}, nil
 }
 
 func (*shipForge) BranchRef(context.Context, string) (string, bool, error) {

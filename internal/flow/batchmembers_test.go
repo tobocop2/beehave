@@ -19,8 +19,8 @@ func TestBatchMerge_TheCheckAndTheRunRefuseAMemberWithTheSameText(t *testing.T) 
 		{"head is empty", `[struct(item = "i", head = "")]`, "prs[0]: `head` of a member of `prs` must be text that is not empty"},
 		{"approved is text", `[struct(item = "i", head = "h", approved = "x")]`, "prs[0]: `approved` of a member of `prs` must be a bool, not string"},
 		{"item is missing", `[struct(head = "h")]`, "prs[0]: a member of `prs` has no `item`"},
-		{"the second member is wrong", `[struct(item = "i", head = "h"), struct(item = "j", head = "k", approved = 1)]`, "prs[1]: `approved` of a member of `prs` must be a bool, not int"},
-		{"a member that is not a struct", `[struct(item = "i", head = "h"), 1]`, "prs[1]: the member has the type int, not struct"},
+		{"the second member is wrong", `[struct(item = "i", head = "h", closes = []), struct(item = "j", head = "k", approved = 1)]`, "prs[1]: `approved` of a member of `prs` must be a bool, not int"},
+		{"a member that is not a struct", `[struct(item = "i", head = "h", closes = []), 1]`, "prs[1]: the member has the type int, not struct"},
 		{"a list as a member", `[[struct(item = "i", head = "h")]]`, "prs[0]: the member has the type list, not struct"},
 		{"a struct as the item", `[struct(item = struct(a = 1), head = "h")]`, "prs[0]: `item` of a member of `prs` must be text that is not empty"},
 	}

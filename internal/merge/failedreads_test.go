@@ -33,7 +33,7 @@ func TestRun_AReadThatFailsRefusesTheMerge(t *testing.T) {
 		"the open children of the branch":        {fail: "PRList", req: request(), says: "open pull requests"},
 		"the head again before the merge call":   {fail: "PRView later", req: request(), says: "again"},
 		"the tip of the base":                    {fail: "BranchRef", req: request(), says: "cannot read the tip of"},
-		"the closing references":                 {fail: "", req: audited(12), says: "issues that"},
+		"the closing references":                 {fail: "", req: audited(12), says: "issues that", set: func(_ *testing.T, w *world) *world { w.closingRefs = nil; return w }},
 	}
 
 	for label, one := range cases {

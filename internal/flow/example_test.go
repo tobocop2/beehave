@@ -98,6 +98,7 @@ type childValue struct {
 	Head     string `json:"head"`
 	Approved bool   `json:"approved"`
 	Reason   string `json:"reason"`
+	Closes   []int  `json:"closes"`
 }
 
 // childOf reads the value that the entry pipeline returned.

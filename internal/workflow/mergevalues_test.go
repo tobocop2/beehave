@@ -55,16 +55,59 @@ func TestPullRequests_RefusesWhatTheRunRefuses(t *testing.T) {
 		})
 	}
 
-	got, err := workflow.PullRequests(starlark.NewList([]starlark.Value{pr(starlark.StringDict{"item": text("i"), "head": text("h")})}))
+	got, err := workflow.PullRequests(starlark.NewList([]starlark.Value{pr(starlark.StringDict{"item": text("i"), "head": text("h"), "closes": starlark.NewList(nil)})}))
 	require.NoError(t, err)
 	assert.Equal(t, []workflow.PullRequest{{Item: "i", Head: "h"}}, got)
+}
+
+func TestPullRequests_AMemberWithNoClosesIsRefused(t *testing.T) {
+	t.Parallel()
+
+	_, err := workflow.PullRequests(starlark.NewList([]starlark.Value{pr(starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h")})}))
+
+	require.ErrorContains(t, err, "prs[0]: a member of `prs` has no `closes`. Write closes = [12] for the issues the pull request closes, or closes = [] for none")
+}
+
+func TestPullRequests_ClosesIsTheListOfTheIssuesTheMemberMustClose(t *testing.T) {
+	t.Parallel()
+
+	ints := func(numbers ...int) starlark.Value {
+		values := make([]starlark.Value, len(numbers))
+		for i, n := range numbers {
+			values[i] = starlark.MakeInt(n)
+		}
+
+		return starlark.NewList(values)
+	}
+	member := func(closes starlark.Value) starlark.Value {
+		return pr(starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h"), "closes": closes})
+	}
+
+	got, err := workflow.PullRequests(starlark.NewList([]starlark.Value{member(ints(12, 7))}))
+	require.NoError(t, err)
+	assert.Equal(t, []int{12, 7}, got[0].Closes)
+
+	for name, bad := range map[string]starlark.Value{
+		"text":        starlark.String("12"),
+		"a number":    starlark.MakeInt(12),
+		"none":        starlark.None,
+		"zero":        ints(0),
+		"negative":    ints(-3),
+		"a repeat":    ints(12, 12),
+		"not numbers": starlark.NewList([]starlark.Value{starlark.String("12")}),
+		"a bool":      starlark.NewList([]starlark.Value{starlark.True}),
+		"too large":   starlark.NewList([]starlark.Value{starlark.MakeInt64(1 << 40)}),
+	} {
+		_, err := workflow.PullRequests(starlark.NewList([]starlark.Value{member(bad)}))
+		require.ErrorContains(t, err, "prs[0]: `closes` of a member of `prs` must be a list of issue numbers", name)
+	}
 }
 
 func TestPullRequests_ApprovedIsABoolThatDefaultsToFalse(t *testing.T) {
 	t.Parallel()
 
 	member := func(extra starlark.StringDict) starlark.Value {
-		fields := starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h")}
+		fields := starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h"), "closes": starlark.NewList(nil)}
 		maps.Copy(fields, extra)
 
 		return starlark.NewList([]starlark.Value{pr(fields)})
@@ -127,7 +170,7 @@ func TestPullRequests_OwnDraftIsTheNumberOfTheDraftOfAMemberAndDefaultsToZero(t 
 	t.Parallel()
 
 	member := func(extra starlark.StringDict) starlark.Value {
-		fields := starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h")}
+		fields := starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h"), "closes": starlark.NewList(nil)}
 		maps.Copy(fields, extra)
 
 		return starlark.NewList([]starlark.Value{pr(fields)})

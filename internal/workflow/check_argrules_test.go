@@ -68,7 +68,7 @@ func TestCheck_AcceptsTheArgumentsThatTheRunAccepts(t *testing.T) {
 		"    item_create(title = str(item), key = str(item))\n"+
 		"    item_status(id = \"i\", status = \"open\")\n"+
 		"    item_comment(id = \"i\", text = \"t\", key = \"k\")\n"+
-		"    merge(prs = [x, struct(item = \"a\", head = \"h\")], base = \"b\", repo = \"r\", name = \"n\")\n"+
+		"    merge(prs = [x, struct(item = \"a\", head = \"h\", closes = [])], base = \"b\", repo = \"r\", name = \"n\")\n"+
 		"    merge(prs = x, base = str(item), repo = \"r\", name = \"m\")\n"+
 		"    command(run = [\"x\"], stop_on_rc = [str(item), 2])\n")
 

@@ -7,12 +7,11 @@ import (
 	"github.com/tobocop2/beehave/internal/review"
 )
 
-// OpenRequest is what the pr_open step asks of the forge. Issue is the issue number of the item, or 0 for none: the forge adds the closing line for it to the body.
+// OpenRequest is what the pr_open step asks of the forge. The forge writes Body as given.
 // Parent is the id of the item that this one depends on, or empty.
 type OpenRequest struct {
 	Title  string
 	Body   string
-	Issue  int
 	Base   string
 	Parent string
 }

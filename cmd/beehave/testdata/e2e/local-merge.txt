@@ -33,4 +33,4 @@ project(
 -- flow/merge.star --
 def main(item):
     command(name = "before", run = ["git", "--version"])
-    merge(name = "ship", base = "main", repo = "x", prs = [struct(item = "1", head = "abc123")])
+    merge(name = "ship", base = "main", repo = "x", prs = [struct(item = "1", head = "abc123", closes = [])])

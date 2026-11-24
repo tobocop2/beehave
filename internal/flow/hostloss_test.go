@@ -92,7 +92,7 @@ func TestHostLoss_TheRootRunCountsLossesOfItsChildRuns(t *testing.T) {
 	// The gate loses the first three jobs: the gates of items 21 and 22, then the batch gate of item 23, whose rerun passes.
 	rig, _ := lostBatchRig(t, 3)
 	engine := rig.engine(t)
-	prs := `struct(item = "1", head = "` + rig.heads["1"] + `"), struct(item = "3", head = "` + rig.heads["3"] + `")`
+	prs := `struct(item = "1", head = "` + rig.heads["1"] + `", closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])`
 
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, strings.Replace(lostTreeFlow, "PRS", prs, 1)), modeOff())
 	require.NoError(t, err)
