@@ -106,13 +106,9 @@ func (s *script) itemStop(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	value, err := s.durable(itemStopKind, label, func(context.Context, string) (stepResult, error) {
 		return stepResult{Outputs: itemStopOutputs(own)}, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	if own {
+	if own && err == nil {
 		s.stopped = &stop
 	}
 
-	return value, nil
+	return value, err
 }
