@@ -33,6 +33,8 @@ const (
 	UnreadableDisk
 	// Unreachable is for a provider that does not own its machine (see NonOwning): the machine does not answer.
 	Unreachable
+	// UnreadableLog is a host that works, except that the read of the log of a job fails. It reaches the log read that Broken stops short of.
+	UnreadableLog
 )
 
 // DF is the answer of `df -P -k` on a machine with free space, for the fakes of every adapter.
@@ -104,6 +106,9 @@ func testOwning(t *testing.T, newHost Factory) {
 	t.Run("a_failed_command_is_an_error_everywhere", func(t *testing.T) {
 		CheckHostFails(t, newHost(t, Broken))
 	})
+	t.Run("a_log_that_cannot_be_read_is_an_error", func(t *testing.T) {
+		CheckUnreadableLog(t, newHost(t, UnreadableLog))
+	})
 	t.Run("a_host_that_is_not_up_takes_no_job", func(t *testing.T) {
 		CheckBeforeUp(t, newHost(t, Working))
 	})
@@ -119,6 +124,9 @@ func testNonOwning(t *testing.T, newHost Factory) {
 	})
 	t.Run("a_failed_command_is_an_error_everywhere_but_down", func(t *testing.T) {
 		checkHostFails(t, newHost(t, Broken), false)
+	})
+	t.Run("a_log_that_cannot_be_read_is_an_error", func(t *testing.T) {
+		CheckUnreadableLog(t, newHost(t, UnreadableLog))
 	})
 	t.Run("a_machine_that_does_not_answer_is_absent_and_takes_no_job", func(t *testing.T) {
 		CheckUnreachable(t, newHost(t, Unreachable))
@@ -202,6 +210,23 @@ func CheckUnreadableDisk(r Reporter, h host.Host) {
 	if got, err := h.Status(ctx); err == nil && got.Disk.Readable {
 		r.Errorf("a disk that cannot be read: Status reports a readable reading of %d bytes", got.Disk.FreeBytes)
 	}
+}
+
+// CheckUnreadableLog checks that a host whose log read fails returns an error from Log and never an empty log. The host works in every other call.
+func CheckUnreadableLog(r Reporter, h host.Host) {
+	r.Helper()
+
+	c := check{r: r}
+	ctx, cancel := deadline()
+	defer cancel()
+
+	c.noError(h.Up(ctx), "Up")
+
+	id, err := h.Submit(ctx, model.JobSpec{Name: "log", Command: PassingCommand})
+	c.noError(err, "Submit")
+
+	_, err = h.Log(ctx, id)
+	c.isError(err, "Log of a log that cannot be read")
 }
 
 // CheckUnknownState checks that Wait never returns a final state for a job whose scheduler state beehave does not know. Wait may fail or return a state that is not final.
@@ -435,22 +460,47 @@ func finish(ctx context.Context, c check, h host.Host, command string) model.Job
 	return state
 }
 
+// call is one method of the contract with its arguments filled in.
+type call struct {
+	name string
+	run  func(ctx context.Context) error
+}
+
+// jobCalls are the methods that a failed command must turn into an error: the start, the reads, the job calls and the cancel.
+// A failed read of the state, the root or the log of a job is an error and never an empty answer.
+func jobCalls(h host.Host) []call {
+	return []call{
+		{"Up", func(ctx context.Context) error { return h.Up(ctx) }},
+		{"Status", func(ctx context.Context) error { _, err := h.Status(ctx); return err }},
+		{"Submit", func(ctx context.Context) error {
+			_, err := h.Submit(ctx, model.JobSpec{Name: "x", Command: PassingCommand})
+			return err
+		}},
+		{"Wait", func(ctx context.Context) error { _, err := h.Wait(ctx, "1"); return err }},
+		{"WorkRoot", func(ctx context.Context) error { _, err := h.WorkRoot(ctx); return err }},
+		{"Log", func(ctx context.Context) error { _, err := h.Log(ctx, "1"); return err }},
+		{"Cancel", func(ctx context.Context) error { return h.Cancel(ctx, "1") }},
+	}
+}
+
+// FailedCommandMethods names every method of host.Host that has a failed-command case. A method of the interface that is not in the list has none.
+// Down is run only on a host that owns its machine. LostProof is not an error on a failed link: CheckLostProof asserts that it gives no proof.
+func FailedCommandMethods() []string {
+	names := []string{"Down", "LostProof"}
+
+	for _, one := range jobCalls(nil) {
+		names = append(names, one.name)
+	}
+
+	return names
+}
+
 func checkJobCallsFail(ctx context.Context, c check, h host.Host) {
 	c.r.Helper()
 
-	c.isError(h.Up(ctx), "Up")
-
-	_, err := h.Status(ctx)
-	c.isError(err, "Status")
-
-	_, err = h.Submit(ctx, model.JobSpec{Name: "x", Command: PassingCommand})
-	c.isError(err, "Submit")
-
-	_, err = h.Wait(ctx, "1")
-	c.isError(err, "Wait")
-
-	_, err = h.WorkRoot(ctx)
-	c.isError(err, "WorkRoot")
+	for _, one := range jobCalls(h) {
+		c.isError(one.run(ctx), one.name)
+	}
 }
 
 // CheckHostFails checks that every method returns an error when its command fails.
@@ -468,8 +518,6 @@ func checkHostFails(r Reporter, h host.Host, owning bool) {
 	defer cancel()
 
 	checkJobCallsFail(ctx, c, h)
-
-	c.isError(h.Cancel(ctx, "1"), "Cancel")
 
 	withDrain(c, h, func(d drainer) {
 		c.isError(d.Drain(ctx), "Drain")
