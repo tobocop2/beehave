@@ -12,12 +12,12 @@ func TestPROpen_OpensTheDraftOfTheItemAndReturnsItsNumberCreatedAndStack(t *test
 
 	h, f := prHarness(t)
 
-	_, err := walkBody(t, h, `opened = pr_open(title = "Fix 5", body = "text", issue = 5, base = "round-1", parent = "bb-4", name = "draft")
+	_, err := walkBody(t, h, `opened = pr_open(title = "Fix 5", body = "text", base = "round-1", parent = "bb-4", name = "draft")
 command(run = [str(opened.number), str(opened.created), opened.stack])
 `)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{testProject + "|" + testItem + "|Fix 5|text|5|round-1|bb-4"}, f.opened)
+	assert.Equal(t, []string{testProject + "|" + testItem + "|Fix 5|text|round-1|bb-4"}, f.opened)
 	assert.Equal(t, []string{"7 True S_1"}, h.commands.ran())
 }
 
@@ -29,7 +29,7 @@ func TestPROpen_TheOptionalKeywordsDefaultToNone(t *testing.T) {
 	_, err := walkBody(t, h, `pr_open(title = "Fix", base = "main")
 `)
 	require.NoError(t, err)
-	assert.Equal(t, []string{testProject + "|" + testItem + "|Fix||0|main|"}, f.opened)
+	assert.Equal(t, []string{testProject + "|" + testItem + "|Fix||main|"}, f.opened)
 }
 
 func TestPROpen_EachCallIsItsOwnRecordedStep(t *testing.T) {
@@ -50,12 +50,12 @@ func TestPROpen_BadArgumentsFailAtTheCall(t *testing.T) {
 	t.Parallel()
 
 	for name, call := range map[string]string{
-		"no title":         `pr_open(base = "main")`,
-		"an empty title":   `pr_open(title = "", base = "main")`,
-		"no base":          `pr_open(title = "t")`,
-		"an empty base":    `pr_open(title = "t", base = "")`,
-		"a negative issue": `pr_open(title = "t", base = "main", issue = -1)`,
-		"a text issue":     `pr_open(title = "t", base = "main", issue = "5")`,
+		"no title":       `pr_open(base = "main")`,
+		"an empty title": `pr_open(title = "", base = "main")`,
+		"no base":        `pr_open(title = "t")`,
+		"an empty base":  `pr_open(title = "t", base = "")`,
+		"an issue":       `pr_open(title = "t", base = "main", issue = 5)`,
+		"integration":    `pr_open(title = "t", base = "main", integration = True)`,
 	} {
 		h, f := prHarness(t)
 

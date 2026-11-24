@@ -41,6 +41,7 @@ type shipWorld struct {
 	committer model.Committer
 	checks    []model.Check
 	writes    []string
+	listed    []int // the issues the forge lists for the pull request: the fake lists the ones the member names
 }
 
 func (w *shipWorld) PRView(context.Context, int, ...string) (model.PullRequest, error) {
@@ -103,7 +104,7 @@ func (w *shipWorld) IssueAssignees(context.Context, string, int) ([]string, erro
 }
 
 func (w *shipWorld) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: w.listed}, nil
 }
 
 func (*shipWorld) BranchRef(context.Context, string) (string, bool, error) {
@@ -169,8 +170,10 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 			return merge.Result{}, err
 		}
 
+		world.listed = settings.Closes
+
 		return merge.Run(ctx, world, merge.Request{
-			PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+			Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 			Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
 		}), nil
@@ -282,8 +285,9 @@ func (w *landWorld) git(ctx context.Context, args ...string) (string, error) {
 type forgeMerger struct {
 	worlds map[string]*landWorld
 
-	mu    sync.Mutex
-	lines map[string][]string // the lines of every verdict of the merge of each item
+	mu     sync.Mutex
+	lines  map[string][]string // the lines of every verdict of the merge of each item
+	closes map[string][]int    // the closes of the member of each item, as the merge got them
 }
 
 func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings MergeSettings) (merge.Result, error) {
@@ -292,8 +296,10 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 		return merge.Result{}, err
 	}
 
+	m.worlds[item].listed = settings.Closes
+
 	got := merge.Run(ctx, m.worlds[item], merge.Request{
-		PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+		Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,
@@ -301,6 +307,12 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 
 	m.mu.Lock()
 	m.lines[item] = append(m.lines[item], got.Lines...)
+
+	if m.closes == nil {
+		m.closes = map[string][]int{}
+	}
+
+	m.closes[item] = settings.Closes
 	m.mu.Unlock()
 
 	return got, nil
@@ -497,6 +509,18 @@ func rejectReviewOf(t *testing.T, rig *roundRig, item string) {
 
 		return result
 	}
+}
+
+// The round lands each member with the issues that its child returned, and the child chose them from the base of its pull request.
+func TestExampleMerge_TheMemberOfEachChildCarriesTheIssuesThatItsChildReturned(t *testing.T) {
+	t.Parallel()
+
+	rig, forge := landingRound(t, nil)
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]int{"1": {1}, "3": {3}}, forge.closes, "a trunk round closes the issue of each item")
 }
 
 // The round sends a child to the batch only when its review approved it. The merger checks the approval only for own work,

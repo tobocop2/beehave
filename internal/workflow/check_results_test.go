@@ -14,7 +14,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 
 	cases := []struct{ name, call, want string }{
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, commit_subject, commit_body."},
-		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
+		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc, attempts, error."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
@@ -54,7 +54,7 @@ func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
 
 	got := checkText(t, `def main(item):
     a = agent("p", "m", outputs = ["verdict", "findings"])
-    b = merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")
+    b = merge(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")
     c = command(["a"])
     g = gate()
     h = gather([])

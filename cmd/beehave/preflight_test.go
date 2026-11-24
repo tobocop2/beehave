@@ -76,7 +76,7 @@ func (*preflightForge) IssueState(context.Context, int) (string, error) {
 }
 
 func (*preflightForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main"}, nil
 }
 
 func (*preflightForge) BranchRef(context.Context, string) (string, bool, error) {

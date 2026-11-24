@@ -29,4 +29,4 @@ echo "$@" >> "$folder/notice.log"
 date > "$folder/merged-1"
 -- flow/landing.star --
 def main(item):
-    merge(name = "ask", base = "main", repo = "example/shop", hand_off = True, gate_run = ["true"], prs = [struct(item = "m1", head = "abc")])
+    merge(name = "ask", base = "main", repo = "example/shop", hand_off = True, gate_run = ["true"], prs = [struct(item = "m1", head = "abc", closes = [])])

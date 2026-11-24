@@ -6,7 +6,6 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/closing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
@@ -38,26 +37,6 @@ func readForbidden(v starlark.Value) (textRules, error) {
 	}
 
 	return merge.Compile(patterns)
-}
-
-// integrationKeyword is the keyword of a posting step that marks the integration pull request, the only one that may close an issue.
-const integrationKeyword = "integration"
-
-// refuseClosing returns an error, before the post, for the first piece of text that holds a closing keyword, unless the call is for the integration pull request.
-// The error names the argument and the issue, never the text.
-func refuseClosing(integration bool, posted ...postedText) error {
-	if integration {
-		return nil
-	}
-
-	for _, one := range posted {
-		if refs := closing.References(one.text); len(refs) > 0 {
-			return fmt.Errorf("the %s closes %s with a closing keyword. Only the integration pull request may close an issue. "+
-				"Remove the keyword, or pass integration = True when this is the integration pull request", one.name, refs[0])
-		}
-	}
-
-	return nil
 }
 
 // postedText is one piece of text that a step posts, with the name of its argument.

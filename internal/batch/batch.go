@@ -33,6 +33,8 @@ type Member struct {
 	Approved bool   `json:"approved"`
 	// OwnDraft is the number of the draft that the run opened for this member, or zero. The merge accepts that one draft and marks it ready after its guards.
 	OwnDraft int `json:"own_draft,omitempty"`
+	// Closes are the issues that the pull request of this member must close, and no others.
+	Closes []int `json:"closes,omitempty"`
 }
 
 // Tip is the base tip: a commit and its tree.
