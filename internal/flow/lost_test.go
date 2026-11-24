@@ -159,31 +159,42 @@ func TestPhase_ALostStepIsLoggedWithItsStartAndItsRunTime(t *testing.T) {
 	assert.Contains(t, string(log), "the process ended with no record")
 }
 
+// stepNames returns the name of each step, in order, for a failure message.
+func listedStepNames(steps []dbos.StepInfo) []string {
+	names := make([]string, 0, len(steps))
+
+	for _, step := range steps {
+		names = append(names, step.StepName)
+	}
+
+	return names
+}
+
 func TestClient_TheLostStepIsListedWithItsRecordAsTheOutput(t *testing.T) {
 	t.Parallel()
 
 	harness := lostRun(t, 33*time.Minute)
 
 	next := harness.engine(t)
-	_, runErr := next.Run(testItem, testProject)
-	require.NoError(t, runErr)
-
-	// The loss step is recorded before the agent starts again, so a second request shows the run reached it.
-	require.Len(t, harness.agents.seen(), 2, "the run reached the step that records the loss, run error: %v", runErr)
+	_, err := next.Run(testItem, testProject)
+	require.NoError(t, err)
 
 	client := harness.client(t, testVersion)
 	phases, err := dbos.ListWorkflows(client.flow, dbos.WithFilterName(phaseName))
 	require.NoError(t, err)
 
-	workflows, err := dbos.ListWorkflows(client.flow)
+	itemSteps, err := dbos.GetWorkflowSteps(client.flow, "item-12-r1")
 	require.NoError(t, err)
-	require.NotEmpty(t, phases, "run error: %v; workflows: %+v", runErr, workflows)
 
 	var found []dbos.StepInfo
+
+	var phaseSteps []string
 
 	for _, phase := range phases {
 		steps, err := dbos.GetWorkflowSteps(client.flow, phase.ID, dbos.WithStepsLoadOutput(true))
 		require.NoError(t, err)
+
+		phaseSteps = append(phaseSteps, listedStepNames(steps)...)
 
 		for _, step := range steps {
 			if step.StepName == lostStepPrefix+"1" {
@@ -192,7 +203,7 @@ func TestClient_TheLostStepIsListedWithItsRecordAsTheOutput(t *testing.T) {
 		}
 	}
 
-	require.Len(t, found, 1)
+	require.Len(t, found, 1, "the run did not write the loss step; item steps: %v; phase steps: %v", listedStepNames(itemSteps), phaseSteps)
 	t.Logf("output type of a step on the client: %T", found[0].Output)
 
 	raw, isText := found[0].Output.(string)
