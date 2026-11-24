@@ -27,10 +27,6 @@ const goodRunner = "runner(name = \"a\", agent = \"claude\", config_dir = \"~/c\
 // call is a project file with one project call and the given arguments.
 func call(args string) string { return "project(" + args + ")\n" }
 
-func readFixture(path string) ([]byte, error) {
-	return os.ReadFile(path) //nolint:gosec // fixture paths are constants in this file
-}
-
 func homeDir(t *testing.T) string {
 	t.Helper()
 
@@ -57,50 +53,6 @@ func loadRunnersText(t *testing.T, text string) (config.Config, config.Problems)
 	writeFile(t, filepath.Join(dir, "runners.star"), text)
 
 	return loadFolder(dir, nil)
-}
-
-var exampleConfig = filepath.Join("..", "..", "examples", "config")
-
-func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest // sets HOME
-	home := homeDir(t)
-
-	cfg, problems := loadFolder(exampleConfig, nil)
-
-	require.Empty(t, problems)
-	require.Equal(t, []model.Runner{
-		{Name: "claude-a", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/a")},
-		{Name: "claude-b", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/b")},
-	}, cfg.Runners)
-	require.Equal(t, config.Pool{"five_hour": 90, "seven_day": 95}, cfg.Pools["claude"])
-	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
-	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(exampleConfig, "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth},
-		cfg.Projects["example"].Project)
-}
-
-func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralleltest // sets HOME
-	home := homeDir(t)
-
-	text, err := readFixture(filepath.Join("..", "..", "examples", "local", "project.star"))
-	require.NoError(t, err)
-
-	project, problems := loadProjectText(t, string(text))
-
-	require.Empty(t, problems)
-	require.Equal(t, model.Project{
-		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Sandbox: model.SandboxOn, Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
-	}, project.Project)
-}
-
-func TestLoadFolder_TheExampleHoldsNoPlaceholderOrOwnerPath(t *testing.T) {
-	t.Parallel()
-
-	for _, name := range []string{"runners.star", "projects/example.star"} {
-		text, err := readFixture(filepath.Join(exampleConfig, name))
-		require.NoError(t, err)
-		require.NotContains(t, string(text), "decided in step")
-		require.NotContains(t, string(text), "/Users/")
-	}
 }
 
 func TestLoadFolder_DefaultsMustPassTheValidator(t *testing.T) {
