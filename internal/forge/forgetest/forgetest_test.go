@@ -467,6 +467,19 @@ func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
 	assert.Contains(t, r.failures, "ClosingRefs: unexpected error: down")
 }
 
+func TestCheckForgeReads_RunsTheClosingIssueCheckOnEveryAdapter(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{})
+	assert.Empty(t, r.failures, "a forge that answers the closing issues right passes the whole read suite")
+
+	r = &recorder{}
+	forgetest.CheckForgeReads(r, memForge{closingDropsElsewhere: true})
+	require.Len(t, r.failures, 1, "the read suite fails a forge that drops the closing issue of another repository")
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes two issues")
+}
+
 func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {
 	t.Parallel()
 
