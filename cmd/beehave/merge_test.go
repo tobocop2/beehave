@@ -639,7 +639,7 @@ func TestNewLife_TheRunnersOfTheConfigAreTheOwnRunnersOfTheMerger(t *testing.T) 
 func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T) {
 	t.Parallel()
 
-	var landings, handOffs int
+	var landings, handOffs, singles int
 
 	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
 		// The base, the repository, the logins and the address come from the project file, so the example names none of them.
@@ -647,6 +647,19 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 		assert.NotNil(t, ship["repo"], "repo is set in the example")
 		assert.Empty(t, workflowtest.Literals(ship["base"]), "base is the round base, read from vars.round.base")
 		assert.Empty(t, workflowtest.Literals(ship["repo"]), "repo is the repository of the project")
+
+		if ship["member"] != nil {
+			// A call with `member` lands one pull request under the same guards as the landing call, and it takes no integration pull request, which belongs to a list.
+			singles++
+
+			for _, name := range []string{"hold", "own", "forbid_text"} {
+				assert.NotNil(t, ship[name], "%s is set on the call that lands one pull request", name)
+			}
+
+			assert.Nil(t, ship["integration"], "the call that lands one pull request takes no integration")
+
+			return
+		}
 
 		if handsOff(ship) {
 			handOffs++
@@ -673,4 +686,5 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 	})
 	assert.Equal(t, 1, landings, "the example has one landing merge call")
 	assert.Equal(t, 1, handOffs, "the example has one hand-off merge call")
+	assert.Equal(t, 1, singles, "the example has one merge call of one pull request")
 }

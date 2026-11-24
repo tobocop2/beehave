@@ -5,7 +5,6 @@ import (
 	"maps"
 
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 )
@@ -24,7 +23,7 @@ func (e *Engine) requiredSteps(project string) []string {
 // recordGate records the outputs of a gate call as its own step, so a replay reads them and runs no gate again.
 // The record holds the name of its own step in the field step, so a later call can name the gate that a result came from.
 func (s *script) recordGate(label string, outputs map[string]any) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	fields, err := s.durableFields("gate", label, nil, func(_ context.Context, name string) (stepResult, error) {
+	recorded, err := s.durableOutputs("gate", label, nil, func(_ context.Context, name string) (stepResult, error) {
 		recorded := maps.Clone(outputs)
 		recorded[stepField] = name
 
@@ -34,5 +33,7 @@ func (s *script) recordGate(label string, outputs map[string]any) (starlark.Valu
 		return nil, err
 	}
 
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, fields), nil
+	s.keepGate(recorded)
+
+	return result(recorded)
 }

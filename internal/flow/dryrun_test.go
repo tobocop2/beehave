@@ -140,6 +140,8 @@ func TestDryRun_AStepThatTheDryRunDoesNotFakeIsNotRunAndIsNotAnError(t *testing.
 		"tip":     {body: "base_tip(base = \"main\", name = \"t\")", want: "not run in a dry run: read the tip of a base"},
 		"closing": {body: "pr_closing(pr = 41, name = \"c\")", want: "not run in a dry run: read the issues that a pull request closes"},
 		"batch":   {body: "merge(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
+		"one":     {body: "merge(member = struct(item = \"1\", head = \"h\", closes = []), base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
+		"hand":    {body: "hand_off(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

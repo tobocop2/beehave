@@ -229,6 +229,10 @@ The step never edits a title. Ready, draft and base changes are not covered by t
 
 `batch` lands a set of reviewed pull requests with one gate run for the whole set. It is a layer 2 package. The `merge` builtin of `flow` wires it.
 
+### One pull request
+
+`merge` with `member` runs one member through the same `Merge` of the base as a member of a list, with no union and no gate run of its own. The call gives the gate of an earlier `gate` call of the run. The engine posts the statuses `beehave/gate` and `beehave/review` only for a gate that this run recorded and that passed on the tree `gated_tree`, and the merge run posts them after its guards. The intent step refuses a tip whose tree is not `expect_tree`, and the call returns `unsettled`. The same step merges the head of the member into the tip with `git merge-tree` and refuses a call whose `gated_tree` is not the tree that this makes, before any status is posted. `hand_off` is its own builtin and runs the hand-off of the list form.
+
 ### Interfaces and result
 
 The gate, the git calls, the forge and the step recorder are the interfaces `Gate`, `Git`, `Base` and `Recorder`.

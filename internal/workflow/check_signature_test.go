@@ -331,7 +331,7 @@ func TestCheck_MergeTakesTheKeywordsOfABatchAndNoKeywordOfTheOldSingleMerge(t *t
 			got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", "+keyword+")\n")
 
 			require.NotEmpty(t, got)
-			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name.")
+			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name, member, gate, gated_tree, expect_tree.")
 		})
 	}
 }

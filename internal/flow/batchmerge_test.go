@@ -23,13 +23,14 @@ type batchRig struct {
 	host   *repoHost
 	gate   *treeGate
 	merger *landMerger
+	t      *testing.T
 }
 
 func newBatchRig(t *testing.T) *batchRig {
 	t.Helper()
 
 	repo, heads := newBatchRepo(t)
-	rig := &batchRig{h: newHarness(t), repo: repo, heads: heads}
+	rig := &batchRig{h: newHarness(t), repo: repo, heads: heads, t: t}
 	rig.host = &repoHost{repo: repo}
 	rig.gate = &treeGate{repo: repo}
 	rig.merger = &landMerger{repo: repo, script: map[string][]merge.Result{}}

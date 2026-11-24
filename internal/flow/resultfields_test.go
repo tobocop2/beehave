@@ -104,10 +104,16 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	first, err := firstOfValue(firstChoice{})
 	require.NoError(t, err)
 
+	// merge has two forms: `prs` returns the fields of hand_off, and `member` returns the fields of oneResult. The table holds both.
+	listFields := batchStruct(t, landed).AttrNames()
+	both := slices.Concat(listFields, batchStruct(t, oneResult(batch.MergeOutcome{}, batch.Tip{})).AttrNames())
+	slices.Sort(both)
+
 	got := map[string][]string{
 		"cancel":   cancelValue(cancelOutcome{}).AttrNames(),
 		"first_of": first.AttrNames(),
-		"merge":    batchStruct(t, landed).AttrNames(),
+		"merge":    slices.Compact(both),
+		"hand_off": listFields,
 		"gather":   gathered.AttrNames(),
 		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
 		"stream":   streamValue(streamRead{}).AttrNames(),
