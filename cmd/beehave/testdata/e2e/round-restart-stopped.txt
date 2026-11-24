@@ -34,7 +34,6 @@ env HOME=$WORK/home
 exec git config --file home/.gitconfig user.name e2e
 exec git config --file home/.gitconfig user.email e2e@example.com
 cp base forge/base
-cp base forge/closing-ok
 cp base forge/open-on-create
 cp wrong forge/board-wrong
 

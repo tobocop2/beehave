@@ -1389,7 +1389,7 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
+	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, req.Base, req.Parent}, "|"))
 
 	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
 

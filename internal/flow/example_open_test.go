@@ -8,7 +8,7 @@ import (
 )
 
 // The example opens the draft pull request of the item right after the implement step, before the gate and the first review.
-func TestExample_TheDraftPullRequestIsOpenedOnceAfterTheImplementStepWithTheIssueAndTheBase(t *testing.T) {
+func TestExample_TheDraftPullRequestIsOpenedOnceAfterTheImplementStepWithTheClosingLineAndTheBase(t *testing.T) {
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
@@ -17,7 +17,7 @@ func TestExample_TheDraftPullRequestIsOpenedOnceAfterTheImplementStepWithTheIssu
 
 	require.NoError(t, err)
 	require.Len(t, rig.h.forge.opened, 1)
-	assert.Contains(t, rig.h.forge.opened[0], "|12|integration|")
+	assert.Contains(t, rig.h.forge.opened[0], "|a body\n\nAddresses #12|integration|")
 }
 
 func TestExample_ADependentItemOpensItsPullRequestIntoTheStackOfItsParent(t *testing.T) {

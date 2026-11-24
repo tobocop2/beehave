@@ -33,6 +33,9 @@ SEVERITIES = ["P0", "P1", "P2", "P3", "P4"]
 # The merge adds the pattern of the tracker id of each item (id_patterns); the posting steps use only this list, because their text names the item.
 ATTRIBUTION = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"]
 
+# The closing keywords of GitHub, as one pattern for a line of text: a keyword, an optional colon and an issue as #N, owner/repo#N or an issue URL. A pull request into a branch other than the trunk may not close an issue.
+CLOSING_KEYWORDS = ["(?i)\\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?\\s+(([a-z0-9_.-]+/[a-z0-9_.-]+)?#[0-9]+|https?://github\\.com/[a-z0-9_.-]+/[a-z0-9_.-]+/issues/[0-9]+)"]
+
 # A line of the mutation output is a finding only when it starts with this text. The log of the tool prints other lines, such as the line of a killed mutant that gremlins writes as KILLED TYPE at file:line:col.
 FINDING_PREFIX = "finding: "
 
@@ -501,6 +504,36 @@ def lane_report(lane):
 
     return "The report of the lane has a defect. Each line is one finding:\n" + done.stdout.strip()
 
+def issue_number(id):
+    """Returns the number of the GitHub issue that an item id names, or 0 for an id that is not a plain issue number."""
+    if id.isdigit() and int(id) > 0:
+        return int(id)
+
+    return 0
+
+def closing_line(project, base, id):
+    """Returns the closing line of the body of a pull request for the item `id` into `base`: Closes for the trunk, Addresses for any other branch, so a round branch never closes an issue before the integration pull request lands. An id that is no issue number gets no line."""
+    number = issue_number(id)
+    if number == 0:
+        return ""
+
+    return ("Closes" if base == project.base_branch else "Addresses") + " #%d" % number
+
+def with_line(text, line):
+    """Returns the text with the line after it, one blank line between them. An empty line leaves the text as it is."""
+    if line == "":
+        return text
+
+    return line if text == "" else text + "\n\n" + line
+
+def closes_of(project, base, id):
+    """Returns the issues that the pull request of the item `id` into `base` closes: the issue of the item for the trunk, and none for any other branch."""
+    number = issue_number(id)
+    if number == 0 or base != project.base_branch:
+        return []
+
+    return [number]
+
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
     A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""
@@ -660,7 +693,8 @@ def land(approved, project, round_settings, n):
             continue
 
         # The merge accepts the draft that the run opened, and marks it ready after its guards. The hand-off call reads no draft.
-        prs.append(struct(item = id, head = head, approved = entry.approved, **own_draft))
+        # The pull request closes the issue of the item when it goes into the trunk, and nothing else: the body that pr_open wrote says the same.
+        prs.append(struct(item = id, head = head, approved = entry.approved, closes = closes_of(project, base, id), **own_draft))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
@@ -681,7 +715,7 @@ def land(approved, project, round_settings, n):
             hold = "hold",
             own = {"logins": [round_settings["owner"]], "emails": [round_settings["owner_email"]]},
             gate_run = round_settings["union_gate"],
-            forbid_text = ATTRIBUTION + id_patterns([pr.item for pr in prs]),
+            forbid_text = (ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS) + id_patterns([pr.item for pr in prs]),
             integration = round_settings["integration_pr"],
         )
 
@@ -1323,20 +1357,16 @@ def _lane(item, project, round_settings):
 
     # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the engine pushed.
     # The engine opens the draft pull request of the item once (a resume finds the open one) and,
-    # when the item has a parent, links it into the native stack of the pull request of that item. The call owns only the closing line of the body:
-    # `Closes #N` when the base is the default branch and `Addresses #N` on any other. An item id that is not an issue number gets no line, and a body that exists is kept.
-    # The body is the text of the item. Only the pull request into the trunk may close an issue, so a closing keyword in the text is allowed when the round branch is the trunk (integration)
-    # and the call refuses it when the base is another branch.
-    trunk = base == project.base_branch
+    # when the item has a parent, links it into the native stack of the pull request of that item. The call writes the body as given, and a pull request that exists is kept.
+    # The body is the text of the item and its closing line: `Closes #N` when the base is the trunk and `Addresses #N` on any other. An item id that is not an issue number gets no line.
+    # Only the pull request into the trunk may close an issue, so forbid_text holds the closing keywords for any other base.
     draft = pr_open(
         name = "draft",
         title = item.title,
-        body = item.body,
-        integration = trunk,
+        body = with_line(item.body, closing_line(project, base, item.id)),
         base = base,
-        issue = int(item.id) if item.id.isdigit() else 0,
         parent = parent.id,
-        forbid_text = ATTRIBUTION,
+        forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
     )
 
     # The board is a project choice: the key `board` of the project vars. With none, the run makes no board call.
@@ -1448,8 +1478,7 @@ def _lane(item, project, round_settings):
             name = "approved",
             key = "approved",
             text = "The review approved the head %s.\n\nThe plan:\n\n%s%s" % (loop.gate.head, plan.text, wontfix_text(loop.ledger, "\n\nThe review accepted these findings as wontfix:\n")),
-            integration = trunk,
-            forbid_text = ATTRIBUTION,
+            forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
         )
 
     return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number)

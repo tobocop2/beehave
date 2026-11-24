@@ -154,6 +154,7 @@ func newWorld(t *testing.T) *world {
 	return &world{
 		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, scopes: []string{"repo", "workflow"},
 		stacks: map[int]string{}, tip: tipSHA, tipFound: true, body: "rows", fails: map[string]bool{},
+		closingRefs: &model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{}},
 	}
 }
 
