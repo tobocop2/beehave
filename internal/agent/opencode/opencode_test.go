@@ -283,13 +283,6 @@ func TestRun_ARunNeedsAnOpenCodeVersionFrom1_19_5UpToBut3_0_0OnEveryPath(t *test
 
 				result := guardedRun(t, guarded(absolute(t, "testdata/ok.jsonl"), tc.version, true), func(s *agent.Spec) { s.Guard = guard })
 
-				if tc.starts && guard != "" && strings.HasPrefix(tc.version, "2.") {
-					assert.Equal(t, agent.OutcomeNotStarted, result.Outcome)
-					assert.Contains(t, result.Note, "the guard of forbid_commands does not work from version 2.0.0 on")
-
-					return
-				}
-
 				if tc.starts {
 					assert.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
 
@@ -366,7 +359,7 @@ func TestProfile_PinsTheRecordedVersionAndRefusesWhatItCannotProve(t *testing.T)
 
 	assert.Equal(t, "1.19.5", p.SupportedFrom)
 	assert.Equal(t, "3.0.0", p.SupportedBefore)
-	assert.Equal(t, "2.0.0", p.GuardBefore)
+	assert.Empty(t, p.GuardBefore, "the guard plugin refuses a forbidden command on 1.x and on 2.x, so no version is closed to a guarded step")
 	assert.True(t, p.GuardPosixOnly)
 	assert.Equal(t, time.Hour, p.DefaultTimeout)
 }
