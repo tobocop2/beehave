@@ -68,10 +68,16 @@ type Machine struct {
 
 // New returns a machine. A test builds the link over SSH().
 func New(mode hosttest.Mode) *Machine {
-	return &Machine{
+	m := &Machine{
 		Broken: mode == hosttest.Broken, BadDisk: mode == hosttest.UnreadableDisk, Offline: mode == hosttest.Unreachable,
 		Units: map[string]*Unit{}, Files: map[string]bool{},
 	}
+
+	if mode == hosttest.UnreadableLog {
+		m.Fail = map[string]int{"tail": 1}
+	}
+
+	return m
 }
 
 // SSH returns the ssh command line of the machine.
