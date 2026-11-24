@@ -288,13 +288,14 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 - A class name holds letters, digits, dot, underscore and hyphen, and starts with a letter or a digit.
 - A count is a whole number from 1 to 1048576. A count below 1, or a value that is not a whole number, is refused, and the refusal names the class.
 - A `command` call joins a class with `slots = "<class>"`. See `command` in the workflow file reference.
-- The jobs of a class with one count share one durable queue, named `slots:<class>:<count>`, with one partition for each host. A job of another class, and a job of no class, never waits for it. Two hosts with different counts for one class use two queues, so each host keeps its own count.
+- The jobs of a class with one count share one durable queue, named `slots:<class>:<count>`, with one partition for each host. A job of another class never waits for it. Two hosts with different counts for one class use two queues, so each host keeps its own count.
 - The engine records the count in the input of the job when it queues the job. A rewind of the job reads the queue from that input.
 - A change of a count in the `host` block takes effect for the next job that queues. A job that is already queued stays on the queue with its old name and still runs, because the queues live in the database. For a short time a host can run the old count plus the new count at once.
 - A job that was queued by a build before the count was recorded has no count in its input. A resume cannot put it back in a queue, and it fails with an error that names the run, the step and the job. Run the item again from its start. Before an upgrade, let the slot queues drain.
 - A call names a class that the `host` block of its project lists. Any other class is refused when the workflow calls it, and the refusal names the class and the host.
 - Projects share a host by name. If two projects declare the same host and give different counts for one class, the config load is refused, and the refusal names the host, the class, both projects and both counts. Equal counts are fine.
-- A call with no `slots` has no limit from the engine. A gate uses the reserved class `gate` with the count `gate_slots`, on the queue `slots:gate:<count>`.
+- A `command` call with a `host` and no `slots` runs in the class `default`. Its count is the entry `default` in `slots`, and 1 when the block names none. Two projects that declare one host must give the same count for `default`. The `beehave` program always has the slots resolver, so a project with no `slots` entry runs its host jobs one at a time on each host. A call with `retries` takes no slot, because it is one step and a step cannot wait on a queue.
+- A gate uses the reserved class `gate` with the count `gate_slots`, on the queue `slots:gate:<count>`.
 - A gate that was queued before an upgrade waits on the old queue `hosts`. That queue is gone. Let the gates drain before an upgrade, or run the item again from its start.
 
 `cmd/beehave/adapters.go` picks the provider from its host block by `provider`, like the tracker and the forge. `beehave check config` builds the host of each project.
