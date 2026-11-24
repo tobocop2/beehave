@@ -125,19 +125,22 @@ func (c Config) slotProblems() Problems {
 	return problems
 }
 
-// withGate is the slot counts of a host block with the gate slots added under the reserved class. A block with no gate slots adds none.
+// withGate is the slot counts of a host block with the gate slots added under the reserved class, and the default class added when the block does not name it.
+// A block with no gate slots adds none.
 func withGate(host *model.HostConfig) map[string]int {
 	counts := maps.Clone(host.Slots)
-
-	if host.GateSlots < 1 {
-		return counts
-	}
 
 	if counts == nil {
 		counts = map[string]int{}
 	}
 
-	counts[model.GateClass] = host.GateSlots
+	if counts[model.DefaultClass] < 1 {
+		counts[model.DefaultClass] = model.DefaultSlots
+	}
+
+	if host.GateSlots >= 1 {
+		counts[model.GateClass] = host.GateSlots
+	}
 
 	return counts
 }

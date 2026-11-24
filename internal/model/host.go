@@ -41,6 +41,12 @@ const MaxDiskFloorGB = 1 << 20
 // GateClass is the slot class of the gates. It is reserved: `host.slots` cannot name it and a command call cannot use it.
 const GateClass = "gate"
 
+// DefaultClass is the slot class of a host job that names none. `host.slots` can set its count. A host that does not runs one job of the class at once.
+const DefaultClass = "default"
+
+// DefaultSlots is the count of the default slot class when `host.slots` does not name it.
+const DefaultSlots = 1
+
 // HostConfig is the [host] table of a project: the keys every provider shares, and the block of the chosen provider.
 type HostConfig struct {
 	Provider     HostProvider
