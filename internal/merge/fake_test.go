@@ -30,17 +30,19 @@ var errDown = errors.New("down")
 // world is the fake forge. A name in fails makes the method of that name fail. writes lists every call that changes the forge.
 type world struct {
 	first, later *model.PullRequest
-	children     []model.PullRequest
-	checks       []model.Check
-	scopes       []string
-	requests     []model.ChangeRequest
-	threads      []model.ReviewThread
-	stacks       map[int]string
-	stackQueue   []string
-	tip          string
-	tipFound     bool
-	body         string
-	fails        map[string]bool
+	// facts is the answer of the typed read. Nil means the facts of the first view.
+	facts      *model.PullFacts
+	children   []model.PullRequest
+	checks     []model.Check
+	scopes     []string
+	requests   []model.ChangeRequest
+	threads    []model.ReviewThread
+	stacks     map[int]string
+	stackQueue []string
+	tip        string
+	tipFound   bool
+	body       string
+	fails      map[string]bool
 	// down is the error of a method named in fails. Nil means errDown.
 	down   error
 	views  int
@@ -196,6 +198,28 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 	}
 
 	return *w.first, nil
+}
+
+// PullRead answers the typed read: the facts field when it is set, else the facts of the first view. A hole in the state, head or base is refused, as the contract says.
+func (w *world) PullRead(_ context.Context, number int) (model.PullFacts, error) {
+	w.calls = append(w.calls, fmt.Sprintf("PullRead %d", number))
+
+	if err := w.fail("PullRead"); err != nil {
+		return model.PullFacts{}, err
+	}
+
+	facts := w.first.Facts()
+	if w.facts != nil {
+		facts = *w.facts
+	}
+
+	facts.Number = number
+
+	if facts.State == "" || facts.Head == "" || facts.Base == "" {
+		return model.PullFacts{}, fmt.Errorf("PullRead %d: the read has no state, head or base", number)
+	}
+
+	return facts, nil
 }
 
 func (w *world) PullCounts(context.Context, int) (commits, files int, err error) {

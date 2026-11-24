@@ -68,6 +68,16 @@ func TestOrNull(t *testing.T) {
 	assert.Equal(t, "x", model.OrNull("x"))
 }
 
+func TestPullRequest_FactsReadsStateHeadBaseAuthorAndAssigneesAndLeavesAnAbsentFieldEmpty(t *testing.T) {
+	t.Parallel()
+
+	state, head, base := "OPEN", "abc", "main"
+	view := model.PullRequest{Number: 4, State: &state, HeadRefOid: &head, BaseRefName: &base, Author: model.Account{Login: "dev"}, Assignees: []model.Account{{Login: "a"}, {Login: "b"}}}
+
+	assert.Equal(t, model.PullFacts{Number: 4, State: "OPEN", Head: "abc", Base: "main", Author: "dev", Assignees: []string{"a", "b"}}, view.Facts())
+	assert.Equal(t, model.PullFacts{}, model.PullRequest{}.Facts())
+}
+
 func TestIsRepoPart(t *testing.T) {
 	t.Parallel()
 

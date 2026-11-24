@@ -106,9 +106,15 @@ type Body interface {
 	SetBody(ctx context.Context, pr int, body string) error
 }
 
+// Pins is what the merge reads to check that the pull request is still the one that was gated: the state, the head and the base, from the typed read.
+type Pins interface {
+	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
+}
+
 // Forge is the forge the merge works on.
 type Forge interface {
 	Reads
+	Pins
 	Approvals
 	Closings
 	Writes
@@ -220,6 +226,8 @@ type attempt struct {
 	forge Forge
 	req   Request
 	view  model.PullRequest
+	// facts are the state, head and base from the typed read, made with the first read. The state guard decides on them.
+	facts model.PullFacts
 	files int // the forge's count of changed files, read with the first read
 	// committers are the committers of the commits, read with the first read.
 	committers []model.Committer

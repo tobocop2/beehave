@@ -617,6 +617,44 @@ func TestPRView(t *testing.T) {
 	require.ErrorContains(t, err, "cannot read pull request 6 (isDraft): cannot read the answer of `gh pr view`")
 }
 
+func TestPullRead_ReturnsStateHeadBaseAuthorAndAssignees(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, `{"number":6,"state":"OPEN","headRefOid":"abc","baseRefName":"main","author":{"login":"gz"},"assignees":[{"login":"a"},{"login":"b"}]}`)
+
+	facts, err := f.PullRead(context.Background(), 6)
+
+	require.NoError(t, err)
+	assert.Equal(t, model.PullFacts{Number: 6, State: "OPEN", Head: "abc", Base: "main", Author: "gz", Assignees: []string{"a", "b"}}, facts)
+	assert.Equal(t, [][]string{{"pr", "view", "6", "--repo", repo, "--json", "number,state,headRefOid,baseRefName,author,assignees"}}, run.Calls)
+}
+
+func TestPullRead_RefusesAReadWithoutStateHeadOrBase(t *testing.T) {
+	t.Parallel()
+
+	for name, answer := range map[string]string{
+		"state": `{"state":null,"headRefOid":"abc","baseRefName":"main"}`,
+		"head":  `{"state":"OPEN","headRefOid":null,"baseRefName":"main"}`,
+		"base":  `{"state":"OPEN","headRefOid":"abc"}`,
+	} {
+		f, _ := fixed(t, answer)
+
+		_, err := f.PullRead(context.Background(), 6)
+
+		require.ErrorContains(t, err, "pull request 6: the read has no state, head or base", name)
+	}
+}
+
+func TestPullRead_FailsWhenTheReadFails(t *testing.T) {
+	t.Parallel()
+
+	f, _ := failing(t, "")
+
+	_, err := f.PullRead(context.Background(), 6)
+
+	require.ErrorContains(t, err, "cannot read pull request 6")
+}
+
 func TestNewExec_RunsTheGhBinaryOnPath(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho '[[{\"state\": \"APPROVED\"}]]'\n"
