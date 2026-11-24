@@ -31,7 +31,9 @@ const (
 	sleepName            = "sleep"
 	mergeName            = "merge"
 	preflightName        = "preflight"
-	queueName            = "queue"
+	itemListName         = "item_list"
+	prListName           = "pr_list"
+	runReadName          = "run_read"
 	itemCommentName      = "item_comment"
 	itemCreateName       = "item_create"
 	itemReadName         = "item_read"
@@ -67,7 +69,9 @@ func resultFields() map[string][]string {
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
 		preflightName:    {"ok", "stop", "code", reasonField},
-		queueName:        {"rows", "free", "pulls"},
+		itemListName:     {ItemsKeyword},
+		prListName:       {"pulls"},
+		runReadName:      {runsResult, "free"},
 		sleepName:        {"slept"},
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
@@ -79,9 +83,12 @@ func resultFields() map[string][]string {
 	return fields
 }
 
+// runsResult is the result field that lists runs.
+const runsResult = "runs"
+
 // swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
 func swarmResultFields() map[string][]string {
-	return map[string][]string{spawnName: {"runs"}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
+	return map[string][]string{spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
 }
 
 // gateResultFields holds the fields of the gate builtin.

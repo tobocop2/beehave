@@ -49,7 +49,10 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"facts":         keysOf(factsOutputs(model.Project{})),
 		"item_comment":  keysOf(commentOutputs("")),
 		"item_create":   keysOf(createOutputs("", true)),
+		"item_list":     keysOf(itemListOutputs(nil)),
 		"item_read":     keysOf(readOutputs(false, "", nil, nil, "")),
+		"pr_list":       keysOf(prListOutputs(nil)),
+		"run_read":      keysOf(runReadOutputs(nil, 0)),
 		"item_status":   keysOf(statusOutputs("", "")),
 		"host_teardown": keysOf(teardownOutputs(true, "")),
 		"host_up":       keysOf(upOutputs(true, "")),
@@ -94,15 +97,11 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	first, err := firstOfValue(firstChoice{})
 	require.NoError(t, err)
 
-	queuedRows, err := queuedValue(queued{})
-	require.NoError(t, err)
-
 	got := map[string][]string{
 		"cancel":   cancelValue(cancelOutcome{}).AttrNames(),
 		"first_of": first.AttrNames(),
 		"merge":    batchStruct(t, landed).AttrNames(),
 		"gather":   gathered.AttrNames(),
-		"queue":    queuedRows.AttrNames(),
 		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
 		"stream":   streamValue(streamRead{}).AttrNames(),
 	}

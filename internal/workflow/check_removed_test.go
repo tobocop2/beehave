@@ -28,6 +28,20 @@ func TestCheck_ABuiltinThatTheAPIRemovedIsRefusedAsAnUndefinedNameAndNamed(t *te
 	}
 }
 
+func TestCheck_ACallOfTheQueueBuiltinIsRefusedAndNamesTheLibraryThatReplacesIt(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "undefined: queue")
+	assert.Contains(t, got[0], `load("@beehave//queue.star", "queue")`)
+
+	loaded := checkText(t, "load(\"@beehave//queue.star\", \"queue\")\n\ndef main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
+
+	assert.Empty(t, loaded, "a file that loads the library function passes the check")
+}
+
 func TestCheck_AKeywordThatTheAPIRemovedIsRefusedByNameWithTheBuiltinThatTookIt(t *testing.T) {
 	t.Parallel()
 

@@ -120,8 +120,11 @@ func queuePull(t *testing.T, number int, branch string, labels ...string) model.
 const seenLine = `    command(name = "seen", run = ["seen"] + [r.item + ":" + r.state + ":" + r.severity + ":" + str(r.pr) for r in q.rows] + ["free=" + str(q.free)])
 `
 
+// queueLoad loads the queue function of the library, as the workflow files of the examples do.
+const queueLoad = "load(\"@beehave//queue.star\", \"queue\")\n\n"
+
 func queueFlow(arguments string) string {
-	return "def main(item):\n    q = queue(" + arguments + ")\n" + seenLine
+	return queueLoad + "def main(item):\n    q = queue(" + arguments + ")\n" + seenLine
 }
 
 // seenBy returns the words of the one seen command of the parent.
@@ -164,7 +167,7 @@ func TestQueue_AHoldSetAfterTheQueueCallStopsTheRunAtItsStart(t *testing.T) {
 	h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	q.afterFirstRead = func(q *fakeQueue) { q.hold("21", true) }
 
-	file := `def work(item):
+	file := queueLoad + `def work(item):
     command(name = "w", run = ["w"])
 
 def main(item):
@@ -182,7 +185,7 @@ def main(item):
 }
 
 // blockedChild is a workflow file whose child 21 waits until the parent runs its seen command, so the run of 21 is open while queue reads.
-const blockedChild = `def work(item):
+const blockedChild = queueLoad + `def work(item):
     command(name = "w", run = ["w"])
 
 def main(item):
@@ -235,7 +238,7 @@ func TestQueue_FreeFallsWhenARunIsEnqueued(t *testing.T) {
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	holdChildUntilSeen(h)
 
-	file := `def work(item):
+	file := queueLoad + `def work(item):
     command(name = "w", run = ["w"])
 
 def main(item):
@@ -253,7 +256,7 @@ def main(item):
 }
 
 // endedChild runs a child, waits for it, and then reads the queue.
-const endedChild = `def work(item):
+const endedChild = queueLoad + `def work(item):
     command(name = "w", run = ["w"])
 
 def main(item):
@@ -292,7 +295,7 @@ func TestQueue_ASucceededItemIsDone(t *testing.T) {
 
 // foreignChild runs a child that ends as a foreign review does: with the reason, the recorded pull request and the recorded findings. Then it reads the queue.
 func foreignChild(reason string, pr int, findings string) string {
-	return `def work(item):
+	return queueLoad + `def work(item):
     command(name = "w", run = ["w"])
     return {"reason": "` + reason + `", "pr": ` + strconv.Itoa(pr) + `, "findings": ` + findings + `}
 
@@ -434,13 +437,13 @@ func TestQueue_ABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
 
 	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
-	require.ErrorIs(t, err, errNoQueue)
+	require.ErrorIs(t, err, errNoItemList)
 }
 
 func TestQueue_AReplayReturnsTheRecordedRowsNotAFreshRead(t *testing.T) {
 	t.Parallel()
 
-	file := writeFlow(t, `def main(item):
+	file := writeFlow(t, queueLoad+`def main(item):
     q = queue(name = "q")
     answer = wait(name = "ask", question = "go?").answer
     command(name = "seen", run = ["seen"] + [r.item + ":" + r.state for r in q.rows])
@@ -470,20 +473,60 @@ func TestQueue_AReplayReturnsTheRecordedRowsNotAFreshRead(t *testing.T) {
 	assert.Equal(t, []string{"seen 21:ready"}, h.commands.ran(), "the rows recorded before the stop come back, whatever the tracker says now")
 }
 
-func TestQueue_JoinPullsKeepsTheLowestNumberAndMatchesLabelsByName(t *testing.T) {
+func TestQueue_OfManyPullRequestsOnOneBranchTheLowestNumberCountsAndOneHoldLabelHolds(t *testing.T) {
 	t.Parallel()
 
-	joined := joinPulls([]model.OpenPull{
-		queuePull(t, 9, "21", "other").Open(),
-		queuePull(t, 5, "21", "other").Open(),
-		queuePull(t, 6, "21", "hold").Open(),
-	}, "hold")
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)},
+		queuePull(t, 9, "21", "other"), queuePull(t, 5, "21", "other"), queuePull(t, 6, "21", "hold"), queuePull(t, 7, "22", "other"))
 
-	assert.Equal(t, map[string]joinedPull{"21": {number: 5, held: true}}, joined, "the lowest number counts and one hold label holds")
-	assert.False(t, joinPulls([]model.OpenPull{queuePull(t, 9, "21", "other").Open()}, "hold")["21"].held)
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", hold = "hold"`)), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21:hold:P1:5", "22:ready:P1:7", "free=2"}, seenBy(t, h), "the lowest number counts and one hold label holds, matched by name")
 }
 
-func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T) {
+func TestQueue_ALabelAndABaseAreReadByTheTrackerAndTheForge(t *testing.T) {
+	t.Parallel()
+
+	tracked := queueItem("21", model.SeverityP1)
+	tracked.Labels = []string{"round"}
+
+	h, q := queueHarness(t, []model.Item{tracked, queueItem("22", model.SeverityP1)})
+	q.pulls = []model.PullRequest{openPullOf(t, 7, "22", "dev", "bob", "t", false), openPullOf(t, 8, "21", "main", "bob", "t", false)}
+
+	file := queueLoad + `def main(item):
+    q = queue(name = "q", label = "round", base = "main")
+    command(name = "seen", run = ["seen"] + [r.item for r in q.rows] + [str(p.number) + ":" + p.item for p in q.pulls])
+`
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21", "8:21"}, seenBy(t, h), "the rows hold the items of the label and the pulls those of the base")
+	assert.Equal(t, []string{"round", ""}, q.labelsAsked, "the label filters the rows, and one read of every item names the item of a pull request")
+	assert.Equal(t, []string{"main"}, q.basesAsked)
+}
+
+func TestQueue_APullRequestNamesAnItemThatTheLabelLeavesOut(t *testing.T) {
+	t.Parallel()
+
+	tracked := queueItem("21", model.SeverityP1)
+	tracked.Labels = []string{"round"}
+
+	h, _ := queueHarness(t, []model.Item{tracked, queueItem("22", model.SeverityP1)}, queuePull(t, 7, "22"))
+
+	file := queueLoad + `def main(item):
+    q = queue(name = "q", label = "round")
+    command(name = "seen", run = ["seen"] + [r.item for r in q.rows] + [str(p.number) + ":" + p.item for p in q.pulls])
+`
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21", "7:22"}, seenBy(t, h), "the pull request of an item that the label leaves out is listed, with its item")
+}
+
+func TestRunRead_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -492,18 +535,14 @@ func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T)
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
-	_, err = engine.readQueue(t.Context(), testProject, "", "")
-	require.ErrorContains(t, err, "count the open runs", "the slots are read before the rows, so the slots fail first")
+	_, _, err = engine.lastRuns([]string{"21"})
+	require.ErrorContains(t, err, "count the open runs", "the slots are read before the runs, so the slots fail first")
 
 	_, err = engine.freeSlots()
 	require.ErrorContains(t, err, "count the open runs")
 
 	_, err = engine.runOf("21")
 	require.ErrorContains(t, err, "list the runs of item 21", "the run of an item cannot be read")
-
-	rows, err := engine.queueRows(t.Context(), nil, nil, nil)
-	require.NoError(t, err, "no item has no run to read")
-	assert.Empty(t, rows)
 }
 
 func TestQueue_ARunThatEndsAfterTheSlotsAreReadShowsAsEndedWithItsSlotCounted(t *testing.T) {
@@ -567,7 +606,7 @@ func TestQueue_AFailedReadOfTheHoldAtStartStopsTheRunWithTheError(t *testing.T) 
 		q.itemsErr = errFake
 	}
 
-	file := `def work(item):
+	file := queueLoad + `def work(item):
     command(name = "w", run = ["w"])
 
 def main(item):

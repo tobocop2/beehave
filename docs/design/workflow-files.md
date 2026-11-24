@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -81,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -452,11 +452,40 @@ The steps are `command` steps, so a replay reads their records and runs no git a
 
 Both builtins match text. They run no command, record no step and need no repository.
 
-### `queue`
+### The queue library and its reads
 
-`queue(name, hold, label)` reads the open items of the tracker and the open pull requests of the forge in one recorded step. It returns `rows`, `free` and `pulls`.
+`queue(name, hold, label, base)` is a function of the embedded library `queue.star`. Load it with `load("@beehave//queue.star", "queue")`. It reads the open work of the project with three builtins and returns `rows`, `free` and `pulls`. The library also exports `rank(rows, me)` and `SEVERITIES`.
 
-`label` keeps the items that carry that tracker label. A call with no `label` keeps every open item. The engine reads no project setting for the choice: the workflow passes it. A workflow that needs a list of item ids keeps the rows whose `item` is in the list.
+#### `item_list`
+
+`item_list(label, name)` reads the open items of the tracker and returns `items`. Each item has `id`, `severity`, `hold`, `parent`, `assignee`, `title` and `labels`. `labels` is an empty list when the item has none.
+
+- A `label` keeps the items that carry that tracker label. The tracker applies the label. An empty `label` keeps every open item.
+- The read is a recorded step. A replay returns the first answer.
+- A read that fails ends the step with an error. A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `pr_list`
+
+`pr_list(base, name)` reads the open pull requests of the forge and returns `pulls`. Each pull request has `number`, `branch`, `base`, `author`, `draft`, `title`, `labels` and `review_decision`.
+
+- A `base` keeps the pull requests on that base. The forge applies the base. An empty `base` keeps every open pull request.
+- A project with no forge has no pull requests.
+- The read is a recorded step. A read that fails ends the step with an error. A build with no queue reader fails the call.
+
+#### `run_read`
+
+`run_read(items, name)` reads the free slots, then the last run of each item in `items`. It returns `runs`, a list in the order of `items`, and `free`. Each run has `item`, `state`, `value`, `stop_step` and `stop_reason`.
+
+- `state` is `none`, `running`, `failed`, `stopped` or `done`. `none` is an item that never ran, or whose last run was canceled.
+- `value` is what the last run of a `done` item returned. It is None for any other state.
+- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued. The call reads the slots before the runs, so a run that ended a moment ago still holds its slot.
+- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error that names the run and the command `beehave run <item>`.
+
+#### `queue`
+
+`queue(name, hold, label, base)` reads in this order: `item_list`, `pr_list`, `run_read`, and `pr_state` for each owed foreign row. The steps are named `<name>-items`, `<name>-pulls`, `<name>-runs` and `<name>-state-<item>`. A call with a `label` makes one more `item_list` read, named `<name>-all`, so that a pull request names its item whatever the label of that item.
+
+`label` keeps the items that carry that tracker label. `base` keeps the pull requests on that base. The workflow passes both. The engine reads no project setting for the choice.
 
 Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step`, `stop_reason` and `value`. A `done` row carries in `value` what its last run returned, whoever started that run; it is None on any other row. The round of the remediation example reads it to land an approved run that the owner started with `beehave run`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
@@ -469,15 +498,11 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 | `hold` | The tracker holds the item, or its pull request has the label that `hold` names. A held item with a succeeded run is `hold`, not `done`, so a landing that the round rejected is offered once. |
 | `ready` | Otherwise. A held item is never `ready`. |
 
-- A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
-- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error that names the run and the command `beehave run <item>`. The new run is the last run of the item, and the call reads it in place of the unreadable one.
+- A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and `pr_state` shows that pull request as `MERGED`. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
-- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
-- `pulls` lists every open pull request of the forge, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
-- A read of the tracker or the forge that fails ends the step with an error.
-- A project with no forge has no pull requests.
-- A build with no queue reader fails the call.
+- `pulls` lists every open pull request that `pr_list` returned, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
+- The old `queue` builtin is removed. A file that calls `queue` with no load fails `beehave check workflow` with `undefined: queue` and the load line.
 
 A run that `spawn` started reads the hold of its item in the tracker again before its first step. If the item is on hold, the run stops with the stop `queue` and the code of a held pull request, and `gather` reports it as `stopped`.
 
