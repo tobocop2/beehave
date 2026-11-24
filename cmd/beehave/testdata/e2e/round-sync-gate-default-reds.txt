@@ -10,9 +10,9 @@ exec git -C origin add BASE_MARKER .gitignore
 exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
 exec git -C origin checkout -q main
 
-example local/project.star config/projects/local.star
+fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
-# The script tests the round, not the sandbox, so its project keeps the sandbox off as it did before the example set it.
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
 replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 replace config/projects/local.star '"make check"' '"sh '$WORK'/gate.sh"'
 replace config/projects/local.star 'test_report = "reports/*.xml",' 'test_report = "reports/*.xml", vars = {"round": {"base": "integration/r1", "owner": "owner", "lane_cap": 1, "fix_rounds": 1, "label": "round","base_reds": ["TestKnownRed"]}},'
