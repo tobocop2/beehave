@@ -11,7 +11,7 @@ exec git -C origin checkout -q main
 
 fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
-# The script tests the round, not the sandbox, so its project keeps the sandbox off as it did before the example set it.
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
 replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 subst flow/wf.star
 subst fake/claude
