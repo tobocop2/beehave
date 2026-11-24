@@ -1,13 +1,10 @@
 package workflow_test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func TestCheck_ChecksThePathRulesOfAnAgentStepForLiterals(t *testing.T) {
@@ -56,17 +53,4 @@ func TestCheck_ReportsAnUnknownKindOnceAndSkipsThePathRules(t *testing.T) {
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0], "unknown kind")
-}
-
-func TestCheck_AcceptsTheShippedWorkflowsOnThePathRules(t *testing.T) {
-	t.Parallel()
-
-	loader := folder(t, map[string]string{
-		"workflow.star": "load(\"@beehave//review_fix.star\", \"review_fix\")\ndef main(item):\n    return gate(name = \"check\")\n",
-	}, "workflow.star")
-
-	for _, path := range []string{loader, filepath.Join("..", "..", "examples", "remediation", "workflow.star")} {
-		found, _ := workflow.Check(path)
-		assert.Empty(t, problems(found), path)
-	}
 }

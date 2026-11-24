@@ -177,7 +177,7 @@ $(FLOW_RUN_TARGETS): test-run-flow-%:
 	GOMAXPROCS=$(GO_TEST_PROCS) $(GOTESTSUM)/junit-flow-$*.xml -- $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$*.out -run "^($$names)\$$" $(FLOW_PKG) > test-flow-$*.log 2>&1; \
 	rc=$$?; echo "== test-flow-$*.log"; cat test-flow-$*.log; exit $$rc
 
-test-examples: remedy  ## Build bin/remedy and run the tests of the examples folder alone (a local loop; make test runs them too)
+test-examples:  ## Run the tests of the examples folder alone (a local loop; make test runs them too)
 	go test -race -count=1 -timeout 120s ./examples/...
 
 coverage:  ## Enforce the coverage gate on coverage.out and the flow profiles (run make test first)
