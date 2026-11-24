@@ -109,30 +109,7 @@ func copyIntoWork(ts *testscript.TestScript, name, parent, folder string, args [
 
 // cmdScript is "script <name> [<to>]": it copies scripts/<name> of the repository to the path <to> in the work folder (default: <name>).
 func cmdScript(ts *testscript.TestScript, _ bool, args []string) {
-	if len(args) < 1 || len(args) > 2 {
-		ts.Fatalf("usage: script <name> [<to>]")
-	}
-
-	to := args[len(args)-1]
-
-	scripts := openRoot(ts, filepath.Join("..", ".."), "scripts")
-	defer scripts.Close()
-
-	work := openRoot(ts, ts.Getenv("WORK"), "")
-	defer work.Close()
-
-	text, err := scripts.ReadFile(args[0])
-	if err != nil {
-		ts.Fatalf("script: %v", err)
-	}
-
-	if err := work.MkdirAll(filepath.Dir(to), e2eFolderMode); err != nil {
-		ts.Fatalf("script: %v", err)
-	}
-
-	if err := work.WriteFile(to, text, e2eFileMode); err != nil {
-		ts.Fatalf("script: %v", err)
-	}
+	copyIntoWork(ts, "script", filepath.Join("..", ".."), "scripts", args)
 }
 
 // cmdReplace is "replace <file> <old> <new>": it replaces the one text old in the file, and fails when the file does not hold it.
