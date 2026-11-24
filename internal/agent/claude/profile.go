@@ -58,6 +58,7 @@ func (Adapter) Profile() agent.Profile {
 		SkillLine:  func(name string) string { return "/" + pluginName + ":" + name },
 		TurnsFlag:  "--max-turns",
 		BudgetFlag: "--max-budget-usd",
+		Windows:    usageWindows(),
 		Sandbox:    true,
 		MinVersion: minSandboxVersion,
 	}

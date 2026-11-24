@@ -2,16 +2,22 @@ package model
 
 import "time"
 
-// Window is one quota window: the percent used, and when it resets. A zero ResetsAt means the server gave no time.
+// Window is one quota window: its name, the percent used, and when it resets. A zero ResetsAt means the server gave no time.
 type Window struct {
+	Name     string
 	Percent  float64
 	ResetsAt time.Time
 }
 
-// Usage holds the two windows the runner pool decides on.
+// WindowSpec is a quota window that an agent declares: the name that a pool cap uses, and the cap that applies when the config sets none.
+type WindowSpec struct {
+	Name       string
+	DefaultMax float64
+}
+
+// Usage holds the windows the runner pool decides on, from the shortest to the longest. The pool compares the last window first.
 type Usage struct {
-	FiveHour Window
-	SevenDay Window
+	Windows []Window
 }
 
 // Reading is the usage of one runner, or the reason it could not be read. Build one with Known or Unknown.

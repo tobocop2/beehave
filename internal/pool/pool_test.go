@@ -15,23 +15,20 @@ import (
 )
 
 var (
-	caps = config.Pool{FiveHourMax: 90, SevenDayMax: 95}
+	caps = config.Pool{"five_hour": 90, "seven_day": 95}
 	t1   = time.Date(2026, 10, 24, 5, 0, 0, 0, time.UTC)
 	t2   = time.Date(2026, 10, 25, 7, 0, 0, 0, time.UTC)
 )
 
 func use(five, seven float64) model.Reading {
-	return model.Known(model.Usage{
-		FiveHour: model.Window{Percent: five, ResetsAt: t1},
-		SevenDay: model.Window{Percent: seven, ResetsAt: t2},
-	})
+	return useReset(five, seven, t1, t2)
 }
 
 func useReset(five, seven float64, fiveReset, sevenReset time.Time) model.Reading {
-	return model.Known(model.Usage{
-		FiveHour: model.Window{Percent: five, ResetsAt: fiveReset},
-		SevenDay: model.Window{Percent: seven, ResetsAt: sevenReset},
-	})
+	return model.Known(model.Usage{Windows: []model.Window{
+		{Name: "five_hour", Percent: five, ResetsAt: fiveReset},
+		{Name: "seven_day", Percent: seven, ResetsAt: sevenReset},
+	}})
 }
 
 func runners(names ...string) []model.Runner {

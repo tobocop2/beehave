@@ -1,5 +1,7 @@
 package config
 
+import "github.com/tobocop2/beehave/internal/model"
+
 // ArgumentOwners maps each constructor argument of the runners file and the project file to its constructor. An argument that two constructors take belongs to the first, as the loader reads it.
 func ArgumentOwners() map[string]string {
 	owners := map[string]string{}
@@ -11,7 +13,7 @@ func ArgumentOwners() map[string]string {
 		{Name: "ssh", Args: machine},
 	}
 
-	for _, specs := range [][]spec{runnersSpecs(), projectSpecs([]Block{{Name: "beads", Args: []Arg{{Key: "prefix"}}}}, hosts)} {
+	for _, specs := range [][]spec{runnersSpecs([]model.WindowSpec{{Name: "five_hour"}, {Name: "seven_day"}}), projectSpecs([]Block{{Name: "beads", Args: []Arg{{Key: "prefix"}}}}, hosts)} {
 		for _, s := range specs {
 			for _, argument := range s.arguments() {
 				if _, owned := owners[argument]; !owned {

@@ -5,9 +5,11 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,9 +32,12 @@ const (
 	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
 	envReviewLookback      = "BEEHAVE_REVIEW_LOOKBACK_DAYS"
-	envFiveHourMax         = "BEEHAVE_POOL_FIVE_HOUR_MAX"
-	envSevenDayMax         = "BEEHAVE_POOL_SEVEN_DAY_MAX"
 )
+
+// envPoolMax returns the name of the variable that sets the cap of a usage window: BEEHAVE_POOL_<NAME>_MAX.
+func envPoolMax(window string) string {
+	return "BEEHAVE_POOL_" + strings.ToUpper(window) + "_MAX"
+}
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
 const maxReviewPollMinutes = 10080
@@ -62,11 +67,11 @@ const DefaultPerLogin = 1
 // floatBits is the bit size of a percent that the BEEHAVE_* variables give.
 const floatBits = 64
 
-// Config is the config folder: the agent limit, the pool caps, the runners and the projects.
+// Config is the config folder: the agent limit, the pool caps of each agent, the runners and the projects.
 type Config struct {
 	Dir      string
 	Agents   agents
-	Pool     Pool
+	Pools    map[model.Agent]Pool
 	Runners  []model.Runner
 	Projects map[string]Project
 }
@@ -87,7 +92,7 @@ func (p Problems) Error() string {
 func DefaultConfig() Config {
 	return Config{
 		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, Concurrency: ConcurrencyStatic, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays, ContextWindowTokens: DefaultContextWindowTokens},
-		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
+		Pools:    map[model.Agent]Pool{},
 		Projects: map[string]Project{},
 	}
 }
@@ -117,17 +122,25 @@ func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, P
 	return cfg, problems
 }
 
+// loadFiles reads the runners file and the project files. Two agents that declare one usage window with two defaults refuse the registry, and no file is read.
 func (c *Config) loadFiles(adapters Adapters) Problems {
+	windows, err := declaredWindows(adapters)
+	if err != nil {
+		return Problems{err}
+	}
+
+	c.Pools = defaultPools(adapters)
+
 	var problems Problems
 
-	if err := c.loadRunners(adapters); err != nil {
+	if err := c.loadRunners(adapters, windows); err != nil {
 		problems = append(problems, err)
 	}
 
 	return append(problems, c.loadProjects(adapters)...)
 }
 
-func (c *Config) loadRunners(adapters Adapters) error {
+func (c *Config) loadRunners(adapters Adapters, windows []model.WindowSpec) error {
 	if old := filepath.Join(c.Dir, oldRunnersFileName); isFile(old) {
 		return refuseOld(old, runnersFileName)
 	}
@@ -138,7 +151,7 @@ func (c *Config) loadRunners(adapters Adapters) error {
 	}
 
 	var err error
-	c.Agents, c.Pool, c.Runners, err = loadRunnersFile(path, adapters)
+	c.Agents, c.Pools, c.Runners, err = loadRunnersFile(path, adapters, windows, c.Pools)
 
 	return err
 }
@@ -236,10 +249,41 @@ func (c *Config) applyEnv(env map[string]string) error {
 	}
 
 	return errors.Join(
-		overlayPercent(env, envFiveHourMax, &c.Pool.FiveHourMax),
-		overlayPercent(env, envSevenDayMax, &c.Pool.SevenDayMax),
+		c.overlayPools(env),
 		overlayBool(env, envTraceParent, &c.Agents.TraceParent),
 	)
+}
+
+// windowCaps returns the cap of each usage window that the pools hold. Agents that share a window name share its cap.
+func (c Config) windowCaps() map[string]float64 {
+	caps := map[string]float64{}
+
+	for _, pool := range c.Pools {
+		maps.Copy(caps, pool)
+	}
+
+	return caps
+}
+
+// overlayPools reads the cap of each usage window from its variable. The cap applies to every agent that declares the window.
+func (c *Config) overlayPools(env map[string]string) error {
+	var problems []error
+
+	caps := c.windowCaps()
+
+	for _, name := range slices.Sorted(maps.Keys(caps)) {
+		percent := caps[name]
+
+		if err := overlayPercent(env, envPoolMax(name), &percent); err != nil {
+			problems = append(problems, err)
+
+			continue
+		}
+
+		capWindow(c.Pools, name, percent)
+	}
+
+	return errors.Join(problems...)
 }
 
 // overlayBudgets reads the caps in dollars from the environment.
@@ -418,17 +462,13 @@ func (c Config) weekRetentionProblems(runnersPath string) Problems {
 func (c Config) poolProblems(runnersPath string) Problems {
 	var problems Problems
 
-	for _, limit := range []struct {
-		key, variable string
-		percent       float64
-	}{
-		{"five_hour_max", envFiveHourMax, c.Pool.FiveHourMax},
-		{"seven_day_max", envSevenDayMax, c.Pool.SevenDayMax},
-	} {
+	caps := c.windowCaps()
+
+	for _, name := range slices.Sorted(maps.Keys(caps)) {
 		// The negated form also refuses NaN, which fails every comparison.
-		if !(limit.percent > 0 && limit.percent <= maxPercent) {
+		if !(caps[name] > 0 && caps[name] <= maxPercent) {
 			problems = append(problems, refuse("`%s` in the pool block must be a number above 0 and up to 100. Set it in %s or in %s.",
-				limit.key, runnersPath, limit.variable))
+				name, runnersPath, envPoolMax(name)))
 		}
 	}
 

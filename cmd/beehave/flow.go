@@ -51,7 +51,7 @@ func loginsReading(cfg config.Config, read pool.Reader) logins {
 // poolRoom returns the function that reads the usage of the runners of the agent kind and says whether each one is known and under both usage caps.
 func poolRoom(cfg config.Config, kind model.Agent, read pool.Reader) func(ctx context.Context) bool {
 	return func(ctx context.Context) bool {
-		return pool.Headroom(ctx, cfg.Runners, cfg.Pool, kind, read)
+		return pool.Headroom(ctx, cfg.Runners, cfg.Pools[kind], kind, read)
 	}
 }
 
@@ -65,7 +65,7 @@ func poolReset(cfg config.Config, read pool.Reader) func(ctx context.Context, lo
 	return func(ctx context.Context, login string) (time.Time, bool, error) {
 		for _, runner := range cfg.Runners {
 			if runner.Name == login {
-				reset, known := pool.EarliestReset(map[string]model.Reading{login: read(ctx, runner)}, cfg.Pool)
+				reset, known := pool.EarliestReset(map[string]model.Reading{login: read(ctx, runner)}, cfg.Pools[runner.Agent])
 
 				return reset, known, nil
 			}
@@ -88,7 +88,7 @@ func (l logins) Reset(ctx context.Context, project, login string) (time.Time, bo
 // A runner of another agent kind is never returned, whatever its usage.
 func poolPick(cfg config.Config, kind model.Agent, read pool.Reader, selectRunner selector) func(ctx context.Context, busy []string) (string, error) {
 	return func(ctx context.Context, busy []string) (string, error) {
-		runner, err := selectRunner(ctx, cfg.Runners, cfg.Pool, kind, read, busy...)
+		runner, err := selectRunner(ctx, cfg.Runners, cfg.Pools[kind], kind, read, busy...)
 		if err != nil {
 			return "", fmt.Errorf("pick a runner from the pool: %w", err)
 		}
