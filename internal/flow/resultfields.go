@@ -112,6 +112,23 @@ func prHistoryOutputs(pulls []model.PriorPull) map[string]any {
 	return map[string]any{pullsField: append([]model.PriorPull{}, pulls...)}
 }
 
+// prReadOutputs are the fields of pr_read. A pull request that was not found has number 0 and found false, and every list is empty and never null.
+func prReadOutputs(facts model.PullFacts) map[string]any {
+	return map[string]any{
+		"found": facts.Number != 0, numberField: facts.Number, stateField: facts.State, "draft": facts.Draft, "labels": append([]string{}, facts.Labels...),
+		authorField: facts.Author, assigneesField: append([]string{}, facts.Assignees...), "reviewers": append([]string{}, facts.Reviewers...),
+		"links": append([]model.IssueLink{}, facts.Links...),
+	}
+}
+
+// issueAssigneesOutputs are the fields of issue_assignees: the logins that hold the issue, an empty list and never null for an issue that nobody holds.
+func issueAssigneesOutputs(logins []string) map[string]any {
+	return map[string]any{assigneesField: append([]string{}, logins...)}
+}
+
+// itemStopOutputs are the fields of item_stop: whether the stop is the stop of the run, which is so for the item of the run.
+func itemStopOutputs(recorded bool) map[string]any { return map[string]any{"recorded": recorded} }
+
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns", "budget" or "context" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.

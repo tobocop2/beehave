@@ -121,17 +121,16 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 	return view, nil
 }
 
-// PullRead returns the state, head commit, base branch, author and assignees of one pull request. A read with no state, head or base is refused.
+// PullRead returns the state, head commit, base branch, author, assignees, draft flag, labels, linked issues and reviewers of one pull request.
+// A read with no state, head, base, draft flag, label list or assignee list is refused.
 func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
-	view, err := f.PRView(ctx, pr, "number", "state", "headRefOid", "baseRefName", "author", "assignees")
+	view, err := f.PRView(ctx, pr, "number", "state", "headRefOid", "baseRefName", "author", "assignees", "isDraft", "labels", "body", "reviews", "reviewRequests")
 	if err != nil {
 		return model.PullFacts{}, err
 	}
 
-	facts := view.Facts()
-	facts.Number = pr
-
-	if err := facts.Check(); err != nil {
+	facts, err := view.Read(pr)
+	if err != nil {
 		return model.PullFacts{}, err
 	}
 

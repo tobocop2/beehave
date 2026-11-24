@@ -186,10 +186,10 @@ Both are required. The command refuses a `Doctor` with a nil value and runs no c
 | 5 | head moved |
 | 6 | base changed |
 | 7 | branch gone |
-| 8 | draft |
-| 9 | held |
 
-`Check` tests them in this order: merged, closed, branch gone, hold, draft, head, base. A merged pull request still shows a head that looks fine, so the state comes first. A hold outranks a draft.
+`Check` tests them in this order: merged, closed, branch gone, head, base. A merged pull request still shows a head that looks fine, so the state comes first.
+
+The claim stops are not in the package. They are the codes 8 (draft), 9 (held), 10 (claimed) and 11 (assigned) of the library function `claim_stop`, which reads the pull request with `pr_read`.
 
 Each stop carries lines that name the problem and the recovery.
 
@@ -197,7 +197,7 @@ Each stop carries lines that name the problem and the recovery.
 
 - The expected head must be a full 40-character SHA. Any other length is refused and never compared.
 - A failed read is a `ReadError`.
-- A pull request with no state, draft flag, head branch or label list is a `ReadError`, because a null would pass as an open and ready pull request.
+- A pull request with no state or head branch is a `ReadError`, because a null would pass as an open pull request.
 
 Only a missing branch counts as branch gone. That is when the ref read answers HTTP 404 and a second read of the repository succeeds, because a missing repository gives the same 404. Any other failed read of the branch is a `ReadError`.
 

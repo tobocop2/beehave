@@ -85,12 +85,14 @@ const agentVersion = 15
 const landVersion = 12
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
-const trackerVersion = 2
+// Version 3 adds the item_stop step.
+const trackerVersion = 3
 
 // forgeVersion is the version of the forge module. Version 2 added the pr_state step. Version 3 retires the kind pr_assign, which version 2 recorded.
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
 // Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
-const forgeVersion = 7
+// Version 8 adds the pr_read and issue_assignees steps.
+const forgeVersion = 8
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -132,8 +134,8 @@ func moduleTable() []stepModule {
 			steps:   []string{receiveStepName},
 		},
 		{name: moduleAgent, version: agentVersion, kinds: []string{agentStepName, loginStepName}},
-		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", "item_read", "item_status"}, retired: []string{"item_assign"}},
-		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, "pr_comment", prHistoryKind, "pr_open", prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
+		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", "item_read", "item_status", itemStopKind}, retired: []string{"item_assign"}},
+		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, issueAssigneesKind, "pr_comment", prHistoryKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
 		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},

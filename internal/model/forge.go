@@ -126,7 +126,9 @@ type PullRequest struct {
 	ReviewRequests []reviewRequest `json:"reviewRequests"`
 }
 
-// PullFacts is the typed read of one pull request: its number, state, head commit, base branch, author login and assignee logins.
+// PullFacts is the typed read of one pull request: its number, state, head commit, base branch, author login and assignee logins,
+// the draft flag, the label names, the issues that its body links in the order of the body, and the logins that reviewed it or were asked to.
+// A label with no name reads as null.
 type PullFacts struct {
 	Number    int
 	State     string
@@ -134,16 +136,97 @@ type PullFacts struct {
 	Base      string
 	Author    string
 	Assignees []string
+	Draft     bool
+	Labels    []string
+	Links     []IssueLink
+	Reviewers []string
 }
 
-// Facts is the typed read of the view: a field the view lacks is empty.
+// Facts is the typed read of the view: a field the view lacks is empty. The links of the body are not read here, because a link can be refused: see Read.
 func (p PullRequest) Facts() PullFacts {
 	facts := PullFacts{Number: p.Number, State: Deref(p.State), Head: Deref(p.HeadRefOid), Base: Deref(p.BaseRefName), Author: p.Author.Login}
-	for _, who := range p.Assignees {
-		facts.Assignees = append(facts.Assignees, who.Login)
+	if p.IsDraft != nil {
+		facts.Draft = *p.IsDraft
 	}
 
+	facts.Assignees = logins(p.Assignees)
+	facts.Labels = names(p.Labels)
+	facts.Reviewers = append(authors(p.Reviews), requested(p.ReviewRequests)...)
+
 	return facts
+}
+
+// logins lists the login of each account.
+func logins(accounts []Account) []string {
+	var out []string
+	for _, who := range accounts {
+		out = append(out, who.Login)
+	}
+
+	return out
+}
+
+// names lists the name of each label. A null name is the empty text.
+func names(tags []label) []string {
+	var out []string
+	for _, tag := range tags {
+		out = append(out, OrNull(tag.Name))
+	}
+
+	return out
+}
+
+// authors lists the login of the author of each review.
+func authors(reviews []pullReview) []string {
+	var out []string
+	for _, review := range reviews {
+		out = append(out, review.Author.Login)
+	}
+
+	return out
+}
+
+// requested lists the login of each review request.
+func requested(asks []reviewRequest) []string {
+	var out []string
+	for _, ask := range asks {
+		out = append(out, ask.Login)
+	}
+
+	return out
+}
+
+// Read is the typed read of pull request number pr from a view of the fields number, state, headRefOid, baseRefName, author, assignees, isDraft, labels, body, reviews and reviewRequests.
+// A read that lacks the state, the head, the base, the draft flag, the label list or the assignee list is an *IncompletePull, because a null would pass as an open, ready pull request that nobody holds.
+// A body whose link names a number that is not an int is refused too.
+func (p PullRequest) Read(pr int) (PullFacts, error) {
+	facts := p.Facts()
+	facts.Number = pr
+
+	links, err := BodyLinks(p.Body)
+	if err != nil {
+		return PullFacts{}, err
+	}
+
+	facts.Links = links
+
+	return facts, facts.incomplete(p.nullFields())
+}
+
+// nullFields names the fields that the view gave as null and that a typed read needs: the draft flag, the label list and the assignee list.
+func (p PullRequest) nullFields() []string {
+	var nulls []string
+
+	for _, field := range []struct {
+		name string
+		null bool
+	}{{"draft", p.IsDraft == nil}, {"labels", p.Labels == nil}, {"assignees", p.Assignees == nil}} {
+		if field.null {
+			nulls = append(nulls, field.name)
+		}
+	}
+
+	return nulls
 }
 
 // IncompletePull is the refusal of a typed read that lacks the state, the head or the base. Facts holds what the read did give, and Missing names each field it lacked.
@@ -157,7 +240,10 @@ func (e *IncompletePull) Error() string {
 }
 
 // Check is nil when the facts hold a state, a head and a base. Else it is an IncompletePull that names each missing field.
-func (f PullFacts) Check() error {
+func (f PullFacts) Check() error { return f.incomplete(nil) }
+
+// incomplete is Check with the names of more fields that the read lacked. Those come after the state, head and base.
+func (f PullFacts) incomplete(more []string) error {
 	var missing []string
 
 	for _, field := range []struct{ name, value string }{{"state", f.State}, {"head", f.Head}, {"base", f.Base}} {
@@ -166,6 +252,7 @@ func (f PullFacts) Check() error {
 		}
 	}
 
+	missing = append(missing, more...)
 	if len(missing) == 0 {
 		return nil
 	}

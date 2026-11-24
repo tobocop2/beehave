@@ -41,6 +41,9 @@ const (
 	prStateName          = "pr_state"
 	pushName             = "push"
 	prHistoryName        = "pr_history"
+	prReadName           = "pr_read"
+	issueAssigneesName   = "issue_assignees"
+	itemStopName         = "item_stop"
 	prTakeName           = "pr_take"
 	boardCardName        = "board_card"
 	roundSyncName        = "round_sync"
@@ -99,15 +102,18 @@ func factsResultFields() map[string][]string {
 // trackerResultFields holds the fields of the builtins that write the tracker, the pull request or its branch, and of pr_state and pr_history, which read pull requests.
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
-		itemCommentName: {"id"},
-		itemCreateName:  {"id", "created"},
-		itemReadName:    {"found", "id", "fields", "comments", "parent"},
-		itemStatusName:  {"id", statusField},
-		prCommentName:   {numberField},
-		prOpenName:      {numberField, "created", "stack"},
-		prStateName:     {stateField},
-		pushName:        {headField},
-		prHistoryName:   {"pulls"},
+		itemCommentName:    {"id"},
+		itemCreateName:     {"id", "created"},
+		itemReadName:       {"found", "id", "fields", "comments", "parent"},
+		itemStatusName:     {"id", statusField},
+		prCommentName:      {numberField},
+		prOpenName:         {numberField, "created", "stack"},
+		prStateName:        {stateField},
+		pushName:           {headField},
+		prHistoryName:      {"pulls"},
+		prReadName:         {"found", numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links"},
+		itemStopName:       {"recorded"},
+		issueAssigneesName: {"assignees"},
 	}
 }
 

@@ -1291,7 +1291,7 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
 // An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
-func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
 	built, err := p.forgeOf(project)
 	if err != nil {
 		return preflight.Result{}, err
@@ -1308,7 +1308,32 @@ func (p pulls) Preflight(ctx context.Context, project, item string, req prefligh
 
 	req.PR = number
 
-	return preflight.Check(ctx, built, req, hold)
+	return preflight.Check(ctx, built, req)
+}
+
+// ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
+func (p pulls) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return model.PullFacts{}, err
+	}
+
+	number, err := anyState(ctx, built, item)
+	if err != nil || number == 0 {
+		return model.PullFacts{}, err
+	}
+
+	return built.PullRead(ctx, number)
+}
+
+// IssueAssignees reads who holds an issue of the project, on its own repository when repo names one.
+func (p pulls) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return built.IssueAssignees(ctx, repo, number)
 }
 
 // anyState returns the number of the pull request of the item: the open one on its branch, then an open one that names it, then the merged one, then the newest closed one. It is 0 when there is none.
