@@ -411,8 +411,18 @@ func stepSignatures() map[string][]Param {
 		waitName:         waitParams(),
 		sleepName:        {{Name: "duration", Kind: KindText, Required: true, Rule: deadlineRule("duration"), Why: "The duration is how long the run sleeps, such as \"90s\" or \"10m\"."}, label},
 		earlierCallsName: {req("call", KindText), label},
+		earlierReadsName: earlierReadsParams(),
 		hostTeardownName: {opt("host", KindText), label},
 		hostUpName:       {opt("host", KindText), label},
+	}
+}
+
+// earlierReadsParams are the parameters of earlier_reads. The name is required, because it selects the steps to read.
+func earlierReadsParams() []Param {
+	return []Param{
+		req("kind", KindText),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name is the name of the steps to read, such as the name of the pr_closing calls of an earlier run."},
+		opt(itemKeyword, KindText), opt("own_run", KindBool),
 	}
 }
 
@@ -442,6 +452,7 @@ func readSignatures() map[string][]Param {
 	return map[string][]Param{
 		itemReadName:       {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
 		prStateName:        {req("pr", KindInt), opt(nameKeyword, KindText)},
+		prClosingName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 		prHistoryName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 		prReadName:         {opt("id", KindText), opt(nameKeyword, KindText)},
 		issueAssigneesName: {opt("repo", KindText), req("number", KindInt), opt(nameKeyword, KindText)},

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
@@ -98,9 +97,7 @@ func runID(item string, attempt int) string {
 
 // latestRun returns the attempt of the item with the highest number. found is false when the item never ran.
 func latestRun(client storeView, item string) (run, bool, error) {
-	prefix := runPrefix + item + attemptMarker
-
-	rows, err := client.List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
+	attempts, err := attemptsOf(client, item, dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return run{}, false, fmt.Errorf("list the runs of item %s: %w", item, err)
 	}
@@ -109,14 +106,34 @@ func latestRun(client storeView, item string) (run, bool, error) {
 
 	found := false
 
-	for _, row := range rows {
-		attempt, err := strconv.Atoi(strings.TrimPrefix(row.ID, prefix))
-		if err == nil && attempt > last.Attempt {
-			last, found = run{Status: row, Attempt: attempt}, true
+	for _, attempt := range attempts {
+		if attempt.Attempt > last.Attempt {
+			last, found = attempt, true
 		}
 	}
 
 	return last, found, nil
+}
+
+// attemptsOf lists the attempts of the item that the store holds, in no order. It is the one read of the runs of an item: latestRun and earlierRuns take it, and so do run_read and earlier_reads.
+// The prefix of item 12 also matches a run of item 12-r2, whose tail is not a number: only a numbered id is an attempt of this item. A caller names in opts what the store loads of each run.
+func attemptsOf(client storeView, item string, opts ...dbos.ListWorkflowsOption) ([]run, error) {
+	prefix := runPrefix + item + attemptMarker
+
+	rows, err := client.List(append([]dbos.ListWorkflowsOption{dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName)}, opts...)...)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the caller names the read
+	}
+
+	var attempts []run
+
+	for _, row := range rows {
+		if attempt, numbered := attemptOf(row.ID, prefix); numbered {
+			attempts = append(attempts, run{Status: row, Attempt: attempt})
+		}
+	}
+
+	return attempts, nil
 }
 
 // withBaseOf gives a run that a user started the base of the last run of the same item, which holds the base that its spawn gave it.

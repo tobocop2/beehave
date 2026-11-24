@@ -64,6 +64,23 @@ const (
 	SevenLabel = "round"
 )
 
+// What the closing read serves. Pull request 7 closes issue SevenClosing of its own repository and SevenClosingElsewhere of another one. NoClosingPull closes none.
+const (
+	SevenClosing                         = 12
+	SevenClosingElsewhere model.IssueRef = "other-org/other-repo#3"
+	NoClosingPull                        = 14
+)
+
+// SevenClosingRefs is the closing read of pull request 7 as every forge gives it.
+func SevenClosingRefs() model.ClosingRefs {
+	return model.ClosingRefs{BaseBranch: SevenBase, DefaultBranch: DefaultBranch, Issues: []int{SevenClosing}, Elsewhere: []model.IssueRef{SevenClosingElsewhere}}
+}
+
+// NoClosingRefs is the closing read of a pull request that closes no issue. Both lists are empty and never nil.
+func NoClosingRefs() model.ClosingRefs {
+	return model.ClosingRefs{BaseBranch: SevenBase, DefaultBranch: DefaultBranch, Issues: []int{}, Elsewhere: []model.IssueRef{}}
+}
+
 // SevenOpen is pull request 7 as the typed list read gives it.
 func SevenOpen() model.OpenPull {
 	return model.OpenPull{Number: Seven, Branch: SevenBranch, Base: SevenBase, Author: SevenReviewer, Title: SevenTitle, Labels: []string{SevenLabel}, ReviewDecision: "APPROVED"}
@@ -284,6 +301,7 @@ func checkStanding(c check, target forge.Forge) {
 	checkCounts(c, target)
 	checkPullRead(c, target)
 	CheckOpenPulls(c.r, target)
+	CheckClosingRefs(c.r, target)
 
 	ctx := context.Background()
 
@@ -377,6 +395,27 @@ func CheckCloneURL(r Reporter, target forge.Forge) {
 
 	if target.CloneURL() == "" {
 		r.Errorf("CloneURL: want the URL to clone the repository from, got none")
+	}
+}
+
+// CheckClosingRefs checks the closing read on a forge that serves pull requests 7 and NoClosingPull: the issues of the pull request, in its repository and in another one,
+// and an empty list, never nil, for a pull request that closes none. The failed command is checked by CheckForgeFails.
+func CheckClosingRefs(r Reporter, target forge.Lookup) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what string
+		pr   int
+		want model.ClosingRefs
+	}{
+		{"a pull request that closes two issues", Seven, SevenClosingRefs()},
+		{"a pull request that closes none", NoClosingPull, NoClosingRefs()},
+	} {
+		got, err := target.ClosingRefs(context.Background(), one.pr)
+		c.noError(err, "ClosingRefs")
+		c.equal(got, one.want, "ClosingRefs of "+one.what)
 	}
 }
 

@@ -19,6 +19,7 @@ const (
 	gateName    = "gate"
 
 	earlierCallsName = "earlier_calls"
+	earlierReadsName = "earlier_reads"
 	patchedName      = "patched"
 	writeName        = "write"
 
@@ -38,6 +39,7 @@ const (
 	itemCreateName       = "item_create"
 	itemReadName         = "item_read"
 	itemStatusName       = "item_status"
+	prClosingName        = "pr_closing"
 	prCommentName        = "pr_comment"
 	prOpenName           = "pr_open"
 	prStateName          = "pr_state"
@@ -56,6 +58,7 @@ const (
 	numberField          = "number"
 	statusField          = "status"
 	attemptsField        = "attempts"
+	foundField           = "found"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -79,7 +82,7 @@ func resultFields() map[string][]string {
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
-	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields(), roundResultFields()} {
+	for _, group := range []map[string][]string{swarmResultFields(), earlierResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields(), roundResultFields()} {
 		maps.Copy(fields, group)
 	}
 
@@ -92,6 +95,11 @@ const runsResult = "runs"
 // swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
 func swarmResultFields() map[string][]string {
 	return map[string][]string{spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
+}
+
+// earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
+func earlierResultFields() map[string][]string {
+	return map[string][]string{earlierReadsName: {"reads"}}
 }
 
 // gateResultFields holds the fields of the gate builtin.
@@ -111,14 +119,15 @@ func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
-		itemReadName:       {"found", "id", "fields", "comments", "parent"},
+		itemReadName:       {foundField, "id", "fields", "comments", "parent"},
 		itemStatusName:     {"id", statusField},
+		prClosingName:      {foundField, "issues", "forge"},
 		prCommentName:      {numberField},
 		prOpenName:         {numberField, "created", "stack"},
 		prStateName:        {stateField},
 		pushName:           {headField},
 		prHistoryName:      {"pulls"},
-		prReadName:         {"found", numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links", "unread"},
+		prReadName:         {foundField, numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links", "unread"},
 		itemStopName:       {"recorded"},
 		issueAssigneesName: {"assignees"},
 	}

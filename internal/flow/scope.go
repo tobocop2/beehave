@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -96,31 +95,6 @@ func (s *script) earlierScope(item string) (scopeRead, error) {
 	}
 
 	return scopeRead{}, nil
-}
-
-// earlierRuns lists the ids of the other runs of the item, the newest attempt first. It filters on no state and no attempt number, so a canceled, failed, live or newer run is in the list.
-// A caller that counts work over these runs counts a concurrent run as spent: that errs on the safe side for a cap.
-func (s *script) earlierRuns(item string) ([]string, error) {
-	prefix := runPrefix + item + attemptMarker
-
-	rows, err := s.e.store().List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
-	if err != nil {
-		return nil, fmt.Errorf("list the earlier runs of item %s: %w", item, err)
-	}
-
-	// The prefix of item 12 also matches a run of item 12-r2, whose tail is not a number: only a numbered id is an attempt of this item.
-	attempts := map[string]int{}
-
-	for _, row := range rows {
-		if attempt, numbered := attemptOf(row.ID, prefix); numbered && row.ID != workflowID(s.ctx) {
-			attempts[row.ID] = attempt
-		}
-	}
-
-	ids := slices.Collect(maps.Keys(attempts))
-	slices.SortFunc(ids, func(a, b string) int { return attempts[b] - attempts[a] })
-
-	return ids, nil
 }
 
 // recordedScope returns the scope that the scope step of a run recorded. Found is false when the run recorded none: it never found a pull request.
