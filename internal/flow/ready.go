@@ -28,7 +28,7 @@ type OpenResult struct {
 type forge interface {
 	Pull(ctx context.Context, project, item string) (review.Standing, error)
 	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: "#N" for an issue of the repository of the pull request,
-	// "owner/repo#N" for an issue of another repository. Found is false when the item has no pull request yet.
+	// "owner/repo#N" for an issue of another repository. Found is false when the item has no pull request yet. A project with no forge is an error that matches forge.ErrNoForge.
 	ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error)
 	// Comment adds a comment to the pull request of the item and returns its number. The same key on the same pull request adds one comment.
 	// An item with no pull request is an error. So is a project with no forge.
