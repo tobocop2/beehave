@@ -2,12 +2,8 @@ package flow
 
 import (
 	"cmp"
-	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -23,10 +19,6 @@ var errGateState = errors.New("the gate is in the wrong state")
 
 // heldPoll is the time between two reads of a held build job, when the clock sets no poll.
 const heldPoll = time.Second
-
-// priorityQuery sets the place of a queued run. The workflow library has no call that changes the priority of a run that waits in a queue, so this is the one write.
-// It names the status ENQUEUED: a run that started keeps the place that it started with.
-const priorityQuery = `UPDATE workflow_status SET priority = ? WHERE workflow_uuid = ? AND status = 'ENQUEUED'`
 
 // openGate is the open gate of an item and the build job of that gate, when it queued one.
 type openGate struct {
@@ -164,26 +156,13 @@ func gateOfItem(rows []dbos.WorkflowStatus, item string) (openGate, bool) {
 
 // setPriorities sets the place of each queued run in ids and says whether one of them was queued. An empty id is skipped.
 func (c *Client) setPriorities(place uint, ids ...string) (bool, error) {
-	moved := false
+	places := map[string]placeWrite{}
 
-	db, err := sql.Open("sqlite", filepath.Join(c.dir, databaseFile)+"?_pragma=busy_timeout(30000)")
-	if err == nil {
-		defer db.Close()
-
-		for _, id := range slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" }) {
-			var result sql.Result
-
-			if result, err = db.ExecContext(context.Background(), priorityQuery, place, id); err != nil {
-				break
-			}
-
-			if n, counted := result.RowsAffected(); counted == nil && n > 0 {
-				moved = true
-			}
-		}
+	for _, id := range ids {
+		places[id] = placeWrite{place: place}
 	}
 
-	return moved, failed("write the place of the gate", err)
+	return writePlaces(c.dir, true, places)
 }
 
 // currentPlace is the place that the gate of ctx has in the store now. A person can change it while the gate waits, so the build job of the gate takes the current one.

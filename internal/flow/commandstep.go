@@ -174,6 +174,8 @@ func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 		return nil, err
 	}
 
+	s.defaultSlot(&plan)
+
 	if plan.request.SlotClass != "" {
 		return s.slotCommand(plan)
 	}
@@ -181,6 +183,14 @@ func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 	return s.durableRetried("command", plan.label, plan.tries.policy, func(ctx context.Context, name string) (stepResult, error) {
 		return s.runCommand(ctx, name, plan)
 	})
+}
+
+// defaultSlot puts a host job that names no slot class in the default class, so it waits at the cap of the host like any other job. A library build with no
+// slots resolver leaves it free, and a call with retries stays one step: a step cannot wait on a queue.
+func (s *script) defaultSlot(plan *commandPlan) {
+	if plan.request.Host != "" && plan.request.SlotClass == "" && plan.tries.policy.Retries == 0 && s.e.deps.Slots != nil {
+		plan.request.SlotClass = model.DefaultClass
+	}
 }
 
 // slotCommand runs a command call that names a slot class as a job on the queue of the class, then records its output as the step of the call.
