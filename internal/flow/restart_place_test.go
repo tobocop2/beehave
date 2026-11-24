@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -84,6 +86,44 @@ func TestRestartPlace_APlaceThatAPersonSetSurvivesTheRestartOfTheEngine(t *testi
 
 	assert.Equal(t, int(priorityP0), placeOfRun(t, second, gate), "the place that a person set stays after the restart")
 	assert.Equal(t, int(priorityPersonWaits), placeOfRun(t, second, other), "a gate that nobody raised takes the place of the current rules")
+}
+
+func TestWritePlaces_APlaceWhoseMarkCannotBeWrittenIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	_, _, engine, _ := blockedProject(t)
+
+	gate := queuedGate(t, engine, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12"}, priorityNormal)
+
+	_, err := writePlaces(engine.dir, true, nil)
+	require.NoError(t, err, "the first write makes the table of marks")
+
+	db, err := sql.Open("sqlite", filepath.Join(engine.dir, databaseFile)+"?_pragma=busy_timeout(30000)")
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	_, err = db.ExecContext(t.Context(), `CREATE TRIGGER refuse_mark BEFORE INSERT ON beehave_manual_place BEGIN SELECT RAISE(ABORT, 'no mark'); END`)
+	require.NoError(t, err)
+
+	moved, err := writePlaces(engine.dir, true, map[string]placeWrite{gate: {place: priorityP0}})
+
+	require.ErrorContains(t, err, "mark the place as set by a person")
+	assert.False(t, moved)
+	assert.Equal(t, int(priorityNormal), placeOfRun(t, engine, gate), "a place with no mark would be overwritten at the next start, so it is not stored")
+}
+
+func TestWritePlaces_AStoreThatIsClosedRefusesTheWriteOfAPlace(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), databaseFile))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	moved, err := writePlace(db, true, "run", placeWrite{place: priorityP0})
+
+	require.ErrorContains(t, err, "begin the write of the place")
+	assert.False(t, moved)
 }
 
 func TestWritePlaces_AGateThatStartedKeepsItsPlace(t *testing.T) {
