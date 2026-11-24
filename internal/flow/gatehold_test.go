@@ -515,6 +515,20 @@ func TestGateHold_AWaitThatCannotReadTheGateFailsInsteadOfWaiting(t *testing.T) 
 	require.ErrorContains(t, err, "read the build job of the gate")
 }
 
+func TestGateHold_AHoldRefusesAGateWhoseJobWasCanceledAndReportsAGateThatTheStoreDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	canceled := openGate{job: &dbos.WorkflowStatus{Status: dbos.WorkflowStatusCancelled}}
+	err := canceled.refuseHold("1")
+	require.ErrorIs(t, err, errGateState)
+	require.ErrorContains(t, err, "has no job that runs")
+
+	rig := newHoldRig(t, newStopGate("1"))
+
+	err = rig.client.parkAndStop(openGate{row: dbos.WorkflowStatus{ID: "no-such-gate"}}, "1")
+	require.ErrorContains(t, err, "park the gate of item 1")
+}
+
 func TestGateHold_TheCancelOfAJobStandsForARunThatIsNoGateAndForAGateThatTheStoreDoesNotHold(t *testing.T) {
 	t.Parallel()
 

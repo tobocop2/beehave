@@ -73,9 +73,13 @@ func (c *Client) HoldGate(item string) error {
 		return err
 	}
 
-	// The gate is parked first: a gate that sees its job canceled reads the park, and so it never takes the cancel for a job that a release reopens.
-	_, err = dbos.ResumeWorkflow[ExclusiveOutput](c.flow, gate.row.ID, dbos.WithResumeQueue(heldQueueName))
-	if err != nil {
+	return c.parkAndStop(gate, item)
+}
+
+// parkAndStop parks the gate and then cancels its build job. The gate is parked first: a gate that sees its job canceled reads the park,
+// and so it never takes the cancel for a job that a release reopens.
+func (c *Client) parkAndStop(gate openGate, item string) error {
+	if _, err := dbos.ResumeWorkflow[ExclusiveOutput](c.flow, gate.row.ID, dbos.WithResumeQueue(heldQueueName)); err != nil {
 		return failed("park the gate of item "+item, err)
 	}
 
@@ -240,12 +244,7 @@ var errReplaced = errors.New("the run of the gate was replaced")
 // The run reads its start before it waits. A release that comes before the old run sees the cancel starts a second run of the gate, and the old run, which the
 // start tells apart from the new one, ends and leaves the reopen of the job to the new run.
 func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], queue string) (ExclusiveOutput, error) {
-	id, err := dbos.GetWorkflowID(ctx)
-	if err != nil {
-		return ExclusiveOutput{}, fmt.Errorf("read the run id of the gate: %w", err)
-	}
-
-	began, err := e.runStartedAt(id)
+	id, began, err := e.runOf(ctx)
 	if err != nil {
 		return ExclusiveOutput{}, err
 	}
@@ -260,6 +259,18 @@ func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[Exclusiv
 			return ExclusiveOutput{}, cmp.Or(rerr, err)
 		}
 	}
+}
+
+// runOf is the id of the run of ctx and the time that it started at.
+func (e *Engine) runOf(ctx dbos.Context) (string, time.Time, error) {
+	id, err := dbos.GetWorkflowID(ctx)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("read the run id of the gate: %w", err)
+	}
+
+	began, err := e.runStartedAt(id)
+
+	return id, began, err
 }
 
 // runStartedAt is the time that the run id started at, or the zero time for a run that has not started.
