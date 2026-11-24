@@ -236,7 +236,7 @@ func TestSuperseded_AReplayReadsTheHeadAndCancelsTheGatesNoMore(t *testing.T) {
 	}})
 
 	require.NoError(t, receive(t, done).err)
-	assert.Len(t, h.forge.asked, reads, "the replay reads the recorded head and asks the forge nothing more")
+	assert.Len(t, h.forge.asked, reads+1, "the replay reads the recorded head and asks the forge nothing more; the start of the engine reads the pull request of the one queued gate once, for its place")
 
 	older, err := dbos.RetrieveWorkflow[any](engine.ctx, "older-gate")
 	require.NoError(t, err)
