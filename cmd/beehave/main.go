@@ -51,6 +51,7 @@ func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildIn
 		Version:  version,
 		Adapters: table.check,
 		Registry: table.registry(),
+		Hooks:    table.hooks(),
 		Items:    table.itemOpener(),
 		Doctor:   newDoctor(table, newSecurityRunner()),
 		Flow:     flow,
