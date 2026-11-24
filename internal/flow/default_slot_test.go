@@ -146,6 +146,18 @@ func TestRestartPlace_AQueuedGateTakesItsPlaceFromTheCurrentRulesWhenTheEngineSt
 	jobs.let("blocker")
 }
 
+func TestRestartPlace_AStoreThatCannotBeReadStopsTheStartOfTheEngineBeforeTheQueuesStart(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	closed, err := NewEngine(t.Context(), h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, closed.Shutdown())
+
+	require.ErrorContains(t, closed.launchAndSchedule(), "list the runs that wait in a queue")
+}
+
 func TestRestartPlace_AStoreThatCannotBeReadOrWrittenStopsTheLaunchWithAnError(t *testing.T) {
 	t.Parallel()
 
