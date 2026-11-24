@@ -434,6 +434,33 @@ func TestEngine_TheShutdownWaitsForACallOfRunThatReadsTheStore(t *testing.T) {
 	require.NoError(t, receive(t, down))
 }
 
+func TestEngine_ACountedCallThatReachesTheStartAfterTheShutdownBeganIsRefused(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+
+	// A call of run that passed enter before the shutdown began reaches its start after the shutdown began.
+	require.NoError(t, engine.enter(testItem))
+
+	release := sync.OnceFunc(engine.callers.Done)
+	t.Cleanup(release)
+
+	down := make(chan error, 1)
+
+	go func() { down <- engine.Shutdown() }()
+
+	// The library stops after the shutdown refused the starts.
+	waitOn(t, condition(func() bool { return engine.ctx.Err() != nil }))
+
+	handle, err := engine.joinOrStart(ItemInput{Item: testItem})
+
+	release()
+
+	require.ErrorIs(t, err, errEngineShutDown)
+	assert.Nil(t, handle)
+	require.NoError(t, receive(t, down))
+}
+
 func TestEngine_ACallOfRunThatWaitsForItsItemIsCountedUntilItReturns(t *testing.T) {
 	t.Parallel()
 
@@ -463,7 +490,9 @@ func TestEngine_ACallOfRunThatWaitsForItsItemIsCountedUntilItReturns(t *testing.
 
 	require.NoError(t, engine.Shutdown())
 	receive(t, counted)
-	assert.Len(t, done, 1, "the shutdown returned before the call of run did")
+
+	// This test proves the count: the call ends when the library stops, before the shutdown returns. TheShutdownWaitsForACallOfRunThatReadsTheStore proves the wait.
+	assert.Len(t, done, 1, "the call of run is counted until it returns, and it returned before the shutdown did")
 }
 
 func TestEngine_ARunAfterTheShutdownIsRefusedAndCountsNoCall(t *testing.T) {
