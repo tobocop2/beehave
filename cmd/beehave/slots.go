@@ -43,7 +43,7 @@ func slotHost(projects map[string]config.Project, project, cluster, class string
 		return "", err
 	}
 
-	if class != model.GateClass && found.Host.Slots[class] < 1 {
+	if class != model.GateClass && class != model.DefaultClass && found.Host.Slots[class] < 1 {
 		return "", fmt.Errorf("%w: the class %q is not in `slots` of the `host` block of project %s, which runs the call on host %s. Add the class to `slots`, or remove `slots` from the call", errNoSlotClass, class, project, host)
 	}
 

@@ -581,6 +581,10 @@ func (e *Engine) sayResumedOff() error {
 
 // launchAndSchedule launches the workflow engine, then sets the schedule of the review poll. A schedule that fails does not fail the launch.
 func (e *Engine) launchAndSchedule() error {
+	if err := e.refreshPlaces(); err != nil {
+		return err
+	}
+
 	if err := dbos.Launch(e.ctx); err != nil {
 		return fmt.Errorf("start the workflow engine: %w", err)
 	}
