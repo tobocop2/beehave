@@ -1,12 +1,17 @@
-package cli_test
+package desk_test
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/config"
 )
 
 func TestCheckWorkflow_ExitsZeroForBothWorkflowsOfTheDeskExample(t *testing.T) {
@@ -16,11 +21,13 @@ func TestCheckWorkflow_ExitsZeroForBothWorkflowsOfTheDeskExample(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			code, stdout, stderr := runCheckWorkflow(t, filepath.Join("..", "..", "examples", "desk", name))
+			var stdout, stderr bytes.Buffer
 
-			require.Equal(t, 0, code, stderr)
-			require.Empty(t, stdout)
-			require.Empty(t, stderr)
+			code := cli.Execute(context.Background(), []string{"check", "workflow", name}, cli.BuildInfo{Registry: config.Adapters{}, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+			require.Equal(t, 0, code, stderr.String())
+			require.Empty(t, stdout.String())
+			require.Empty(t, stderr.String())
 		})
 	}
 }
@@ -49,7 +56,7 @@ func runDeskScriptTests(t *testing.T, tmpdir string) {
 		}
 	}
 
-	command := exec.CommandContext(t.Context(), "sh", filepath.Join("..", "..", "examples", "desk", "tests", "run.sh")) //nolint:gosec // a test runs the script of the example in its own temporary folder
+	command := exec.CommandContext(t.Context(), "sh", filepath.Join("tests", "run.sh")) //nolint:gosec // a test runs the script of the example in its own temporary folder
 	command.Env = append(command.Environ(), "TMPDIR="+tmpdir)
 	out, err := command.CombinedOutput()
 

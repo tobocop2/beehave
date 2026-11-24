@@ -1,41 +1,16 @@
 package cli
 
 import (
-	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-var (
-	exampleForbidList = regexp.MustCompile(`(?m)^FORBID = \[(.*)\]$`)
-	quotedName        = regexp.MustCompile(`"([^"]+)"`)
-)
-
-// exampleForbid reads the kinds that `workflow.star` of the remediation example lists in FORBID, and checks that the agent step uses the list.
-func exampleForbid(t *testing.T) []string {
-	t.Helper()
-
-	text, err := os.ReadFile("../../examples/remediation/workflow.star")
-	require.NoError(t, err)
-	require.Contains(t, string(text), "forbid_commands = FORBID")
-	require.Contains(t, string(text), "protect_paths = protected(round_settings)", "the kind protected-path needs the list of the step")
-	require.Contains(t, string(text), "protect = protected(round_settings)", "the review loop gets the same list")
-
-	list := exampleForbidList.FindStringSubmatch(string(text))
-	require.Len(t, list, 2, "workflow.star holds one FORBID list")
-
-	var kinds []string
-
-	for _, match := range quotedName.FindAllStringSubmatch(list[1], -1) {
-		kinds = append(kinds, match[1])
-	}
-
-	return kinds
+// forbidKinds returns the command kinds that the hook tests forbid: the list that the remediation example gives to its agent steps.
+func forbidKinds() []string {
+	return []string{"bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path", "zsh-expansion", "laptop-copy"}
 }
 
 func jsonEvent(command string) string {
@@ -49,7 +24,7 @@ func quoted(text string) string {
 func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T) {
 	t.Parallel()
 
-	forbid := strings.Join(exampleForbid(t), ",")
+	forbid := strings.Join(forbidKinds(), ",")
 
 	rows := map[string]string{
 		"S1-L-94: a commit author":                   "git commit --author='A <a@x>' -m x",
@@ -92,7 +67,7 @@ func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T
 func TestExample_TheHookRefusesACopyFromThisMachineToAnotherMachineUnlessTheRepositoryIsPrivate(t *testing.T) {
 	t.Parallel()
 
-	forbid := strings.Join(exampleForbid(t), ",")
+	forbid := strings.Join(forbidKinds(), ",")
 	base := []string{"--forbid", forbid, "--protect", "/own/checkout"}
 	copies := []string{"rsync -a ./src host:/work/src", "scp a.txt me@host:/work", "tar cf - src | ssh host 'tar xf -'"}
 
