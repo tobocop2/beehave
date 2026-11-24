@@ -181,6 +181,11 @@ func (s *script) batchGit(call batchCall) (batch.Git, error) { //nolint:ireturn 
 		return nil, err
 	}
 
+	// The first merge call of a run that no gate gave a scope fixes it here, before any member is checked.
+	if err := s.fixScope(call.name); err != nil {
+		return nil, fmt.Errorf("merge %q: %w", call.name, err)
+	}
+
 	dir, err := s.tree(s.ctx)
 	if err != nil {
 		return nil, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)

@@ -52,7 +52,8 @@ const (
 // Version 16 records the topic of a recv call with its deadline, in the deadline step.
 // Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
-const coreVersion = 18
+// Version 19 runs the host job of a command call with a host and no slot class in the default class, so the call queues a child run before its command step.
+const coreVersion = 19
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -80,7 +81,8 @@ const agentVersion = 15
 // Version 9 adds the run and run_item fields to the input of the merge of a member.
 // Version 10 adds the step batch:<call>.kept#<item> after an owner line that keeps issues, and the kept field to the record of the scope check.
 // Version 11 records each issue of the scope as text: "#N" for the repository of the pull request and "owner/repo#N" for another repository. A record of version 10 holds numbers and still reads.
-const landVersion = 11
+// Version 12 adds the scope step at the first review read (preflight) and at the first merge call of a run that no gate fixed a scope for, and the no_forge field to the record of the scope step.
+const landVersion = 12
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 const trackerVersion = 2

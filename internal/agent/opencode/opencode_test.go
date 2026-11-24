@@ -145,6 +145,16 @@ func TestRun_AResumeNamesTheSessionInTheArguments(t *testing.T) {
 	assert.Contains(t, result.Stderr, "args=run --format json --model p/m --session ses_1")
 }
 
+func TestRun_AResumeOn2_2_5RunsWithAPrivateServerAndNamesTheSession(t *testing.T) {
+	t.Parallel()
+
+	script := "#!/bin/sh\n" + answersVersion("2.2.5") + "echo \"args=$*\" >&2\ncat > /dev/null\ncat '" + absolute(t, "testdata/ok-2x.jsonl") + "'\n"
+	result := guardedRun(t, script, func(s *agent.Spec) { s.Guard = ""; s.Resume = "ses_1"; s.Model = "p/m" })
+
+	assert.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
+	assert.Contains(t, result.Stderr, "args=run --format json --standalone --model p/m --session ses_1\n")
+}
+
 func TestRun_ARunOnVersionsFrom2_0_0OnUsesAPrivateServerAndOlderRunsDoNot(t *testing.T) {
 	t.Parallel()
 

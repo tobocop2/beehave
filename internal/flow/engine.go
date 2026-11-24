@@ -255,6 +255,8 @@ type Engine struct {
 	// starts orders the start of a run against the shutdown: a start holds it for reading, and the shutdown takes it to set stopped.
 	starts  sync.RWMutex
 	stopped bool
+	// callers counts the calls of run in flight. A call reads the store after the library stops, so the shutdown waits for each one before it returns.
+	callers sync.WaitGroup
 	down    sync.Once
 	downErr error
 }
@@ -579,6 +581,10 @@ func (e *Engine) sayResumedOff() error {
 
 // launchAndSchedule launches the workflow engine, then sets the schedule of the review poll. A schedule that fails does not fail the launch.
 func (e *Engine) launchAndSchedule() error {
+	if err := e.refreshPlaces(); err != nil {
+		return err
+	}
+
 	if err := dbos.Launch(e.ctx); err != nil {
 		return fmt.Errorf("start the workflow engine: %w", err)
 	}
@@ -728,6 +734,12 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 		return ItemResult{}, err
 	}
 
+	if err := e.enter(in.Item); err != nil {
+		return ItemResult{}, err
+	}
+
+	defer e.callers.Done()
+
 	handle, err := e.joinOrStart(in)
 	if err != nil {
 		return ItemResult{}, err
@@ -736,13 +748,32 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 	return e.result(handle, in.Item)
 }
 
+// enter counts a call of run until it returns, so the shutdown waits for its last read of the store. After the shutdown began, it counts nothing and fails.
+func (e *Engine) enter(item string) error {
+	e.starts.RLock()
+	defer e.starts.RUnlock()
+
+	if e.stopped {
+		return refusedAfterStop(item)
+	}
+
+	e.callers.Add(1)
+
+	return nil
+}
+
+// refusedAfterStop is the refusal of a run that asks for its item after the shutdown began.
+func refusedAfterStop(item string) error {
+	return fmt.Errorf("%w: item %s was not started: run beehave run %s again", errEngineShutDown, item, item)
+}
+
 // joinOrStart joins or starts the run of the item while it holds off the shutdown. After the shutdown began, it starts nothing.
 func (e *Engine) joinOrStart(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	e.starts.RLock()
 	defer e.starts.RUnlock()
 
 	if e.stopped {
-		return nil, fmt.Errorf("%w: item %s was not started: run beehave run %s again", errEngineShutDown, in.Item, in.Item)
+		return nil, refusedAfterStop(in.Item)
 	}
 
 	return e.handleFor(in)
@@ -988,6 +1019,7 @@ func (e *Engine) shutdown() error {
 
 	killed, waited := e.procs.killAll(), <-stopped
 
+	e.callers.Wait()
 	e.holds.clear()
 
 	return errors.Join(killed, waited, e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
