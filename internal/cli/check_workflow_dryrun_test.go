@@ -111,7 +111,7 @@ func TestCheckWorkflowDryRun_APlainRunWithoutTheFlagPrintsNoSteps(t *testing.T) 
 	assert.Empty(t, stdout)
 }
 
-func TestCheckWorkflowDryRun_TheRedGateFlagMakesAWorkflowThatStopsAtARedGateExitOneAndTheDefaultExitsZero(t *testing.T) {
+func TestCheckWorkflowDryRun_ARedGateInTheFixtureMakesAWorkflowThatStopsAtARedGateExitOneAndTheDefaultExitsZero(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -121,7 +121,9 @@ func TestCheckWorkflowDryRun_TheRedGateFlagMakesAWorkflowThatStopsAtARedGateExit
 	code, _, _ := runDry(t, map[string]string{}, file)
 	require.Equal(t, 0, code)
 
-	code, stdout, _ := runDry(t, map[string]string{}, "--red-gate", file)
+	writeConfig(t, dir, "red.json", `{"gate:check": [{"passed": false}]}`)
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--fixture", filepath.Join(dir, "red.json"), file)
 	require.Equal(t, 1, code)
 	assert.Contains(t, stdout, "the gate is red")
 }
@@ -176,6 +178,18 @@ func TestCheckWorkflowDryRun_TheHelpTextNamesTheThreeExitCodes(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Exit 3")
 }
 
+func TestCheckWorkflowDryRun_TheHelpTextNamesTheWaitAndRecvKeysAndTheTimeOfADryRun(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	cli.Execute(context.Background(), []string{"check", "workflow", "--help"}, cli.BuildInfo{Registry: registry(), Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	for _, want := range []string{"wait:<label>", "recv:<label>", `"answer"`, `"value"`, "takes no real time"} {
+		assert.Contains(t, strings.Join(strings.Fields(stdout.String()), " "), want)
+	}
+}
+
 func TestCheckWorkflowDryRun_AFileWithProblemsStopsBeforeTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -202,21 +216,60 @@ func TestCheckWorkflowDryRun_RefusesABadItemId(t *testing.T) {
 	assert.Contains(t, stderr, "item id")
 }
 
-func TestCheckWorkflowDryRun_TheSendBackFlagWalksAFixRoundAfterTheFirstReview(t *testing.T) {
+const reviewThenFix = "def main(item):\n    r = agent(name = \"review\", prompt = \"p.md\", model = \"sonnet\", outputs = [\"verdict\"])\n    if r.verdict == \"changes\":\n        agent(name = \"fix\", prompt = \"p.md\", model = \"sonnet\")\n        agent(name = \"review\", prompt = \"p.md\", model = \"sonnet\", outputs = [\"verdict\"])\n"
+
+func TestCheckWorkflowDryRun_TheFixtureFlagSteersAReviewAndNeedsDryRun(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "p.md", "Judge the change. Nothing else.")
-	writeConfig(t, dir, "workflow.star", "def main(item):\n    r = agent(name = \"review\", prompt = \"p.md\", model = \"sonnet\", outputs = [\"verdict\"])\n    if r.verdict == \"changes\":\n        agent(name = \"fix\", prompt = \"p.md\", model = \"sonnet\")\n        agent(name = \"review\", prompt = \"p.md\", model = \"sonnet\", outputs = [\"verdict\"])\n")
+	writeConfig(t, dir, "workflow.star", reviewThenFix)
+	writeConfig(t, dir, "sendback.json", `{"agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}], "agent:fix": {}}`)
 	file := filepath.Join(dir, "workflow.star")
 
 	code, stdout, _ := runDry(t, map[string]string{}, "--item", "12", file)
 	require.Equal(t, 0, code, stdout)
 	assert.NotContains(t, stdout, "agent:fix")
 
-	code, stdout, _ = runDry(t, map[string]string{}, "--item", "12", "--send-back", file)
+	code, stdout, _ = runDry(t, map[string]string{}, "--item", "12", "--fixture", filepath.Join(dir, "sendback.json"), file)
 	require.Equal(t, 0, code, stdout)
 	assert.Contains(t, stdout, "agent:fix")
+
+	code, _, stderr := runCheckWorkflow(t, "--fixture", filepath.Join(dir, "sendback.json"), file)
+	require.Equal(t, 2, code)
+	assert.Contains(t, stderr, "--dry-run")
+}
+
+func TestCheckWorkflowDryRun_AFixtureThatTheRunDoesNotMatchExitsOneAndAFileThatCannotBeReadExitsTwo(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "p.md", "Judge the change. Nothing else.")
+	writeConfig(t, dir, "workflow.star", reviewThenFix)
+	writeConfig(t, dir, "unused.json", `{"agent:review": [{"outputs": {"verdict": "approve"}}, {"outputs": {"verdict": "approve"}}]}`)
+	file := filepath.Join(dir, "workflow.star")
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--fixture", filepath.Join(dir, "unused.json"), file)
+	require.Equal(t, 1, code)
+	assert.Contains(t, stdout, "never made")
+
+	code, _, stderr := runDry(t, map[string]string{}, "--fixture", filepath.Join(dir, "no-such-file.json"), file)
+	require.Equal(t, 2, code)
+	assert.Contains(t, stderr, "no-such-file.json")
+}
+
+func TestCheckWorkflowDryRun_TheOldFlagsAreRefused(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", lintAndFixFile)
+
+	for _, flag := range []string{"--send-back", "--red-gate"} {
+		code, _, stderr := runDry(t, map[string]string{}, flag, filepath.Join(dir, "workflow.star"))
+
+		require.NotEqual(t, 0, code, flag)
+		assert.Contains(t, stderr, "unknown flag: "+flag)
+	}
 }
 
 func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldTheRunnersOfTheConfigWithTheirSkillLoads(t *testing.T) {

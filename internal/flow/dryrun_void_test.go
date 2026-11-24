@@ -44,7 +44,7 @@ func TestDryRun_ALocalExampleRedGateWithEveryStepKnownStillGoesToTheFixAgent(t *
 
 	var out bytes.Buffer
 
-	require.NoError(t, DryRun(t.Context(), dryLocalFile, "12", nil, &out, WithRedGate()), out.String())
+	require.NoError(t, DryRun(t.Context(), dryLocalFile, "12", nil, &out, WithFixture(fixtureOf(t, `{"gate:check": [{"passed": false}, {"passed": true}], "agent:plan": {}, "agent:implement": {}, "agent:fix": {}, "agent:review": {}}`))), out.String())
 
 	assert.Contains(t, out.String(), "agent:fix", "a red gate is judged, so the fix agent runs")
 	assert.Equal(t, 2, strings.Count(out.String(), " gate:check#"), "the gate ran once more after the fix: %s", out.String())

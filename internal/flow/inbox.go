@@ -122,10 +122,19 @@ func (s *script) receive(topic, label string, wait time.Duration) (envelope, boo
 
 	got, timedOut := envelope{}, false
 	if err == nil {
-		got, timedOut, err = s.await(topic, window.Until)
+		got, timedOut, err = s.arrive(topic, label, window.Until)
 	}
 
 	return got, timedOut, err
+}
+
+// arrive takes the next message of the topic. A build with Waits asks it for the message of the call and waits for none.
+func (s *script) arrive(topic, label string, deadline time.Time) (envelope, bool, error) {
+	if s.e.deps.Waits != nil {
+		return s.e.deps.Waits.Recv(label)
+	}
+
+	return s.await(topic, deadline)
 }
 
 // held takes the oldest message of the topic from the buffer of the run, and reports whether there was one.

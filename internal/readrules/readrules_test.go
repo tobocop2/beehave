@@ -35,6 +35,7 @@ const (
 	batchProof = "TestProve_AReadThatFailsLeavesTheMemberUnprovenNeverLanded"
 
 	issueAuditProof = "TestAudit_AReadThatFailsIsAFindingAndNeverAPass"
+	dryWaitHeld     = "only the dry run sets this source, and its refusals have their own tests (TestDryRun_AWaitPastTheEndOfItsListIsRefused, TestDryRun_AWaitWithNoDeadlineAndNoEntryIsRefused); a real run reads no such source"
 	inAdapter       = "the adapter or the consumer has its own failure tests, and this test does not prove them"
 
 	assigneesHeld = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
@@ -202,6 +203,8 @@ var rules = map[string]rule{
 	"internal/flow.gate.Run":                      {NotHeld: inAdapter},
 	"internal/flow.gate.Key":                      {NotHeld: inAdapter},
 	"internal/flow.items.Fields":                  {NotHeld: inAdapter},
+	"internal/flow.waitSource.Wait":               {NotHeld: dryWaitHeld},
+	"internal/flow.waitSource.Recv":               {NotHeld: dryWaitHeld},
 	"internal/flow.merger.Merge":                  {NotHeld: inAdapter},
 	"internal/flow.merger.Poll":                   {NotHeld: inAdapter},
 	"internal/flow.pollReader.Source":             {NotHeld: inAdapter},

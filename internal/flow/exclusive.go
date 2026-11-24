@@ -65,6 +65,8 @@ type ExclusiveInput struct {
 	// SlotCount is the count of the slot class of a command call or a gate, set when the job is queued. A gate reads it to name its queue, and the rewind of a reopened job reads it too.
 	// A command replay asks Deps.Slots again, so a changed host block gives the replay the new count.
 	SlotCount int `json:"slot_count,omitempty"`
+	// Call is the key of the gate call, such as gate:check, which a dry run reads to script the gate. It is empty in a real run, for a batch gate and for a merge, so the record of a real run has no such field.
+	Call string `json:"call,omitempty"`
 	// PinBase is the base of the merge call, for a batch gate: the pin file is read at that branch. A gate carries it in Request.
 	PinBase  string         `json:"pin_base,omitempty"`
 	Commit   string         `json:"commit,omitempty"`

@@ -293,10 +293,19 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	return s.recordGate(label, outputs)
 }
 
+// scriptKey is the key of a call for the fixture of a dry run. A real run has no fixture, so its key is empty and its records and gate jobs stay as they were.
+func (s *script) scriptKey(builtin, label string) string {
+	if s.e.deps.Waits == nil {
+		return ""
+	}
+
+	return callKey(builtin, label)
+}
+
 // exclusiveGate runs the gate of a call as a child workflow on the exclusive queue, so no merge of the repository starts while it runs,
 // and returns its outputs. The gate call records them as its own step, so a replay reads them and runs no gate again.
 func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[string]any, error) {
-	in := ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
+	in := ExclusiveInput{Kind: kindGate, Call: s.scriptKey(kindGate, label), Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
 
 	ran, err := s.e.queueExclusive(s.ctx, in)
 	s.noteGateHost(ran)
@@ -398,7 +407,10 @@ func (e *Engine) finishProjectGate(ctx context.Context, in ExclusiveInput, start
 		return gateFinish{}, "", err
 	}
 
-	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, start.Job)
+	job := start.Job
+	job.Call = in.Call
+
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, job)
 	if errors.Is(err, host.ErrLost) && ctx.Err() == nil {
 		return gateFinish{Lost: lostJobOf(in, start, err)}, "", nil
 	}
@@ -548,14 +560,26 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	heard, err := s.listen(plan)
+	got, err := s.hearAnswer(plan)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.durableWith("wait", plan.label, waitZeros(), func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: answerOutputs(heard.answer, heard.answers, heard.timedOut)}, nil
+		return stepResult{Outputs: answerOutputs(got.answer, got.answers, got.timedOut)}, nil
 	})
+}
+
+// hearAnswer takes the answer of a wait. A build with Waits asks it, after the record of the deadline, and asks no one; any other build listens for the owner.
+func (s *script) hearAnswer(plan waitPlan) (heard, error) {
+	if s.e.deps.Waits == nil {
+		return s.listen(plan)
+	}
+
+	_, err := s.e.endOf(s.ctx, plan.deadline)
+	answer, askErr := s.e.deps.Waits.Wait(plan.label, plan.deadline > 0)
+
+	return answer, errors.Join(err, askErr)
 }
 
 // refuseEnv returns an error for a variable that a file cannot read: one of the engine, or a secret by its name or its value.
