@@ -185,6 +185,40 @@ func TestExampleBatch_AnItemThatAGuardRefusesIsHeldAndTheOtherItemLands(t *testi
 	assert.Contains(t, notesWithKey(rig.writer, "rejected")[0], "REFUSE: has the label hold")
 }
 
+func TestExampleBatch_AClosingIssueThatIsNewSinceTheFirstReviewMakesTheRoundAskTheOwnerAndAKeepLineLandsTheItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	rig.scopeAnswer = "keep #13"
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	asked := slices.IndexFunc(rig.questions, func(question string) bool {
+		return strings.Contains(question, "closes #13 now, and did not at its first review")
+	})
+	assert.GreaterOrEqual(t, asked, 0, "the scope check of the round asks the owner about the new issue: %v", rig.questions)
+	assert.Equal(t, []string{"1"}, rig.merger.landed(), "the kept issue lets the item land")
+	assert.Empty(t, heldOf(rig.writer))
+}
+
+func TestExampleBatch_AnOwnerAnswerThatIsNotAKeepLineHoldsTheItemWithTheReasonAndLandsNothing(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	rig.scopeAnswer = "no"
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "the rejected member does not land")
+	assert.Equal(t, []string{testProject + "|1|hold"}, heldOf(rig.writer))
+	require.Len(t, notesWithKey(rig.writer, "rejected"), 1)
+	assert.Contains(t, notesWithKey(rig.writer, "rejected")[0], "is new since its first review")
+}
+
 func TestExampleBatch_APushAfterTheReviewRefusesOnlyThatItem(t *testing.T) {
 	t.Parallel()
 
