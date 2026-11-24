@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -180,6 +182,23 @@ func TestWorktrees_PlaceCutsAMissingTrackerWorktreeOnTheBranchOfTheAttempt(t *te
 	assert.Equal(t, head, gitOut(t, dir, "rev-parse", "HEAD"))
 }
 
+func TestWorktrees_PlaceCutsATrackerWorktreeAgainThatSomeoneRemovedWithItsRecordKept(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t)
+	dir, err := rig.trees.Ensure(t.Context(), "p", trackerItem, "", "")
+	require.NoError(t, err)
+
+	head := workIn(t, dir, "one")
+	require.NoError(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"))
+	require.NoError(t, os.RemoveAll(dir))
+
+	require.NoError(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"))
+
+	assert.Equal(t, "12-r2", gitOut(t, dir, "branch", "--show-current"))
+	assert.Equal(t, head, gitOut(t, dir, "rev-parse", "HEAD"))
+}
+
 func TestWorktrees_PlaceFindsNothingToPlaceInAProjectWithNoRepository(t *testing.T) {
 	t.Parallel()
 
@@ -226,6 +245,33 @@ func TestWorktrees_PlaceRefusesWhenTheFolderOfTheWorktreesCannotBeWritten(t *tes
 	t.Cleanup(func() { chmodTest(t, rig.trees.root, 0o700) })
 
 	require.ErrorContains(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"), "make the folder for the worktree of item 12")
+}
+
+func TestWorktrees_PlaceRefusesWhenGitCannotDropTheRecordOfARemovedTrackerWorktree(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t)
+	dir, err := rig.trees.Ensure(t.Context(), "p", trackerItem, "", "")
+	require.NoError(t, err)
+
+	head := workIn(t, dir, "one")
+	require.NoError(t, os.RemoveAll(dir))
+
+	real := rig.trees.git
+	rig.trees.git = func(folder string) proc.Runner { return pruneRefused{Runner: real(folder)} }
+
+	require.ErrorContains(t, rig.trees.Place(t.Context(), "p", trackerItem, head, "12-r2"), "git worktree in")
+}
+
+// pruneRefused is a git runner whose worktree prune exits with code 128.
+type pruneRefused struct{ proc.Runner }
+
+func (r pruneRefused) Run(ctx context.Context, args []string) model.CommandResult {
+	if slices.Equal(args, []string{"worktree", "prune"}) {
+		return model.CommandResult{ExitCode: 128, Stderr: "fatal: refused"}
+	}
+
+	return r.Runner.Run(ctx, args)
 }
 
 func TestWorktrees_PlaceRefusesAnUnknownProject(t *testing.T) {

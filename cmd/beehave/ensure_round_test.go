@@ -538,6 +538,23 @@ func TestWorktrees_EnsureMakesARemovedRoundWorktreeAgainAndKeepsTheRecordOfARemo
 		"git keeps the record of the removed sibling worktree")
 }
 
+func TestWorktrees_EnsureMakesATrackerWorktreeAgainThatSomeoneRemovedOnTheBranchOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t)
+
+	dir, err := rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+	require.NoError(t, err)
+
+	require.NoError(t, os.RemoveAll(dir))
+
+	again, err := rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, dir, again)
+	assert.Equal(t, model.ItemBranch("bb-1"), gitOut(t, again, "branch", "--show-current"), "the new tree is on the branch of the item")
+}
+
 func TestWorktrees_PathOfAnItemNeverFailsWhileSiblingItemsAddTheirWorktrees(t *testing.T) {
 	t.Parallel()
 

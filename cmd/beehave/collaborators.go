@@ -170,7 +170,7 @@ func (w worktrees) placeLocked(ctx context.Context, project config.Project, clon
 	return w.placeKept(ctx, clone, dir, item, head, branch)
 }
 
-// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made.
+// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made. Git drops the record of a removed folder first, so that record does not hold the branch.
 func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch string) error {
 	if _, round := model.RoundBase(item); round {
 		_, err := w.add(ctx, clone, dir, item, head)
@@ -180,6 +180,10 @@ func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch 
 
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
+	}
+
+	if err := w.run(ctx, clone, gitWorktree, "prune"); err != nil {
+		return err
 	}
 
 	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
@@ -541,8 +545,8 @@ func absent(dir string) error {
 }
 
 // add makes the worktree dir from the clone. A round item gets a detached worktree at revision, with --force, so git replaces the record of a round
-// worktree whose folder someone removed and forgets no other record. Any other item uses the branch named item if the clone has one, and else starts
-// that branch at revision. It returns dir.
+// worktree whose folder someone removed and forgets no other record. Any other item uses the branch named item if the clone has one, also with --force
+// for a removed folder, and else starts that branch at revision. It returns dir.
 func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return "", fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
@@ -569,7 +573,7 @@ func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision strin
 
 	branch := model.ItemBranch(item)
 	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
-		return []string{gitWorktree, gitAdd, dir, branch}
+		return []string{gitWorktree, gitAdd, "--force", dir, branch}
 	}
 
 	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}
