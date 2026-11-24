@@ -506,6 +506,56 @@ func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T)
 	assert.Empty(t, rows)
 }
 
+func TestQueue_ARunThatEndsAfterTheSlotsAreReadShowsAsEndedWithItsSlotCounted(t *testing.T) {
+	t.Parallel()
+
+	running := true
+	slots := func() (int, error) {
+		free := 1
+		if running {
+			free = 0
+		}
+
+		running = false
+
+		return free, nil
+	}
+	runOf := func(item string) (runView, error) {
+		if running {
+			return runView{Item: item, State: queueRunning}, nil
+		}
+
+		return runView{Item: item, State: runNone}, nil
+	}
+
+	views, free, err := readRuns([]string{"21"}, slots, runOf)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, free, "the slots are read before the runs: the run still holds its slot")
+	assert.Equal(t, []runView{{Item: "21", State: runNone}}, views, "the run that ended after that read shows as ended")
+}
+
+func TestQueue_AFailedReadOfTheSlotsReadsNoRun(t *testing.T) {
+	t.Parallel()
+
+	reads := 0
+
+	_, _, err := readRuns([]string{"21"}, func() (int, error) { return 0, errFake },
+		func(string) (runView, error) { reads++; return runView{}, nil })
+
+	require.ErrorIs(t, err, errFake)
+	assert.Zero(t, reads, "no run is read")
+}
+
+func TestQueue_AFailedReadOfARunFailsTheRead(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := readRuns([]string{"21"}, func() (int, error) { return 1, nil },
+		func(string) (runView, error) { return runView{}, errFake })
+
+	require.ErrorIs(t, err, errFake)
+}
+
 func TestQueue_AFailedReadOfTheHoldAtStartStopsTheRunWithTheError(t *testing.T) {
 	t.Parallel()
 

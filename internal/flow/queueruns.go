@@ -49,7 +49,12 @@ func (e *Engine) pullsOf(ctx context.Context, project, base string) ([]model.Ope
 // so a caller can tell a slot that is free from a slot that a run left a moment ago. In the other order, a run could end between the two reads and show as running with a free slot.
 // It reads the last run with latestRun, as spawn does, so the queue and spawn agree on what is open, failed and done.
 func (e *Engine) lastRuns(ids []string) ([]runView, int, error) {
-	free, err := e.freeSlots()
+	return readRuns(ids, e.freeSlots, e.runOf)
+}
+
+// readRuns calls slots once, then runOf for each id in order. The order is the contract of lastRuns.
+func readRuns(ids []string, slots func() (int, error), runOf func(string) (runView, error)) ([]runView, int, error) {
+	free, err := slots()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -57,7 +62,7 @@ func (e *Engine) lastRuns(ids []string) ([]runView, int, error) {
 	views := make([]runView, len(ids))
 
 	for i, id := range ids {
-		if views[i], err = e.runOf(id); err != nil {
+		if views[i], err = runOf(id); err != nil {
 			return nil, 0, err
 		}
 	}

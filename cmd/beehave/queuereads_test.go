@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,6 +76,30 @@ func TestQueueReads_APullRequestWithNoHeadBranchStaysInTheListAndIsNoError(t *te
 
 	require.NoError(t, err)
 	assert.Equal(t, listed, got)
+}
+
+func TestQueueReads_SeveralHolesJoinedStayInTheListAndAreNoError(t *testing.T) {
+	t.Parallel()
+
+	listed := []model.OpenPull{{Number: 8, Base: "main"}, {Number: 9, Base: "main"}}
+	f := &pullForge{opened: listed, listErr: errors.Join(listed[0].Check(), fmt.Errorf("read: %w", listed[1].Check()))}
+
+	got, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, listed, got)
+}
+
+func TestQueueReads_AHoleJoinedToARealFailureIsAnErrorAndKeepsNoList(t *testing.T) {
+	t.Parallel()
+
+	listed := []model.OpenPull{{Number: 9, Base: "main"}}
+	f := &pullForge{opened: listed, listErr: errors.Join(listed[0].Check(), errFake)}
+
+	got, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "")
+
+	require.ErrorIs(t, err, errFake, "the real failure is not lost behind the hole")
+	assert.Empty(t, got)
 }
 
 func TestQueueReads_PullStateReadsTheStateOfAPullRequestOfAnyState(t *testing.T) {

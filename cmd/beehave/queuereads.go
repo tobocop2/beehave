@@ -54,8 +54,20 @@ func (q queueReads) PullState(ctx context.Context, project string, pr int) (stri
 	return *pull.State, nil
 }
 
-// isHole is true when the error reports a pull request that lacks a field of the list.
+// isHole is true when the error holds holes and nothing else: every error of a join is a pull request that lacks a field of the list.
+// A hole that is joined to a real failure is not a hole, so the failure is not lost.
 func isHole(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		parts := joined.Unwrap()
+		for _, part := range parts {
+			if !isHole(part) {
+				return false
+			}
+		}
+
+		return len(parts) > 0
+	}
+
 	var hole *model.IncompletePull
 
 	return errors.As(err, &hole)
