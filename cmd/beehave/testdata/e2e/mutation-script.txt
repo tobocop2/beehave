@@ -134,14 +134,18 @@ env GREMLINS_STATUS=
 
 # A run that passes its time limit leaves no report. Each record is printed beside the verdict that gremlins wrote for its place,
 # so a killed mutant does not read like an error. A place with no verdict line says so.
-env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\t--- FAIL: TestF (0.01s)\na.go\t4\t5\t4\t0\t\na.go\t6\t5\t4\t1\tFAIL\n'
-env GREMLINS_VERDICTS='      KILLED CONDITIONALS_NEGATION at a.go:3:5\n       LIVED ARITHMETIC_BASE at a.go:4:5\n'
+# A boundary mutant pairs by the byte before the change: its token is at column 5 and its record names column 7 and after=5.
+# Gremlins prints a colour code around the status when it writes to a terminal, so the verdict of line 8 holds one.
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\t--- FAIL: TestF (0.01s)\na.go\t4\t5\t4\t0\t\na.go\t6\t5\t4\t1\tFAIL\na.go\t7\t7\t5\t0\t\na.go\t8\t5\t4\t1\tFAIL\n'
+env GREMLINS_VERDICTS='      KILLED CONDITIONALS_NEGATION at a.go:3:5\n       LIVED ARITHMETIC_BASE at a.go:4:5\n       LIVED CONDITIONALS_BOUNDARY at a.go:7:5\n\0033[32m      KILLED\0033[0m INVERT_NEGATIVES at a.go:8:5\n'
 env GREMLINS_STATUS=124
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: the run exceeded MUTATION_TIMEOUT=1200s$'
 stdout '^mutation-pr: test run of a\.go:3:5 exited with 1: --- FAIL: TestF \(0\.01s\). Gremlins wrote KILLED CONDITIONALS_NEGATION for this place\.$'
 stdout '^mutation-pr: test run of a\.go:4:5 exited with 0. Gremlins wrote LIVED ARITHMETIC_BASE for this place\.$'
 stdout '^mutation-pr: test run of a\.go:6:5 exited with 1: FAIL. Gremlins wrote no verdict for this place\.$'
+stdout '^mutation-pr: test run of a\.go:7:7 exited with 0\. Gremlins wrote LIVED CONDITIONALS_BOUNDARY for this place\.$'
+stdout '^mutation-pr: test run of a\.go:8:5 exited with 1: FAIL\. Gremlins wrote KILLED INVERT_NEGATIVES for this place\.$'
 env GREMLINS_VERDICTS=
 env GREMLINS_STATUS=
 

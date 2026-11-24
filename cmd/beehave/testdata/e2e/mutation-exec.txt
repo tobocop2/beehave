@@ -90,6 +90,16 @@ grep -count=1 '^space/s\.go\t5\t13\t11\t0\t$' $WORK/exits-space
 ! grep '\t10\t' $WORK/exits-space
 cd $WORK
 
+# A mutation that lengthens a line can move the comments of the lines above it, which gofmt aligns. The first line that differs
+# is then a line that differs in white space only, and the record names the mutated line, 5, not the line above it, 4.
+env MUTATION_EXIT_LOG=$WORK/exits-align
+cd copy/align
+env BIN_OUT=
+env BIN_RC=0
+exec sh $WORK/exec.sh $WORK/fake/bin
+grep -count=1 '^align/a\.go\t5\t10\t8\t0\t$' $WORK/exits-align
+cd $WORK
+
 # A late record names its own mutant. The wrapper reads the mutant before the test binary runs, and the copy of the worker
 # can hold another mutant when the test binary ends. The fake test binary replaces the file of the copy, as gremlins does
 # when it restores the file after a timeout. The record still names the mutant that was applied when the run began.
@@ -178,6 +188,20 @@ package space
 var A, B, C = 1, 2, 3
 
 var X = A * B * C
+-- orig/align/a.go --
+package align
+
+var (
+	A = true  // one
+	B = 1 < 2 // two
+)
+-- copy/align/a.go --
+package align
+
+var (
+	A = true   // one
+	B = 1 <= 2 // two
+)
 -- orig/late/r.go --
 package late
 
