@@ -301,9 +301,29 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 
 | Block | Keys |
 |---|---|
-| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`. The cluster name is `build_host`. |
+| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`, `instance_sizes`. The cluster name is `build_host`. |
 | `slurm` | The keys of the `ssh` block. `work_root` is refused, because jobs run in the login folder. `build_host` is the ssh alias of the head node. |
 | `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, with no trailing dot, no `..` and no `.-`, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
+
+#### Size by queue length
+
+Only the `skypilot` provider starts a machine, so only it has a size. The `ssh` and `slurm` blocks refuse `instance_sizes` as an unknown key when the project loads.
+
+- `instance_sizes` is a table of rows that are separated by commas. Each row but the last is `<limit>:<type>`, and the last row is a bare `<type>`. Example: `"3:n2-standard-4,n2-standard-16"`.
+- A row takes a queue of up to `<limit>` jobs. The last row takes every longer queue, so no queue length has no size.
+- The limits are whole numbers above zero, and each limit is above the one before it. A table that breaks a rule is refused when the host is built (`beehave check config` builds it), and the refusal names the key.
+- `instance_type` is the table of one row. Set `instance_type` or `instance_sizes`, never both: the refusal names both keys.
+- Only a host whose block has an `instance_sizes` table is deferred. A `skypilot` block with `instance_type` alone, or with no size key, starts at `host_up` exactly as before, and its gates record no extra step.
+- `host_up` on an absent host with an `instance_sizes` table starts nothing. It records `deferred` and the cluster. At that point no gate exists, so the queue length is 0 and cannot size the host.
+- The first gate that is placed on the cluster starts the host. It takes the count of the gates that already wait or run on the cluster in the gate queue (`slots:gate:<count>`, the partition of the cluster). The count covers every project that shares the cluster. No second counter exists.
+- The start is a recorded step of the gate (`gate:host`). A replay reads the record and starts no second host.
+- Two gates that are placed at once start one host. The start runs under the placement lock of the engine, so the second gate finds the host up and starts nothing. The cost: while a slow start runs (`sky launch` can take minutes), the placement of every other gate of the engine waits for it.
+- The run that placed the gate owns the host that the gate started. `host_teardown` stops it as it stops a host that `host_up` started, and the idle watchdog stays a backstop.
+- Only a gate and a batch gate start a deferred host. A `command` call that needs the host before any gate fails until a gate has started it.
+- A host that is up keeps its size. `host_up` never resizes it. The next size is picked when the host is absent again, after the idle watchdog or `host_teardown` deleted it.
+- A queue that cannot be read ends the gate with an error. No host starts at a guessed size.
+- `ssh` and `slurm` have no table. `host_up` starts and records them as before.
+- The step `gate:host` needs no new module version: only a host with an `instance_sizes` table records it, and that key is new, so no run in flight has a gate on such a host.
 
 #### The build_host key
 
