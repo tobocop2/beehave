@@ -37,6 +37,11 @@ type queueReader interface {
 	OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error)
 	// PullState reads the state of one pull request, open or not: OPEN, CLOSED or MERGED.
 	PullState(ctx context.Context, project string, pr int) (string, error)
+	// IssueState reads the state of one issue: OPEN or CLOSED. A forge that cannot answer is an error, never a state.
+	// found is false, with no state and no error, for a project whose tracker has no issue numbers.
+	IssueState(ctx context.Context, project string, number int) (state string, found bool, err error)
+	// PullClosing reads the issues that merging the pull request with the number closes, as ClosingIssues of the forge of a run lists them. A pull request that is gone is an error.
+	PullClosing(ctx context.Context, project string, pr int) ([]model.IssueRef, error)
 }
 
 // listDefs lists the builtins that read the open work of the project.

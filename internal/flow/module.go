@@ -70,6 +70,8 @@ func repositoryDefs() []builtinDef {
 		{name: prReadKind, call: (*script).prRead, repository: true},
 		{name: prStateKind, call: (*script).prState, repository: true},
 		{name: issueAssigneesKind, call: (*script).issueAssignees, repository: true},
+		{name: issueStateKind, call: (*script).issueState, repository: true},
+		{name: baseTipKind, call: (*script).baseTip, repository: true},
 		{name: prClosingKind, call: (*script).prClosing, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},

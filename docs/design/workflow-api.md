@@ -75,6 +75,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `agent` | `sandbox` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `skill` | #787: new, the skill that the agent CLI loads before the first turn of the model | 1: `examples/remediation/workflow.star` |
 | `agent` | `timeout` | unchanged | 6: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 4 more |
+| `base_tip` | `-` | #503: new, reads the tip commit of a base on the forge and its tree | 1: `examples/remediation/workflow.star` |
+| `base_tip` | `base` | #503: new | 1: `examples/remediation/workflow.star` |
+| `base_tip` | `name` | #503: new | 1: `examples/remediation/workflow.star` |
 | `board_card` | `-` | #381: new, the engine puts a pull request or an issue on the project board and reads the column back, as the writer | 1: `examples/remediation/workflow.star` |
 | `board_card` | `board` | #381: new | 1: `examples/remediation/workflow.star` |
 | `board_card` | `issue` | #381: new | 1: `examples/remediation/workflow.star` |
@@ -147,6 +150,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `issue_assignees` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `issue_assignees` | `number` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `issue_assignees` | `repo` | #499: new | 1: `internal/workflow/lib/claims.star` |
+| `issue_state` | `-` | #503: new, reads the state of an issue, OPEN or CLOSED | 1: `examples/remediation/workflow.star` |
+| `issue_state` | `name` | #503: new | 1: `examples/remediation/workflow.star` |
+| `issue_state` | `number` | #503: new | 1: `examples/remediation/workflow.star` |
 | `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
@@ -201,6 +207,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 1: `examples/remediation/workflow.star` |
 | `pr_closing` | `item` | #500: new | 1: `examples/remediation/workflow.star` |
 | `pr_closing` | `name` | #500: new | 1: `examples/remediation/workflow.star` |
+| `pr_closing` | `pr` | #503: new, reads the pull request with this number in place of the pull request of an item | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `key` | unchanged | 1: `examples/remediation/workflow.star` |

@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -81,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `base_tip`, `issue_state`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -285,8 +285,9 @@ The `parent` argument:
 
 #### `pr_closing`
 
-`pr_closing(item, name)` reads the issues that the pull request of an item closes. It returns `found`, `issues` and `forge`. `item` is the item of the run when it is empty.
+`pr_closing(item, pr, name)` reads the issues that a pull request closes. It returns `found`, `issues` and `forge`. `item` is the item of the run when it is empty.
 
+- `pr` names the pull request by its number, such as the integration pull request of a round. A call with `item` and `pr` is refused, and so is a `pr` below zero. A pull request that is read by its number is `found` when the read succeeds, and a pull request that is gone ends the step with an error. A build with no queue reader fails the call, and a dry run does not fake the read.
 - `issues` is the sorted list of the references that the forge shows as closed by that pull request. An issue of another repository is a full reference, such as `other-org/other-repo#3`.
 - An item with no pull request gives `found = False` and no issues.
 - A project with no forge gives `forge = False`, `found = False` and no issues.
@@ -312,6 +313,26 @@ The `parent` argument:
 - The read is a recorded step, so a resumed run replays the first state.
 - A read that fails ends the step with an error. A project with no forge cannot show a state, which is an error too.
 - A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `issue_state`
+
+`issue_state(number, name)` reads the state of the issue with the number `number` and returns `state` and `found`. `state` is `OPEN` or `CLOSED`.
+
+- A project whose tracker is not GitHub has no issue numbers. The call then reads nothing and returns `found` False and an empty `state`, as the check after a batch does.
+- A `number` below 1 is refused before any read.
+- The read is a recorded step named `issue_state:<name>#<n>`, so a resumed run replays the first state.
+- A read that fails ends the step with an error. An issue that does not exist is a failed read, as in the check after a batch. So is an answer that is neither `OPEN` nor `CLOSED`. The call never gives a guessed state.
+- A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `base_tip`
+
+`base_tip(base, name)` reads the tip commit of the branch `base` on the forge and returns `commit` and `tree`, the tree of that commit.
+
+- The call fetches the branches of the remote into the worktree of the item before it reads the tree.
+- An empty `base` is refused before any read.
+- The read is a recorded step named `base_tip:<name>#<n>`, so a resumed run replays the first tip.
+- A read that fails ends the step with an error. A branch that is not there is a failed read, and so is a tip with no commit. The call never gives an empty tip.
+- A build with no batch host fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
 
 #### `push`
 
@@ -610,6 +631,10 @@ The project gate of the union is two steps in its gate run: `batch_gate:job` che
 - A read that fails is a finding, never a pass.
 - `note` says why no read ran: a base that is not the default branch with no `integration`, an integration pull request that is not merged, or a tracker with no issue numbers.
 - The read never closes or reopens an issue. A finding does not fail the call, because the batch has landed and the merge cannot be undone. The workflow reads `findings` and decides what to tell the owner.
+
+#### The step field of `gate`
+
+A `gate` result has the field `step`. The gate module is at version 7 for it, so a run that recorded a gate before it does not replay on the new build. It holds the name of the step that recorded the result, such as `gate:check#1`, the name that `beehave status` shows. A later call reads it to name the gate that a result came from.
 
 #### The host loss fields
 

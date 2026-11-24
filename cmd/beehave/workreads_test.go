@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 // openItemsTracker is a tracker with two open items, one of them on hold. labels holds the label of each ItemList call.
@@ -136,6 +137,100 @@ type stateForge struct {
 
 func (f stateForge) PRView(context.Context, int, ...string) (model.PullRequest, error) {
 	return model.PullRequest{}, f.err
+}
+
+// issueStateForge shows the state of every issue it is asked about, or fails the read. asked holds the number of each call.
+type issueStateForge struct {
+	forge.Forge
+
+	state string
+	err   error
+	asked *[]int
+}
+
+func (f issueStateForge) IssueState(_ context.Context, number int) (string, error) {
+	*f.asked = append(*f.asked, number)
+
+	return f.state, f.err
+}
+
+func TestQueueReads_IssueStateReadsTheStateOfAnIssueOnTheForgeOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	var asked []int
+
+	state, found, err := githubQueueReads(issueStateForge{state: "CLOSED", asked: &asked}).IssueState(t.Context(), "p", 7)
+
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "CLOSED", state)
+	assert.Equal(t, []int{7}, asked)
+}
+
+// githubQueueReads is queueReadsOver for a project of the GitHub tracker, the only tracker whose ids are issue numbers.
+func githubQueueReads(f forge.Forge) queueReads {
+	reads := queueReadsOver(f, nil)
+	reads.pulls.projects = map[string]config.Project{"p": {Tracker: storegithub.Tracker}}
+
+	return reads
+}
+
+func TestQueueReads_IssueStateOfAProjectOfAnotherTrackerGivesFoundFalseAndReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	var asked []int
+
+	state, found, err := queueReadsOver(issueStateForge{state: "OPEN", asked: &asked}, nil).IssueState(t.Context(), "p", 7)
+
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.Empty(t, state)
+	assert.Empty(t, asked, "the forge is not asked: the tracker has no issue numbers")
+}
+
+func TestQueueReads_AnIssueStateThatCannotBeReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	var asked []int
+
+	reads := githubQueueReads(nil)
+	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+	_, found, err := reads.IssueState(t.Context(), "p", 7)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+	assert.False(t, found)
+
+	_, found, err = githubQueueReads(issueStateForge{err: errFake, asked: &asked}).IssueState(t.Context(), "p", 7)
+	require.ErrorIs(t, err, errFake)
+	assert.False(t, found, "a failed read is an error and never a read that found nothing")
+
+	_, _, err = reads.IssueState(t.Context(), "zzz", 7)
+	require.ErrorIs(t, err, errUnknownProject)
+}
+
+func TestQueueReads_PullClosingReadsTheIssuesOfThePullRequestWithTheNumberAsTheForgeListsThem(t *testing.T) {
+	t.Parallel()
+
+	f := &pullForge{refs: model.ClosingRefs{Issues: []int{12, 13}, Elsewhere: []model.IssueRef{"other-org/other-repo#3"}}}
+
+	issues, err := queueReadsOver(f, nil).PullClosing(t.Context(), "p", 41)
+
+	require.NoError(t, err)
+	assert.Equal(t, []model.IssueRef{"#12", "#13", "other-org/other-repo#3"}, issues, "an issue of the repository of the pull request is #N and another one is a full reference")
+}
+
+func TestQueueReads_APullClosingThatCannotBeReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	reads := queueReadsOver(nil, nil)
+	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+	_, err := reads.PullClosing(t.Context(), "p", 41)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+
+	_, err = queueReadsOver(&pullForge{refsErr: errFake}, nil).PullClosing(t.Context(), "p", 41)
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "read the issues that pull request 41 closes")
 }
 
 func TestQueueReads_AFailedListOfPullRequestsIsAnError(t *testing.T) {
