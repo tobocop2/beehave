@@ -76,7 +76,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup go-test-coverage-install govulncheck-install gotestsum-install gitleaks-install golangci-lint-version lint-version ai-rulez-version ai-rulez-install contract-tools-install deps deadcode build remedy goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
+.PHONY: setup go-test-coverage-install govulncheck-install gotestsum-install gitleaks-install golangci-lint-version lint-version ai-rulez-version ai-rulez-install contract-tools-install deps deadcode build remedy goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test test-examples coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
 	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files
@@ -104,7 +104,7 @@ gitleaks-install:  ## Install gitleaks $(GITLEAKS_VERSION) into the Go bin folde
 golangci-lint-version:  ## Print the golangci-lint version that CI and make setup use
 	@echo $(GOLANGCI_LINT_VERSION)
 
-build: remedy  ## Build bin/beehave and bin/remedy
+build:  ## Build bin/beehave
 	go build -trimpath -o $(BIN) ./cmd/beehave
 
 remedy:  ## Build bin/remedy, the tool of the remediation example (not part of the release)
@@ -177,10 +177,13 @@ $(FLOW_RUN_TARGETS): test-run-flow-%:
 	GOMAXPROCS=$(GO_TEST_PROCS) $(GOTESTSUM)/junit-flow-$*.xml -- $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$*.out -run "^($$names)\$$" $(FLOW_PKG) > test-flow-$*.log 2>&1; \
 	rc=$$?; echo "== test-flow-$*.log"; cat test-flow-$*.log; exit $$rc
 
+test-examples: remedy  ## Build bin/remedy and run the tests of the examples folder alone (a local loop; make test runs them too)
+	go test -race -count=1 -timeout 120s ./examples/...
+
 coverage:  ## Enforce the coverage gate on coverage.out and the flow profiles (run make test first)
 	go-test-coverage --config=.go-test-coverage.yml --profile=$(FLOW_PROFILES)
 
-smoke: build  ## Run the built binary: --version prints and exits 0, and the upload-pack helper of the push answers
+smoke: build remedy  ## Run the built binary: --version prints and exits 0, and the upload-pack helper of the push answers
 	$(BIN) --version | grep -q '^beehave '
 	$(BIN) --beehave-upload-pack nope / / 2>&1 | grep -q '^beehave upload-pack: '
 	$(REMEDY) --help | grep -q '^usage: remedy '
