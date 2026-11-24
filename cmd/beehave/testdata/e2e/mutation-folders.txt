@@ -39,7 +39,7 @@ cp chg.go repo/internal/store/d.go
 exec git -C repo add internal
 exec git -C repo -c user.name=e2e -c user.email=e2e@example.com commit -q -m two
 env GREMLINS_CASE=two
-env GREMLINS_RECORDS='internal/store/d.go\t3\t5\t0\t\n'
+env GREMLINS_RECORDS='internal/store/d.go\t3\t5\t4\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 grep -count=2 '^START;' starts-two
 grep '^START;internal/config;/internal/config;-count=1 -exec=[^;]*/repo/scripts/mutation-exec\.sh -timeout=1200s;true$' starts-two
@@ -71,7 +71,7 @@ cp chg.go repo/internal/store/deep/e.go
 exec git -C repo add internal
 exec git -C repo -c user.name=e2e -c user.email=e2e@example.com commit -q -m nested
 env GREMLINS_CASE=nested
-env GREMLINS_RECORDS='internal/store/deep/e.go\t3\t5\t0\t\n'
+env GREMLINS_RECORDS='internal/store/deep/e.go\t3\t5\t4\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 grep -count=1 '^START;internal/store/deep;/internal/store/deep;' starts-nested
 stdout '^finding: internal/store/deep/e\.go:3: a mutant lived: CONDITIONALS_NEGATION$'
@@ -112,10 +112,17 @@ exec git -C repo checkout -q two
 env GREMLINS_CASE=late
 env GREMLINS_SLEEP=2
 env MUTATION_TIMEOUT=1
+# The first start leaves one record and one verdict line, with its path relative to its folder. The message of the second
+# start prints the record with the verdict, under the path from the module root.
+env GREMLINS_RECORDS='internal/config/host.go\t3\t5\t4\t1\tFAIL\n'
+env GREMLINS_VERDICTS='  KILLED CONDITIONALS_NEGATION at host.go:3:5\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: the run exceeded MUTATION_TIMEOUT=1s before the start on internal/store$'
+stdout '^mutation-pr: test run of internal/config/host\.go:3:5 exited with 1: FAIL\. Gremlins wrote KILLED CONDITIONALS_NEGATION for this place\.$'
 ! stdout '^mutation-pr: applied='
 grep -count=1 '^START;' starts-late
+env GREMLINS_RECORDS=
+env GREMLINS_VERDICTS=
 env GREMLINS_SLEEP=
 env MUTATION_TIMEOUT=
 
@@ -157,6 +164,7 @@ for a in "$@"; do last=$a; done
 path=${last#"$WORK/repo"}
 echo "START;$prefix;$path;$GOFLAGS;$(git config --get diff.relative)" >>"$WORK/starts-$GREMLINS_CASE"
 [ -z "${GREMLINS_RECORDS:-}" ] || printf '%b' "$GREMLINS_RECORDS" >>"$MUTATION_EXIT_LOG"
+[ -z "${GREMLINS_VERDICTS:-}" ] || printf '%b' "$GREMLINS_VERDICTS"
 [ -z "${GREMLINS_SLEEP:-}" ] || sleep "$GREMLINS_SLEEP"
 report=$WORK/r-$GREMLINS_CASE-$(printf '%s' "$prefix" | tr / _).json
 if [ -f "$report" ]; then
