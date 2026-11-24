@@ -14,10 +14,10 @@ stderr 'merge\.star:3:'
 stderr 'project local: no forge; set forge = "github" in the project file'
 ! stdout 'finished'
 
-# The claim of the item is released, and the run ends as failed.
+# The claim of the item is released, and the run ends as failed. The scope step of the run recorded that the scope check is off, and the status shows the note.
 noclaims local
 exec beehavereal status
-stdout '^item-ship-it-r1\tfailed\titem ship-it of [a-z]+$'
+stdout '^item-ship-it-r1\tfailed\tscope check off: the project has no forge\titem ship-it of [a-z]+$'
 
 -- origin/readme.txt --
 The source repository.

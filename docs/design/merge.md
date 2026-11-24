@@ -264,11 +264,13 @@ The union records the tree after each member.
 
 ### Scope check
 
-Before the merge of each member, the recorded step `batch:<name>.scope#<item>` reads the issues that the pull request of the member closes. It compares them with the issues of the first review of that item. For the item of the run, the first review is the first `gate` call. For another item, it is the newest earlier run of that item.
+Before the merge of each member, the recorded step `batch:<name>.scope#<item>` reads the issues that the pull request of the member closes. It compares them with the issues of the first review of that item. For the item of the run, the first review is the first `gate` call, the first `preflight` call of the run item, or the first `merge` call, whichever comes first. The recorded step `scope` fixes it once, and a later call reads it. For another item, it is the newest earlier run of that item.
 
 The scope holds each issue as a reference: `#N` for an issue of the repository of the pull request, and `owner/repo#N` (in lower case) for an issue of another repository. An issue of another repository is new, and the run asks the owner about it, in the same way as for an own issue. The number of an own issue does not keep an issue of another repository with the same number. A scope that an earlier run recorded as numbers reads as own issues.
 
 A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehave answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`, and `keep owner/repo#N` for an issue of another repository. The run records each kept answer as the step `batch:<name>.kept#<item>`. A later call of the member, in this run or in a new run of the same item, reads those steps and asks nothing for a kept issue. A kept issue holds for that member and for the run item that the owner answered. The kept set only grows: a kept issue stays kept when a later pull request of the member no longer closes it, and the closing keyword guard then allows it. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no recorded first review has nothing to compare. The check does not read the item id, so it also holds for an item of a tracker other than GitHub, and the line of the closing-references guard for such an item says so.
+
+A project with no forge has no scope to fix. The `scope` step then records that the scope check is off, and `beehave status` shows `scope check off: the project has no forge` on the run.
 
 ### Commit statuses
 

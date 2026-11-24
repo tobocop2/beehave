@@ -45,8 +45,8 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		id = s.in.Item
 	}
 
-	if s.e.deps.Preflight == nil {
-		return nil, errNoPreflight
+	if err := s.beforeReview(id, label); err != nil {
+		return nil, err
 	}
 
 	value, err := s.durable("preflight", label, s.ask(id, req, hold))
@@ -55,6 +55,19 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	}
 
 	return value, err
+}
+
+// beforeReview refuses a build with no reader, then fixes the scope of the run at a review read of its own item. A read of another item is no first review of the run.
+func (s *script) beforeReview(id, label string) error {
+	if s.e.deps.Preflight == nil {
+		return errNoPreflight
+	}
+
+	if id != s.in.Item {
+		return nil
+	}
+
+	return s.fixScope(label)
 }
 
 // preflightArgs reads the keywords of a preflight call: the request, the hold label, the name of the step and the id of the item to read.
