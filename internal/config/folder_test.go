@@ -109,7 +109,7 @@ func TestLoadFolder_DefaultsMustPassTheValidator(t *testing.T) {
 	require.Empty(t, config.DefaultConfig().Validate())
 }
 
-func TestLoadFolder_AFolderWithNoFilesIsTheDefaultConfig(t *testing.T) {
+func TestLoadFolder_AFolderWithNoFilesIsTheDefaultConfigWithTheDefaultCapsOfTheAdapters(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -119,6 +119,8 @@ func TestLoadFolder_AFolderWithNoFilesIsTheDefaultConfig(t *testing.T) {
 
 	want := config.DefaultConfig()
 	want.Dir = dir
+	// The default caps come from the windows that each agent declares, so a folder with no files caps Claude at 90 and 95, as before.
+	want.Pools = map[model.Agent]config.Pool{"claude": {"five_hour": 90, "seven_day": 95}}
 	require.Equal(t, want, cfg)
 }
 
