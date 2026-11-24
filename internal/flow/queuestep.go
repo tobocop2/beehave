@@ -351,8 +351,8 @@ func queuedValue(got queued) (*starlarkstruct.Struct, error) {
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			"value":  value,
 			itemName: starlark.String(row.Item), stateField: starlark.String(row.State), severityField: starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
-			parentKeyword: starlark.String(row.Parent), authorField: starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
-			labelsField: textList(row.Labels), "stop_step": starlark.String(row.StopStep), "stop_reason": starlark.String(row.StopReason),
+			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
+			"labels": textList(row.Labels), "stop_step": starlark.String(row.StopStep), "stop_reason": starlark.String(row.StopReason),
 		})
 	}
 
@@ -367,7 +367,7 @@ func openPullsValue(pulls []openPull) *starlark.List {
 
 	for i, pull := range pulls {
 		values[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-			numberField: starlark.MakeInt(pull.Number), branchKeyword: starlark.String(pull.Branch), baseKeyword: starlark.String(pull.Base),
+			numberField: starlark.MakeInt(pull.Number), "branch": starlark.String(pull.Branch), baseKeyword: starlark.String(pull.Base),
 			"author": starlark.String(pull.Author), "draft": starlark.Bool(pull.Draft), titleKeyword: starlark.String(pull.Title), itemName: starlark.String(pull.Item),
 		})
 	}

@@ -48,6 +48,8 @@ type memForge struct {
 	ignoresBase bool
 	// holeListed makes the list answer a pull request with no head branch instead of an error.
 	holeListed bool
+	// holeDropped makes the list answer the error of a pull request with no head branch and leave the pull request out.
+	holeDropped bool
 }
 
 func (m memForge) fail() error {
@@ -101,7 +103,12 @@ func (m memForge) OpenPulls(_ context.Context, base string) ([]model.OpenPull, e
 			return []model.OpenPull{{Number: forgetest.OtherPull, Base: base}}, m.fail()
 		}
 
-		return nil, model.OpenPull{Number: forgetest.OtherPull, Base: base}.Check()
+		hole := model.OpenPull{Number: forgetest.OtherPull, Base: base}
+		if m.holeDropped {
+			return nil, hole.Check()
+		}
+
+		return []model.OpenPull{hole}, hole.Check()
 	}
 
 	var kept []model.OpenPull
@@ -400,6 +407,10 @@ func TestPRList_ReturnsTheOpenPullRequestsOfABase(t *testing.T) {
 	r = &recorder{}
 	forgetest.CheckOpenPulls(r, memForge{holeListed: true})
 	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want an IncompletePull that names it, got <nil>"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{holeDropped: true})
+	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got []"}, r.failures)
 
 	r = &recorder{}
 	forgetest.CheckOpenPulls(r, memForge{down: true})

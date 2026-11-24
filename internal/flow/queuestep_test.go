@@ -414,6 +414,19 @@ func TestQueue_APullRequestJoinsItsItemByBranchName(t *testing.T) {
 	assert.Equal(t, []string{"21:ready:P1:7", "22:ready:P1:0", "free=2"}, seenBy(t, h))
 }
 
+func TestQueue_APullRequestWithNoHeadBranchIsListedAndStillQueuesTheOthers(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)}, queuePull(t, 7, "21"), model.PullRequest{Number: 9})
+
+	file := queueFlow(`name = "q"`) + `    command(name = "listed", run = ["listed"] + [str(p.number) + ":" + p.branch + ":" + p.item for p in q.pulls])` + "\n"
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"seen 21:ready:P1:7 22:ready:P1:0 free=2", "listed 7:21:21 9::"}, h.commands.ranBy(testItem))
+}
+
 func TestQueue_ABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
 	t.Parallel()
 

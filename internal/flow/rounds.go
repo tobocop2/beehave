@@ -142,7 +142,7 @@ func (w runWrites) Take(ctx context.Context, project string, req TakeRequest) (r
 // syncOutputs are the fields of round_sync and round_land: the state first, then each field that the state sets, as the empty text or 0 when it does not.
 func syncOutputs(r roundsync.Result) map[string]any {
 	return map[string]any{
-		stateField: string(r.State), branchKeyword: r.Branch, "source": r.Source, numberField: r.PR, headKeyword: r.Head, baseTipKeyword: r.BaseTip, "reason": r.Reason,
+		stateField: string(r.State), "branch": r.Branch, "source": r.Source, numberField: r.PR, headKeyword: r.Head, baseTipKeyword: r.BaseTip, "reason": r.Reason,
 	}
 }
 

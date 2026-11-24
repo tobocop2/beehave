@@ -54,6 +54,13 @@ func (q queueReads) PullState(ctx context.Context, project string, pr int) (stri
 	return *pull.State, nil
 }
 
+// isHole is true when the error reports a pull request that lacks a field of the list.
+func isHole(err error) bool {
+	var hole *model.IncompletePull
+
+	return errors.As(err, &hole)
+}
+
 // OpenPulls lists the open pull requests of the forge of the project on the base, or every open pull request when the base is empty. A project with no forge has none.
 func (q queueReads) OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error) {
 	built, err := q.pulls.forgeOf(project)
@@ -66,6 +73,11 @@ func (q queueReads) OpenPulls(ctx context.Context, project, base string) ([]mode
 	}
 
 	pulls, err := built.OpenPulls(ctx, base)
+	if isHole(err) {
+		// A pull request with no head branch does not fail the queue: the list still holds it, and the queue joins no item to it.
+		return pulls, nil
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("list the open pull requests of project %s: %w", project, err)
 	}

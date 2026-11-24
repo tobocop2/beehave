@@ -120,7 +120,7 @@ func (s *script) spawn(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	call := spawnCall{entry: defaultEntry}
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		itemsKeyword: &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries, workflow.OnOpenKeyword: &call.onOpen,
+		"items": &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries, workflow.OnOpenKeyword: &call.onOpen,
 	}); err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func itemsQueueOf(depth int) string {
 
 // spawnIDs reads the items argument.
 func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
-	ids, err := workflow.Words(itemsKeyword, list)
+	ids, err := workflow.Words("items", list)
 	if err != nil {
 		return nil, err
 	}

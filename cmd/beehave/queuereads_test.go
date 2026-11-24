@@ -64,6 +64,18 @@ func TestQueueReads_OpenPullsListsTheOpenPullRequestsOfTheBaseOfTheForgeOfThePro
 	assert.Equal(t, []string{"main"}, f.openBases)
 }
 
+func TestQueueReads_APullRequestWithNoHeadBranchStaysInTheListAndIsNoError(t *testing.T) {
+	t.Parallel()
+
+	listed := []model.OpenPull{{Number: 7, Branch: "21", Base: "main"}, {Number: 9, Base: "main"}}
+	f := &pullForge{opened: listed, listErr: model.OpenPull{Number: 9, Base: "main"}.Check()}
+
+	got, err := queueReadsOver(f, nil).OpenPulls(t.Context(), "p", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, listed, got)
+}
+
 func TestQueueReads_PullStateReadsTheStateOfAPullRequestOfAnyState(t *testing.T) {
 	t.Parallel()
 

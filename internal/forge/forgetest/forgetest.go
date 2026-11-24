@@ -47,7 +47,7 @@ const (
 )
 
 // The open pull requests that the fake serves, with the base that each is on: OtherPull is on OtherBase. A list of HoleBase holds a pull request with no head branch,
-// which the typed list read must refuse as a *model.IncompletePull that names the branch. SevenLabel is the one label of pull request 7.
+// which the typed list read reports as a *model.IncompletePull that names the branch, and still lists. SevenLabel is the one label of pull request 7.
 const (
 	OtherPull  = 11
 	OtherBase  = "dev"
@@ -235,12 +235,16 @@ func checkOpenBases(r Reporter, target forge.OpenPullsRead) {
 func checkOpenHole(r Reporter, target forge.OpenPullsRead) {
 	r.Helper()
 
-	_, err := target.OpenPulls(context.Background(), HoleBase)
+	pulls, err := target.OpenPulls(context.Background(), HoleBase)
 
 	var hole *model.IncompletePull
 
 	if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{"branch"}) {
 		r.Errorf("OpenPulls of a pull request with no branch: want an IncompletePull that names it, got %v", err)
+	}
+
+	if got := pick(pulls, func(v model.OpenPull) int { return v.Number }); !slices.Equal(got, []int{OtherPull}) {
+		r.Errorf("OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got %v", got)
 	}
 }
 

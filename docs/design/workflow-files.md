@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -81,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `item_list`, `pr_list`, `run_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -455,18 +455,6 @@ The steps are `command` steps, so a replay reads their records and runs no git a
 `closing_references(text)` returns the issues that `text` closes with a closing keyword, each as `#N` or `owner/repo#N`, in the order of the text. It reads the grammar of the merge guard.
 
 Both builtins match text. They run no command, record no step and need no repository.
-
-### `item_list`, `pr_list` and `run_read`
-
-The three builtins are the typed list reads that `queue` is built on. Each one is a recorded step, so a resumed run replays the first answer. A read that fails ends the step with an error.
-
-`item_list(label, name)` returns `items`, the open items of the tracker of the project. Each item has `item`, `severity`, `hold`, `parent`, `assignee`, `title` and `labels`. The tracker applies `label` itself (`gh issue list --label`, `bd ready --label`). An empty `label` lists every open item. The local store keeps no labels, so a `label` lists no item of it.
-
-`pr_list(base, name)` returns `pulls`, the open pull requests of the forge of the project. Each pull request has `number`, `branch`, `base`, `author`, `draft`, `title`, `labels` and `review_decision`. The forge applies `base` itself (`gh pr list --base`). An empty `base` lists every open pull request. A pull request that lacks the number, the head branch or the base branch is an error, and so is a list that fills the limit of the forge. A project with no forge has none.
-
-`run_read(items, name)` returns `runs` and `free`. `runs` has one entry for each item of `items`, in the same order, with `item`, `state`, `value`, `stop_step` and `stop_reason`. The state is `none`, `running`, `failed`, `stopped` or `done`. `none` means that the item never ran, or that its last run was canceled. `value` is what the last run of a `done` item returned, and None for any other state. `stop_step` and `stop_reason` are set for a `stopped` item only. The call reads the last run as `beehave status` does, so a result that cannot be read ends the step with an error. `free` is the cap of the `items` queue less the open runs. The call reads the slots before the runs. An id that is no item id is an error.
-
-A build with no queue reader fails `item_list` and `pr_list`. A dry run does not fake them: it reports the step as not run and ends there.
 
 ### `queue`
 

@@ -433,7 +433,7 @@ func swarmSignatures() map[string][]Param {
 		},
 		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
 		cancelName:  {req("run", KindAny), label},
-		spawnName:   {{Name: itemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(itemsKeyword)}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
+		spawnName:   {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
 		queueName:   {label, opt("hold", KindText), opt("label", KindText)},
 	}
 }
@@ -442,9 +442,6 @@ func swarmSignatures() map[string][]Param {
 func readSignatures() map[string][]Param {
 	return map[string][]Param{
 		itemReadName:  {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
-		itemListName:  {opt("label", KindText), opt(nameKeyword, KindText)},
-		prListName:    {opt("base", KindText), opt(nameKeyword, KindText)},
-		runReadName:   {{Name: itemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(itemsKeyword)}, opt(nameKeyword, KindText)},
 		prStateName:   {req("pr", KindInt), opt(nameKeyword, KindText)},
 		prHistoryName: {opt(nameKeyword, KindText)},
 	}

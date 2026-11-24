@@ -13,9 +13,9 @@ func succeededRun(input, output string) run {
 	return run{Attempt: 1, Status: dbos.WorkflowStatus{ID: runID("21", 1), Status: dbos.WorkflowStatusSuccess, Input: input, Output: output}}
 }
 
-// settledView is the view of a stored run that ended with success, as run_read settles it.
+// settledView is the view of a stored run that ended with success, as the queue settles it.
 func settledView(item string, last run) (runView, error) {
-	view := runView{runRecord: runRecord{Item: item, State: runNone}, last: last}
+	view := runView{Item: item, State: runNone, last: last}
 
 	return view, view.settle()
 }

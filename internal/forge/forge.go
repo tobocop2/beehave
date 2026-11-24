@@ -97,6 +97,8 @@ const OpenPullLimit = 500
 
 // OpenPullsRead is the typed list read of the open pull requests.
 // OpenPulls returns the open pull requests of the base branch, in the order of the forge, or every open pull request when base is empty. A base with none gives an empty list.
+// A pull request that lacks the number, the head branch or the base branch is a hole. The list still holds it, and the error joins one *model.IncompletePull for each hole.
+// A failed read returns no list.
 // A pull request that lacks the number, the head branch or the base branch is a *model.IncompletePull, never a partial answer. A list at the limit of the forge is an error.
 type OpenPullsRead interface {
 	OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error)
