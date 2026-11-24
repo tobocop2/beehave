@@ -350,7 +350,7 @@ if [ "$GREMLINS_REPORT" = many ]; then
 		while [ "$i" -le 52 ]; do
 			[ "$i" -eq 2 ] || printf ','
 			printf '{"line":%d,"column":9,"type":"ARITHMETIC_BASE","status":"LIVED"}' "$i"
-			printf 'a.go\t%d\t9\t0\t\n' "$i" >>"$MUTATION_EXIT_LOG"
+			printf 'a.go\t%d\t9\t8\t0\t\n' "$i" >>"$MUTATION_EXIT_LOG"
 			i=$((i + 1))
 		done
 		printf ']}]}'

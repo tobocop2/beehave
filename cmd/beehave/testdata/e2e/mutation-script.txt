@@ -25,7 +25,7 @@ exec git -C repo -c user.name=e2e -c user.email=e2e@example.com commit -q -m cha
 
 # A report with one lived, one killed, one timed out and one uncovered mutant: one finding line, for the lived one only.
 env GREMLINS_REPORT=$WORK/lived.json
-env GREMLINS_RECORDS='a.go\t3\t5\t0\t\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout -count=1 '^finding: '
 stdout '^finding: a.go:3: a mutant lived: CONDITIONALS_NEGATION$'
@@ -43,7 +43,7 @@ stdout '^mutation-pr: end count=1 printed=1$'
 
 # Gremlins reads LIVED for a test run that exited 1, too. The records hold the exit code of each run. A lived mutant whose run
 # exited 1 is an error of the run: no finding, no marker line, no count in the end marker, and a failed run. The counts line keeps the mutant.
-env GREMLINS_RECORDS='a.go\t3\t5\t1\t--- FAIL: TestF (0.01s)\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\t--- FAIL: TestF (0.01s)\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: applied=3 killed=1 lived=1 timed_out=1$'
 stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: the test run exited with code 1: --- FAIL: TestF \(0\.01s\)$'
@@ -55,7 +55,7 @@ stdout '^mutation-pr: end count=0 printed=0$'
 ! stdout '(?s)^mutation-pr: end .*^mutation-pr: '
 
 # A run that a signal ended: the record holds the exit code of the shell, 128 plus the signal number.
-env GREMLINS_RECORDS='a.go\t3\t5\t137\t\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t137\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: the test run ended with exit code 137, a kill by signal 9$'
 ! stdout '^finding: '
@@ -69,11 +69,12 @@ stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: no exit code was 
 stdout '^mutation-pr: end count=0 printed=0$'
 
 # Two lived mutants of one token, as gremlins reports them for ">": a boundary mutant and a negation mutant, both at column 5.
-# The boundary mutant changes the byte after the token, so its record is at column 6. The negation mutant has its record at column 5.
+# The boundary mutant adds the "=" after the token, so its record has the token as the byte before the change (after=5). The
+# negation mutant has its record at column 5.
 # The boundary run exited 0 and the negation run exited 1: one finding and one error of the run, whatever the order of the records.
 # The end marker counts the finding only, and the counts line counts both.
 env GREMLINS_REPORT=$WORK/twolived.json
-env GREMLINS_RECORDS='a.go\t3\t5\t1\tFAIL a 0.01s\na.go\t3\t6\t0\t\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\tFAIL a 0.01s\na.go\t3\t7\t5\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: applied=2 killed=0 lived=2 timed_out=0$'
 stdout -count=1 '^finding: a\.go:3: a mutant lived: CONDITIONALS_BOUNDARY$'
@@ -81,21 +82,39 @@ stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: the test run exit
 stdout '^mutation-pr: 1 mutant\(s\) lived, 1 finding line\(s\) printed\. Kill each one with a test\.$'
 stdout '^mutation-pr: 1 mutant\(s\) lived with a test run that did not exit 0\.'
 stdout '^mutation-pr: end count=1 printed=1$'
-env GREMLINS_RECORDS='a.go\t3\t6\t0\t\na.go\t3\t5\t1\tFAIL a 0.01s\n'
+env GREMLINS_RECORDS='a.go\t3\t7\t5\t0\t\na.go\t3\t5\t4\t1\tFAIL a 0.01s\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout -count=1 '^finding: a\.go:3: a mutant lived: CONDITIONALS_BOUNDARY$'
 stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: the test run exited with code 1: FAIL a 0\.01s$'
 # A record at the column of the boundary mutant, with no record at the column after it, is not a record of the boundary mutant.
-env GREMLINS_RECORDS='a.go\t3\t5\t0\t\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_BOUNDARY: no exit code was recorded for the test run of this mutant$'
 stdout -count=1 '^finding: a\.go:3: a mutant lived: CONDITIONALS_NEGATION$'
 ! stdout 'finding: a\.go:3: a mutant lived: CONDITIONALS_BOUNDARY'
 
+# Two mutators share one place, as for "+=": one is killed (its run exited 1), one lived (its run exited 0). Gremlins gives the
+# test run no mutator, so the killed mutant takes the record with exit code 1 and the lived mutant is weak.
+env GREMLINS_REPORT=$WORK/sharedplace.json
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\tFAIL a 0.01s\na.go\t3\t5\t4\t0\t\n'
+! exec sh repo/scripts/mutation-pr.sh main
+stdout -count=1 '^finding: a\.go:3: a mutant lived: REMOVE_SELF_ASSIGNMENTS$'
+! stdout 'run error'
+stdout '^mutation-pr: end count=1 printed=1$'
+# The records of a place where the mutant that lived is the only one, and a late record of a cancelled mutant is also there,
+# disagree. The message says so and names no failing test.
+env GREMLINS_REPORT=$WORK/onelived.json
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\tFAIL late 0.01s\na.go\t3\t5\t4\t0\t\n'
+! exec sh repo/scripts/mutation-pr.sh main
+stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: ambiguous: the test runs recorded at this place exited with codes 0 and 1, and the records do not tell which run belongs to this mutant$'
+! stdout 'FAIL late'
+! stdout '^finding: '
+stdout '^mutation-pr: end count=0 printed=0$'
+
 # A mutant that gremlins stopped on a timeout keeps running, and its late record can say exit 0. The record is not read for any
 # mutant, so the lived mutant at the same place has no record: an error of the run, not a weak test.
 env GREMLINS_REPORT=$WORK/timedlate.json
-env GREMLINS_RECORDS='a.go\t3\t5\t0\t\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t0\t\n'
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: run error a\.go:3 CONDITIONALS_NEGATION: no exit code was recorded for the test run of this mutant$'
 ! stdout '^finding: '
@@ -103,7 +122,7 @@ stdout '^mutation-pr: end count=0 printed=0$'
 
 # A run that gremlins ends with a failure leaves no report. The recorded runs are the only evidence, so the script prints them.
 env GREMLINS_REPORT=$WORK/lived.json
-env GREMLINS_RECORDS='a.go\t3\t5\t1\t--- FAIL: TestF (0.01s)\n'
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\t--- FAIL: TestF (0.01s)\n'
 env GREMLINS_STATUS=3
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: gremlins exited with status 3$'
@@ -111,6 +130,19 @@ stdout '^mutation-pr: test run of a\.go:3:5 exited with 1: --- FAIL: TestF \(0\.
 env GREMLINS_RECORDS=
 ! exec sh repo/scripts/mutation-pr.sh main
 stdout '^mutation-pr: no mutant test run left an exit code record$'
+env GREMLINS_STATUS=
+
+# A run that passes its time limit leaves no report. Each record is printed beside the verdict that gremlins wrote for its place,
+# so a killed mutant does not read like an error. A place with no verdict line says so.
+env GREMLINS_RECORDS='a.go\t3\t5\t4\t1\t--- FAIL: TestF (0.01s)\na.go\t4\t5\t4\t0\t\na.go\t6\t5\t4\t1\tFAIL\n'
+env GREMLINS_VERDICTS='      KILLED CONDITIONALS_NEGATION at a.go:3:5\n       LIVED ARITHMETIC_BASE at a.go:4:5\n'
+env GREMLINS_STATUS=124
+! exec sh repo/scripts/mutation-pr.sh main
+stdout '^mutation-pr: the run exceeded MUTATION_TIMEOUT=1200s$'
+stdout '^mutation-pr: test run of a\.go:3:5 exited with 1: --- FAIL: TestF \(0\.01s\). Gremlins wrote KILLED CONDITIONALS_NEGATION for this place\.$'
+stdout '^mutation-pr: test run of a\.go:4:5 exited with 0. Gremlins wrote LIVED ARITHMETIC_BASE for this place\.$'
+stdout '^mutation-pr: test run of a\.go:6:5 exited with 1: FAIL. Gremlins wrote no verdict for this place\.$'
+env GREMLINS_VERDICTS=
 env GREMLINS_STATUS=
 
 # Every "go test" of gremlins reads GOFLAGS: each test binary runs through the script that records its exit code, with no cached run.
@@ -167,6 +199,7 @@ cp "$GREMLINS_REPORT" "$5"
 echo "fake gremlins GOFLAGS=$GOFLAGS"
 echo "fake gremlins MUTATION_ROOT=$MUTATION_ROOT"
 echo "      KILLED CONDITIONALS_NEGATION at a.go:30:4"
+[ -z "${GREMLINS_VERDICTS:-}" ] || printf '%b' "$GREMLINS_VERDICTS"
 exit "${GREMLINS_STATUS:-0}"
 -- fake/timeout --
 #!/bin/sh
@@ -176,6 +209,10 @@ exec "$@"
 {"files":[{"file_name":"a.go","mutations":[{"line":3,"column":5,"type":"CONDITIONALS_NEGATION","status":"LIVED"},{"line":4,"column":5,"type":"ARITHMETIC_BASE","status":"KILLED"},{"line":5,"column":5,"type":"INVERT_NEGATIVES","status":"TIMED OUT"},{"line":6,"column":5,"type":"INCREMENT_DECREMENT","status":"NOT COVERED"}]}]}
 -- twolived.json --
 {"files":[{"file_name":"a.go","mutations":[{"line":3,"column":5,"type":"CONDITIONALS_BOUNDARY","status":"LIVED"},{"line":3,"column":5,"type":"CONDITIONALS_NEGATION","status":"LIVED"}]}]}
+-- sharedplace.json --
+{"files":[{"file_name":"a.go","mutations":[{"line":3,"column":5,"type":"INVERT_ASSIGNMENTS","status":"KILLED"},{"line":3,"column":5,"type":"REMOVE_SELF_ASSIGNMENTS","status":"LIVED"}]}]}
+-- onelived.json --
+{"files":[{"file_name":"a.go","mutations":[{"line":3,"column":5,"type":"CONDITIONALS_NEGATION","status":"LIVED"}]}]}
 -- timedlate.json --
 {"files":[{"file_name":"a.go","mutations":[{"line":3,"column":5,"type":"CONDITIONALS_NEGATION","status":"LIVED"},{"line":3,"column":5,"type":"INVERT_NEGATIVES","status":"TIMED OUT"}]}]}
 -- clean.json --
