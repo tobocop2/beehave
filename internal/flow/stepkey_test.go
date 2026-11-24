@@ -83,6 +83,16 @@ func TestRunStep_TheBodyAndEachTryOfAHostCommandKeepTheStepContextWithTheirKey(t
 	assert.Equal(t, []string{"typed-run:0", "typed-run:0:2"}, keys)
 }
 
+func TestStepKey_TheContextOfTheEngineOutsideARunHasNoKey(t *testing.T) {
+	t.Parallel()
+
+	rig := newRefusalRig(t, func(*Engine) dbos.Workflow[int, int] {
+		return func(dbos.Context, int) (int, error) { return 0, nil }
+	})
+
+	assert.Empty(t, stepKey(rig.ctx), "a DBOS context with no run gives no key, so the host starts a new job and matches no other")
+}
+
 func TestStepKey_ACallOutsideARunHasNoKey(t *testing.T) {
 	t.Parallel()
 

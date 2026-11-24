@@ -90,18 +90,11 @@ func (e *Engine) scrub(err error) error {
 // stepKey is the run id and the step id of the step that ctx belongs to, joined by a colon. A step that runs again after a crash has the same key.
 // A context that is outside a run has no key.
 func stepKey(ctx context.Context) string {
-	step, isStep := ctx.(dbos.Context) // the context of a step is a DBOS context; any other context is outside a run
-	if !isStep {
-		return ""
-	}
+	step, _ := ctx.(dbos.Context) //nolint:errcheck // a context that is no step reads as nil, and nil has no run
+	run, runErr := dbos.GetWorkflowID(step)
+	id, idErr := dbos.GetStepID(step)
 
-	run, err := dbos.GetWorkflowID(step)
-	if err != nil {
-		return ""
-	}
-
-	id, err := dbos.GetStepID(step)
-	if err != nil {
+	if runErr != nil || idErr != nil {
 		return ""
 	}
 
