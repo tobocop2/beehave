@@ -21,7 +21,7 @@ const (
 var pluginTemplate string
 
 // Guard returns the launch that makes OpenCode run command before each bash call of one run: a plugin in the config folder of the run, which OPENCODE_CONFIG_DIR names.
-// The plugin refuses the call when the command exits with code 2, and on any other failure of the command.
+// The plugin sends the command the call as OpenCode gives it, as DecodeHook reads it, and refuses the call when the command exits with code 2, and on any other failure of the command.
 // The launch also closes the run: the project config, the Claude Code files and the external skills are off, no update or download runs,
 // and XDG_CONFIG_HOME names an empty folder so that no global plugin of the owner loads. OPENCODE_PURE stays unset, because it may switch off the plugin.
 // The plugin is proven on the 1.x plugin interface only, and the runner does not start a guarded step on a version from Profile.GuardBefore.

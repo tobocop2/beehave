@@ -16,10 +16,11 @@ import (
 )
 
 // driver loads the plugin like OpenCode does, calls the hook of one tool call and prints the result on one line.
+// The call has the shape of the type of the hook in @opencode-ai/plugin 1.14.48 (dist/index.d.ts:231): the input is { tool, sessionID, callID } and the output is { args }.
 const driver = `import { BeehaveGuard } from "./plugin.mjs"
 const hooks = await BeehaveGuard({ directory: process.cwd() })
 try {
-  await hooks["tool.execute.before"]({ tool: process.argv[2] }, { args: { command: "ls" } })
+  await hooks["tool.execute.before"]({ tool: process.argv[2], sessionID: "ses_1", callID: "call_1" },{ args: { command: "ls" } })
   console.log("pass")
 } catch (err) {
   console.log("refused: " + err.message)
@@ -115,6 +116,30 @@ func checkScript(t *testing.T, stderr, code string) string {
 	require.NoError(t, exectest.Write(path, "#!/bin/sh\ncat > /dev/null\necho '"+stderr+"' >&2\nexit "+code+"\n"))
 
 	return path
+}
+
+func TestGuard_ThePluginRunOnNodeSendsTheCallInTheFormatThatDecodeHookReads(t *testing.T) {
+	t.Parallel()
+
+	node, err := exec.LookPath("node")
+	if !nodeAvailable(t, err, os.Getenv("CI")) { //nolint:forbidigo // the CI variable of the job decides whether a missing Node fails this proof test
+		return
+	}
+
+	sent := filepath.Join(t.TempDir(), "sent")
+	guard := filepath.Join(t.TempDir(), "check")
+	require.NoError(t, exectest.Write(guard, "#!/bin/sh\ncat > "+sent+"\n"))
+
+	outcome, _ := nodeRun(t, node, guard, "bash")
+	require.Equal(t, "pass", outcome)
+
+	input, err := os.ReadFile(sent) //nolint:gosec // a file of this test
+	require.NoError(t, err)
+
+	call, err := opencode.DecodeHook(string(input))
+	require.NoError(t, err)
+	assert.Equal(t, "ls", call.Command)
+	assert.NotEmpty(t, call.Dir)
 }
 
 func TestGuard_ThePluginRunOnNodeDecidesFromTheExitCodeOfTheCheck(t *testing.T) {
