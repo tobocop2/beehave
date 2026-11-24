@@ -8,12 +8,12 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // scopeStep is the recorded step that keeps the scope of a pull request. The first gate of an item fixes the scope. A merge checks it for each member.
@@ -25,16 +25,20 @@ const keptStep = "kept"
 // errScopeRefused ends an item whose pull request closes an issue that is new since the first review and has no owner line.
 var errScopeRefused = errors.New("the pull request closes an issue that is new since its first review")
 
-// keepForm is the one form of an owner line: the word keep, then issue numbers with a leading #, separated by commas.
-var keepForm = regexp.MustCompile(`(?i)^\s*keep\s+#\d+(?:\s*,\s*#\d+)*\s*$`)
+// issueRefText is one issue in an owner line: a number with a leading #, or a full reference owner/repo#N for an issue of another repository.
+const issueRefText = `(?:[a-z0-9_.-]+/[a-z0-9_.-]+)?#\d+`
 
-// issueNumber finds one number in an owner line.
-var issueNumber = regexp.MustCompile(`\d+`)
+// keepForm is the one form of an owner line: the word keep, then issues, separated by commas.
+var keepForm = regexp.MustCompile(`(?i)^\s*keep\s+` + issueRefText + `(?:\s*,\s*` + issueRefText + `)*\s*$`)
+
+// issueRef finds one issue in an owner line.
+var issueRef = regexp.MustCompile(`(?i)` + issueRefText)
 
 // scopeRead is what one step of the scope records: the closing issues of the pull request, or Found false when the item has no pull request yet.
+// An issue is "#N" for the repository of the pull request and "owner/repo#N" for another one. A scope that an earlier run recorded as numbers still reads.
 type scopeRead struct {
-	Found  bool  `json:"found"`
-	Issues []int `json:"issues"`
+	Found  bool             `json:"found"`
+	Issues []model.IssueRef `json:"issues"`
 }
 
 // fixScope records the issues that the pull request of the item closes at the first review, which is the first gate that finds a pull request.
@@ -148,24 +152,24 @@ func (s *script) readClosing(ctx context.Context, item string) (scopeRead, error
 	return scopeRead{Found: found, Issues: sortedIssues(issues)}, nil
 }
 
-// sortedIssues returns the numbers in order, without a repeat. The result is never nil, so a recorded empty set stays a set.
-func sortedIssues(numbers []int) []int {
-	out := append([]int{}, numbers...)
-	slices.Sort(out)
+// sortedIssues returns the issues in order, without a repeat. The result is never nil, so a recorded empty set stays a set.
+func sortedIssues(issues []model.IssueRef) []model.IssueRef {
+	out := append([]model.IssueRef{}, issues...)
+	slices.SortFunc(out, model.CompareIssues)
 
 	return slices.Compact(out)
 }
 
 // scopeCheckRead is the record of the scope step of a member: the issues that its pull request closes now, that are new since its first review, and that have no owner line.
 type scopeCheckRead struct {
-	Fresh []int `json:"fresh"`
-	Then  []int `json:"then"`
-	Kept  []int `json:"kept"`
+	Fresh []model.IssueRef `json:"fresh"`
+	Then  []model.IssueRef `json:"then"`
+	Kept  []model.IssueRef `json:"kept"`
 }
 
 // firstReview returns the issues of the first review of the item, and false when the item has none.
 // The first review of the run's own item is the scope of its gate. The first review of another item is the scope of its newest earlier run.
-func (s *script) firstReview(item string) (issues []int, known bool, err error) {
+func (s *script) firstReview(item string) (issues []model.IssueRef, known bool, err error) {
 	if item == s.in.Item {
 		return s.scope, s.fixed, nil
 	}
@@ -180,7 +184,7 @@ func (s *script) firstReview(item string) (issues []int, known bool, err error) 
 func (s *script) freshIssues(ctx context.Context, item string) (scopeCheckRead, error) {
 	baseline, known, err := s.firstReview(item)
 	if err != nil || !known {
-		return scopeCheckRead{Fresh: []int{}, Then: []int{}}, err
+		return scopeCheckRead{Fresh: []model.IssueRef{}, Then: []model.IssueRef{}}, err
 	}
 
 	read, err := s.readPull(ctx, item)
@@ -193,8 +197,8 @@ func (s *script) freshIssues(ctx context.Context, item string) (scopeCheckRead, 
 		return scopeCheckRead{}, err
 	}
 
-	fresh := slices.DeleteFunc(slices.Clone(read.Issues), func(number int) bool {
-		return slices.Contains(baseline, number) || slices.Contains(kept, number)
+	fresh := slices.DeleteFunc(slices.Clone(read.Issues), func(issue model.IssueRef) bool {
+		return slices.Contains(baseline, issue) || slices.Contains(kept, issue)
 	})
 
 	return scopeCheckRead{Fresh: fresh, Then: baseline, Kept: kept}, nil
@@ -212,7 +216,7 @@ func (s *script) readPull(ctx context.Context, item string) (scopeRead, error) {
 
 // holdScope runs before the merge of a member. A new issue makes the run ask the owner, and the answer is the owner line: it must name each new issue.
 // It returns the reason to refuse the member, or an empty text when the member may merge, with the issues that the owner kept for the member. The read is a recorded step of the member.
-func (b *batchBase) holdScope(m batch.Member) (refusal string, kept []int, err error) {
+func (b *batchBase) holdScope(m batch.Member) (refusal string, kept []model.IssueRef, err error) {
 	read, err := b.recordedFresh(m)
 	if err != nil {
 		return "", nil, fmt.Errorf("scope check of item %s: %w", m.Item, err)
@@ -236,7 +240,7 @@ func (b *batchBase) holdScope(m batch.Member) (refusal string, kept []int, err e
 }
 
 // judge reads the answer of the owner. When it keeps every new issue of the member, judge records them and returns no reason. Otherwise it returns the reason to reject the member.
-func (b *batchBase) judge(item string, fresh []int, answer string) (string, error) {
+func (b *batchBase) judge(item string, fresh []model.IssueRef, answer string) (string, error) {
 	if missing := unnamed(fresh, answer); len(missing) > 0 {
 		return b.scopeRefusal(item, missing), nil
 	}
@@ -245,10 +249,10 @@ func (b *batchBase) judge(item string, fresh []int, answer string) (string, erro
 }
 
 // unnamed returns the issues that the answer of the owner does not keep. An answer that is not the keep form keeps none.
-func unnamed(fresh []int, answer string) []int {
+func unnamed(fresh []model.IssueRef, answer string) []model.IssueRef {
 	named, _ := keptIssues(answer)
 
-	return slices.DeleteFunc(slices.Clone(fresh), func(number int) bool { return slices.Contains(named, number) })
+	return slices.DeleteFunc(slices.Clone(fresh), func(issue model.IssueRef) bool { return slices.Contains(named, issue) })
 }
 
 // recordedFresh is the scope step of the member: the new issues of its pull request, recorded so a replay asks the forge nothing.
@@ -259,24 +263,24 @@ func (b *batchBase) recordedFresh(m batch.Member) (scopeCheckRead, error) {
 }
 
 // scopeQuestion is the question to the owner about the new issues of a member. It lists the issues of the first review and names the run that the answer goes to.
-func (b *batchBase) scopeQuestion(item string, fresh, then []int) string {
+func (b *batchBase) scopeQuestion(item string, fresh, then []model.IssueRef) string {
 	return fmt.Sprintf("The pull request of item %s closes %s now, and did not at its first review (then: %s). Answer in the form \"keep #N[, #N ...]\", for example \"keep %s\". Any other answer rejects item %s from this merge. The other members still land. Answer with beehave answer %s.",
 		item, issueList(fresh), issueList(then), keepList(fresh), item, b.s.in.Item)
 }
 
 // scopeRefusal is the reason to reject a member whose new issues have no owner line. It tells how to keep them.
-func (b *batchBase) scopeRefusal(item string, missing []int) string {
+func (b *batchBase) scopeRefusal(item string, missing []model.IssueRef) string {
 	return fmt.Sprintf("%v: item %s: %s has no owner line, so this merge rejects it and the other members still land. To keep it, run the merge again and answer with beehave answer %s \"keep %s\". Or remove the closing keyword",
 		errScopeRefused, item, issueList(missing), b.s.in.Item, keepList(missing))
 }
 
-// keepList shows issue numbers as "#12, #13", the list of the keep form.
-func keepList(numbers []int) string {
-	return strings.Join(strings.Fields(issueList(numbers)), ", ")
+// keepList shows issues as "#12, other-org/other-repo#5", the list of the keep form.
+func keepList(issues []model.IssueRef) string {
+	return strings.Join(strings.Fields(issueList(issues)), ", ")
 }
 
 // keep records the issues that the owner kept for a member as a step of the run. A later merge call of the member, in this run or in a new run of the item, asks no second question.
-func (b *batchBase) keep(item string, issues []int) error {
+func (b *batchBase) keep(item string, issues []model.IssueRef) error {
 	_, err := runStep(b.s.e, b.s.ctx, b.stepName(keptStep, item, 1), func(context.Context) (keptRead, error) {
 		return keptRead{Item: item, Issues: issues}, nil
 	}, dbos.WithStepMaxRetries(stepRetries))
@@ -289,18 +293,18 @@ func (b *batchBase) keep(item string, issues []int) error {
 
 // keptRead is what a kept step records: the member and the issues that the owner kept for it.
 type keptRead struct {
-	Item   string `json:"item"`
-	Issues []int  `json:"issues"`
+	Item   string           `json:"item"`
+	Issues []model.IssueRef `json:"issues"`
 }
 
 // keptOf returns the issues that the owner kept for the member in this run and in the earlier runs of the item, sorted and without a repeat.
-func (s *script) keptOf(member string) ([]int, error) {
+func (s *script) keptOf(member string) ([]model.IssueRef, error) {
 	ids, err := s.earlierRuns(s.in.Item)
 	if err != nil {
 		return nil, err
 	}
 
-	kept := []int{}
+	kept := []model.IssueRef{}
 
 	var failed error
 
@@ -313,13 +317,13 @@ func (s *script) keptOf(member string) ([]int, error) {
 }
 
 // recordedKept returns the issues that the kept steps of a run recorded for the member.
-func recordedKept(ctx dbos.Context, id, member string) ([]int, error) {
+func recordedKept(ctx dbos.Context, id, member string) ([]model.IssueRef, error) {
 	steps, err := dbos.GetWorkflowSteps(ctx, id, dbos.WithStepsLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("read the steps of %s: %w", id, err)
 	}
 
-	var kept []int
+	var kept []model.IssueRef
 
 	for _, step := range steps {
 		if read := keptOutput(step); read.Item == member {
@@ -342,35 +346,35 @@ func keptOutput(step dbos.StepInfo) keptRead {
 	return read
 }
 
-// keptIssues returns the issue numbers of an owner line in the form "keep #N[, #N ...]". Any other text, or a number too large for int, gives false.
-func keptIssues(text string) ([]int, bool) {
+// keptIssues returns the issues of an owner line in the form "keep #N[, owner/repo#N ...]". Any other text, or a number too large for int, gives false.
+func keptIssues(text string) ([]model.IssueRef, bool) {
 	if !keepForm.MatchString(text) {
 		return nil, false
 	}
 
-	kept := []int{}
+	kept := []model.IssueRef{}
 
-	for _, digits := range issueNumber.FindAllString(text, -1) {
-		number, err := strconv.Atoi(digits)
-		if err != nil {
+	for _, found := range issueRef.FindAllString(text, -1) {
+		issue, ok := model.ParseIssue(found)
+		if !ok {
 			return nil, false
 		}
 
-		kept = append(kept, number)
+		kept = append(kept, issue)
 	}
 
 	return kept, true
 }
 
-// issueList shows issue numbers as "#12 #13", or "no issue" for none.
-func issueList(numbers []int) string {
-	if len(numbers) == 0 {
+// issueList shows issues as "#12 other-org/other-repo#5", or "no issue" for none.
+func issueList(issues []model.IssueRef) string {
+	if len(issues) == 0 {
 		return "no issue"
 	}
 
-	parts := make([]string, len(numbers))
-	for i, number := range numbers {
-		parts[i] = "#" + strconv.Itoa(number)
+	parts := make([]string, len(issues))
+	for i, issue := range issues {
+		parts[i] = string(issue)
 	}
 
 	return strings.Join(parts, " ")

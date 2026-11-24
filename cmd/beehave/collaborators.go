@@ -1190,9 +1190,9 @@ func (p pulls) Pull(ctx context.Context, project, item string) (review.Standing,
 	return review.Pull(ctx, built, number), nil
 }
 
-// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them.
-// An item with no pull request, and a project with no forge, give found false: there is no scope to fix.
-func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error) {
+// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: the issues of the repository of the pull request as "#N",
+// and the issues of other repositories as "owner/repo#N". An item with no pull request, and a project with no forge, give found false: there is no scope to fix.
+func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error) {
 	built, number, err := p.find(ctx, project, item)
 	if errors.Is(err, forge.ErrNoPull) || errors.Is(err, forge.ErrNoForge) {
 		return nil, false, nil
@@ -1207,7 +1207,11 @@ func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues 
 		return nil, false, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
 	}
 
-	return refs.Issues, true, nil
+	for _, number := range refs.Issues {
+		issues = append(issues, model.OwnIssue(number))
+	}
+
+	return append(issues, refs.Elsewhere...), true, nil
 }
 
 // Comment adds a comment to the pull request of the item, once for each key. A project with no forge and an item with no pull request are errors.
@@ -1412,15 +1416,18 @@ func repoRefusal(err error) (merge.Result, bool) {
 	return merge.Result{Stop: merge.Refused, Lines: lines, Refusal: lines}, true
 }
 
+// scopeStillAsks ends the line of an item with no audit: the scope check of the run does not read the item id, so it still holds.
+const scopeStillAsks = "The scope check of the run still asks the owner about a closing issue that is new since the first review, in this repository or another."
+
 // audited returns the issues that the item names, or the line that says why the audit is off.
 func audited(project string, tracker model.TrackerName, item string) ([]int, string) {
 	named, err := strconv.Atoi(item)
 
 	switch {
 	case tracker != storegithub.Tracker:
-		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran.", tracker, project)
+		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran. %s", tracker, project, scopeStillAsks)
 	case err != nil || named <= 0 || strconv.Itoa(named) != item:
-		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran.", item, project)
+		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran. %s", item, project, scopeStillAsks)
 	}
 
 	return []int{named}, ""

@@ -36,9 +36,9 @@ func TestPullsRequest_AGithubItemIdThatIsAPlainPositiveNumberNamesThatIssue(t *t
 func TestPullsRequest_TheIssuesTheOwnerKeptReachTheMergeRequest(t *testing.T) {
 	t.Parallel()
 
-	req := pulls{}.request("p", trackerProject(storegithub.Tracker), "12", 5, gated, flow.MergeSettings{Kept: []int{13}}, nil)
+	req := pulls{}.request("p", trackerProject(storegithub.Tracker), "12", 5, gated, flow.MergeSettings{Kept: []model.IssueRef{"#13", "other-org/other-repo#5"}}, nil)
 
-	assert.Equal(t, []int{13}, req.Kept)
+	assert.Equal(t, []model.IssueRef{"#13", "other-org/other-repo#5"}, req.Kept)
 }
 
 func TestPullsMerge_AGithubItemOnAForgeThatCannotReadClosingReferencesIsRefusedAndNothingMerges(t *testing.T) {
@@ -66,6 +66,7 @@ func TestPullsRequest_AnIdThatIsNotAPlainPositiveNumberAuditsNothingAndSaysSo(t 
 		assert.Empty(t, req.Names, id)
 		assert.Contains(t, req.Unaudited, "no audit ran", id)
 		assert.Contains(t, req.Unaudited, `"`+id+`"`, id)
+		assert.Contains(t, req.Unaudited, "scope check of the run still asks the owner", id)
 	}
 }
 
@@ -79,6 +80,7 @@ func TestPullsRequest_ANumericIdOfATrackerThatIsNotGithubAuditsNothingAndSaysSo(
 		assert.Empty(t, req.Names, tracker)
 		assert.Contains(t, req.Unaudited, "no audit ran", tracker)
 		assert.Contains(t, req.Unaudited, string(tracker), tracker)
+		assert.Contains(t, req.Unaudited, "scope check of the run still asks the owner about a closing issue that is new since the first review, in this repository or another", tracker)
 	}
 }
 

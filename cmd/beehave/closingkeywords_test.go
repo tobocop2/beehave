@@ -35,7 +35,7 @@ func intoIntegration(body string) string {
 func TestPulls_ClosingIssuesOfAPullRequestIntoAnIntegrationBranchGrowWhenTheBodyGainsAKeyword(t *testing.T) {
 	t.Parallel()
 
-	read := func(body string) []int {
+	read := func(body string) []model.IssueRef {
 		gh, err := forgegithub.New("owner/name", proctest.Always(model.CommandResult{Stdout: intoIntegration(body)}))
 		require.NoError(t, err)
 
@@ -49,6 +49,7 @@ func TestPulls_ClosingIssuesOfAPullRequestIntoAnIntegrationBranchGrowWhenTheBody
 		return issues
 	}
 
-	assert.Equal(t, []int{12}, read("Closes #12"), "the first review")
-	assert.Equal(t, []int{12, 99}, read(`Closes #12\nCloses #99`), "a new keyword after the first review shows in the scope read, so the run asks the owner")
+	assert.Equal(t, []model.IssueRef{"#12"}, read("Closes #12"), "the first review")
+	assert.Equal(t, []model.IssueRef{"#12", "#99"}, read(`Closes #12\nCloses #99`), "a new keyword after the first review shows in the scope read, so the run asks the owner")
+	assert.Equal(t, []model.IssueRef{"#12", "other-org/other-repo#5"}, read(`Closes #12\nFixes other-org/other-repo#5`), "a keyword for another repository shows in the scope read as a full reference")
 }

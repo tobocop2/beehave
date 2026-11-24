@@ -153,7 +153,7 @@ type Request struct {
 	AuditClosing bool
 	Names        []int
 	// Kept are issues that the owner kept by an answer. A closing keyword in a commit message may name them besides Names.
-	Kept []int
+	Kept []model.IssueRef
 	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
 	Unaudited string
 	// Credentialed is true when the project declares a writer credential. Such a merge needs a base whose protection requires the gate, the review and a pull request.

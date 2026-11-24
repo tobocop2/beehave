@@ -259,19 +259,19 @@ func (f *Forge) ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, err
 }
 
 // closingRefsOf checks the answer and builds the refs. It refuses a list of more than one page, an answer with no base repository,
-// and a non-empty list whose every issue is in another repository.
+// and a non-empty list in which no issue names its repository.
 func closingRefsOf(repository *closingRepository, pr int, base string) (model.ClosingRefs, error) {
-	issues, err := listedIssues(repository, pr, base)
+	issues, elsewhere, err := listedIssues(repository, pr, base)
 	if err != nil {
 		return model.ClosingRefs{}, err
 	}
 
-	refs := model.ClosingRefs{Issues: issues, BaseBranch: repository.baseBranch(), DefaultBranch: repository.defaultBranch()}
+	refs := model.ClosingRefs{Issues: issues, Elsewhere: elsewhere, BaseBranch: repository.baseBranch(), DefaultBranch: repository.defaultBranch()}
 	if refs.BaseBranch == "" || refs.DefaultBranch == "" || refs.BaseBranch == refs.DefaultBranch {
 		return refs, nil
 	}
 
-	refs.Issues, err = keywordIssues(repository, pr, base)
+	refs.Issues, refs.Elsewhere, err = keywordIssues(repository, pr, base)
 	if err != nil {
 		return model.ClosingRefs{}, err
 	}
@@ -279,35 +279,35 @@ func closingRefsOf(repository *closingRepository, pr int, base string) (model.Cl
 	return refs, nil
 }
 
-// listedIssues returns the issues of the list of GitHub that are in the base repository.
-func listedIssues(repository *closingRepository, pr int, base string) ([]int, error) {
+// listedIssues returns the issues of the list of GitHub: the ones in the base repository, and the ones in another repository as full references.
+func listedIssues(repository *closingRepository, pr int, base string) ([]int, []model.IssueRef, error) {
 	page, baseRepository := repository.PullRequest.Closing, repository.PullRequest.BaseRepository
 
 	more := fmt.Sprintf("pull request %d closes %d issues, more than one page; the rest are unknown", pr, page.TotalCount)
 	if err := fullPage(page.Nodes, page.TotalCount, base, "issue list", more); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if baseRepository == nil {
-		return nil, forge.Refuse("%s: the answer holds no base repository", base)
+		return nil, nil, forge.Refuse("%s: the answer holds no base repository", base)
 	}
 
-	issues := ownNumbers(page.Nodes, baseRepository.NameWithOwner)
-	if len(issues) == 0 && len(page.Nodes) > 0 {
-		return nil, forge.Refuse("pull request %d lists %d closing issues, and none is in %s; the answer cannot be trusted", pr, len(page.Nodes), baseRepository.NameWithOwner)
+	issues, elsewhere := splitNodes(page.Nodes, baseRepository.NameWithOwner)
+	if len(issues) == 0 && len(elsewhere) == 0 && len(page.Nodes) > 0 {
+		return nil, nil, forge.Refuse("pull request %d lists %d closing issues, and none names its repository; the answer cannot be trusted", pr, len(page.Nodes))
 	}
 
-	return issues, nil
+	return issues, elsewhere, nil
 }
 
 // keywordIssues reads the issues that a pull request into a base other than the default branch closes by keyword. GitHub lists none for such a pull request,
-// so the keywords of the body and of the commit messages stand in. A keyword for another repository is left out. A cut commit list is a refusal.
-func keywordIssues(repository *closingRepository, pr int, base string) ([]int, error) {
+// so the keywords of the body and of the commit messages stand in. A keyword for another repository gives a full reference. A cut commit list is a refusal.
+func keywordIssues(repository *closingRepository, pr int, base string) ([]int, []model.IssueRef, error) {
 	pull := repository.PullRequest
 
 	more := fmt.Sprintf("pull request %d has %d commits, more than one page; their messages are unknown", pr, pull.Commits.TotalCount)
 	if err := fullPage(pull.Commits.Nodes, pull.Commits.TotalCount, base, "commit list", more); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	texts := []string{pull.Body}
@@ -315,27 +315,52 @@ func keywordIssues(repository *closingRepository, pr int, base string) ([]int, e
 		texts = append(texts, node.Commit.Message)
 	}
 
-	return ownKeywords(strings.Join(texts, "\n"), pull.BaseRepository.NameWithOwner), nil
+	own, elsewhere := keywordRefs(strings.Join(texts, "\n"), pull.BaseRepository.NameWithOwner)
+
+	return own, elsewhere, nil
 }
 
-// ownKeywords returns the issues of the repository that the closing keywords of a text name, sorted and without a repeat. The result is never nil.
-func ownKeywords(text, repository string) []int {
-	numbers := []int{}
+// keywordRefs returns the issues that the closing keywords of a text name: the ones of the repository as numbers, and the ones of another repository as full references.
+// Both are sorted and without a repeat, and neither is nil.
+func keywordRefs(text, repository string) ([]int, []model.IssueRef) {
+	var split closed
 
 	for _, ref := range closing.References(text) {
 		owner, digits, _ := strings.Cut(ref, "#")
-		if owner != "" && !strings.EqualFold(owner, repository) {
-			continue
-		}
-
 		if number, err := strconv.Atoi(digits); err == nil {
-			numbers = append(numbers, number)
+			split.add(owner, number, repository)
 		}
 	}
 
-	slices.Sort(numbers)
+	slices.Sort(split.own)
+	split.own = slices.Compact(split.own)
 
-	return slices.Compact(numbers)
+	return split.result()
+}
+
+// closed holds the issues that a pull request closes, split into the issues of its own repository and the issues of other repositories.
+type closed struct {
+	own       []int
+	elsewhere []model.IssueRef
+}
+
+// add puts an issue in the own list when its repository is the home repository, or is empty. Any other repository gives a full reference.
+func (c *closed) add(repository string, number int, home string) {
+	if repository == "" || strings.EqualFold(repository, home) {
+		c.own = append(c.own, number)
+
+		return
+	}
+
+	c.elsewhere = append(c.elsewhere, model.ElsewhereIssue(repository, number))
+}
+
+// result returns the own numbers and the references of other repositories, the references sorted and without a repeat. Neither is nil.
+func (c closed) result() ([]int, []model.IssueRef) {
+	own, elsewhere := append([]int{}, c.own...), append([]model.IssueRef{}, c.elsewhere...)
+	slices.SortFunc(elsewhere, model.CompareIssues)
+
+	return own, slices.Compact(elsewhere)
 }
 
 // baseBranch is the base branch of the pull request, or empty when the answer holds null.
@@ -356,17 +381,18 @@ func (r *closingRepository) defaultBranch() string {
 	return r.DefaultBranchRef.Name
 }
 
-// ownNumbers keeps the issues of the repository. An issue of another repository has a number of its own, and the ledger holds only this one's.
-func ownNumbers(nodes []closingNode, repository string) []int {
-	numbers := make([]int, 0, len(nodes))
+// splitNodes splits the issues of the list of GitHub into the issues of the repository and the issues of other repositories.
+// An issue of another repository has a number of its own, so it gets a full reference. A node that names no repository is left out.
+func splitNodes(nodes []closingNode, repository string) ([]int, []model.IssueRef) {
+	var split closed
 
 	for _, node := range nodes {
-		if strings.EqualFold(node.Repository.NameWithOwner, repository) {
-			numbers = append(numbers, node.Number)
+		if named := node.Repository.NameWithOwner; named != "" {
+			split.add(named, node.Number, repository)
 		}
 	}
 
-	return numbers
+	return split.result()
 }
 
 // StackID returns the native stack a pull request belongs to, or an empty string when it is in none.
