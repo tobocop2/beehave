@@ -76,7 +76,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup go-test-coverage-install govulncheck-install gotestsum-install gitleaks-install golangci-lint-version lint-versionai-rulez-version ai-rulez-install contract-tools-install deps deadcode build remedy goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
+.PHONY: setup go-test-coverage-install govulncheck-install gotestsum-install gitleaks-install golangci-lint-version lint-version ai-rulez-version ai-rulez-install contract-tools-install deps deadcode build remedy goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
 	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files

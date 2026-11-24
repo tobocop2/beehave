@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +35,39 @@ func TestMakefile_SetupInstallsGremlinsAtThePinnedVersion(t *testing.T) {
 	out, err := exec.CommandContext(t.Context(), "make", "-n", "-C", filepath.Dir(makefile(t)), "setup").CombinedOutput() //nolint:gosec // G204: the folder is the root of this repository
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0\n")
+}
+
+func TestMakefile_EveryPhonyNameIsATargetAndTheVersionChecksAreAmongThem(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(makefile(t))
+	require.NoError(t, err)
+
+	var phony []string
+
+	continued := false
+
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if rest, ok := strings.CutPrefix(line, ".PHONY:"); ok {
+			line, continued = rest, true
+		} else if !continued {
+			continue
+		}
+
+		continued = strings.HasSuffix(line, "\\")
+		for _, name := range strings.Fields(strings.TrimSuffix(line, "\\")) {
+			if !strings.Contains(name, "$") {
+				phony = append(phony, name)
+			}
+		}
+	}
+
+	for _, name := range phony {
+		assert.Regexp(t, "(?m)^"+regexp.QuoteMeta(name)+":", string(raw), "the .PHONY name %q is no target: two names may be joined", name)
+	}
+
+	assert.Contains(t, phony, "lint-version")
+	assert.Contains(t, phony, "ai-rulez-version")
 }
 
 func TestMakefile_MutationLeavesTheWorkerCountToTheGremlinsConfig(t *testing.T) {
