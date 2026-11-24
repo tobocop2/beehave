@@ -431,12 +431,8 @@ func swarmSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
 
 	return map[string][]Param{
-		mergeName: {
-			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule, Members: true},
-			filled("base"), filled("repo"), opt(holdKeyword, KindText), ruled("own", KindDict, ownRule),
-			forbidText(), words("gate_run"), opt("integration", KindInt), opt("hand_off", KindBool),
-			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
-		},
+		mergeName:   mergeParams(),
+		handOffName: handOffParams(),
 		gatherName: {
 			req("runs", KindAny), one(failKeyword, FailModes()),
 			ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), one(OnTimeoutKeyword, OnTimeoutModes()), label,
@@ -444,6 +440,29 @@ func swarmSignatures() map[string][]Param {
 		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
 		cancelName:  {req("run", KindAny), label},
 		spawnName:   {{Name: ItemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(ItemsKeyword)}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
+	}
+}
+
+// mergeParams are the parameters of merge. The first ten keep their places for a call that passes them by position. `prs` lands a list with a gate of its own.
+// `member`, `gate`, `gated_tree` and `expect_tree` merge one pull request with a gate that an earlier call recorded.
+func mergeParams() []Param {
+	return []Param{
+		{Name: "prs", Kind: KindList, Rule: prsRule, Members: true},
+		filled("base"), filled("repo"), opt(holdKeyword, KindText), ruled("own", KindDict, ownRule),
+		forbidText(), words("gate_run"), opt(integrationKeyword, KindInt), opt("hand_off", KindBool),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
+		{Name: "member", Kind: KindAny, AsValue: true},
+		{Name: gateName, Kind: KindAny, AsValue: true},
+		opt("gated_tree", KindText), opt("expect_tree", KindText),
+	}
+}
+
+// handOffParams are the parameters of hand_off: the keywords of a list of merge that a hand-off reads.
+func handOffParams() []Param {
+	return []Param{
+		{Name: "prs", Kind: KindList, Required: true, Rule: prsRule, Members: true},
+		filled("base"), filled("repo"),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 	}
 }
 
@@ -650,7 +669,7 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 	case waitName:
 		g.asking(call, params)
 	case mergeName:
-		g.handingOff(call, params)
+		g.mergeForm(call, params)
 	case gatherName:
 		g.deadlineMode(call, params)
 	case firstOfName:
@@ -706,9 +725,31 @@ func (g *graph) deadlineMode(call *syntax.CallExpr, params []Param) {
 	}
 }
 
-// handingOff refuses a keyword of a landing on a merge call whose hand_off is the literal True, as the run does. A flag that only the run knows is left to the run.
-func (g *graph) handingOff(call *syntax.CallExpr, params []Param) {
+// mergeForm refuses a merge call whose keywords make no form, as the run does. A value that only the run knows is left to the run.
+func (g *graph) mergeForm(call *syntax.CallExpr, params []Param) {
+	named := func(keyword string) bool {
+		arg := paramArg(call, params, keyword)
+
+		return arg != nil && !isNone(arg)
+	}
+
 	flag, isName := paramArg(call, params, "hand_off").(*syntax.Ident)
+
+	err := MergeForm(MergeKeywords{
+		Prs: paramArg(call, params, "prs") != nil, Member: named("member"), GateRun: named("gate_run"), Integration: named(integrationKeyword), HandOff: isName && flag.Name == trueName,
+		Gate: named("gate"), GatedTree: named("gated_tree"), ExpectTree: named("expect_tree"),
+	})
+	if err != nil {
+		g.reportRule(call, err)
+
+		return
+	}
+
+	g.handingOff(call, params, flag, isName)
+}
+
+// handingOff refuses a keyword of a landing on a merge call whose hand_off is the literal True, as the run does. A flag that only the run knows is left to the run.
+func (g *graph) handingOff(call *syntax.CallExpr, params []Param, flag *syntax.Ident, isName bool) {
 	if !isName || flag.Name != trueName {
 		return
 	}

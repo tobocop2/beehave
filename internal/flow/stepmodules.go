@@ -83,7 +83,8 @@ const agentVersion = 15
 // Version 11 records each issue of the scope as text: "#N" for the repository of the pull request and "owner/repo#N" for another repository. A record of version 10 holds numbers and still reads.
 // Version 12 adds the scope step at the first review read (preflight) and at the first merge call of a run that no gate fixed a scope for, and the no_forge field to the record of the scope step.
 // Version 13 records the closes field of each member in the input of the batch steps, and the merge audits its closing references against it.
-const landVersion = 13
+// Version 14 adds the call of merge with `member`: it records the step batch:<call>.tip after the merge, and the moved field of the intent step, when the tip has another tree than expect_tree.
+const landVersion = 14
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 // Version 3 adds the item_stop step. Version 4 adds the item_list step.
