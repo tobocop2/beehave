@@ -29,7 +29,8 @@ def hold_scope(name, prs, run = "", own = None):
     when its scope is known, the field closing (the closing issues that were read now, which the merge checks again). rejected holds struct(item, reason) for each member that the owner did not keep.
     A member with no scope of its first review has nothing to compare: it passes with no read. name labels the call in its errors.
     run is the item of the run, which the owner names in beehave answer. An empty run is the item of the first member.
-    own is the result of fix_scope in this run. It is the scope of the member whose item is the item of the run. The scope of any other member is the one that an earlier run of that member fixed.
+    own is the result of fix_scope in this run. It is the scope of the member whose item is the item of the run. With no own, that member takes the scope that fix_scope(name = "scope") fixed in this run or in an earlier run of the item.
+    The scope of any other member is the one that an earlier run of that member fixed.
     A read that fails, or a pull request that is gone, ends the run.
     """
     landing = []
@@ -100,7 +101,8 @@ def _first_review(item, run_item, own):
     if item == run_item and own != None:
         return own.issues if own.found else None
 
-    for read in earlier_reads(kind = "pr_closing", name = FIRST_READ, item = item).reads:
+    # The steps of this run belong to the item of the run, so only the member of that item reads them.
+    for read in earlier_reads(kind = "pr_closing", name = FIRST_READ, item = item, own_run = item == run_item).reads:
         if read["found"]:
             return read["issues"]
 

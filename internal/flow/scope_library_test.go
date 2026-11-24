@@ -684,6 +684,20 @@ func TestHoldScope_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompareEvenWh
 	assert.Equal(t, 2, rig.h.forge.closingReads, "one read fixes the scope of item 1, one checks item 1, and item 3 has nothing to compare so it is not read")
 }
 
+func TestHoldScope_TheMemberOfTheRunItemTakesTheScopeThatTheRunFixedWhenTheCallGivesNoOwn(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	done := rig.runFlowAs(t, rig.engine(t), "1", rig.libFlow(`fix_scope(name = "scope")`, "1", 1))
+
+	question := questionOf(t, rig.h, "1")
+
+	assert.Contains(t, question, "item 1 closes #13 now", "#12 is in the scope that the run fixed, so only #13 is new")
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}))
+	require.NoError(t, receive(t, done).err)
+}
+
 func TestHoldScope_AnAnswerKeepsOnlyTheIssuesThatTheQuestionAskedAbout(t *testing.T) {
 	t.Parallel()
 
