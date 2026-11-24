@@ -205,7 +205,7 @@ func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIs
 
 	_, found, err = noForge.ClosingIssues(t.Context(), "p", "bb-1")
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, forge.ErrNoForge, "a project with no forge is an error the scope step reads as the scope check being off")
 	assert.False(t, found)
 }
 

@@ -259,7 +259,7 @@ func TestCommand_AHostJobWaitsForAFreeSlotOfItsClass(t *testing.T) {
 	host.Store("box")
 
 	h.slots = func(_, _, class string) (SlotGrant, error) {
-		return SlotGrant{Host: host.Load(), Count: map[string]int{"mutation": 1, "bench": 1}[class]}, nil
+		return SlotGrant{Host: host.Load(), Count: map[string]int{"mutation": 1, "bench": 1, "default": 1}[class]}, nil
 	}
 
 	engine := h.engine(t)
