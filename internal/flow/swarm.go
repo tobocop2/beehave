@@ -42,22 +42,24 @@ const (
 	// gatherKind is the step kind of the gather builtin.
 	gatherKind = "gather"
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
-	nameKeyword     = "name"
-	runKeyword      = "run"
-	hostKeyword     = "host"
-	headKeyword     = "head"
-	baseKeyword     = "base"
-	pinBaseKeyword  = "pin_base"
-	bodyKeyword     = "body"
-	titleKeyword    = "title"
-	severityField   = "severity"
-	numberField     = "number"
-	holdKeyword     = "hold"
-	ownKeyword      = "own"
-	ownDraftKeyword = "own_draft"
-	reasonKey       = "reason"
-	timeoutKeyword  = "timeout"
-	statusKeyword   = "status"
+	nameKeyword    = "name"
+	runKeyword     = "run"
+	hostKeyword    = "host"
+	headKeyword    = "head"
+	baseKeyword    = "base"
+	pinBaseKeyword = "pin_base"
+	bodyKeyword    = "body"
+	titleKeyword   = "title"
+	severityField  = "severity"
+	numberField    = "number"
+	holdKeyword    = "hold"
+	authorField    = "author"
+	stepField      = "step"
+	codeField      = "code"
+	ownKeyword     = "own"
+	reasonKey      = "reason"
+	timeoutKeyword = "timeout"
+	statusKeyword  = "status"
 	// maxNewProcessesKeyword is the keyword of a command call that caps the new processes of the program.
 	maxNewProcessesKeyword = "max_new_processes"
 	// slotsKeyword is the keyword of a command call that names the slot class of its host job.
@@ -539,7 +541,7 @@ func stoppedValue(stopped *Stopped) starlark.Value { //nolint:ireturn // the val
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-		"step": starlark.String(stopped.Step), "rc": starlark.MakeInt(stopped.RC), "output": starlark.String(stopped.Output),
+		stepField: starlark.String(stopped.Step), "rc": starlark.MakeInt(stopped.RC), "output": starlark.String(stopped.Output),
 	})
 }
 

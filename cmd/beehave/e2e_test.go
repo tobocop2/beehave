@@ -117,8 +117,18 @@ func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, er
 }
 
 // Preflight finds nothing changed: the scripts own no pull request before the first agent.
-func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
+func (e2eFiles) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
 	return preflight.Result{}, nil
+}
+
+// ReadPull finds no pull request.
+func (e2eFiles) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+	return model.PullFacts{}, nil
+}
+
+// IssueAssignees finds an issue that nobody holds.
+func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
 }
 
 // Comments gives an item no comments: the pipeline of the example reads the parent of its item.

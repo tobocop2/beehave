@@ -188,7 +188,24 @@ func SandboxWith(host, stdin string, processes int) error {
 	return nil
 }
 
-// OwnDraft reads the own_draft keyword of preflight: the number of a pull request, 1 or more, or zero for a call that leaves it out.
+// holdKeyword is the keyword and the status name `hold`.
+const holdKeyword = "hold"
+
+// ClaimKeywords are the keywords that preflight no longer takes, because claim_stop in the workflow library takes them.
+func ClaimKeywords() []string { return []string{holdKeyword, "own", "own_draft"} }
+
+// PreflightClaimRefusal is the sentence for a preflight call that passes a claim keyword. It names the library function that took the keyword over.
+func PreflightClaimRefusal(keyword string) string {
+	stop := "The claim stops"
+	if keyword == "own_draft" {
+		stop = "The draft stop"
+	}
+
+	return fmt.Sprintf("preflight takes no argument %s. %s moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass %s to it.",
+		keyword, stop, keyword)
+}
+
+// OwnDraft reads the own_draft field of a member of prs: the number of a pull request, 1 or more, or zero for a member that leaves it out.
 func OwnDraft(v starlark.Value) (int, error) {
 	if v == nil {
 		return 0, nil

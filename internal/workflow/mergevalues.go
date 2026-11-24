@@ -249,7 +249,7 @@ func ownerList(dict *starlark.Dict, key string) ([]string, error) {
 
 // HandOffLanding lists the keywords of merge that only a landing reads, in the order that the refusal looks at them.
 func HandOffLanding() []string {
-	return []string{"hold", "own", "forbid_text", "gate_run", "integration"}
+	return []string{holdKeyword, "own", "forbid_text", "gate_run", "integration"}
 }
 
 // HandOffTakes is the refusal of a keyword of a landing on a merge call with hand_off. The call lands nothing, so the keyword would do nothing.

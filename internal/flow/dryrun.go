@@ -657,6 +657,16 @@ func (dryWriter) Comment(context.Context, string, string, string, string) error 
 // dryPreflight finds the pull request as the owner left it.
 type dryPreflight struct{}
 
-func (dryPreflight) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
+func (dryPreflight) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
 	return preflight.Result{Stop: preflight.Unchanged, Summary: "dry run"}, nil
+}
+
+// ReadPull finds no pull request, so the claim stops of a dry run pass.
+func (dryPreflight) ReadPull(_ context.Context, _, _ string) (model.PullFacts, error) {
+	return model.PullFacts{}, nil
+}
+
+// IssueAssignees finds an issue that nobody holds.
+func (dryPreflight) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
 }

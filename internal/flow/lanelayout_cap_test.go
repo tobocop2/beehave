@@ -111,7 +111,7 @@ func TestLaneLayout_ARunThatStopsBetweenAFixAndItsScopedReviewCountsTheCandidate
 	result, err := runPipeline(engine, file)
 	require.NoError(t, err, "a stop is a result of the run")
 	require.NotNil(t, result.Stopped)
-	require.Equal(t, "preflight:before-scoped-review-2", result.Stopped.Step)
+	require.Equal(t, "claim_stop:before-scoped-review-2", result.Stopped.Step)
 	require.Equal(t, 1, countCandidates(rig), "the run stops before the scoped review of candidate 2")
 	require.Equal(t, 2, spentCandidates(t, engine), "candidate 1 and candidate 2, whose first fix started")
 

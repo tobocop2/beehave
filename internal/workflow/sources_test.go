@@ -50,7 +50,7 @@ func TestPin_FollowsLoadsAndHashesTheEmbeddedLibrary(t *testing.T) {
 	pinned, err := workflow.Pin(file)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"@beehave//review_fix.star", "lib/a.star", "lib/b.star", "workflow.star"}, paths(pinned))
+	assert.Equal(t, []string{"@beehave//claims.star", "@beehave//review_fix.star", "lib/a.star", "lib/b.star", "workflow.star"}, paths(pinned))
 
 	for _, p := range pinned {
 		assert.Len(t, p.SHA256, 64, p.Path)
