@@ -358,6 +358,24 @@ func (s *fakeSteering) CancelRun(runID string) error {
 	return s.err
 }
 
+func (s *fakeSteering) SetGatePriority(item, level string) error {
+	s.calls = append(s.calls, "gate-priority "+item+" "+level)
+
+	return s.err
+}
+
+func (s *fakeSteering) HoldGate(item string) error {
+	s.calls = append(s.calls, "gate-hold "+item)
+
+	return s.err
+}
+
+func (s *fakeSteering) ReleaseGate(item string) error {
+	s.calls = append(s.calls, "gate-release "+item)
+
+	return s.err
+}
+
 func (s *fakeSteering) Close() error {
 	s.closeOK = true
 
