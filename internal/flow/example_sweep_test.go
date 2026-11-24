@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // These tests run the sweep step of the example: after a lane ends, the build host runs the clean command of the project and no other command.
@@ -34,7 +35,7 @@ func sweepRequests(rig *agentRig) []CommandRequest {
 	var found []CommandRequest
 
 	for _, request := range rig.h.commands.requests {
-		if request.Host == "build" && request.SlotClass == "" && len(request.Run) > 0 && request.Run[0] == "clean-lane" {
+		if request.Host == "build" && request.SlotClass == model.DefaultClass && len(request.Run) > 0 && request.Run[0] == "clean-lane" {
 			found = append(found, request)
 		}
 	}
