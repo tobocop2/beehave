@@ -33,9 +33,15 @@ type rule struct {
 const (
 	mergeProof = "TestRun_AReadThatFailsRefusesTheMerge"
 	batchProof = "TestProve_AReadThatFailsLeavesTheMemberUnprovenNeverLanded"
-	inAdapter  = "the adapter or the consumer has its own failure tests, and this test does not prove them"
-	noEngine   = "a read for display or for a command line, which this test does not prove"
-	doesWork   = "the method starts, creates or records something; its error is the result of the action"
+
+	issueAuditProof = "TestAudit_AReadThatFailsIsAFindingAndNeverAPass"
+	inAdapter       = "the adapter or the consumer has its own failure tests, and this test does not prove them"
+
+	assigneesHeld = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
+	readyHeld     = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
+	cardHeld      = "the github adapter test TestBoarder_ConformsToTheFailedCommandRules goes red when the read maps a failed command to an empty status; this package cannot drive the adapter"
+	noEngine      = "a read for display or for a command line, which this test does not prove"
+	doesWork      = "the method starts, creates or records something; its error is the result of the action"
 
 	queueReadProof = "TestQueueReads_AFailedReadOfTheQueueReachesTheCallerOfTheHost"
 )
@@ -71,8 +77,8 @@ var rules = map[string]rule{
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},
 	"internal/preflight.Reader.IssueAssignees":    {Proof: "TestPreflight_AFailedReadOfALinkedIssueIsNotClean", Needle: "unread"},
 	"internal/review.Reader.ReadyMarks":           {Proof: "TestPoll_AFailedReadOfTheReadyMarksOfADraftStopsThePoll", Needle: "ReadyMarks"},
-	"internal/forge.AssigneeReads.IssueAssignees": {NotHeld: inAdapter},
-	"internal/forge.ReadyReads.ReadyMarks":        {NotHeld: inAdapter},
+	"internal/forge.AssigneeReads.IssueAssignees": {NotHeld: assigneesHeld},
+	"internal/forge.ReadyReads.ReadyMarks":        {NotHeld: readyHeld},
 
 	"internal/review.Reader.PRList":            {Proof: "TestPoll_AFailedReadStopsWithAnUnreadError", Needle: "PRList"},
 	"internal/review.Reader.PRView":            {Proof: "TestPoll_AFailedReadStopsWithAnUnreadError", Needle: "PRView"},
@@ -163,8 +169,8 @@ var rules = map[string]rule{
 	"internal/batch.Gate.Run":                     {NotHeld: inAdapter},
 	"internal/batch.Base.Tip":                     {NotHeld: inAdapter},
 	"internal/batch.Base.Merge":                   {NotHeld: inAdapter},
-	"internal/batch.IssueReads.IssueState":        {NotHeld: inAdapter},
-	"internal/batch.IssueReads.ClosingRefs":       {NotHeld: inAdapter},
+	"internal/batch.IssueReads.IssueState":        {Proof: issueAuditProof, Needle: "failing"},
+	"internal/batch.IssueReads.ClosingRefs":       {Proof: issueAuditProof, Needle: "refsErr"},
 	"internal/cli.Resuming.FailedRuns":            {Proof: "TestResumeFailed_AListThatCannotBeReadIsReportedInTheRealRunAndTheDryRun", Needle: "failedErr"},
 	"internal/cli.Forking.Fork":                   {Proof: "TestForkCommand_AForkThatTheClientCannotStartIsReportedAndNamesNoNewRun", Needle: "forkErr"},
 	"internal/cli.Resuming.ResumeRun":             {Exempt: doesWork},
@@ -202,7 +208,7 @@ var rules = map[string]rule{
 	"internal/flow.forge.Comment":                 {NotHeld: inAdapter},
 	"internal/flow.forge.Open":                    {NotHeld: inAdapter},
 	"internal/flow.forge.History":                 {Proof: "TestPRHistory_AFailedReadStopsTheStep", Needle: "historyErr"},
-	"internal/forge.Boarder.CardStatus":           {NotHeld: inAdapter},
+	"internal/forge.Boarder.CardStatus":           {NotHeld: cardHeld},
 	"internal/forge.Syncer.CommitsAhead":          {NotHeld: inAdapter},
 	"internal/forge.Statuses.Protection":          {NotHeld: inAdapter},
 	"internal/forge.ItemReads.Item":               {NotHeld: inAdapter},
