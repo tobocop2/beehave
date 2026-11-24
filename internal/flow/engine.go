@@ -235,7 +235,9 @@ type Engine struct {
 	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
-	version     string
+	// jobStopped runs in a gate run between the recorded stop of its build job and the resume of the job, when set. A test sets it to cancel the gate there.
+	jobStopped func(dbos.Context)
+	version    string
 
 	dir     string
 	log     io.Closer

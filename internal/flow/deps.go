@@ -242,6 +242,8 @@ type clock struct {
 	Queued    time.Duration
 	Watch     time.Duration
 	Draft     time.Duration
+	// JobStop replaces the longest time that a reopen of a held build job waits for the earlier run of the job to end.
+	JobStop time.Duration
 	// Gone is how long a joining run waits for an engine to come back before it reports that the engine stopped.
 	Gone time.Duration
 }
