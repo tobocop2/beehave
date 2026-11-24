@@ -197,7 +197,7 @@ func TestWorktrees_EnsureAddsTheWorktreeOnAnExistingItemBranchAndNeverResetsIt(t
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
-	assert.Equal(t, clone+": worktree add "+want+" bb-1", git.calls[len(git.calls)-1])
+	assert.Equal(t, clone+": worktree add --force "+want+" bb-1", git.calls[len(git.calls)-1])
 
 	for _, call := range git.calls {
 		assert.NotContains(t, call, " -B ")
