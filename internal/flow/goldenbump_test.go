@@ -28,7 +28,7 @@ var goldenRecorded = map[string]string{
 	"core20.agent15.tracker4.forge11.land13.gate6.host1.round6": "ccee5fffb807f08e62bea02ea4b780e1902e4cdfbc361b7e92557aa7fd77ad4a",
 	"core20.agent15.tracker4.forge11.land13.gate7.host1.round6": "a489f6e9f9ac6cdbd5ca5b9cc0e1132df2d38c3ffa67787dd890650ffb9739fb",
 	"core20.agent15.tracker4.forge11.land14.gate7.host1.round6": "3c0c5a833414b40f566fb3e115f34c3fce980b1b00dcd7c9872e7c2edf474be9",
-	"core20.agent15.tracker4.forge11.land15.gate7.host1.round7": "5552116841f73d84ac29beb0cad8b370d72ebeb39f757259cfa09f02bd9a7378",
+	"core20.agent15.tracker4.forge11.land15.gate7.host1.round7": "4b1d3887ad5fec4e501bb54d12dbdb340c4abbf4951114ed61fd10f52db2b823",
 }
 
 // goldenDigest is the digest of the base lists, the shapes and the kinds. It covers each golden list of the step tests, not only the lists of goldenFlow.
