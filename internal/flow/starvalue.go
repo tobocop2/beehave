@@ -147,13 +147,16 @@ func (s *script) countedName(builtin, label string) string {
 
 // nextName is the name that the next call of builtin with label records, `<builtin>:<label>#<n>`. It counts nothing.
 func (s *script) nextName(builtin, label string) string {
-	n := strconv.Itoa(s.counts[builtin] + 1)
+	return stepPrefix(builtin, label) + strconv.Itoa(s.counts[builtin]+1)
+}
 
+// stepPrefix starts the name of every step of a call of builtin with label: `<builtin>:<label>#`, or `<builtin>#` for a call with no label.
+func stepPrefix(builtin, label string) string {
 	if label != "" {
 		builtin += ":" + label
 	}
 
-	return builtin + "#" + n
+	return builtin + "#"
 }
 
 // durable runs one call of a builtin as a recorded DBOS step named `<builtin>:<label>#<n>` and returns the struct of the outputs it recorded.

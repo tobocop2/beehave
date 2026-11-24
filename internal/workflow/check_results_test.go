@@ -26,6 +26,8 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"item_list", `item_list()`, "3:11 haed is not a field of the result of item_list. It has: items."},
 		{"pr_list", `pr_list()`, "3:11 haed is not a field of the result of pr_list. It has: pulls."},
 		{"run_read", `run_read(items = ["1"])`, "3:11 haed is not a field of the result of run_read. It has: runs, free."},
+		{"pr_closing", `pr_closing()`, "3:11 haed is not a field of the result of pr_closing. It has: found, issues, forge."},
+		{"earlier_reads", `earlier_reads(kind = "wait", name = "n")`, "3:11 haed is not a field of the result of earlier_reads. It has: reads."},
 		{"pr_history", `pr_history()`, "3:11 haed is not a field of the result of pr_history. It has: pulls."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
 		{"wait", `wait()`, "3:11 haed is not a field of the result of wait. It has: answer, answers, timed_out."},
@@ -197,7 +199,7 @@ func TestCheck_AFieldOfACallThatIsNotTheBuiltinIsLeftToTheRun(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "board_card", "cancel", "command", "earlier_calls", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull", "issue_assignees", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "merge", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull", "issue_assignees", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "merge", "pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

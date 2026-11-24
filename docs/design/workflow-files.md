@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -81,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -282,6 +282,26 @@ The `parent` argument:
 | The pull request of `parent` is open. | The new pull request is based on the branch of the parent and linked into its native stack with `gh stack link` (the pull requests go by address, on github.com). The first link of a stack passes `--base` with the base of the call. The call reads the base of the parent pull request before and after every link. If the base moved on a new stack, the call unstacks, checks that the stack is gone, sets the base back and links again with that base. A second move, a stack that stays after the unstack, or a move on a stack that already held other pull requests fails the step. The call then reads the stack id of both pull requests, and fails unless they show one non-empty id. `stack` holds the id. |
 | The pull request of `parent` merged. | The base stays as given, and the call links nothing. |
 | `parent` has no pull request. | An error. |
+
+#### `pr_closing`
+
+`pr_closing(item, name)` reads the issues that the pull request of an item closes. It returns `found`, `issues` and `forge`. `item` is the item of the run when it is empty.
+
+- `issues` is the sorted list of the references that the forge shows as closed by that pull request. An issue of another repository is a full reference, such as `other-org/other-repo#3`.
+- An item with no pull request gives `found = False` and no issues.
+- A project with no forge gives `forge = False`, `found = False` and no issues.
+- A read that fails ends the step with an error. The call never gives an empty set for a failed read.
+- The read is a recorded step named `pr_closing:<name>#<n>`, so a resumed run replays the first answer. The dry run gives a pull request that closes no issue.
+
+#### `earlier_reads`
+
+`earlier_reads(kind, name, item, own_run)` returns `reads`, the recorded results of the earlier steps of one kind and name. The runs come newest first, and the steps of one run come newest first.
+
+- `kind` is `pr_closing` or `wait`. Any other kind is refused with the list of the kinds. A read of `wait` has the field `answer`.
+- `item` is the item of the run when it is empty. The runs of that item are read, except the run that calls.
+- With `own_run = True`, the earlier steps of the calling run come first.
+- A step that failed is left out. A store that cannot be read ends the step with an error.
+- The call reads the same store as `run_read`. It is a recorded step, so a resumed run replays the first reads.
 
 #### `pr_state`
 
