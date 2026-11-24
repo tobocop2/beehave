@@ -189,11 +189,12 @@ func TestExamplePlanner_TheDeadlineCancelsANewWorkerThatIsStillOpen(t *testing.T
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1s", "DEADLINE": "1h"}
+	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1h", "DEADLINE": "1h"}
 	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, time.Hour
 
-	// The deadline of a gather reads a clock that the test moves past it. A deadline of one second on the real clock could end the wait before the new
-	// worker published, and the report would show 22=none.
+	// Two events of the test stand in for the clock of the planner. A stall message ends the check-in after the first worker published: a check-in on the real
+	// clock could cancel that worker before it started, and the report would show 22=none. The deadline of the gather reads a clock that the test moves past it
+	// after the new worker published: a deadline on the real clock could pass before that.
 	var ahead atomic.Int64
 
 	began := time.Now()
@@ -204,6 +205,18 @@ func TestExamplePlanner_TheDeadlineCancelsANewWorkerThatIsStillOpen(t *testing.T
 	done := make(chan error, 1)
 
 	go func() { done <- runTicking(t, h, engine) }()
+
+	// The first worker of 22 has published when its progress exists. The stall message goes only after that, so the final report reads its stage.
+	waitOn(t, waiting[struct{}]{what: "the stall message to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r1")
+		if err != nil || len(seen) == 0 {
+			return struct{}{}, false, nil
+		}
+
+		_, err = client.Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+
+		return struct{}{}, err == nil, nil
+	}})
 
 	// The new worker of 22 has published when its progress exists. The deadline passes only after that.
 	waitOn(t, waiting[struct{}]{what: "the new worker of 22 to publish", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
