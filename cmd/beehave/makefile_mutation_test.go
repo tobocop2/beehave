@@ -49,7 +49,7 @@ func TestMakefile_EveryPhonyNameIsATargetAndTheVersionChecksAreAmongThem(t *test
 
 	for line := range strings.SplitSeq(string(raw), "\n") {
 		if rest, ok := strings.CutPrefix(line, ".PHONY:"); ok {
-			line, continued = rest, true
+			line = rest
 		} else if !continued {
 			continue
 		}
