@@ -158,7 +158,7 @@ func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review 
 	rig := newAgentRig(t)
 	rig.h.mutation = exampleMutationCommand
 	rig.h.slots = func(_, _, class string) (SlotGrant, error) {
-		return SlotGrant{Host: "box", Count: map[string]int{"mutation": 1}[class]}, nil
+		return SlotGrant{Host: "box", Count: map[string]int{"mutation": 1, model.DefaultClass: 1}[class]}, nil
 	}
 	rig.project = exampleProject()
 	rig.h.facts = func(string) model.Project { return rig.project }
