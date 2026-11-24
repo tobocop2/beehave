@@ -190,3 +190,12 @@ func TestRegistry_TheAgentEntryHoldsWhetherTheCLIHasALineThatLoadsASkill(t *test
 	require.True(t, agents[claude.Name].LoadsSkills, "Claude Code loads a skill from the first line of the prompt")
 	require.False(t, agents[opencode.Name].LoadsSkills, "OpenCode has no such line")
 }
+
+func TestRegistry_TheAgentEntryHoldsTheUsageWindowsOfTheProfile(t *testing.T) {
+	t.Parallel()
+
+	agents := newAdapters(nil, nil, nil).registry().Agents
+
+	require.Equal(t, []model.WindowSpec{{Name: "five_hour", DefaultMax: 90}, {Name: "seven_day", DefaultMax: 95}}, agents[claude.Name].Windows)
+	require.Empty(t, agents[opencode.Name].Windows, "OpenCode cannot report usage")
+}

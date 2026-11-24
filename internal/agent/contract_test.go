@@ -291,3 +291,26 @@ func TestRunner_ACLIThatDoesNotStreamItsCostStillRefusesACostCap(t *testing.T) {
 	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 	assert.Contains(t, got.Note, "no option to cap the cost, so the run does not start")
 }
+
+func TestContract_AReadingNamesOnlyTheWindowsOfTheProfileInTheirOrder(t *testing.T) {
+	t.Parallel()
+
+	reply, err := os.ReadFile(filepath.Join("claude", "testdata", "logged-in.json"))
+	require.NoError(t, err)
+
+	usage, known := claude.ParseUsage(string(reply)).Usage()
+	require.True(t, known)
+
+	var named []string
+	for _, window := range usage.Windows {
+		named = append(named, window.Name)
+	}
+
+	var declared []string
+	for _, window := range claude.New(nil).Profile().Windows {
+		declared = append(declared, window.Name)
+	}
+
+	assert.Equal(t, declared, named, "the reading holds the windows of the profile, from the shortest to the longest")
+	assert.Equal(t, []string{"five_hour", "seven_day"}, declared)
+}

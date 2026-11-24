@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/tobocop2/beehave/internal/model"
@@ -9,10 +10,10 @@ import (
 func TestReading_KnownHoldsUsageAndNoReason(t *testing.T) {
 	t.Parallel()
 
-	want := model.Usage{FiveHour: model.Window{Percent: 1}, SevenDay: model.Window{Percent: 2}}
+	want := model.Usage{Windows: []model.Window{{Name: "five_hour", Percent: 1}, {Name: "seven_day", Percent: 2}}}
 
 	got, ok := model.Known(want).Usage()
-	if !ok || got != want {
+	if !ok || !slices.Equal(got.Windows, want.Windows) {
 		t.Fatalf("Usage() = %v, %v", got, ok)
 	}
 

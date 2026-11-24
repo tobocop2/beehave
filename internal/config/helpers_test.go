@@ -28,7 +28,7 @@ func registry() config.Adapters {
 			"ssh":      {Block: machineBlock("ssh")},
 			"slurm":    {Block: machineBlock("slurm")},
 		},
-		Agents: map[model.Agent]*config.Entry{"claude": {}, "opencode": {}},
+		Agents: map[model.Agent]*config.Entry{"claude": {Windows: []model.WindowSpec{{Name: "five_hour", DefaultMax: 90}, {Name: "seven_day", DefaultMax: 95}}}, "opencode": {}},
 	}
 }
 
