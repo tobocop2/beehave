@@ -264,6 +264,18 @@ func TestNew_Modes(t *testing.T) {
 	require.NotNil(t, sshtest.New(hosttest.Working).Units)
 }
 
+func TestNew_AnUnreadableLogFailsOnlyTheTailOfTheLog(t *testing.T) {
+	t.Parallel()
+
+	m := sshtest.New(hosttest.UnreadableLog)
+
+	assert.Equal(t, 1, call(m, "tail", "-c", "5", "/work/.beehave/beehave-n1.log").ExitCode)
+	assert.Empty(t, call(m, "tail", "-c", "5", "/work/.beehave/beehave-n1.log").Stdout)
+	assert.Equal(t, sshtest.User+"\n", call(m, "id", "-un").Stdout)
+	assert.Equal(t, hosttest.DF, call(m, "df", "-P", "-k", "/x").Stdout)
+	assert.Contains(t, call(m, "systemd-run", "--version").Stdout, "systemd 255")
+}
+
 func TestMachine_TailAnswersTheLastBytesOfTheScriptedLogOfTheUnitAndTheDefaultForAnotherUnit(t *testing.T) {
 	t.Parallel()
 

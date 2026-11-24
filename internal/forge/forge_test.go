@@ -1,14 +1,44 @@
 package forge_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/forge/forgetest"
 	"github.com/tobocop2/beehave/internal/model"
 )
+
+// failedReads is a fake that answers every optional read with an error. It tests the suite checks only; it does not run any adapter.
+type failedReads struct{ assignees, ready, card, place error }
+
+func (f failedReads) IssueAssignees(context.Context, string, int) ([]string, error) {
+	return nil, f.assignees
+}
+
+func (f failedReads) ReadyMarks(context.Context, int) ([]string, error) { return nil, f.ready }
+
+func (f failedReads) PlaceCard(context.Context, model.Card) error { return f.place }
+
+func (f failedReads) CardStatus(context.Context, model.Card) (string, error) { return "", f.card }
+
+func TestOptionalReadChecks_AcceptAFakeThatAnswersWithErrors(t *testing.T) {
+	t.Parallel()
+
+	failed := failedReads{
+		assignees: errors.New("IssueAssignees: the forge is down"),
+		ready:     errors.New("ReadyMarks: the forge is down"),
+		card:      errors.New("CardStatus: the forge is down"),
+		place:     errors.New("PlaceCard: the forge is down"),
+	}
+
+	forgetest.CheckAssigneeReadsFail(t, failed)
+	forgetest.CheckReadyReadsFail(t, failed)
+	forgetest.CheckBoarderFails(t, failed)
+}
 
 func TestRefuse_FormatsTheMessageWithCodeTwo(t *testing.T) {
 	t.Parallel()
