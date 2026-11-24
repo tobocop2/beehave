@@ -170,7 +170,7 @@ func (w worktrees) placeLocked(ctx context.Context, project config.Project, clon
 	return w.placeKept(ctx, clone, dir, item, head, branch)
 }
 
-// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made.
+// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made. Git drops the record of a removed folder first, so that record does not hold the branch.
 func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch string) error {
 	if _, round := model.RoundBase(item); round {
 		_, err := w.add(ctx, clone, dir, item, head)
@@ -180,6 +180,10 @@ func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch 
 
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
+	}
+
+	if err := w.run(ctx, clone, gitWorktree, "prune"); err != nil {
+		return err
 	}
 
 	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
