@@ -27,7 +27,9 @@ type Factory func(t *testing.T, broken bool) forge.Forge
 
 // SevenReviewer, SevenBody and SevenTitle describe pull request 7, which the fake behind a Factory serves.
 const (
-	Seven         = 7
+	Seven = 7
+	// SevenIssue is the number of the issue that the body of pull request 7 links.
+	SevenIssue    = 5
 	SevenReviewer = "alice"
 	SevenBody     = "Closes #5"
 	SevenTitle    = "Add the adapters"
@@ -181,7 +183,7 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 func SevenFacts() model.PullFacts {
 	return model.PullFacts{
 		Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee},
-		Draft: true, Labels: []string{SevenLabel}, Links: []model.IssueLink{{Number: 5}}, Reviewers: []string{SevenAsked},
+		Draft: true, Labels: []string{SevenLabel}, Links: []model.IssueLink{{Number: SevenIssue}}, Reviewers: []string{SevenAsked},
 	}
 }
 

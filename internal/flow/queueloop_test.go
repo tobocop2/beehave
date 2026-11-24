@@ -50,22 +50,35 @@ func holdsItem21(engine func() *Engine) func(ctx context.Context, item string) e
 	}
 }
 
-// loopPreflight answers the preflight of each item. An item that is not in stops has no pull request that stops it.
+// loopPreflight answers the preflight of each item. An item that is not in pulls has no pull request that stops it.
 type loopPreflight struct {
 	noReads
 
 	mu    sync.Mutex
-	stops map[string]preflight.Result
+	pulls map[string]model.PullFacts
 	asked []string
 }
 
-func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request, _ string) (preflight.Result, error) {
+func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request) (preflight.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.asked = append(p.asked, item)
 
-	return p.stops[item], nil
+	return preflight.Result{}, nil
+}
+
+// ReadPull gives the pull request of the item, if the test set one.
+func (p *loopPreflight) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.pulls[item], nil
+}
+
+// otherLogin is a pull request that an open pull request of a login outside the own logins makes: it claims the item.
+func otherLogin(number int) model.PullFacts {
+	return model.PullFacts{Number: number, State: "OPEN", Author: "dev"}
 }
 
 func (p *loopPreflight) askedItems() []string {
@@ -79,21 +92,21 @@ func TestQueueLoop_AnItemWithAnOpenPullRequestOfAnotherLoginStartsNoAgentAndIsHe
 	t.Parallel()
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
-	r.h.preflight = &loopPreflight{stops: map[string]preflight.Result{"22": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+	r.h.preflight = &loopPreflight{pulls: map[string]model.PullFacts{"22": otherLogin(5)}}
 
 	require.NoError(t, r.run(t))
 	assert.ElementsMatch(t, []string{"21", "23"}, r.agents.started())
 	assert.Zero(t, r.agents.callsOf("22"), "an item that another login holds starts no agent")
 	assert.Equal(t, []string{testProject + "|22|hold"}, r.w.statuses)
 	require.Len(t, r.w.notes, 1)
-	assert.Contains(t, r.w.notes[0], "claimed by another login")
+	assert.Contains(t, r.w.notes[0], "its author is 'dev', who is not on the list of own logins. The item is claimed.")
 }
 
 func TestQueueLoop_APullRequestOpenedSinceTheLastPassStopsTheItemThatThePassReads(t *testing.T) {
 	t.Parallel()
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP1))
-	pf := &loopPreflight{stops: map[string]preflight.Result{"30": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+	pf := &loopPreflight{pulls: map[string]model.PullFacts{"30": otherLogin(6)}}
 	r.h.preflight = pf
 	r.agents.setAct(func(_ context.Context, item string) error {
 		if item == "21" {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 )
 
@@ -26,14 +26,26 @@ type remoteBranches struct {
 	mu    sync.Mutex
 	heads map[string]string
 	asked []string
-	// drafts is the number of the pull request of each item whose pull request is a draft. A call for such an item stops with Draft unless it names that number as its own draft.
+	// drafts is the number of the pull request of each item whose pull request is a draft. A read for such an item gives that draft, and claim_stop stops at it unless the call names that number as its own draft.
 	drafts map[string]int
 
 	// before runs at the start of each call, with no lock held. The round rig holds the turn of a member here: the preflight holds no queue slot.
 	before func(ctx context.Context, item string)
 }
 
-func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req preflight.Request, _ string) (preflight.Result, error) {
+// ReadPull gives the draft of the item, written by the owner of the round, or no pull request.
+func (r *remoteBranches) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.drafts[item] == 0 {
+		return model.PullFacts{}, nil
+	}
+
+	return model.PullFacts{Number: r.drafts[item], State: "OPEN", Draft: true, Author: shipOwner}, nil
+}
+
+func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req preflight.Request) (preflight.Result, error) {
 	if r.before != nil {
 		r.before(ctx, item)
 	}
@@ -50,8 +62,6 @@ func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req pref
 		return preflight.Result{Stop: preflight.BranchGone, Lines: []string{"STOP: the head branch of item " + item + " no longer exists"}}, nil
 	case req.ExpectHead != "" && req.ExpectHead != head:
 		return preflight.Result{Stop: preflight.HeadMoved, Lines: []string{"STOP: head moved to " + head}}, nil
-	case r.drafts[item] != 0 && req.OwnDraft != r.drafts[item]:
-		return preflight.Result{Stop: preflight.Draft, Lines: []string{"STOP: #" + strconv.Itoa(r.drafts[item]) + " is a DRAFT."}}, nil
 	}
 
 	return preflight.Result{Stop: preflight.Unchanged}, nil

@@ -1,7 +1,8 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
-load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix")
+load("@beehave//claims.star", "claim_stop")
+load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
 # fix runs the fix rounds up to vars.round.escalate_after, and fix_late runs the rounds after them.
@@ -692,7 +693,9 @@ def land(approved, project, round_settings, n):
         # The pull request of an approved item is still the draft that its run opened: the merge marks it ready, after this call. The number of that draft is no stop.
         # A child value with no draft number keeps the stop.
         own_draft = {"own_draft": entry.pr} if entry.pr else {}
-        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
+        check = preflight(name = "intake-" + id, id = id, head = head, base = base)
+        if check.ok:
+            check = claim_stop(name = "intake-" + id, id = id, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
         if not check.ok:
             stopped.append(struct(item = id, reason = check.reason))
             continue
@@ -1278,7 +1281,9 @@ def _lane(item, project, round_settings):
     # no hold label, not a draft, and the base vars.round.base.
     # A stop is a result: the run ends here and starts no agent. The result of the run holds the stop as `stopped`: the step, the exit code and the reason.
     # An item with no pull request yet passes. An open pull request by a login that is not in `own` claims the item: somebody else is on it, and no agent starts.
-    intake = preflight(name = "intake", head = "", base = base, hold = "hold", own = {"logins": [round_settings["owner"]]})
+    intake = preflight(name = "intake", head = "", base = base)
+    if intake.ok:
+        intake = claim_stop(name = "intake", hold = "hold", own = {"logins": [round_settings["owner"]]})
     if not intake.ok:
         return item_value(item, "", False, "stopped", 0)
 
@@ -1393,8 +1398,7 @@ def _lane(item, project, round_settings):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head of the worktree, the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     # The loop accepts the draft that this run opened (own_draft is its number) and stops at any other draft.
-    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}
-    # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
+    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}    # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
     def rise_after_review(review):
         return regression_rise(plan.regressions, review.regressions)
 
@@ -1453,7 +1457,7 @@ def _lane(item, project, round_settings):
 
         # The ruling can take days. The settle agent is a dispatch like the others, so the pull request is read again first, with the head that the loop judged last.
         # A run that got no candidate has no gate: its head is the head of the sweep.
-        if not preflight(name = "before-settle", id = item.id, head = loop.head, **guard).ok:
+        if stopped_before(item, "before-settle", loop.head, guard):
             return item_value(item, loop.head, False, "stopped", loop.host_losses)
 
         settle = agent(

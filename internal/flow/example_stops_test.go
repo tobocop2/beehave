@@ -24,12 +24,13 @@ type turningPreflight struct {
 	over   map[string]any
 	gone   bool
 
-	mu    sync.Mutex
-	calls int
-	asked []preflight.Request
+	mu     sync.Mutex
+	calls  int
+	asked  []preflight.Request
+	pulled []string
 }
 
-func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
 	p.mu.Lock()
 	p.calls++
 	p.asked = append(p.asked, req)
@@ -41,15 +42,16 @@ func (p *turningPreflight) Preflight(ctx context.Context, project, item string, 
 	p.mu.Unlock()
 
 	if turned && p.gone {
-		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req, hold)
+		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req)
 	}
 
-	return preflightOver{p.world}.Preflight(ctx, project, item, req, hold)
+	return preflightOver{p.world}.Preflight(ctx, project, item, req)
 }
 
 func (p *turningPreflight) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
 	p.mu.Lock()
 	world := p.world
+	p.pulled = append(p.pulled, project+"/"+item)
 	p.mu.Unlock()
 
 	return preflightOver{world}.ReadPull(ctx, project, item)
@@ -97,11 +99,7 @@ func TestExampleLoop_TheDraftThatTheRunOpenedIsNotAStopOfItsLoop(t *testing.T) {
 	assert.True(t, childOf(t, result).Approved, "the run reaches the first scoped review and the full review")
 	assert.NotEmpty(t, rig.models())
 	require.NotEmpty(t, spy.asked)
-	assert.Zero(t, spy.asked[0].OwnDraft, "the intake stops at every draft")
-
-	for _, req := range spy.asked[1:] {
-		assert.Equal(t, testPull, req.OwnDraft, "the loop accepts the draft that pr_open returned")
-	}
+	assert.Len(t, spy.pulled, len(spy.asked), "each check is followed by a read of the claims, and the loop accepts the draft that pr_open returned")
 }
 
 func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *testing.T) {
@@ -116,7 +114,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 		gone   bool
 		models []string
 		step   string
-		stop   preflight.Stop
+		stop   codeOfStop
 		reason string
 	}{
 		"merged while the implementer works":                   {turnAt: 2, over: map[string]any{"state": "MERGED"}, models: []string{"opus", "sonnet"}, step: "preflight:before-scoped-review-1", stop: preflight.Merged, reason: "already MERGED"},
@@ -124,7 +122,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 		"closed while the first review runs":                   {turnAt: 3, over: map[string]any{"state": "CLOSED"}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Closed, reason: "CLOSED"},
 		"a push by the author while the review runs":           {turnAt: 3, over: map[string]any{shipHeadKey: moved}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.HeadMoved, reason: moved},
 		"the own draft and a moved head: the head is reported": {turnAt: 3, over: map[string]any{"isDraft": true, shipHeadKey: moved}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.HeadMoved, reason: moved},
-		"a hold on the own draft: the hold is reported":        {turnAt: 3, over: map[string]any{"isDraft": true, "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Held, reason: "hold"},
+		"a hold on the own draft: the hold is reported":        {turnAt: 3, over: map[string]any{"isDraft": true, "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "claim_stop:before-fix-1", stop: stopHeld, reason: "hold"},
 		"a merge and a hold: the merge is reported":            {turnAt: 3, over: map[string]any{"state": "MERGED", "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Merged, reason: "already MERGED"},
 		"a gone branch and a moved head: the branch":           {turnAt: 3, over: map[string]any{shipHeadKey: moved}, gone: true, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.BranchGone, reason: "no longer exists"},
 	} {
@@ -186,8 +184,9 @@ func TestExampleLoop_EveryDispatchOfTheLoopIsCheckedAgainstTheHeadOfTheWorktree(
 	for _, req := range spy.asked[1:] {
 		assert.Equal(t, rig.head, req.ExpectHead, "the head the gate ran on, read from the worktree")
 		assert.Equal(t, "integration", req.ExpectBase)
-		assert.Equal(t, []string{"owner"}, req.Own)
 	}
+
+	assert.Len(t, spy.pulled, 5, "each of the five checks is followed by a read of the claims")
 }
 
 func TestExampleLoop_AStopBeforeTheDesignStepStartsNoDesignAgent(t *testing.T) {
@@ -222,7 +221,7 @@ func TestExampleLoop_TheSettleAgentStartsAfterTheRulingWhileThePullRequestIsStil
 	require.NoError(t, outcome.err)
 	assert.Nil(t, outcome.result.Stopped, "the check before the settle agent accepts the draft that the run opened")
 	assert.Equal(t, append([]string{"opus", "sonnet"}, append(capModels(2), "sonnet")...), rig.models(), "the settle agent starts")
-	assert.Equal(t, testPull, spy.asked[len(spy.asked)-1].OwnDraft, "the last call is the check before the settle agent")
+	assert.Equal(t, "integration", spy.asked[len(spy.asked)-1].ExpectBase, "the last call is the check before the settle agent")
 }
 
 func TestExampleLoop_AStopDuringTheRulingOfTheOwnerStartsNoSettleAgent(t *testing.T) {

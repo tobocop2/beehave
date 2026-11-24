@@ -116,7 +116,7 @@ func prHistoryOutputs(pulls []model.PriorPull) map[string]any {
 func prReadOutputs(facts model.PullFacts) map[string]any {
 	return map[string]any{
 		"found": facts.Number != 0, numberField: facts.Number, stateField: facts.State, "draft": facts.Draft, "labels": append([]string{}, facts.Labels...),
-		"author": facts.Author, assigneesField: append([]string{}, facts.Assignees...), "reviewers": append([]string{}, facts.Reviewers...),
+		authorField: facts.Author, assigneesField: append([]string{}, facts.Assignees...), "reviewers": append([]string{}, facts.Reviewers...),
 		"links": append([]model.IssueLink{}, facts.Links...),
 	}
 }

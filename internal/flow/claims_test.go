@@ -10,6 +10,22 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// stopCode is the exit code of a stop that the library function claim_stop reports. It has the Code method of a preflight stop.
+type stopCode int
+
+// The codes of the claim stops.
+const (
+	stopDraft    stopCode = 8
+	stopHeld     stopCode = 9
+	stopClaimed  stopCode = 10
+	stopAssigned stopCode = 11
+)
+
+func (c stopCode) Code() int { return int(c) }
+
+// codeOfStop is the code of a stop of the preflight call or of claim_stop.
+type codeOfStop interface{ Code() int }
+
 // claimOutcome is what a run of claim_stop gave: the four fields of its result, the step names that it recorded, and the stop of the run.
 type claimOutcome struct {
 	line   string
@@ -225,7 +241,9 @@ func TestClaimStop_AnItemWithNoPullRequestPasses(t *testing.T) {
 	assert.Equal(t, "True|UNCHANGED|0|", claimRun(t, &readsFake{}, `name = "a", hold = "hold", `+ownerLogins).line)
 
 	for _, state := range []string{"MERGED", "CLOSED"} {
-		gone := pullFake(func(f *model.PullFacts) { f.State, f.Author, f.Labels, f.Draft = state, "someone", []string{"hold"}, true })
+		gone := pullFake(func(f *model.PullFacts) {
+			f.State, f.Author, f.Labels, f.Draft = state, "someone", []string{"hold"}, true
+		})
 
 		got := claimRun(t, gone, `name = "a", hold = "hold", `+ownerLogins)
 

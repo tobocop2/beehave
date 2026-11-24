@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"sync"
@@ -21,15 +22,15 @@ type fakePreflight struct {
 	result preflight.Result
 	err    error
 	asked  []preflight.Request
-	holds  []string
+	items  []string
 }
 
-func (f *fakePreflight) Preflight(_ context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+func (f *fakePreflight) Preflight(_ context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.asked = append(f.asked, req)
-	f.holds = append(f.holds, project+"/"+item+"/"+hold)
+	f.items = append(f.items, project+"/"+item)
 
 	return f.result, f.err
 }
@@ -46,7 +47,7 @@ func preflightHarness(t *testing.T, result preflight.Result) (*harness, *fakePre
 	return h, fake, w
 }
 
-const reportFlow = `pf = preflight(name = "intake", head = "HEAD", base = "integration", hold = "hold")
+const reportFlow = `pf = preflight(name = "intake", head = "HEAD", base = "integration")
 item_comment(id = "1", key = "k", text = "%s")
 `
 
@@ -60,7 +61,7 @@ func TestPreflight_AStopIsAResultTheWorkflowReads(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{testProject + "|1|" + testRun + ":k|False|MERGED|3|STOP: merged;   Recovery: branch again"}, w.notes)
 	assert.Equal(t, []preflight.Request{{ExpectHead: "HEAD", ExpectBase: "integration"}}, fake.asked)
-	assert.Equal(t, []string{testProject + "/" + testItem + "/hold"}, fake.holds)
+	assert.Equal(t, []string{testProject + "/" + testItem}, fake.items)
 }
 
 func TestPreflight_AnUnchangedPullRequestGivesOkAndNoReason(t *testing.T) {
@@ -100,18 +101,39 @@ func TestPreflight_ALeftOutKeywordChecksNothingOfThatKind(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []preflight.Request{{}}, fake.asked)
-	assert.Equal(t, []string{testProject + "/" + testItem + "/"}, fake.holds)
+	assert.Equal(t, []string{testProject + "/" + testItem}, fake.items)
 }
 
-func TestPreflight_TheOwnLoginsGoToTheReader(t *testing.T) {
+func TestPreflight_TheOldClaimArgumentsAreRefusedAndNameTheLibraryFunction(t *testing.T) {
 	t.Parallel()
 
-	h, fake, _ := preflightHarness(t, preflight.Result{})
+	const tail = ". The claim stops moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass "
 
-	_, err := walkBody(t, h, "preflight(own = {\"logins\": [\"owner\", \"bot\"], \"emails\": [\"o@x\"]})\n")
+	for keyword, value := range map[string]string{"hold": `"hold"`, "own": `{"logins": ["owner"]}`, "own_draft": "7"} {
+		t.Run(keyword, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, err)
-	assert.Equal(t, []preflight.Request{{Own: []string{"owner", "bot"}}}, fake.asked)
+			want := "preflight takes no argument " + keyword + tail + keyword + " to it."
+			if keyword == "own_draft" {
+				want = "preflight takes no argument own_draft. The draft stop moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass own_draft to it."
+			}
+
+			h, fake, _ := preflightHarness(t, preflight.Result{})
+
+			_, err := walkBody(t, h, "preflight("+keyword+" = "+value+")\n")
+
+			require.ErrorContains(t, err, want)
+			assert.Empty(t, fake.asked, "a refused call never reaches the forge")
+
+			// A splat brings the keyword past the static check, and the run refuses it with the same text.
+			h, fake, _ = preflightHarness(t, preflight.Result{})
+
+			_, err = walkBody(t, h, "guard = {\""+keyword+"\": "+value+"}\npreflight(**guard)\n")
+
+			require.ErrorContains(t, err, want)
+			assert.Empty(t, fake.asked, "a refused call through a splat never reaches the forge")
+		})
+	}
 }
 
 func TestPreflight_TheIdKeywordNamesTheItemToRead(t *testing.T) {
@@ -119,12 +141,12 @@ func TestPreflight_TheIdKeywordNamesTheItemToRead(t *testing.T) {
 
 	h, fake, _ := preflightHarness(t, preflight.Result{})
 
-	_, err := walkBody(t, h, `preflight(name = "a", id = "7", hold = "hold")
-preflight(name = "b", hold = "hold")
+	_, err := walkBody(t, h, `preflight(name = "a", id = "7")
+preflight(name = "b")
 `)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{testProject + "/7/hold", testProject + "/" + testItem + "/hold"}, fake.holds)
+	assert.Equal(t, []string{testProject + "/7", testProject + "/" + testItem}, fake.items)
 }
 
 func TestPreflight_AReadThatFailsEndsTheItemWithAnError(t *testing.T) {
@@ -159,38 +181,6 @@ func TestPreflight_AnUnknownKeywordFailsAtItsLine(t *testing.T) {
 	assert.Empty(t, fake.asked)
 }
 
-func TestPreflight_OwnDraftIsTheNumberOfAPullRequestAndAnythingElseFailsAtItsLine(t *testing.T) {
-	t.Parallel()
-
-	for name, value := range map[string]string{"zero": "0", "negative": "-5", "text": `"7"`, "none": "None"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			h, fake, _ := preflightHarness(t, preflight.Result{})
-
-			_, err := walkBody(t, h, "preflight(own_draft = "+value+")\n")
-
-			require.ErrorContains(t, err, "workflow.star:")
-			assert.Empty(t, fake.asked, "a refused value never reaches the forge")
-
-			// A value that the file computes passes the check, and the run refuses it with the same text.
-			h, fake, _ = preflightHarness(t, preflight.Result{})
-
-			_, err = walkBody(t, h, "number = "+value+"\npreflight(own_draft = number)\n")
-
-			require.ErrorContains(t, err, "own_draft must be the number of a pull request")
-			assert.Empty(t, fake.asked, "a refused value never reaches the forge at the run")
-		})
-	}
-
-	h, fake, _ := preflightHarness(t, preflight.Result{})
-
-	_, err := walkBody(t, h, "preflight(own_draft = 7)\n")
-
-	require.NoError(t, err)
-	assert.Equal(t, []preflight.Request{{OwnDraft: 7}}, fake.asked)
-}
-
 func TestPreflight_TheStepIsRecordedUnderItsName(t *testing.T) {
 	t.Parallel()
 
@@ -218,12 +208,18 @@ func TestPreflight_AStopOfAStepWithNoNameIsReportedAsPreflight(t *testing.T) {
 }
 
 // preflightOver is the preflight of the engine over a forge fake: the real checks, with the pull request that the fake holds.
-type preflightOver struct{ world preflight.Reader }
+type preflightOver struct{ world readWorld }
 
-func (p preflightOver) Preflight(ctx context.Context, _, _ string, req preflight.Request, hold string) (preflight.Result, error) {
+// readWorld is a forge fake that the checks and the claim reads can ask.
+type readWorld interface {
+	preflight.Reader
+	IssueAssignees(ctx context.Context, repo string, number int) ([]string, error)
+}
+
+func (p preflightOver) Preflight(ctx context.Context, _, _ string, req preflight.Request) (preflight.Result, error) {
 	req.PR = testPull
 
-	return preflight.Check(ctx, p.world, req, hold)
+	return preflight.Check(ctx, p.world, req)
 }
 
 // ReadPull reads the pull request that the fake holds, as the reader of the engine does.
@@ -248,7 +244,9 @@ func (noReads) ReadPull(context.Context, string, string) (model.PullFacts, error
 	return model.PullFacts{}, nil
 }
 
-func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, error) { return nil, nil }
+func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
+}
 
 // goneBranch is a forge whose head branch is no longer on the remote.
 type goneBranch struct{ *shipWorld }
@@ -275,21 +273,22 @@ func TestExamplePreflight_AnItemThatChangedStartsNoAgentAndACleanItemStartsOne(t
 		login  string
 		gone   bool
 		agents bool
-		stop   preflight.Stop
+		stop   codeOfStop
+		step   string
 		reason string
 	}{
 		"a clean pull request starts the agents":     {agents: true},
 		"a merged pull request":                      {over: map[string]any{"state": "MERGED"}, stop: preflight.Merged, reason: "already MERGED"},
 		"a closed pull request":                      {over: map[string]any{"state": "CLOSED"}, stop: preflight.Closed, reason: "CLOSED"},
-		"a draft":                                    {over: map[string]any{"isDraft": true}, stop: preflight.Draft, reason: "is a DRAFT"},
-		"a pull request with the hold label":         {over: map[string]any{"labels": []any{map[string]any{"name": "hold"}}}, stop: preflight.Held, reason: "hold"},
-		"an open pull request of another author":     {over: map[string]any{"author": map[string]any{"login": "dev"}}, stop: preflight.Claimed, reason: "dev"},
+		"a draft":                                    {over: map[string]any{"isDraft": true}, stop: stopDraft, step: "claim_stop:intake", reason: "is a DRAFT"},
+		"a pull request with the hold label":         {over: map[string]any{"labels": []any{map[string]any{"name": "hold"}}}, stop: stopHeld, step: "claim_stop:intake", reason: "hold"},
+		"an open pull request of another author":     {over: map[string]any{"author": map[string]any{"login": "dev"}}, stop: stopClaimed, step: "claim_stop:intake", reason: "dev"},
 		"an own login that differs in case only":     {login: "Owner", agents: true},
 		"a base that changed":                        {over: map[string]any{"baseRefName": "main"}, stop: preflight.BaseChanged, reason: "main"},
 		"a head branch that is gone":                 {gone: true, stop: preflight.BranchGone, reason: "no longer exists"},
 		"a merge and a hold: the merge is reported":  {over: map[string]any{"state": "MERGED", "labels": []any{map[string]any{"name": "hold"}}}, stop: preflight.Merged, reason: "already MERGED"},
 		"a close and a draft: the close is reported": {over: map[string]any{"state": "CLOSED", "isDraft": true}, stop: preflight.Closed, reason: "CLOSED"},
-		"a hold and a draft: the hold is reported":   {over: map[string]any{"isDraft": true, "labels": []any{map[string]any{"name": "hold"}}}, stop: preflight.Held, reason: "hold"},
+		"a hold and a draft: the hold is reported":   {over: map[string]any{"isDraft": true, "labels": []any{map[string]any{"name": "hold"}}}, stop: stopHeld, step: "claim_stop:intake", reason: "hold"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -321,7 +320,7 @@ func TestExamplePreflight_AnItemThatChangedStartsNoAgentAndACleanItemStartsOne(t
 			assert.Empty(t, rig.h.agents.seen(), "a stop starts no agent")
 			assert.Empty(t, result.Merge)
 			require.NotNil(t, result.Stopped, "a stop says why in the result of the run")
-			assert.Equal(t, "preflight:intake", result.Stopped.Step)
+			assert.Equal(t, cmp.Or(tc.step, "preflight:intake"), result.Stopped.Step)
 			assert.Equal(t, tc.stop.Code(), result.Stopped.RC)
 			assert.Contains(t, result.Stopped.Output, tc.reason)
 		})
