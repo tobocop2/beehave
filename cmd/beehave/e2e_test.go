@@ -170,7 +170,7 @@ func (f e2eFiles) Claim(_ context.Context, _, item string) (string, error) {
 
 func (f e2eFiles) Ready(_ context.Context, _, item string) error { return f.event("ready", item) }
 
-func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, error) {
+func (e2eFiles) ClosingIssues(context.Context, string, string) ([]model.IssueRef, bool, error) {
 	return nil, true, nil
 }
 

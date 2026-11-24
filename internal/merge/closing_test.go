@@ -221,10 +221,26 @@ func TestCommitKeywords_AnIssueTheOwnerKeptPasses(t *testing.T) {
 	t.Parallel()
 
 	req := audited(12)
-	req.Kept = []int{99}
+	req.Kept = []model.IssueRef{"#99"}
 	result := worded(t, "Tidy", "Fixes #99").run(req)
 
 	assert.Equal(t, merge.Done, result.Stop)
+}
+
+func TestCommitKeywords_AnIssueOfAnotherRepositoryPassesOnlyWhenTheOwnerKeptItAsAFullReference(t *testing.T) {
+	t.Parallel()
+
+	req := audited(12)
+	req.Kept = []model.IssueRef{"#7", "other/place#7"}
+	kept := worded(t, "Tidy", "Fixes Other/Place#7").run(req)
+
+	assert.Equal(t, merge.Done, kept.Stop)
+
+	req.Kept = []model.IssueRef{"#7"}
+	refused := worded(t, "Tidy", "Fixes other/place#7").run(req)
+
+	assert.Equal(t, merge.Refused, refused.Stop, "the own issue #7 is not the issue 7 of another repository")
+	assert.Contains(t, refused.Lines, "  commit bbbbbbbbb closes other/place#7")
 }
 
 func TestCommitKeywords_ANumberTooLargeForAnIssueRefuses(t *testing.T) {

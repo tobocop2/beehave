@@ -499,7 +499,7 @@ func (f dryForge) Pull(context.Context, string, string) (review.Standing, error)
 	return review.Standing{Number: dryPull, Head: f.head}, nil
 }
 
-func (dryForge) ClosingIssues(context.Context, string, string) ([]int, bool, error) {
+func (dryForge) ClosingIssues(context.Context, string, string) ([]model.IssueRef, bool, error) {
 	return nil, true, nil
 }
 

@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // secondCallBound is the time that a run needs after the answer to land a member twice. It stays far below the bound of the package, so a lost kept issue fails its test by name.
@@ -198,7 +200,7 @@ func TestMerge_TheIssuesTheOwnerKeptGoToTheMergeAsKept(t *testing.T) {
 
 	require.Equal(t, []string{"1"}, rig.merger.landed())
 	require.Len(t, rig.merger.given, 1)
-	assert.Equal(t, []int{13}, rig.merger.given[0].Kept, "the closing keyword guard of the merge may name the kept issue")
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[0].Kept, "the closing keyword guard of the merge may name the kept issue")
 }
 
 func TestMerge_ASecondMergeCallOfAMemberInTheSameRunAsksNoSecondQuestionForAKeptIssue(t *testing.T) {
@@ -229,7 +231,7 @@ func TestMerge_ASecondMergeCallOfAMemberInTheSameRunAsksNoSecondQuestionForAKept
 
 	assert.Equal(t, []string{"1", "1"}, rig.merger.landed(), "the kept issue needs no second answer, so the second call lands the member")
 	require.Len(t, rig.merger.given, 2)
-	assert.Equal(t, []int{13}, rig.merger.given[1].Kept)
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[1].Kept)
 }
 
 func TestMerge_AMemberOfAnotherItemWithAnEarlierRunWhoseIssuesDidNotGrowAsksNoQuestion(t *testing.T) {
@@ -553,7 +555,7 @@ func TestScope_AStoreThatIsShutDownRefusesTheReadOfTheKeptIssues(t *testing.T) {
 	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).keptOf("1")
 	require.ErrorContains(t, err, "list the earlier runs of item 12")
 
-	err = (&batchBase{s: &script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}}).keep("1", []int{13})
+	err = (&batchBase{s: &script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}}).keep("1", []model.IssueRef{"#13"})
 	require.ErrorContains(t, err, "record the issues kept for item 1")
 }
 
@@ -576,17 +578,24 @@ func TestKeptIssues_ReadsOnlyTheKeepForm(t *testing.T) {
 
 	kept, ok := keptIssues("keep #13, #14")
 	assert.True(t, ok)
-	assert.Equal(t, []int{13, 14}, kept)
+	assert.Equal(t, []model.IssueRef{"#13", "#14"}, kept)
 
-	_, ok = keptIssues("keep #99999999999999999999")
-	assert.False(t, ok)
+	kept, ok = keptIssues("Keep #13, Other-Org/Other-Repo#5")
+	assert.True(t, ok)
+	assert.Equal(t, []model.IssueRef{"#13", "other-org/other-repo#5"}, kept, "an issue of another repository is kept by its full reference, in any case")
+
+	for _, text := range []string{"keep #99999999999999999999", "keep other/repo#99999999999999999999", "keep 5", "keep other/repo", "keep other-org/other-repo#5 and #6"} {
+		_, ok = keptIssues(text)
+		assert.False(t, ok, text)
+	}
 }
 
 func TestIssueList_NamesEachIssueOrNoIssue(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, "no issue", issueList(nil))
-	assert.Equal(t, "#12 #13", issueList([]int{12, 13}))
+	assert.Equal(t, "#12 #13", issueList([]model.IssueRef{"#12", "#13"}))
+	assert.Equal(t, "#12 other-org/other-repo#5", issueList([]model.IssueRef{"#12", "other-org/other-repo#5"}))
 }
 
 func TestMerge_ALaterGateOfTheRunKeepsTheScopeOfTheFirstAndReadsNothing(t *testing.T) {
@@ -632,7 +641,7 @@ func TestMerge_ANewRunOfTheSameItemAsksNoSecondQuestionForAnIssueTheOwnerKept(t 
 
 	assert.Equal(t, []string{"1", "1"}, rig.merger.landed())
 	require.Len(t, rig.merger.given, 2)
-	assert.Equal(t, []int{13}, rig.merger.given[1].Kept, "the merge of run two still gets the kept issue")
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[1].Kept, "the merge of run two still gets the kept issue")
 }
 
 func TestMerge_AnIssueKeptByARunOfOneItemIsStillAskedAboutByARunOfAnotherItem(t *testing.T) {
@@ -692,5 +701,5 @@ func TestMerge_AnIssueKeptInRunOneStaysKeptWhenThePullRequestOfRunTwoDropsIt(t *
 	}
 
 	require.Len(t, rig.merger.given, 2)
-	assert.Equal(t, []int{13}, rig.merger.given[1].Kept, "the kept set grows only: the guard allows #13 although the pull request no longer closes it")
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[1].Kept, "the kept set grows only: the guard allows #13 although the pull request no longer closes it")
 }

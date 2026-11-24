@@ -1329,6 +1329,8 @@ type fakeForge struct {
 	// closing is the closing issues that each read of ClosingIssues gives, in order; the last repeats. closingReads counts the reads.
 	closing      [][]int
 	closingReads int
+	// closingFar adds, to each read of closing, the issues of other repositories (full references) at the same position; the last repeats. A read past the end of closingFar adds none.
+	closingFar [][]model.IssueRef
 	// closingOf, for an item that is in it, gives the closing issues of the item at each read of that item, in order; the last repeats. It wins over closing.
 	closingOf    map[string][][]int
 	closingItems map[string]int
@@ -1424,7 +1426,7 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 }
 
 // ClosingIssues answers with the next of closing and then repeats the last. A set of nil is the empty set. noPull makes it report no pull request. closingErr fails every read.
-func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]int, bool, error) {
+func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]model.IssueRef, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -1437,7 +1439,7 @@ func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]int, boo
 
 		f.closingItems[item]++
 
-		return own[min(f.closingItems[item], len(own))-1], true, nil
+		return ownRefs(own[min(f.closingItems[item], len(own))-1]), true, nil
 	}
 
 	if f.closingErr != nil && f.closingReads > f.closingOK {
@@ -1450,7 +1452,22 @@ func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]int, boo
 		return nil, !gone, nil
 	}
 
-	return f.closing[min(f.closingReads, len(f.closing))-1], true, nil
+	read := ownRefs(f.closing[min(f.closingReads, len(f.closing))-1])
+	if len(f.closingFar) > 0 {
+		read = append(read, f.closingFar[min(f.closingReads, len(f.closingFar))-1]...)
+	}
+
+	return read, true, nil
+}
+
+// ownRefs turns numbers into references of the own repository. A nil list stays nil.
+func ownRefs(numbers []int) []model.IssueRef {
+	var refs []model.IssueRef
+	for _, number := range numbers {
+		refs = append(refs, model.OwnIssue(number))
+	}
+
+	return refs
 }
 
 // fakeTrees answers every lookup with dir, or fails with err. A fakeTrees with late set has no folder until Ensure makes it.
