@@ -34,6 +34,7 @@ type shipForge struct {
 
 	view     func(call int) model.PullRequest
 	views    int
+	typed    int
 	children []model.PullRequest
 	// committers are the committers the forge reports. Nil means one unnamed committer, as the pull request has one commit.
 	committers []model.Committer
@@ -72,6 +73,13 @@ func (f *shipForge) PRView(context.Context, int, ...string) (model.PullRequest, 
 	f.views++
 
 	return f.view(f.views), nil
+}
+
+// PullRead serves the facts of the view with the number of this typed read, so the first typed read agrees with the first view and a later one with a later view.
+func (f *shipForge) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	f.typed++
+
+	return pullFactsOf(pr, f.view(f.typed), nil)
 }
 
 func (*shipForge) PullCounts(context.Context, int) (commits, files int, err error) { return 1, 1, nil }

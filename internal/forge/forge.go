@@ -11,6 +11,7 @@ import (
 // A failed command is an error. Only BranchRef tells a missing branch (found false, no error) from a failure.
 type Forge interface {
 	PullReads
+	PullFactsRead
 	Activity
 	Lookup
 	Standing
@@ -81,6 +82,13 @@ type ItemReads interface {
 // Standing is the review state of our own open pull requests, read in one call.
 type Standing interface {
 	OwnPulls(ctx context.Context, author string) ([]model.OwnPull, error)
+}
+
+// PullFactsRead is the typed read of one pull request.
+// PullRead returns the number asked for, the state, head commit, base branch, author and assignees.
+// A read that lacks the state, the head or the base is a *model.IncompletePull, never a partial answer: the facts it holds are in the error.
+type PullFactsRead interface {
+	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
 }
 
 // PullReads are the reads of one pull request: its reviews, body, fields, checks, threads and overlap.

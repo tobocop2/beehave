@@ -3,8 +3,6 @@ package merge
 import (
 	"context"
 	"fmt"
-
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 // queued asks the forge to merge a pull request in a native stack. The forge owns the merge: it holds the queued merge and merges when its requirements pass.
@@ -39,13 +37,11 @@ func Poll(ctx context.Context, forge Forge, req Request, last bool) Result {
 
 // poll reads the pull request and decides. The merged check comes first: a merge that happened cannot be disarmed.
 func (a *attempt) poll(last bool) *refusal {
-	view, err := a.forge.PRView(a.ctx, a.req.PR, "state", "headRefOid", "headRefName")
-	if err != nil {
-		return a.unread(err, last)
+	if stop := a.readPoll(last); stop != nil {
+		return stop
 	}
 
-	a.view = view
-	head, state := model.Deref(view.HeadRefOid), model.Deref(view.State)
+	head, state := a.facts.Head, a.facts.State
 
 	switch {
 	case state == stateMerged:
@@ -59,6 +55,23 @@ func (a *attempt) poll(last bool) *refusal {
 	}
 
 	return &refusal{stop: Refused, reason: Queued, lines: []string{fmt.Sprintf("#%d is queued at %s and not merged yet", a.req.PR, a.req.Gated)}}
+}
+
+// readPoll makes the typed read that the verdict rests on, and reads the branch name that moving the children needs.
+func (a *attempt) readPoll(last bool) *refusal {
+	facts, err := pins(a.ctx, a.forge, a.req.PR)
+	if err != nil {
+		return a.unread(err, last)
+	}
+
+	view, err := a.forge.PRView(a.ctx, a.req.PR, "headRefName")
+	if err != nil {
+		return a.unread(err, last)
+	}
+
+	a.view, a.facts = view, facts
+
+	return nil
 }
 
 // unread is the result of a read that failed. The queued merge is still on the forge, so the wait goes on until the last read, which disarms it.
@@ -130,7 +143,7 @@ func Disarm(ctx context.Context, forge Forge, req Request) Result {
 
 	run.queue = queue
 
-	if view, err := forge.PRView(ctx, req.PR, "state", "headRefOid", "headRefName"); err == nil && model.Deref(view.State) == stateMerged {
+	if facts, err := pins(ctx, forge, req.PR); err == nil && facts.State == stateMerged {
 		run.say(fmt.Sprintf("#%d is merged, so no queued merge is armed", req.PR))
 
 		return run.result(nil)

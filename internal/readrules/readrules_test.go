@@ -50,6 +50,7 @@ const (
 // A method with a value and an error that is in no rule fails TestEveryReadOfEveryInterfaceIsClassified.
 var rules = map[string]rule{
 	"internal/merge.Reads.PRView":             {Proof: mergeProof, Needle: "PRView"},
+	"internal/merge.Pins.PullRead":            {Proof: mergeProof, Needle: "PullRead"},
 	"internal/merge.Reads.PRList":             {Proof: mergeProof, Needle: "PRList"},
 	"internal/merge.Reads.PullCounts":         {Proof: mergeProof, Needle: "PullCounts"},
 	"internal/merge.Reads.Committers":         {Proof: mergeProof, Needle: "Committers"},
@@ -218,6 +219,7 @@ var rules = map[string]rule{
 	"internal/forge.PullReads.Reviews":            {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRBody":             {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRView":             {NotHeld: inAdapter},
+	"internal/forge.PullFactsRead.PullRead":       {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRList":             {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRChecks":           {NotHeld: inAdapter},
 	"internal/forge.PullReads.OpenChangeRequests": {NotHeld: inAdapter},

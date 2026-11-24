@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -66,6 +67,31 @@ func TestOrNull(t *testing.T) {
 
 	assert.Equal(t, "null", model.OrNull(""))
 	assert.Equal(t, "x", model.OrNull("x"))
+}
+
+func TestPullRequest_FactsReadsStateHeadBaseAuthorAndAssigneesAndLeavesAnAbsentFieldEmpty(t *testing.T) {
+	t.Parallel()
+
+	state, head, base := "OPEN", "abc", "main"
+	view := model.PullRequest{Number: 4, State: &state, HeadRefOid: &head, BaseRefName: &base, Author: model.Account{Login: "dev"}, Assignees: []model.Account{{Login: "a"}, {Login: "b"}}}
+
+	assert.Equal(t, model.PullFacts{Number: 4, State: "OPEN", Head: "abc", Base: "main", Author: "dev", Assignees: []string{"a", "b"}}, view.Facts())
+	assert.Equal(t, model.PullFacts{}, model.PullRequest{}.Facts())
+}
+
+func TestPullFacts_CheckNamesEveryMissingFieldAndKeepsTheFactsItHas(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, model.PullFacts{State: "OPEN", Head: "abc", Base: "main"}.Check())
+
+	err := model.PullFacts{Number: 4, Head: "abc"}.Check()
+
+	var hole *model.IncompletePull
+
+	require.ErrorAs(t, err, &hole)
+	assert.Equal(t, []string{"state", "base"}, hole.Missing)
+	assert.Equal(t, model.PullFacts{Number: 4, Head: "abc"}, hole.Facts)
+	assert.Equal(t, "cannot read pull request 4: the read has no state, base", err.Error())
 }
 
 func TestIsRepoPart(t *testing.T) {

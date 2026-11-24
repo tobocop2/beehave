@@ -219,18 +219,20 @@ func (h batchHost) Intent(ctx context.Context, project, item, repo, _, tipTree s
 		return merge.Intent{}, err
 	}
 
-	view, err := built.PRView(ctx, number, "state", "headRefOid", "baseRefName", "number")
+	facts, err := built.PullRead(ctx, number)
 	if err != nil {
 		return merge.Intent{}, fmt.Errorf("read the pull request of item %s: %w", item, err)
 	}
 
-	if state := strings.ToUpper(strings.TrimSpace(model.Deref(view.State))); state != stateOpen {
+	if facts.Number != number {
+		return merge.Intent{}, fmt.Errorf("the read of item %s answered for pull request %d, not %d", item, facts.Number, number)
+	}
+
+	if state := strings.ToUpper(strings.TrimSpace(facts.State)); state != stateOpen {
 		return merge.Intent{}, fmt.Errorf("the pull request of item %s is %s, %w, so a merge cannot be tied to this run", item, state, flow.ErrMemberNotOpen)
 	}
 
-	view.Number = number
-
-	return merge.NewIntent(view, tipTree, now)
+	return merge.NewIntent(facts, tipTree, now), nil
 }
 
 // Pull reads the standing of the pull request of the item through the standing review. A non-empty reviewed is the commit that was marked ready: a head that is another commit
