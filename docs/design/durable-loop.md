@@ -935,6 +935,10 @@ The line shows no next due time. The library counts the first tick of a fixed de
 - The cancel marker records the claim token that the run holds at the cancel. The release gives back that token. It removes the token file and the marker of the run only while they still name that token, under a lock on the owners folder that every write of a token file or a marker also takes. So a `beehave resume` that takes the item inside the release keeps its token, and the marker of a later cancel stays.
 - A failed run is cancelled too, in one store write: the DBOS cancel takes an option that also ends a failed run, so the run goes from failed to cancelled with no state between. No step runs and no workflow file is read, so a run that another build recorded, or whose workflow file changed, can be closed. The recorded error and steps stay. A failed child stays failed. If the store refuses the write, the run stays failed and a second `beehave cancel` ends it. A done run has nothing to cancel, and a cancelled run with no open child has nothing to cancel.
 
+#### `beehave gate hold <item>`, `beehave gate release <item>` and `beehave gate priority <item> <level>`
+
+These commands change the place of a gate and stop a running gate for a person. The rules are in the Queues section of `gate.md`. Each command refuses an item with no open gate. `priority` takes P0, P1, P2 or P3 and refuses a gate that runs. `hold` refuses a gate that waits, a gate that is held and a gate on this machine. `release` refuses a gate that is not held.
+
 #### `beehave resume <item>`
 
 `resume` reopens the cancelled or the failed run. Then `beehave run <item>` continues it from the last finished step. To reopen every failed run after an outage, see [Resume many runs](#resume-many-runs-beehave-resume---failed).
