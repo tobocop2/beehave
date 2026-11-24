@@ -43,6 +43,18 @@ func TestGateStep_TheResultOfEachStepIsAnOutputOfTheStep(t *testing.T) {
 	assert.Equal(t, []string{"show command pass", "show tests unknown"}, h.commands.ran())
 }
 
+func TestGateStep_TheResultNamesTheStepThatRecordedIt(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: stepsPass}, {Passed: true, Head: gatedHead, Steps: stepsPass}}
+
+	_, err := walkText(t, h, bodyFlow("a = gate(name = \"check\")\nb = gate(name = \"check\")\nc = gate(run = [\"true\"])\ncommand(run = [\"show\", a.step, b.step, c.step])\n"))
+
+	require.NoError(t, err)
+	assert.Contains(t, h.commands.ran(), "show gate:check#1 gate:check#2 gate#3", "each gate result holds the name of its own step: the name that the status of the run shows")
+}
+
 func TestGateStep_AGateProgramGivesOneStepFromItsExitCode(t *testing.T) {
 	t.Parallel()
 

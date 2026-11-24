@@ -74,8 +74,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge10.land13.gate6.host1.round6", applicationVersion("v1"))
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge10.land13.gate7.host1.round6", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land13.gate6.host1.round6", applicationVersion("v1"))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land13.gate7.host1.round6", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {

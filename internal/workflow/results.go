@@ -39,6 +39,8 @@ const (
 	itemCreateName       = "item_create"
 	itemReadName         = "item_read"
 	itemStatusName       = "item_status"
+	baseTipName          = "base_tip"
+	issueStateName       = "issue_state"
 	prClosingName        = "pr_closing"
 	prCommentName        = "pr_comment"
 	prOpenName           = "pr_open"
@@ -105,7 +107,7 @@ func earlierResultFields() map[string][]string {
 // gateResultFields holds the fields of the gate builtin.
 func gateResultFields() map[string][]string {
 	return map[string][]string{
-		gateName: {"passed", headField, treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses"},
+		gateName: {"passed", headField, treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses", "step"},
 	}
 }
 
@@ -117,6 +119,8 @@ func factsResultFields() map[string][]string {
 // trackerResultFields holds the fields of the builtins that write the tracker, the pull request or its branch, and of pr_state and pr_history, which read pull requests.
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
+		baseTipName:        {"commit", treeKeyword},
+		issueStateName:     {stateField},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},

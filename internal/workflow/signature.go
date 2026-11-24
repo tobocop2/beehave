@@ -452,7 +452,9 @@ func readSignatures() map[string][]Param {
 	return map[string][]Param{
 		itemReadName:       {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
 		prStateName:        {req("pr", KindInt), opt(nameKeyword, KindText)},
-		prClosingName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
+		prClosingName:      {opt(itemKeyword, KindText), opt("pr", KindInt), opt(nameKeyword, KindText)},
+		baseTipName:        {filled("base"), opt(nameKeyword, KindText)},
+		issueStateName:     {req("number", KindInt), opt(nameKeyword, KindText)},
 		prHistoryName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 		prReadName:         {opt("id", KindText), opt(nameKeyword, KindText)},
 		issueAssigneesName: {opt("repo", KindText), req("number", KindInt), opt(nameKeyword, KindText)},

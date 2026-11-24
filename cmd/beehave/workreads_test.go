@@ -138,6 +138,73 @@ func (f stateForge) PRView(context.Context, int, ...string) (model.PullRequest, 
 	return model.PullRequest{}, f.err
 }
 
+// issueStateForge shows the state of every issue it is asked about, or fails the read. asked holds the number of each call.
+type issueStateForge struct {
+	forge.Forge
+
+	state string
+	err   error
+	asked *[]int
+}
+
+func (f issueStateForge) IssueState(_ context.Context, number int) (string, error) {
+	*f.asked = append(*f.asked, number)
+
+	return f.state, f.err
+}
+
+func TestQueueReads_IssueStateReadsTheStateOfAnIssueOnTheForgeOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	var asked []int
+
+	state, err := queueReadsOver(issueStateForge{state: "CLOSED", asked: &asked}, nil).IssueState(t.Context(), "p", 7)
+
+	require.NoError(t, err)
+	assert.Equal(t, "CLOSED", state)
+	assert.Equal(t, []int{7}, asked)
+}
+
+func TestQueueReads_AnIssueStateThatCannotBeReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	var asked []int
+
+	reads := queueReadsOver(nil, nil)
+	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+	_, err := reads.IssueState(t.Context(), "p", 7)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+
+	_, err = queueReadsOver(issueStateForge{err: errFake, asked: &asked}, nil).IssueState(t.Context(), "p", 7)
+	require.ErrorIs(t, err, errFake)
+}
+
+func TestQueueReads_PullClosingReadsTheIssuesOfThePullRequestWithTheNumberAsTheForgeListsThem(t *testing.T) {
+	t.Parallel()
+
+	f := &pullForge{refs: model.ClosingRefs{Issues: []int{12, 13}, Elsewhere: []model.IssueRef{"other-org/other-repo#3"}}}
+
+	issues, err := queueReadsOver(f, nil).PullClosing(t.Context(), "p", 41)
+
+	require.NoError(t, err)
+	assert.Equal(t, []model.IssueRef{"#12", "#13", "other-org/other-repo#3"}, issues, "an issue of the repository of the pull request is #N and another one is a full reference")
+}
+
+func TestQueueReads_APullClosingThatCannotBeReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	reads := queueReadsOver(nil, nil)
+	reads.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+	_, err := reads.PullClosing(t.Context(), "p", 41)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+
+	_, err = queueReadsOver(&pullForge{refsErr: errFake}, nil).PullClosing(t.Context(), "p", 41)
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "read the issues that pull request 41 closes")
+}
+
 func TestQueueReads_AFailedListOfPullRequestsIsAnError(t *testing.T) {
 	t.Parallel()
 

@@ -1215,16 +1215,24 @@ func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues 
 		return nil, false, err
 	}
 
+	issues, err = closingIssues(ctx, built, number)
+
+	return issues, err == nil, err
+}
+
+// closingIssues reads the issues that merging the pull request with the number closes: the issues of its repository as "#N" and the issues of other repositories as "owner/repo#N".
+func closingIssues(ctx context.Context, built opened, number int) ([]model.IssueRef, error) {
 	refs, err := built.ClosingRefs(ctx, number)
 	if err != nil {
-		return nil, false, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
+		return nil, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
 	}
 
+	var issues []model.IssueRef
 	for _, number := range refs.Issues {
 		issues = append(issues, model.OwnIssue(number))
 	}
 
-	return append(issues, refs.Elsewhere...), true, nil
+	return append(issues, refs.Elsewhere...), nil
 }
 
 // Comment adds a comment to the pull request of the item, once for each key. A project with no forge and an item with no pull request are errors.
