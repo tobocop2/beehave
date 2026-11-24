@@ -38,6 +38,8 @@ const (
 	SevenState    = "OPEN"
 	SevenBase     = "main"
 	SevenAssignee = "bob"
+	// HolePull is the pull request that the fake serves with no head commit. Its typed read must be an error, never a partial answer.
+	HolePull = 8
 )
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
@@ -152,6 +154,9 @@ func checkPullRead(c check, target forge.Forge) {
 	facts, err := target.PullRead(context.Background(), Seven)
 	c.noError(err, "PullRead")
 	c.equal(facts, model.PullFacts{Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee}}, "pull facts")
+
+	_, err = target.PullRead(context.Background(), HolePull)
+	c.isError(err, "PullRead of a pull request with no head")
 }
 
 // checkCounts runs the read of the forge's own counts.

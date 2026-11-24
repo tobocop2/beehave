@@ -50,6 +50,7 @@ const (
 // A method with a value and an error that is in no rule fails TestEveryReadOfEveryInterfaceIsClassified.
 var rules = map[string]rule{
 	"internal/merge.Reads.PRView":             {Proof: mergeProof, Needle: "PRView"},
+	"internal/merge.Pins.PullRead":            {Proof: mergeProof, Needle: "PullRead"},
 	"internal/merge.Reads.PRList":             {Proof: mergeProof, Needle: "PRList"},
 	"internal/merge.Reads.PullCounts":         {Proof: mergeProof, Needle: "PullCounts"},
 	"internal/merge.Reads.Committers":         {Proof: mergeProof, Needle: "Committers"},

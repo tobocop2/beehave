@@ -46,7 +46,7 @@ func TestRun_AnIntentCountsAMergedPullRequestAtTheGatedHeadAsDone(t *testing.T) 
 	assert.Empty(t, w.writes)
 	assert.Contains(t, result.Lines, "checks: 1 of 1 passed")
 	assert.Equal(t, "MERGED #5 at "+sha+"; main tip is now "+tipSHA, last(result))
-	assert.True(t, w.called("PRView 5 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,files,commits,body,author,labels,mergedAt"))
+	assert.True(t, w.called("PRView 5 state,isDraft,headRefName,mergeable,files,commits,body,author,labels,mergedAt"))
 }
 
 func TestRun_AnIntentStillRunsTheTreeProof(t *testing.T) {

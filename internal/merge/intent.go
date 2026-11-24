@@ -36,7 +36,7 @@ var errNoMergeTime = errors.New("no readable merge time")
 
 // replayed is true when the request has an intent and the first read found the pull request merged.
 func (a *attempt) replayed() bool {
-	return a.req.Intent != nil && model.Deref(a.view.State) == stateMerged
+	return a.req.Intent != nil && a.facts.State == stateMerged
 }
 
 // asked is the list of fields of the first read. An intent adds the merge time.

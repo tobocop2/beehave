@@ -74,6 +74,11 @@ func (f *shipForge) PRView(context.Context, int, ...string) (model.PullRequest, 
 	return f.view(f.views), nil
 }
 
+// PullRead serves the facts of the view that the last PRView call served, so the typed read and the first view agree.
+func (f *shipForge) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	return pullFactsOf(pr, f.view(f.views), nil)
+}
+
 func (*shipForge) PullCounts(context.Context, int) (commits, files int, err error) { return 1, 1, nil }
 
 func (f *shipForge) Committers(context.Context, int) ([]model.Committer, error) {

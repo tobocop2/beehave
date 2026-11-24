@@ -10,7 +10,7 @@ import (
 
 // fields are what the first read asks for: every fact the guards decide on, in one call.
 func fields() []string {
-	return []string{"state", "isDraft", "baseRefName", "headRefName", "headRefOid", "mergeable", "files", "commits", "body", "author", "labels"}
+	return []string{"state", "isDraft", "headRefName", "mergeable", "files", "commits", "body", "author", "labels"}
 }
 
 // ownWork is guard 0. It reads the pull request once and refuses work of ours: the author of the pull request, or any author
@@ -48,12 +48,11 @@ func ownRefusal(lines ...string) *refusal {
 // read makes the first read and reads the forge's own counts. A commit list shorter than the count is refused, because a commit of ours could hide in the rest.
 // The count of files is kept for the scope guard.
 func (a *attempt) read() *refusal {
-	view, err := a.forge.PRView(a.ctx, a.req.PR, a.asked()...)
-	if err != nil {
-		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
+	if stop := a.readFirst(); stop != nil {
+		return stop
 	}
 
-	a.view = view
+	view := a.view
 
 	commits, files, err := a.forge.PullCounts(a.ctx, a.req.PR)
 	if err != nil {
@@ -68,6 +67,25 @@ func (a *attempt) read() *refusal {
 	a.files = files
 
 	return a.readCommitters(commits)
+}
+
+// readFirst makes the first read of the fields and the typed read of the state, head and base that the state guard decides on. A failed read is an unread state.
+func (a *attempt) readFirst() *refusal {
+	view, err := a.forge.PRView(a.ctx, a.req.PR, a.asked()...)
+	if err != nil {
+		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
+	}
+
+	a.view = view
+
+	facts, err := a.forge.PullRead(a.ctx, a.req.PR)
+	if err != nil {
+		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
+	}
+
+	a.facts = facts
+
+	return nil
 }
 
 // readCommitters reads the committer of each commit. The commit list of the first read names only authors.

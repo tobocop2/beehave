@@ -79,6 +79,51 @@ func TestRun_TheFirstReadRefusesWhatItCannotMerge(t *testing.T) {
 	}
 }
 
+func TestRun_TheStateHeadAndBaseCheckDecidesOnTheTypedRead(t *testing.T) {
+	t.Parallel()
+
+	good := model.PullFacts{State: "OPEN", Head: sha, Base: "main"}
+
+	cases := map[string]struct {
+		facts model.PullFacts
+		want  string
+	}{
+		"merged":     {model.PullFacts{State: "MERGED", Head: sha, Base: "main"}, "REFUSE: state is MERGED"},
+		"other base": {model.PullFacts{State: "OPEN", Head: sha, Base: "dev"}, "REFUSE: base is dev, expected main"},
+		"head moved": {model.PullFacts{State: "OPEN", Head: moved, Base: "main"}, "REFUSE: head " + moved + " is not the gated " + sha + ". Re-gate."},
+	}
+	for name, one := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld(t)
+			w.facts = &one.facts
+			result := w.run(request())
+
+			assert.Equal(t, merge.Refused, result.Stop)
+			assert.Equal(t, one.want, last(result))
+			assert.Empty(t, w.writes)
+		})
+	}
+
+	w := newWorld(t)
+	w.facts = &good
+
+	assert.Equal(t, merge.Done, w.run(request()).Stop, "the view alone is not what the check reads")
+}
+
+func TestRun_AFailedTypedReadRefusesAsAnUnreadState(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	w.fails["PullRead"] = true
+
+	result := w.run(request())
+
+	assert.Equal(t, []string{"REFUSE: cannot read #5 for its state"}, result.Lines)
+	assert.Empty(t, w.writes)
+}
+
 func TestRun_AFailedFirstReadRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -95,7 +140,7 @@ func TestRun_TheFirstReadAsksOnceForEveryField(t *testing.T) {
 	w := newWorld(t)
 	w.run(request())
 
-	assert.Equal(t, "PRView 5 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,files,commits,body,author,labels", w.calls[0])
+	assert.Equal(t, "PRView 5 state,isDraft,headRefName,mergeable,files,commits,body,author,labels", w.calls[0])
 }
 
 func TestRun_TheBeforeLineShowsTheStateWithTabs(t *testing.T) {
