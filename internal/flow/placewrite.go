@@ -64,10 +64,28 @@ func writeEach(db *sql.DB, manual bool, places map[string]placeWrite) (moved boo
 }
 
 // writePlace sets the place of one run, marks the run when a person set it, and says whether the run was queued.
+// The place and the mark are one transaction: a place that is stored with no mark would be overwritten at the next start of the engine.
 func writePlace(db *sql.DB, manual bool, id string, write placeWrite) (bool, error) {
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return false, fmt.Errorf("begin the write of the place: %w", err)
+	}
+
+	defer tx.Rollback() //nolint:errcheck // a transaction that committed answers ErrTxDone, and one that failed has nothing to keep
+
+	moved, err := placeAndMark(tx, manual, id, write)
+	if err != nil {
+		return false, err
+	}
+
+	return moved, failed("store the place", tx.Commit())
+}
+
+// placeAndMark runs the place query and, for a person, the mark query on tx, and says whether the run was queued.
+func placeAndMark(tx *sql.Tx, manual bool, id string, write placeWrite) (bool, error) {
 	ctx := context.Background()
 
-	result, err := db.ExecContext(ctx, priorityQuery, write.place, id, manual, write.parent)
+	result, err := tx.ExecContext(ctx, priorityQuery, write.place, id, manual, write.parent)
 	if err != nil {
 		return false, fmt.Errorf("set the place: %w", err)
 	}
@@ -76,7 +94,7 @@ func writePlace(db *sql.DB, manual bool, id string, write placeWrite) (bool, err
 		return n > 0, nil //nolint:nilerr // a store that cannot count the rows says that nothing moved
 	}
 
-	_, err = db.ExecContext(ctx, manualMarkQuery, id)
+	_, err = tx.ExecContext(ctx, manualMarkQuery, id)
 
 	return true, failed("mark the place as set by a person", err)
 }
