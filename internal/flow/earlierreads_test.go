@@ -68,6 +68,20 @@ func TestEarlierReads_ReadsTheRunsOfTheItemItNames(t *testing.T) {
 	assert.Equal(t, []string{"#8."}, seenBy(t, h), "the runs of item 9, not those of the item of the run")
 }
 
+func TestEarlierReads_LeavesOutTheRunsOfAnItemWhoseNameStartsWithTheNameOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.forge.closing = [][]int{{8}, {1}}
+	engine := h.engine(t)
+
+	require.NoError(t, runAs(t, engine, "9-r2", recordClosing("scope")), "a run of item 9-r2, whose run id starts with the prefix of the runs of item 9")
+	require.NoError(t, runAs(t, engine, "9", recordClosing("scope")), "a run of item 9")
+	require.NoError(t, runAs(t, engine, testItem, readClosings(`, item = "9"`)))
+
+	assert.Equal(t, []string{"#1."}, seenBy(t, h), "only a run id that ends in an attempt number belongs to the item")
+}
+
 func TestEarlierReads_LeavesOutAStepThatFailed(t *testing.T) {
 	t.Parallel()
 
