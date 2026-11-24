@@ -26,7 +26,7 @@ env BIN_OUT='ok  \tpkg\t0.01s\n'
 env BIN_RC=0
 exec sh $WORK/exec.sh $WORK/fake/bin
 stdout '^ok  \tpkg\t0\.01s$'
-grep -count=1 '^sub/p\.go\t3\t11\t0\t$' $WORK/exits-pass
+grep -count=1 '^sub/p\.go\t3\t11\t9\t0\t$' $WORK/exits-pass
 ! grep 'extra\.go' $WORK/exits-pass
 cd $WORK
 
@@ -37,7 +37,7 @@ env BIN_OUT='=== RUN   TestX\nnoise\n--- FAIL: TestX (0.10s)\n    x_test.go:9: b
 env BIN_RC=1
 exitcode 1 sh $WORK/exec.sh $WORK/fake/bin
 stdout '^--- FAIL: TestX \(0\.10s\)$'
-grep -count=1 '^sub/p\.go\t3\t11\t1\t--- FAIL: TestX \(0\.10s\)$' $WORK/exits-fail
+grep -count=1 '^sub/p\.go\t3\t11\t9\t1\t--- FAIL: TestX \(0\.10s\)$' $WORK/exits-fail
 cd $WORK
 
 # A test binary that a signal ended: the shell reports 128 plus the signal number, the record holds it, and so does the exit code of the script.
@@ -46,7 +46,7 @@ cd copy/sub
 env BIN_OUT=
 env BIN_RC=137
 exitcode 137 sh $WORK/exec.sh $WORK/fake/bin
-grep -count=1 '^sub/p\.go\t3\t11\t137\t' $WORK/exits-signal
+grep -count=1 '^sub/p\.go\t3\t11\t9\t137\t' $WORK/exits-signal
 cd $WORK
 
 # A failure with none of the failure words gives the first line of its output, and a tab in it becomes a space.
@@ -55,7 +55,7 @@ cd copy/sub
 env BIN_OUT='setup\tfailed\nsecond line\n'
 env BIN_RC=2
 exitcode 2 sh $WORK/exec.sh $WORK/fake/bin
-grep -count=1 '^sub/p\.go\t3\t11\t2\tsetup failed$' $WORK/exits-first
+grep -count=1 '^sub/p\.go\t3\t11\t9\t2\tsetup failed$' $WORK/exits-first
 cd $WORK
 
 # A package at the module root has the path with no folder.
@@ -64,19 +64,40 @@ cd copy
 env BIN_OUT=
 env BIN_RC=0
 exec sh $WORK/exec.sh $WORK/fake/bin
-grep -count=1 '^p\.go\t3\t11\t0\t$' $WORK/exits-root
+grep -count=1 '^p\.go\t3\t11\t9\t0\t$' $WORK/exits-root
 cd $WORK
 
 # Gremlins writes the mutant with go/printer, which reformats the file: here the alignment of the comments of the struct
 # changes, as a mutant file of the real printer can. The record names the mutated line and column, not the first reformatted
-# line. The mutation is "x > 1" to "x >= 1", so the first byte that differs is the one after the token, column 12.
+# line. The mutation is "x > 1" to "x >= 1": the token ">" is at column 11, so the byte before the change is column 11.
 env MUTATION_EXIT_LOG=$WORK/exits-format
 cd copy/fmt
 env BIN_OUT=
 env BIN_RC=0
 exec sh $WORK/exec.sh $WORK/fake/bin
-grep -count=1 '^fmt/q\.go\t9\t12\t0\t$' $WORK/exits-format
+grep -count=1 '^fmt/q\.go\t9\t13\t11\t0\t$' $WORK/exits-format
 ! grep '\t4\t' $WORK/exits-format
+cd $WORK
+
+# A mutation can change the spacing before its token: "A*B + C" with "+" changed to "*" is written "A * B * C". The record
+# names the token, column 13, and not the first byte that differs, column 10.
+env MUTATION_EXIT_LOG=$WORK/exits-space
+cd copy/space
+env BIN_OUT=
+env BIN_RC=0
+exec sh $WORK/exec.sh $WORK/fake/bin
+grep -count=1 '^space/s\.go\t5\t13\t11\t0\t$' $WORK/exits-space
+! grep '\t10\t' $WORK/exits-space
+cd $WORK
+
+# A mutation that lengthens a line can move the comments of the lines above it, which gofmt aligns. The first line that differs
+# is then a line that differs in white space only, and the record names the mutated line, 5, not the line above it, 4.
+env MUTATION_EXIT_LOG=$WORK/exits-align
+cd copy/align
+env BIN_OUT=
+env BIN_RC=0
+exec sh $WORK/exec.sh $WORK/fake/bin
+grep -count=1 '^align/a\.go\t5\t10\t8\t0\t$' $WORK/exits-align
 cd $WORK
 
 # A late record names its own mutant. The wrapper reads the mutant before the test binary runs, and the copy of the worker
@@ -89,7 +110,7 @@ env BIN_RC=0
 env BIN_REWRITE=r.go
 env ORIG_R=$WORK/orig/late/r.go
 exec sh $WORK/exec.sh $WORK/fake/bin
-grep -count=1 '^late/r\.go\t3\t11\t0\t$' $WORK/exits-late
+grep -count=1 '^late/r\.go\t3\t11\t9\t0\t$' $WORK/exits-late
 env BIN_REWRITE=
 cd $WORK
 
@@ -155,6 +176,32 @@ type T struct {
 func F(x int) bool {
 	return x >= 1
 }
+-- orig/space/s.go --
+package space
+
+var A, B, C = 1, 2, 3
+
+var X = A*B + C
+-- copy/space/s.go --
+package space
+
+var A, B, C = 1, 2, 3
+
+var X = A * B * C
+-- orig/align/a.go --
+package align
+
+var (
+	A = true  // one
+	B = 1 < 2 // two
+)
+-- copy/align/a.go --
+package align
+
+var (
+	A = true   // one
+	B = 1 <= 2 // two
+)
 -- orig/late/r.go --
 package late
 
