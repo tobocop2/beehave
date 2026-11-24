@@ -115,18 +115,6 @@ func TestBaseTip_AnEmptyBaseIsRefusedBeforeAnyRead(t *testing.T) {
 	assert.Empty(t, host.calls())
 }
 
-func TestBaseTip_AnEmptyBaseIsRefusedByTheBuiltinWhenTheCheckIsNotRun(t *testing.T) {
-	t.Parallel()
-
-	host := &tipHost{}
-	s := &script{e: &Engine{deps: Deps{Batch: host}}}
-
-	_, err := s.baseTip(starlark.NewBuiltin(baseTipKind, nil), nil, []starlark.Tuple{{starlark.String("base"), starlark.String("")}})
-
-	require.EqualError(t, err, "base must not be empty")
-	assert.Empty(t, host.calls(), "the builtin refuses an empty base before any read")
-}
-
 func TestBaseTip_ACallWithAnArgumentOfTheWrongTypeIsRefusedByTheBuiltin(t *testing.T) {
 	t.Parallel()
 

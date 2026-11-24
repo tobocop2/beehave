@@ -27,10 +27,6 @@ func (s *script) baseTip(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 		return nil, err
 	}
 
-	if err := workflow.NotEmpty(baseKeyword, base); err != nil {
-		return nil, err
-	}
-
 	if s.e.deps.Batch == nil {
 		return nil, errNoBaseTipReader
 	}
