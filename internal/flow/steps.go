@@ -79,7 +79,7 @@ type StepLine struct {
 	NewTests []string `json:"new_tests,omitempty"`
 	// Revert is the verdict of the revert run of a candidate gate: pass or fail. It is empty for any other step.
 	Revert model.RevertVerdict `json:"revert,omitempty"`
-	// ScopeOff is set on the line of the call that recorded a scope step of a project with no forge.
+	// ScopeOff is set on the line of the call that recorded a pr_closing step of a project with no forge.
 	ScopeOff bool `json:"scope_off,omitempty"`
 	// OutputUnreadable is set when a recorded output of the step did not decode into the type the engine wrote. The other fields are then incomplete.
 	OutputUnreadable bool `json:"output_unreadable,omitempty"`
@@ -396,8 +396,8 @@ func (l *StepLine) decode(record dbos.StepInfo) bool {
 		return decodeThen(record.Output, l.fromPhase)
 	case split && builtinOf(base) == builtinAgent:
 		return l.decodeAgentSub(sub, record.Output)
-	case !split && builtinOf(base) == scopeStep:
-		return decodeThen(record.Output, func(read scopeRead) { l.ScopeOff = read.NoForge })
+	case !split && builtinOf(base) == prClosingKind:
+		return decodeThen(record.Output, func(read recorded[closingRead]) { l.ScopeOff = !read.Outputs.Forge })
 	case !split && builtinOf(base) == kindGate:
 		return decodeThen(record.Output, func(gate recorded[GateResult]) { l.fromGate(gate.Outputs) })
 	case !split && builtinOf(base) == builtinCommand:

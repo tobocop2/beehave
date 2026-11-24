@@ -57,6 +57,66 @@ func TestClosing_AMissingIssueRefusesAndNamesBothLists(t *testing.T) {
 	assert.Empty(t, merges(w))
 }
 
+// pinned is a request that names the given issues as the issues that the pull request must close, and pins the set that a check read.
+func pinned(names []int, set ...model.IssueRef) merge.Request {
+	req := audited(names...)
+	req.Pinned = append([]model.IssueRef{}, set...)
+
+	return req
+}
+
+func TestClosing_AMemberThatPinsTheSetThatTheForgeListsNowMergesWhateverTheOrderOfThePin(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12, 13)
+	w.closingRefs.Elsewhere = []model.IssueRef{"other-org/other-repo#5"}
+	result := w.run(pinned([]int{12, 13}, "other-org/other-repo#5", "#13", "#12", "#12"))
+
+	assert.Equal(t, merge.Done, result.Stop)
+}
+
+func TestClosing_AMemberThatPinsASetRefusesWhenAnIssueOfThisRepositoryWasAddedAfterTheCheck(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12, 13)
+	result := w.run(pinned([]int{12, 13}, "#12"))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 #13 now, and closed #12 when the scope check read it. The owner decides: run the scope check again.", last(result))
+	assert.Empty(t, merges(w))
+}
+
+func TestClosing_AMemberThatPinsASetRefusesWhenAnIssueOfAnotherRepositoryWasAddedAfterTheCheck(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	w.closingRefs.Elsewhere = []model.IssueRef{"other-org/other-repo#5"}
+	result := w.run(pinned([]int{12}, "#12"))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 other-org/other-repo#5 now, and closed #12 when the scope check read it. The owner decides: run the scope check again.", last(result))
+}
+
+func TestClosing_AMemberThatPinsNoIssueRefusesWhenThePullRequestClosesOneNow(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	result := w.run(pinned([]int{12}))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 now, and closed no issue when the scope check read it. The owner decides: run the scope check again.", last(result))
+}
+
+func TestClosing_AMemberThatPinsNoSetIsNotHeldToOne(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	req := audited(12)
+
+	assert.Nil(t, req.Pinned)
+	assert.Equal(t, merge.Done, w.run(req).Stop, "a member with no check pins nothing, and the issues it names are the audit")
+}
+
 func TestClosing_AForgeThatCannotReadClosingReferencesRefusesAndNeverPasses(t *testing.T) {
 	t.Parallel()
 

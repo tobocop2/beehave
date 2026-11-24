@@ -33,6 +33,8 @@ type MergeSettings struct {
 	Intent *merge.Intent
 	// Kept are the issues that the owner kept by an answer at the scope check. A closing keyword in a commit message may name them.
 	Kept []model.IssueRef
+	// Closing is the set of closing issues that the scope check read for the member. The merge refuses a pull request whose set differs. Nil pins no set.
+	Closing []model.IssueRef
 	// Statuses are the commit statuses that the merge posts on the head after every guard passed and right before the merge call. Empty posts none.
 	Statuses []model.CommitStatus
 }

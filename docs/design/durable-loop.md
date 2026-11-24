@@ -849,7 +849,7 @@ The line then shows the fields that decide the flow, when the step has them:
 - `label`: the free label of an agent step
 - `login`: the runner that an agent step runs on. It is the runner that the call names with `runner`, or the login that the pool picked when the call names none. The line shows it while the step runs and after the step fails.
 - `model`: the model that an agent step sets. The line shows it while the step runs and after the step fails. A step that sets no model shows none.
-- `scope_off`: set on the scope step of a project with no forge. The step records that the scope check is off, and the notes of the run show `scope check off: the project has no forge`.
+- `scope_off`: derived from the `pr_closing` step that `fix_scope` records, when its `forge` output is false (a project with no forge). The notes of the run show `scope check off: the project has no forge`.
 - `stop`
 - `verdict`
 - `head`

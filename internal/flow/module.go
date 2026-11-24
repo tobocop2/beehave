@@ -30,7 +30,7 @@ type builtinDef struct {
 // StepModule is the module of the builtins that live in this package. The composition root passes it to the engine in Options.Modules.
 func StepModule() step.Module {
 	defs := stepDefs()
-	module := step.Module{Name: moduleName, Kinds: []string{loginStepName, scopeStep}}
+	module := step.Module{Name: moduleName, Kinds: []string{loginStepName}}
 
 	for _, def := range defs {
 		params, _ := workflow.Signature(def.name)
