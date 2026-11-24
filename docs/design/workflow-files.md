@@ -752,7 +752,8 @@ A `command` can run twice after a crash that cuts the step before its record. Pu
 - A step with `slots` needs `host`. A step with no `host` is refused.
 - The `host` block of the project lists the class and its count in `slots`. The engine runs at most that many jobs of the class on one host at once. A job that finds no free slot waits in a durable queue and starts when a job of its class ends.
 - A class that the `host` block does not list is refused when the step runs. The refusal names the class and the host.
-- A job of another class, and a job with no `slots`, never waits for the class.
+- A job of another class never waits for the class.
+- A step with `host` and no `slots` runs in the class `default`. The `host` block sets its count in `slots = {"default": 2}`, and it is 1 when the block names none. A step with `retries` takes no slot.
 - `beehave check workflow` refuses a literal `slots` that is blank, and a literal `slots` with no `host`.
 
 #### `max_new_processes`
