@@ -303,9 +303,20 @@ func (m *Machine) systemctl(words []string) model.CommandResult {
 		}
 
 		return ok("")
+	case "show":
+		return m.loadState(words[len(words)-1])
 	}
 
 	return failure(1, "systemctl: unknown verb")
+}
+
+// loadState answers `systemctl --user show -p LoadState --value <unit>`: loaded for a unit that systemd holds, not-found for any other.
+func (m *Machine) loadState(name string) model.CommandResult {
+	if u := m.Units[name]; u == nil || u.Vanished || u.Reset {
+		return ok("not-found\n")
+	}
+
+	return ok("loaded\n")
 }
 
 func (m *Machine) stop(name string) model.CommandResult {

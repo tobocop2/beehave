@@ -28,9 +28,11 @@ var (
 )
 
 const (
-	drainReason = "beehave"
-	defaultPoll = 10 * time.Second
-	timeoutExit = "124" // the exit status of `timeout` for a command that it stopped
+	drainReason   = "beehave"
+	defaultPoll   = 10 * time.Second
+	timeoutExit   = "124"       // the exit status of `timeout` for a command that it stopped
+	canceledState = "CANCELLED" //nolint:misspell // Slurm's spelling
+	lookback      = "7days"     // how far back sacct looks for the job of a key; it reads from midnight when it has no start time
 
 	// stateFolder is the folder in the login folder of the head node that holds the lock files of the slot classes and the markers of the jobs that wait.
 	stateFolder   = ".beehave"
@@ -172,8 +174,65 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 }
 
 // queue runs sbatch and returns the handle of the new job, with a nonce made for this Submit.
+// A spec with a Key names the job by the key and takes the digest of the key as the nonce, and it returns the job of that name when Slurm holds one.
 func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, error) {
-	words := []string{"sbatch", "--parsable", "--job-name=" + spec.Name}
+	name, nonce := spec.Name, ""
+
+	if spec.Key != "" {
+		nonce = jobwait.KeyDigest(spec.Key)
+		name += "-" + nonce
+
+		found, err := q.named(ctx, name)
+		if err != nil || found != "" {
+			return jobwait.Job{ID: found, Nonce: nonce, Folder: spec.Folder}, err
+		}
+	} else {
+		nonce = q.nonce()
+	}
+
+	return q.sbatch(ctx, spec, name, nonce)
+}
+
+// named returns the id of the job that Slurm holds under name: squeue for a job that the controller knows, then sacct for one that it forgot.
+// A job that Slurm canceled does not count: it is the job that Submit canceled itself when the slot could not hold the cluster, and its retry starts a new one.
+// It returns an empty id when neither holds such a job.
+func (q *Queue) named(ctx context.Context, name string) (string, error) {
+	for _, read := range [][]string{
+		{"squeue", "-h", "--name=" + name, "-o", "%i|%T"},
+		{"sacct", "-X", "-n", "-P", "-S", "now-" + lookback, "--name=" + name, "-o", "JobID,State"},
+	} {
+		result := q.link.Exec(ctx, read...)
+		if err := q.link.Drop(result); err != nil {
+			return "", err
+		}
+
+		if result.ExitCode != 0 {
+			return "", link.Failure(read[0], result)
+		}
+
+		if id := firstKept(result.Stdout); id != "" {
+			return parseSubmitted(id)
+		}
+	}
+
+	return "", nil
+}
+
+// firstKept returns the job id of the first `id|state` line whose state is not a cancel, or an empty text.
+func firstKept(out string) string {
+	for _, line := range model.NonEmptyLines(out) {
+		id, state, _ := strings.Cut(line, "|")
+		if !strings.HasPrefix(state, canceledState) {
+			return id
+		}
+	}
+
+	return ""
+}
+
+// sbatch submits the job and returns its handle.
+func (q *Queue) sbatch(ctx context.Context, spec model.JobSpec, name, nonce string) (jobwait.Job, error) {
+	words := []string{"sbatch", "--parsable", "--job-name=" + name}
 	if q.limit > 0 {
 		words = append(words, "--time="+strconv.FormatInt(int64(math.Ceil(q.limit.Minutes())), 10))
 	}
@@ -191,7 +250,7 @@ func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, err
 		return jobwait.Job{}, err
 	}
 
-	return jobwait.Job{ID: id, Nonce: q.nonce(), Folder: spec.Folder}, nil
+	return jobwait.Job{ID: id, Nonce: nonce, Folder: spec.Folder}, nil
 }
 
 // hold asks the slot to hold the cluster. If it cannot, the Slurm job is canceled.
