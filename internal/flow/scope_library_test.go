@@ -1,24 +1,19 @@
 package flow
 
 import (
+	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/batch"
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
 // The tests of this file run the library scope.star on the merge rig: the closing sets come from the fake forge, the owner answers through the client, and the fake merger records what it gets.
-
-// secondCallBound is the time that a run needs after the answer to land a member twice. It stays far below the bound of the package, so a lost kept issue fails its test by name.
-const secondCallBound = 30 * time.Second
-
-// askBound is the time that a run of the test gets to end before the test takes it as a run that asked nothing.
-const askBound = 5 * time.Second
 
 // scopeOffNote is the note that the status of a run shows when the project has no forge.
 const scopeOffNote = "scope check off: the project has no forge"
@@ -282,13 +277,9 @@ func TestHoldScope_ASecondCheckOfAMemberInTheSameRunAsksNoSecondQuestionForAKept
 
 	questionOf(t, rig.h, "9")
 	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
+	answerTaken(t, rig.h, "9")
 
-	select {
-	case outcome := <-done:
-		require.NoError(t, outcome.err)
-	case <-time.After(secondCallBound):
-		t.Fatalf("the run did not end within %s after the answer: the second check of the member asked a second question, so the kept issue was lost", secondCallBound)
-	}
+	endsWithNoQuestion(t, rig.h, "9", done, "the second check of the member asked a second question, so the kept issue was lost")
 
 	assert.Equal(t, []string{"1", "1"}, rig.merger.landed(), "the kept issue needs no second answer, so the second check lands the member")
 	require.Len(t, rig.merger.given, 2)
@@ -304,14 +295,7 @@ func TestHoldScope_ANewRunOfTheSameItemAsksNoSecondQuestionForAnIssueTheOwnerKep
 	rig.fixScopeOf(t, engine, "1")
 	rig.keepAs(t, engine, "9", "1")
 
-	done := rig.runMergeAs(t, engine, "9", "1")
-
-	select {
-	case outcome := <-done:
-		require.NoError(t, outcome.err)
-	case <-time.After(secondCallBound):
-		t.Fatalf("the second run of item 9 did not end within %s: it asked the owner again about the issue that run one kept", secondCallBound)
-	}
+	endsWithNoQuestion(t, rig.h, "9", rig.runMergeAs(t, engine, "9", "1"), "the second run of item 9 asked the owner again about the issue that run one kept")
 
 	assert.Equal(t, []string{"1", "1"}, rig.merger.landed())
 	require.Len(t, rig.merger.given, 2)
@@ -344,12 +328,6 @@ func TestHoldScope_AnIssueKeptForOneMemberIsStillAskedAboutForAnotherMemberOfThe
 
 	done := rig.runMergeAs(t, engine, "9", "3")
 
-	select {
-	case <-done:
-		t.Fatal("the run of item 9 ended without a question: the keep of #13 for member 1 covered member 3")
-	case <-time.After(askBound):
-	}
-
 	questionOf(t, rig.h, "9")
 	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
@@ -365,14 +343,7 @@ func TestHoldScope_AnIssueKeptInRunOneStaysKeptWhenThePullRequestOfRunTwoDropsIt
 	rig.fixScopeOf(t, engine, "1")
 	rig.keepAs(t, engine, "9", "1")
 
-	done := rig.runMergeAs(t, engine, "9", "1")
-
-	select {
-	case outcome := <-done:
-		require.NoError(t, outcome.err)
-	case <-time.After(secondCallBound):
-		t.Fatalf("the second run of item 9 did not end within %s", secondCallBound)
-	}
+	endsWithNoQuestion(t, rig.h, "9", rig.runMergeAs(t, engine, "9", "1"), "the second run of item 9 asked the owner about an issue that run one kept")
 
 	require.Len(t, rig.merger.given, 2)
 	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[1].Kept, "the kept set grows only: the guard allows #13 although the pull request no longer closes it")
@@ -659,16 +630,43 @@ func TestHoldScope_AnIssueOfAnotherRepositoryWithTheNumberOfAnOwnIssueOfTheFirst
 	assert.Empty(t, rig.merger.landed(), "#5 of this repository does not cover other-org/other-repo#5")
 }
 
-// endsWithNoQuestion takes the outcome of a run that must not ask the owner: a run that asks stays open until the bound.
-func endsWithNoQuestion(t *testing.T, done <-chan runOutcome, what string) {
+// answerTaken waits until the status of the run of the item shows no question, so a later read does not take the question that the test answered for a new one.
+func answerTaken(t *testing.T, h *harness, item string) {
 	t.Helper()
 
-	select {
-	case outcome := <-done:
-		require.NoError(t, outcome.err)
-	case <-time.After(askBound):
-		t.Fatalf("the run did not end within %s: %s", askBound, what)
+	client := h.client(t, testVersion)
+	read := newStatusRead(client)
+
+	waitOn(t, waiting[struct{}]{what: "the run of item " + item + " to take the answer", run: runOfClient(t, client), last: read.last, read: func() (struct{}, bool, error) {
+		return struct{}{}, !slices.ContainsFunc(read.next(), func(info RunInfo) bool { return info.Item == item && info.Question != "" }), nil
+	}})
+}
+
+// endsWithNoQuestion waits for the end of a run of the item that must not ask the owner. It fails by name when the status of the run shows a question first.
+func endsWithNoQuestion(t *testing.T, h *harness, item string, done <-chan runOutcome, what string) {
+	t.Helper()
+
+	client := h.client(t, testVersion)
+	read := newStatusRead(client)
+	asked := ""
+
+	outcome := waitOn(t, waiting[runOutcome]{what: "the end of the run of item " + item, run: runOfClient(t, client), ch: done, last: read.last, read: func() (runOutcome, bool, error) {
+		for _, info := range read.next() {
+			if info.Item == item && info.Question != "" {
+				asked = info.Question
+
+				return runOutcome{}, true, nil
+			}
+		}
+
+		return runOutcome{}, false, nil
+	}})
+
+	if asked != "" {
+		t.Fatalf("the run of item %s asked %q: %s", item, asked, what)
 	}
+
+	require.NoError(t, outcome.err)
 }
 
 func TestHoldScope_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompareEvenWhenTheRunFixedItsOwnScope(t *testing.T) {
@@ -679,7 +677,7 @@ func TestHoldScope_AMemberOfAnotherItemWithNoEarlierRunHasNothingToCompareEvenWh
 
 	done := rig.runFlowAs(t, rig.engine(t), "1", rig.libFlow(fixFirstReview, "1 3", 1))
 
-	endsWithNoQuestion(t, done, "the member of item 3 has no first review, so it was compared with the scope of item 1 and the run asked the owner")
+	endsWithNoQuestion(t, rig.h, "1", done, "the member of item 3 has no first review, so it was compared with the scope of item 1 and the run asked the owner")
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
 	assert.Equal(t, 2, rig.h.forge.closingReads, "one read fixes the scope of item 1, one checks item 1, and item 3 has nothing to compare so it is not read")
 }
@@ -723,7 +721,7 @@ func TestHoldScope_ANewRunOfTheSameItemWhoseIssuesDidNotGrowAsksNoQuestion(t *te
 	engine := rig.engine(t)
 
 	for range 2 {
-		endsWithNoQuestion(t, rig.runItemOne(t, engine), "a member whose issues did not grow was asked about")
+		endsWithNoQuestion(t, rig.h, "1", rig.runItemOne(t, engine), "a member whose issues did not grow was asked about")
 	}
 
 	assert.Equal(t, []string{"1", "1"}, rig.merger.landed())
@@ -738,7 +736,7 @@ func TestHoldScope_AMemberOfAnotherItemWithAnEarlierRunWhoseIssuesDidNotGrowAsks
 	engine := rig.engine(t)
 	rig.fixScopeOf(t, engine, "1")
 
-	endsWithNoQuestion(t, rig.runMergeAs(t, engine, "9", "1"), "a member whose issues did not grow was asked about")
+	endsWithNoQuestion(t, rig.h, "9", rig.runMergeAs(t, engine, "9", "1"), "a member whose issues did not grow was asked about")
 
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 	assert.Equal(t, 2, rig.h.forge.closingReads, "the earlier run read once, and the check reads once")
@@ -861,47 +859,118 @@ func TestHoldScope_EachFormOfMergeRefusesAMemberWhoseClosingSetChangedAfterTheCh
 	}
 }
 
-func TestKeepIssues_ReadsOnlyTheKeepForm(t *testing.T) {
+// keptRefusal is the start of the error of a merge whose member keeps #13 with no owner answer that keeps it.
+const keptRefusal = "item 1 keeps #13, and no owner answer keeps it"
+
+// keptMember is the member of item 1 that keeps #13, in the form of the merge call.
+func (r *batchRig) keptMember(form string) string {
+	member := `struct(item = "1", head = "` + r.heads["1"] + `", closes = [], kept = ["#13"])`
+	if form == "member" {
+		return "member = " + member
+	}
+
+	return "prs = [" + member + "]"
+}
+
+// keptFlow runs the statement pre, then merges the member of item 1 that keeps #13 in the form, and reports the merged items.
+func (r *batchRig) keptFlow(form, pre string) string {
+	return "def main(item):\n    " + pre + "\n    merge(" + r.keptMember(form) + `, base = "main", repo = "o/r", name = "b")` + "\n"
+}
+
+// askToKeep asks the owner under the name keep-1, as hold_scope does for the member of item 1.
+const askToKeep = `wait(name = "keep-1", question = "keep #13?")`
+
+// answerKeep runs the text as the item, answers its one question with the line, and returns the outcome of the run.
+func (r *batchRig) answerKeep(t *testing.T, engine *Engine, item, text, line string) runOutcome {
+	t.Helper()
+
+	done := r.runFlowAs(t, engine, item, text)
+
+	questionOf(t, r.h, item)
+	require.NoError(t, r.h.client(t, testVersion).Reply(item, Reply{Text: line}))
+
+	return receive(t, done)
+}
+
+func TestMerge_AKeptIssueThatNoOwnerAnswerKeptEndsTheCallAndMergesNothingInEachForm(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct{ text, want string }{
-		{"keep #13, #14", "#13,#14"},
-		{"  KEEP   #13 ,#14  ", "#13,#14"},
-		{"Keep #13, Other-Org/Other-Repo#5", "#13,other-org/other-repo#5"},
-		{"keep #007", "#7"},
-		{"keep #9223372036854775807", "#9223372036854775807"},
-		{"keep #9223372036854775808", ""},
-		{"keep #99999999999999999999", ""},
-		{"keep other/repo#99999999999999999999", ""},
-		{"keep 5", ""},
-		{"keep", ""},
-		{"keep#13", ""},
-		{"keep #13,", ""},
-		{"keep #", ""},
-		{"keep #1x", ""},
-		{"keep other/repo", ""},
-		{"keep other/repo/more#5", ""},
-		{"keep /repo#5", ""},
-		{"keep o wner/repo#5", ""},
-		{"keep other-org/other-repo#5 and #6", ""},
-		{"no keep #13", ""},
-		{"", ""},
+	for name := range mergeForms() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newBatchRig(t)
+			_, err := rig.engine(t).RunFile("1", testProject, writeFlow(t, rig.keptFlow(name, "pass")), modeOff())
+
+			require.ErrorContains(t, err, keptRefusal)
+			assert.Empty(t, rig.merger.given, "a made-up kept issue reaches no merge")
+		})
 	}
+}
 
-	lines := []string{`load("@beehave//scope.star", "keep_issues")`, "", "def main(item):"}
+func TestMerge_AKeptIssueThatAnOwnerAnswerOfThisRunKeptReachesTheMergeInEachForm(t *testing.T) {
+	t.Parallel()
 
-	for i, c := range cases {
-		lines = append(lines, `    command(name = "case-`+strings.Repeat("a", i+1)+`", run = ["seen", ",".join(keep_issues("`+strings.ReplaceAll(c.text, `"`, `\"`)+`"))])`)
+	for name := range mergeForms() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newBatchRig(t)
+			out := rig.answerKeep(t, rig.engine(t), "1", rig.keptFlow(name, askToKeep), "keep #13")
+
+			require.NoError(t, out.err)
+			require.Len(t, rig.merger.given, 1)
+			assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[0].Kept)
+		})
 	}
+}
 
-	h := newHarness(t)
-	_, err := walkText(t, h, strings.Join(lines, "\n")+"\n")
+func TestMerge_AnOwnerAnswerThatKeepsAnotherIssueDoesNotKeepTheIssueOfTheMember(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	out := rig.answerKeep(t, rig.engine(t), "1", rig.keptFlow("prs", askToKeep), "keep #14")
+
+	require.ErrorContains(t, out.err, keptRefusal)
+	assert.Empty(t, rig.merger.given)
+}
+
+func TestMerge_AKeptIssueThatAnOwnerAnswerOfAnEarlierRunOfTheItemKeptReachesTheMerge(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	engine := rig.engine(t)
+	require.NoError(t, rig.answerKeep(t, engine, "1", "def main(item):\n    "+askToKeep+"\n", "keep #13").err)
+
+	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("member", "pass")), modeOff())
+
 	require.NoError(t, err)
+	require.Len(t, rig.merger.given, 1)
+	assert.Equal(t, []model.IssueRef{"#13"}, rig.merger.given[0].Kept)
+}
 
-	ran := h.commands.ran()
-	require.Len(t, ran, len(cases))
+func TestMerge_AKeptIssueThatOnlyAnAnswerInARunOfAnotherItemKeptEndsTheCall(t *testing.T) {
+	t.Parallel()
 
-	for i, c := range cases {
-		assert.Equal(t, strings.TrimSpace("seen "+c.want), strings.TrimSpace(ran[i]), "the text %q", c.text)
-	}
+	rig := newBatchRig(t)
+	engine := rig.engine(t)
+	require.NoError(t, rig.answerKeep(t, engine, "9", "def main(item):\n    "+askToKeep+"\n", "keep #13").err)
+
+	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("prs", "pass")), modeOff())
+
+	require.ErrorContains(t, err, keptRefusal)
+	assert.Empty(t, rig.merger.given, "the answer of a run of item 9 keeps nothing for a run of item 1")
+}
+
+func TestMerge_AKeptIssueWhoseOwnerAnswersCannotBeReadEndsTheCall(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	s := &script{e: engine, in: ItemInput{Item: testItem}}
+
+	require.ErrorContains(t, s.trustMemberKept(batch.Member{Item: "1", Kept: []model.IssueRef{"#13"}}), "list the earlier runs of item 12")
+	require.NoError(t, s.trustMemberKept(batch.Member{Item: "1"}), "a member that keeps nothing reads no answer")
 }

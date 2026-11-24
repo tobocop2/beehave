@@ -2,7 +2,7 @@
 
 Part of the [beehave architecture](../architecture.md).
 
-A workflow is one Starlark file. The engine calls its `main` function with the work item, and each builtin call except `struct`, `json`, `paths_outside` and `closing_references` runs as a recorded DBOS step, so a restart replays the file and never runs a finished step again. This part lists the builtins, their arguments and results, the pinning of files, the static check and the examples.
+A workflow is one Starlark file. The engine calls its `main` function with the work item, and each builtin call except `struct`, `json`, `paths_outside`, `closing_references` and `keep_issues` runs as a recorded DBOS step, so a restart replays the file and never runs a finished step again. This part lists the builtins, their arguments and results, the pinning of files, the static check and the examples.
 
 ## Workflow files
 
@@ -306,11 +306,11 @@ The `parent` argument:
 
 #### The scope library
 
-The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_scope", "keep_issues")`. It uses `pr_closing` and `earlier_reads`. A workflow that does not load it has no scope check.
+The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_scope")`. It uses `pr_closing`, `earlier_reads` and `keep_issues`. A workflow that does not load it has no scope check.
 
 - `fix_scope(name, item)` fixes the scope of an item at its first review. It takes the first read of the run or of an earlier run of the item. If there is none, it makes one `pr_closing` read. It returns `found`, `issues` and `off`. `off` is true for a project with no forge, and `beehave status` then shows `scope check off: the project has no forge`.
 - `hold_scope(name, prs, run, own)` runs before `merge`. For each member of `prs`, it reads the closing references and compares them with the first review of the item: `own`, the result of `fix_scope` in this run, for the item of the run, and the first review of an earlier run named `scope` for any other item. It returns `prs`, the members with the fields `kept` and `closing`, and `rejected`, the members that the owner did not allow.
-- A new issue makes the run ask the owner. The question names the run, so `beehave answer` with the item `run` answers it. The answer form is `keep #N[, #N ...]`, or `keep owner/repo#N` for an issue of another repository. Any other answer rejects the member. `keep_issues(text)` reads that form.
+- A new issue makes the run ask the owner. The question names the run, so `beehave answer` with the item `run` answers it. The answer form is `keep #N[, #N ...]`, or `keep owner/repo#N` for an issue of another repository. Any other answer rejects the member. The builtin `keep_issues(text)` reads that form, and the merge reads the same form to trust the `kept` list.
 - The kept issues are read back from the owner waits of the earlier calls and runs, so a kept issue gets no second question. A kept issue stays kept when a later pull request no longer closes it.
 - A member with no first read has nothing to compare, and the call reads nothing for it.
 
@@ -520,13 +520,15 @@ A finding is a result, not an error. `ok` is true when `findings` is empty. The 
 
 The steps are `command` steps, so a replay reads their records and runs no git again. A run recorded with the builtin step `before_review` does not move to this build with `resume --on-this-build`: the gate module is at version 6, and the refusal names it.
 
-#### `paths_outside` and `closing_references`
+#### `paths_outside`, `closing_references` and `keep_issues`
 
 `paths_outside(allow, paths)` returns the sorted paths in `paths` that no glob of `allow` matches. It reads `allow` with the same code as `allow_paths` of `agent`, so the two judge a path alike. Unlike `allow_paths`, `allow` must be a list: `None` is refused, because a check with no scope has nothing to compare.
 
 `closing_references(text)` returns the issues that `text` closes with a closing keyword, each as `#N` or `owner/repo#N`, in the order of the text. It reads the grammar of the merge guard.
 
-Both builtins match text. They run no command, record no step and need no repository.
+`keep_issues(text)` returns the issues of an owner line in the form `keep #N[, owner/repo#N ...]`, each as `#N` or `owner/repo#N` with the repository in lower case. The word `keep` takes any case. Any other text gives an empty list. The merge reads the recorded owner answers with the same parser.
+
+The three builtins match text. They run no command, record no step and need no repository.
 
 ### The queue library and its reads
 
@@ -592,7 +594,7 @@ A run that `spawn` started reads the hold of its item in the tracker again befor
 
 `closes` is a required list of issue numbers of each member: the issues that its pull request must close. Each number is 1 or more, and none repeats. Write `closes = []` for a member that closes nothing. A member with no `closes`, or a value that is not such a list, fails the call and the check. The merge guard refuses the member when the forge lists other issues (see Closing references in the merge design).
 
-`kept` and `closing` are optional lists of issues as text, `#N` or `owner/repo#N`, on each member. `hold_scope` sets them. `kept` holds the issues that the owner allowed: a closing keyword in a commit message of the member may name them. `closing` holds the closing issues that the scope check read. The merge refuses the member when the forge lists another set at the merge. A member that leaves `closing` out pins no set. A list that holds a value that is not an issue as text fails the call and the check.
+`kept` and `closing` are optional lists of issues as text, `#N` or `owner/repo#N`, on each member. `hold_scope` sets them. `kept` holds the issues that the owner allowed: a closing keyword in a commit message of the member may name them. The merge takes a kept issue only when a recorded answer to `wait(name = "keep-<item>")` of this run, or of an earlier run of the run item, keeps it in the form that `keep_issues` reads. A kept issue with no such answer fails the call before any gate or merge, and the error names the item and the issue. `closing` holds the closing issues that the scope check read. The merge refuses the member when the forge lists another set at the merge. A member that leaves `closing` out pins no set. A list that holds a value that is not an issue as text fails the call and the check.
 
 `own_draft` is an optional int of each member: the number of the draft that the run opened for it. The pull request of a member stays a draft until the merge marks it ready, and the guards of the merge run before that step. The draft guard passes only when the pull request has the number `own_draft`, and the ready step then marks it ready after the guards, as it does for any draft. A member that leaves it out, or a draft with another number, is refused as before. `merge` has no `allow_ready` of its own. The value follows the same rule as `own_draft` of `preflight`: the check and the run refuse zero, a negative number and any other type, and the error names the member. A call with `hand_off` reads no `own_draft`: the call marks each pull request ready itself.
 

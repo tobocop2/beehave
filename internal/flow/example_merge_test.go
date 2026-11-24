@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,7 +42,7 @@ type shipWorld struct {
 	committer model.Committer
 	checks    []model.Check
 	writes    []string
-	listed    []int // the issues the forge lists for the pull request: the fake lists the ones the member names
+	listed    []int // the issues the forge lists for the pull request: the merger of one call sets the ones the member names, and the round rig sets the issue of the item
 }
 
 func (w *shipWorld) PRView(context.Context, int, ...string) (model.PullRequest, error) {
@@ -296,10 +297,8 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 		return merge.Result{}, err
 	}
 
-	m.worlds[item].listed = settings.Closes
-
 	got := merge.Run(ctx, m.worlds[item], merge.Request{
-		Names: settings.Closes, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+		Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,
@@ -335,11 +334,13 @@ func (*forgeMerger) Disarm(context.Context, string, string, string, MergeSetting
 }
 
 // landingRound is the round rig over items 1 and 3, with the real merge over a forge fake for each item. The pull request of item 1 has the keys of over replaced.
+// The pull request of item N closes issue N. The forge lists that issue to the scope check of the round and to the merge alike, as one forge does.
 func landingRound(t *testing.T, over map[string]any) (*roundRig, *forgeMerger) {
 	t.Helper()
 
 	rig := newRoundRig(t, "1 3")
 	worlds := map[string]*landWorld{}
+	rig.h.forge.closingOf = map[string][][]int{}
 
 	for _, item := range []string{"1", "3"} {
 		fields := map[string]any{"baseRefName": "main", "headRefName": item}
@@ -347,7 +348,11 @@ func landingRound(t *testing.T, over map[string]any) (*roundRig, *forgeMerger) {
 			maps.Copy(fields, over)
 		}
 
-		worlds[item] = &landWorld{shipWorld: &shipWorld{pull: shipPull(t, rig.heads[item], fields)}, repo: rig.repo}
+		issue, err := strconv.Atoi(item)
+		require.NoError(t, err)
+
+		rig.h.forge.closingOf[item] = [][]int{{issue}}
+		worlds[item] = &landWorld{shipWorld: &shipWorld{pull: shipPull(t, rig.heads[item], fields), listed: []int{issue}}, repo: rig.repo}
 	}
 
 	forge := &forgeMerger{worlds: worlds, lines: map[string][]string{}}

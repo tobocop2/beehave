@@ -3,9 +3,6 @@
 
 FIRST_READ = "scope"
 NOW_READ = "scope-now-"
-MAX_NUMBER = 9223372036854775807
-NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789_.-"
-DIGITS = "0123456789"
 
 def fix_scope(name, item = ""):
     """Fixes the scope of the item and returns struct(found, issues, off).
@@ -51,7 +48,7 @@ def hold_scope(name, prs, run = "", own = None):
         fresh = [issue for issue in now.issues if issue not in then and issue not in kept]
         if fresh:
             owner_item = run_item
-            named = keep_issues(wait(question = _question(pr.item, fresh, then, owner_item), name = "keep-" + pr.item).answer)
+            named = keep_issues(text = wait(question = _question(pr.item, fresh, then, owner_item), name = "keep-" + pr.item).answer)
             missing = [issue for issue in fresh if issue not in named]
             if missing:
                 rejected.append(struct(item = pr.item, reason = _refusal(pr.item, missing, owner_item)))
@@ -62,39 +59,6 @@ def hold_scope(name, prs, run = "", own = None):
         landing.append(_member(pr, kept, now.issues))
 
     return struct(prs = landing, rejected = rejected)
-
-def keep_issues(text):
-    """Returns the issues of an owner line in the form "keep #N[, owner/repo#N ...]", and an empty list for any other text. The word keep takes any case."""
-    if not text.strip().lower().startswith("keep"):
-        return []
-
-    rest = text.strip()[4:]
-    if rest == rest.lstrip():
-        return []
-
-    issues = []
-    for part in rest.split(","):
-        issue = _issue(part.strip())
-        if issue == "":
-            return []
-        issues.append(issue)
-
-    return issues
-
-def _issue(text):
-    """The issue that a text names as "#N" or "owner/repo#N" (the repository in lower case), or an empty text."""
-    repo, hash, digits = text.partition("#")
-    if hash == "" or digits == "" or [c for c in digits.elems() if c not in DIGITS] or int(digits) > MAX_NUMBER:
-        return ""
-
-    if repo == "":
-        return "#%d" % int(digits)
-
-    owner, slash, name = repo.lower().partition("/")
-    if slash == "" or owner == "" or name == "" or [c for c in (owner + name).elems() if c not in NAME_CHARS]:
-        return ""
-
-    return "%s#%d" % (repo.lower(), int(digits))
 
 def _first_review(item, run_item, own):
     """The issues of the first review of the item, or None when the item has none. The scope of the item of the run is own, and any other scope is read from the earlier runs of the item."""
@@ -119,7 +83,7 @@ def _kept_before(item):
 
     kept = []
     for read in earlier_reads(kind = "wait", name = "keep-" + item, own_run = True).reads:
-        kept = _union(kept, [issue for issue in keep_issues(read["answer"]) if issue in seen])
+        kept = _union(kept, [issue for issue in keep_issues(text = read["answer"]) if issue in seen])
 
     return kept
 

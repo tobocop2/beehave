@@ -192,6 +192,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_stop` | `reason` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `step` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `keep_issues` | `-` | #500: new, reads the issues of an owner line in the form `keep #N[, owner/repo#N ...]`, the form that the merge reads to trust `kept` | 1: `internal/workflow/lib/scope.star` |
+| `keep_issues` | `text` | #500: new | 1: `internal/workflow/lib/scope.star` |
 | `merge` | `-` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `base` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `expect_tree` | #503: new, the merge stops as unsettled when the base tip has another tree | 1: `examples/remediation/workflow.star` |

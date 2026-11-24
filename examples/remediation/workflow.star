@@ -719,7 +719,8 @@ def land(approved, project, round_settings, n, run):
 
     # The scope check: a pull request that closes an issue that is new since its first review waits for the owner. The owner answers the run `run` with "keep #N", and any other answer rejects the member here.
     # A rejected member gets the reason as a comment and the hold status, as a member that the merge rejects does. The check runs before the merge, so before the union gate.
-    held = hold_scope(name = "round-scope-%d" % n, prs = prs, run = run)
+    # A hand-off round lands nothing itself: the owner merges each pull request, so the round asks no scope question.
+    held = struct(prs = prs, rejected = []) if round_settings["hand_off"] else hold_scope(name = "round-scope-%d" % n, prs = prs, run = run)
     prs = held.prs
 
     for refused in held.rejected:

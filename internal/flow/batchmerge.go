@@ -82,6 +82,10 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, err
 	}
 
+	if err := s.trustKept(call); err != nil {
+		return nil, err
+	}
+
 	if call.single {
 		return s.mergeOne(call)
 	}
