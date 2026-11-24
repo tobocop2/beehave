@@ -36,6 +36,8 @@ type cancels struct {
 	runs map[string]*attempt
 	// releasing holds the attempts whose give-back is under way, so no second give-back starts for one run.
 	releasing map[*attempt]bool
+	// stopped holds the attempts that a cut stopped and whose workflow function may still run, so a reopen of the run can wait for their end.
+	stopped map[*attempt]bool
 }
 
 // begin marks the give-back of a canceled run that this process neither executes nor releases, and reports whether the caller must release it.
@@ -91,6 +93,39 @@ func (c *cancels) add(a *attempt) {
 	}
 
 	c.runs[a.id] = a
+
+	c.running("")
+}
+
+// stop cuts the attempt that this process lists under the run id and returns it with every earlier cut attempt of that run whose workflow function has not returned.
+// A caller that reopens the run waits for the end of each, so the run never has two executions: the tick would cut the old one only while the store marks the run as canceled.
+func (c *cancels) stop(id string) []*attempt {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if a, listed := c.runs[id]; listed {
+		c.cut(a)
+	}
+
+	return c.running(id)
+}
+
+// running drops the cut attempts whose workflow function has returned and lists the others of the run id. The caller holds the lock.
+func (c *cancels) running(id string) []*attempt {
+	var list []*attempt
+
+	for a := range c.stopped {
+		select {
+		case <-a.ended:
+			delete(c.stopped, a)
+		default:
+			if a.id == id {
+				list = append(list, a)
+			}
+		}
+	}
+
+	return list
 }
 
 // attempts lists the attempts this process executes.
@@ -158,6 +193,12 @@ func (c *cancels) cancel(list []*attempt) []*attempt {
 func (c *cancels) cut(a *attempt) {
 	a.cancel()
 	delete(c.runs, a.id)
+
+	if c.stopped == nil {
+		c.stopped = map[*attempt]bool{}
+	}
+
+	c.stopped[a] = true
 
 	if !a.gate {
 		c.markReleasing(a)
