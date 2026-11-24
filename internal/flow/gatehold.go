@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
@@ -242,11 +243,12 @@ var errReplaced = errors.New("the run of the gate was replaced")
 // awaitHeld waits for the result of the build job of a gate. A job that was canceled with its gate ends the wait with the cancel.
 // A job that a person held is canceled while the gate is parked: the run that sees the cancel then ends at once, and the gate that beehave gate release
 // queued again reopens the job on the queue of its host and waits for it as before.
-// A release that comes before the old run sees the cancel queues the gate again: the gate is not running, so the old run ends and leaves the reopen to the new run.
+// The run reads its start before it waits. A release that comes before the old run sees the cancel starts a new run of the gate. The start in the store tells the two
+// apart for good: only the run whose start the gate row holds reopens the job, so no two runs resume one job.
 func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], queue string) (ExclusiveOutput, error) {
-	id, err := dbos.GetWorkflowID(ctx)
+	id, began, err := e.runOf(ctx)
 	if err != nil {
-		return ExclusiveOutput{}, fmt.Errorf("read the run id of the gate: %w", err)
+		return ExclusiveOutput{}, err
 	}
 
 	for {
@@ -255,49 +257,117 @@ func (e *Engine) awaitHeld(ctx dbos.Context, handle dbos.WorkflowHandle[Exclusiv
 			return done, err
 		}
 
-		if reopened, rerr := e.reopenGate(id, handle.GetWorkflowID(), queue); !reopened || rerr != nil {
+		if reopened, rerr := e.reopenGate(id, handle.GetWorkflowID(), queue, began); !reopened || rerr != nil {
 			return ExclusiveOutput{}, cmp.Or(rerr, err)
 		}
 	}
 }
 
-// reopenGate reads the gate id and its build job job after the job was canceled. It reopens the job on queue and returns true when a release queued the gate again
-// and the gate runs. It returns errReplaced when the gate is parked or queued again, and false when the gate was canceled with its job, which is a stop.
-// A job that is not canceled any more is open already, so the run waits for it and reopens nothing. A cancel clears the queue of a run, so the caller names the queue of the job.
-func (e *Engine) reopenGate(id, job, queue string) (bool, error) {
+// runOf is the id of the run of ctx and the time that it started at.
+func (e *Engine) runOf(ctx dbos.Context) (string, time.Time, error) {
+	id, err := dbos.GetWorkflowID(ctx)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("read the run id of the gate: %w", err)
+	}
+
+	began, err := e.runStartedAt(id)
+
+	return id, began, err
+}
+
+// runStartedAt is the time that the run id started at, or the zero time for a run that has not started.
+func (e *Engine) runStartedAt(id string) (time.Time, error) {
+	rows, err := e.store().List(dbos.WithFilterWorkflowIDs(id))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read the start of the gate: %w", err)
+	}
+
+	row, _ := rowWithID(rows, id)
+
+	return row.StartedAt, nil
+}
+
+// liveGate reads the gate id and its build job job. It reports the job and true for the run that began at began, which the gate row holds while it runs.
+// It reports false for a gate that was canceled with its job, which is a stop, and errReplaced for a gate that is parked or that another run has.
+func (e *Engine) liveGate(id, job string, began time.Time) (dbos.WorkflowStatus, bool, error) {
 	rows, err := e.store().List(dbos.WithFilterWorkflowIDs(id, job))
 	if err != nil {
-		return false, fmt.Errorf("read the build job of the gate: %w", err)
+		return dbos.WorkflowStatus{}, false, fmt.Errorf("read the build job of the gate: %w", err)
 	}
 
 	gate, found := rowWithID(rows, id)
 
 	switch {
 	case !found || gate.Name != exclusiveName || gate.Status == dbos.WorkflowStatusCancelled:
-		return false, nil
-	case gate.QueueName == heldQueueName || gate.Status != dbos.WorkflowStatusPending:
-		return false, errReplaced
+		return dbos.WorkflowStatus{}, false, nil
+	case gate.QueueName == heldQueueName || gate.Status != dbos.WorkflowStatusPending || !gate.StartedAt.Equal(began):
+		return dbos.WorkflowStatus{}, false, errReplaced
 	}
 
-	if open, _ := rowWithID(rows, job); open.Status != dbos.WorkflowStatusCancelled {
+	open, _ := rowWithID(rows, job)
+
+	return open, true, nil
+}
+
+// reopenGate reopens the canceled build job job of the gate id on queue and returns true when a release queued the gate again and the run that began at began
+// has it. It returns errReplaced when the gate is parked or another run has it, and false when the gate was canceled with its job, which is a stop.
+// A job that is not canceled any more is open already, so the run waits for it and reopens nothing. A cancel clears the queue of a run, so the caller names the queue of the job.
+// The run waits for the end of the earlier run of the job first, which takes as long as the job needs to stop, so it reads the gate again after the wait.
+func (e *Engine) reopenGate(id, job, queue string, began time.Time) (bool, error) {
+	open, live, err := e.liveGate(id, job, began)
+	if !live || err != nil {
+		return false, err
+	}
+
+	if open.Status != dbos.WorkflowStatusCancelled {
 		return true, nil
 	}
 
-	return e.resumeJob(job, queue)
+	if err := e.stopJob(job); err != nil {
+		return false, err
+	}
+
+	if _, live, err = e.liveGate(id, job, began); !live || err != nil {
+		return false, err
+	}
+
+	return e.resumeJob(id, job, queue, began)
+}
+
+// jobStopLimit is the longest time that a reopen waits for the earlier run of the build job to end. The job gets a cancel first, and its program ends with its context.
+// A program that ignores the cancel keeps the job running, and the gate then fails with a clear error and holds no place for longer than this limit.
+const jobStopLimit = 5 * time.Minute
+
+// stopJob cuts the earlier run of the build job on this engine and waits for its end. The tick of the engine cuts a canceled job only while the store marks it canceled,
+// and a reopen clears that mark, so a job that ran twice would never be cut.
+func (e *Engine) stopJob(job string) error {
+	limit := cmp.Or(e.deps.Clock.JobStop, jobStopLimit)
+
+	ctx, cancel := context.WithTimeout(e.ctx, limit)
+	defer cancel()
+
+	err := waitEnded(ctx, e.cancels.stop(job))
+	if err != nil && e.ctx.Err() == nil {
+		return fmt.Errorf("the earlier run of the build job %s did not stop within %s, so the gate does not reopen it", job, limit)
+	}
+
+	return err
 }
 
 // resumeJob puts the canceled build job back on queue and returns true. It runs on the context of the engine, not on the run:
 // a call inside a run is a recorded step, and the steps of a gate stay as they were.
-// The earlier execution of the job on this engine is cut and has ended first: the tick of the engine cuts a canceled job only while the store marks it canceled,
-// and a reopen clears that mark, so a job that runs twice would never be cut.
-func (e *Engine) resumeJob(job, queue string) (bool, error) {
-	if err := waitEnded(e.ctx, e.cancels.stop(job)); err != nil {
-		return false, err
+// A cancel or a hold of the gate can land between the read and the resume, and then the resume would open a job under a gate that does not run it.
+// The run reads the gate once more after the resume and cancels the job that it opened when the gate is not its own any more.
+func (e *Engine) resumeJob(id, job, queue string, began time.Time) (bool, error) {
+	if _, err := dbos.ResumeWorkflow[ExclusiveOutput](e.ctx, job, dbos.WithResumeQueue(queue)); err != nil {
+		return false, failed("reopen the build job of the gate", err)
 	}
 
-	_, err := dbos.ResumeWorkflow[ExclusiveOutput](e.ctx, job, dbos.WithResumeQueue(queue))
+	if _, live, err := e.liveGate(id, job, began); !live || err != nil {
+		return false, cmp.Or(failed("stop the reopened build job of the gate", dbos.CancelWorkflow(e.ctx, job)), err)
+	}
 
-	return err == nil, failed("reopen the build job of the gate", err)
+	return true, nil
 }
 
 // waitEnded waits until the workflow function of each attempt has returned, or ctx ends.
