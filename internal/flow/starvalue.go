@@ -68,6 +68,9 @@ type script struct {
 	// batches holds the names of the merge calls of this run, so that a name is never used twice.
 	batches map[string]bool
 
+	// gates holds the gate calls that this run recorded, by step name. A merge with `member` trusts a gate only when it finds it here.
+	gates map[string]gateRecord
+
 	// patches holds the names of the patched calls of this run, so that a name is never used twice.
 	patches map[string]bool
 

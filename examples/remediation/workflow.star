@@ -536,6 +536,15 @@ def integration_reads(base, pr, numbers):
 
     return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
 
+def land_one(member, base, repo, gated, expect_tree, name):
+    """Merges one pull request with the result of a gate call of this run. The engine posts the statuses of the gate and merges only when the base tip has the tree expect_tree.
+    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
+    return merge(member = member, base = base, repo = repo, gate = gated, gated_tree = gated.tree, expect_tree = expect_tree, name = name)
+
+def hand_to_owner(prs, base, repo, name):
+    """Marks the pull requests ready and waits until the owner merges them. No entry calls it yet: the hand-off of the batch still uses the keyword of merge (#503)."""
+    return hand_off(prs = prs, base = base, repo = repo, name = name)
+
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
     A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""

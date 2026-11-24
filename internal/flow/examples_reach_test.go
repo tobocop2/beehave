@@ -28,7 +28,17 @@ import (
 // The test fails when an entry reaches the pair, so the exception ends with #438.
 // recorded_scope of the remediation example calls pr_closing and earlier_reads, and no entry calls it until the scope check leaves the engine (#500).
 // integration_reads of the remediation example calls base_tip, issue_state and pr_closing with pr, and no entry calls it until the batch leaves the engine (#503).
+// land_one and hand_to_owner of the remediation example call merge with member and hand_off, and no entry calls them until the batch leaves the engine (#503).
 var contractUnreached = map[contractPair]string{
+	{"merge", "member"}:          "#503",
+	{"merge", "gate"}:            "#503",
+	{"merge", "gated_tree"}:      "#503",
+	{"merge", "expect_tree"}:     "#503",
+	{"hand_off", noKeyword}:      "#503",
+	{"hand_off", "prs"}:          "#503",
+	{"hand_off", "base"}:         "#503",
+	{"hand_off", "repo"}:         "#503",
+	{"hand_off", "name"}:         "#503",
 	{"base_tip", noKeyword}:      "#503",
 	{"base_tip", "base"}:         "#503",
 	{"base_tip", "name"}:         "#503",

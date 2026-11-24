@@ -115,6 +115,7 @@ func TestBuiltins_AProjectWithNoRepositoryRefusesTheGitBuiltinsWithAPlainMessage
 		"gate":      `gate(name = "check")`,
 		"merge":     `merge(prs = [struct(item = "1", head = "abc", closes = [])], base = "main", repo = "o/n", name = "batch")`,
 		"preflight": `preflight(head = "abc", base = "main", name = "look")`,
+		"hand_off":  `hand_off(prs = [struct(item = "1", head = "abc", closes = [])], base = "main", repo = "o/n", name = "batch")`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
