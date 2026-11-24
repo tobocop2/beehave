@@ -67,6 +67,26 @@ func TestPoolWindows_TheEnvironmentCapOfASharedWindowReachesEveryAgentOfIt(t *te
 	require.InDelta(t, 70.0, cfg.Pools["beta"]["weekly"], 0)
 }
 
+func TestPoolWindows_TwoBadEnvironmentCapsAreReportedInTheOrderOfTheWindowNames(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{"BEEHAVE_POOL_WEEKLY_MAX": "lots", "BEEHAVE_POOL_DAILY_MAX": "many"}
+	_, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool()\n", env)
+	require.Len(t, problems, 1)
+	require.Regexp(t, `BEEHAVE_POOL_DAILY_MAX=many is not a number[\s\S]*BEEHAVE_POOL_WEEKLY_MAX=lots is not a number`, problems[0].Error())
+}
+
+func TestPoolWindows_APoolKeyWhenNoAgentDeclaresAWindowSaysSo(t *testing.T) {
+	t.Parallel()
+
+	reg := registry()
+	reg.Agents = map[model.Agent]*config.Entry{"opencode": {}}
+
+	_, problems := loadWithRegistry(t, reg, "pool(five_hour = 5)\n", nil)
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "`five_hour` is not a usage window: no agent declares one.")
+}
+
 func TestPoolWindows_AnEnvironmentCapThatIsNotANumberIsRefusedAndNamesTheVariable(t *testing.T) {
 	t.Parallel()
 

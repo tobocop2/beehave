@@ -236,7 +236,12 @@ func Refusal(runners []model.Runner, readings map[string]model.Reading, caps con
 		when, wait = "", ""
 	}
 
-	return fmt.Sprintf("no %s runner is under both caps (%s).%s%s%s", agent, capsText(caps), when, unknown, wait)
+	head := fmt.Sprintf("no %s runner is under both caps (%s)", agent, capsText(caps))
+	if len(caps) == 0 {
+		head = fmt.Sprintf("no %s runner can be picked: the agent has no usage caps", agent)
+	}
+
+	return head + "." + when + unknown + wait
 }
 
 // unknownUsage returns one sentence for each runner with unknown usage, and whether one of them needs a login.

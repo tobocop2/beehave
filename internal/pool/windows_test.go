@@ -31,6 +31,35 @@ func TestWindows_TheRefusalListsTheCapsOfTheAgentInSortedNameOrder(t *testing.T)
 	}
 }
 
+func TestWindows_TheRefusalOfAnAgentWithNoCapsNamesTheAgentAndSaysSo(t *testing.T) {
+	t.Parallel()
+
+	runners := []model.Runner{{Name: "x", Agent: "bare"}}
+	readings := map[string]model.Reading{"x": model.Unknown("down")}
+	text := pool.Refusal(runners, readings, config.Pool{}, "bare")
+
+	want := "no bare runner can be picked: the agent has no usage caps. No reset time is known. Unknown usage: x: down. Wait for it."
+	if text != want {
+		t.Fatalf("refusal = %q, want %q", text, want)
+	}
+}
+
+func TestWindows_ACapOnAWindowTheReadingLacksDoesNotApplyToTheAgent(t *testing.T) {
+	t.Parallel()
+
+	runners := []model.Runner{{Name: "x", Agent: "claude"}}
+	read := func(context.Context, model.Runner) model.Reading { return use(99, 99) }
+
+	picked, err := pool.Select(context.Background(), runners, config.Pool{"monthly": 1}, "claude", read)
+	if err != nil || picked.Name != "x" {
+		t.Fatalf("a cap on monthly must not apply to a reading of five_hour and seven_day: got %v, %v", picked, err)
+	}
+
+	if !pool.HasRoom(map[string]model.Reading{"x": use(99, 99)}, config.Pool{"monthly": 1}) {
+		t.Fatal("a cap on a window the reading lacks leaves room")
+	}
+}
+
 func TestWindows_DescribeWritesEachWindowWithItsNameAndADashForAnUnderscore(t *testing.T) {
 	t.Parallel()
 

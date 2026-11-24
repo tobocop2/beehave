@@ -40,7 +40,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 
 Each agent declares its windows and the default cap of each. A cap applies to every agent that declares its window. A cap on a window that the agent of a runner does not report does not apply to that runner. Two agents that declare one window name declare one default.
 
-A key that no agent declares is refused, and the message lists the names. The keys `five_hour_max` and `seven_day_max` of earlier versions are refused too, and the message names the new form.
+A key that no agent declares is refused, and the message lists the names. A key that ends in `_max` after the name of a declared window, such as `five_hour_max`, is refused too, and the message names the form `five_hour = N`.
 
 | Key | Meaning | Default and limits | Override |
 | --- | --- | --- | --- |

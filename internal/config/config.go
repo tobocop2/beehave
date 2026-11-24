@@ -269,7 +269,11 @@ func (c Config) windowCaps() map[string]float64 {
 func (c *Config) overlayPools(env map[string]string) error {
 	var problems []error
 
-	for name, percent := range c.windowCaps() {
+	caps := c.windowCaps()
+
+	for _, name := range slices.Sorted(maps.Keys(caps)) {
+		percent := caps[name]
+
 		if err := overlayPercent(env, envPoolMax(name), &percent); err != nil {
 			problems = append(problems, err)
 

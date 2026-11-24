@@ -214,14 +214,23 @@ func (f *runnersFile) refuseUnknownCaps(at syntax.Position, kwargs []starlark.Tu
 			continue
 		}
 
-		if window, old := strings.CutSuffix(key, "_max"); old && slices.Contains(names, window) {
-			return refuseAt(at, "`%s` is not a pool key. Write `%s = N` to cap the %s window.", key, window, window)
-		}
-
-		return refuseAt(at, "`%s` is not a usage window of any agent. Use one of: %s.", key, strings.Join(names, ", "))
+		return refuseKey(at, key, names)
 	}
 
 	return nil
+}
+
+// refuseKey refuses a pool key that names no window. A key of a window with _max is the old form: the refusal names the new form.
+func refuseKey(at syntax.Position, key string, names []string) error {
+	if window, old := strings.CutSuffix(key, "_max"); old && slices.Contains(names, window) {
+		return refuseAt(at, "`%s` is not a pool key. Write `%s = N` to cap the %s window.", key, window, window)
+	}
+
+	if len(names) == 0 {
+		return refuseAt(at, "`%s` is not a usage window: no agent declares one.", key)
+	}
+
+	return refuseAt(at, "`%s` is not a usage window of any agent. Use one of: %s.", key, strings.Join(names, ", "))
 }
 
 func (f *runnersFile) addRunner(at syntax.Position, kwargs []starlark.Tuple) error {
