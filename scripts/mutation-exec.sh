@@ -10,8 +10,10 @@
 # Gremlins writes the mutant with go/printer, which reformats the whole file, so a plain diff against the original
 # names the first reformatted line and not the mutated one. The script formats the original and the copy with gofmt,
 # so that the mutated token is the only difference. It records one line for each differing file, with tabs between
-# the fields: path, line, column, exit code and first failing line. The line and the column name the first byte
-# that differs, in the formatted file, which equals the original file when the original is formatted.
+# the fields: path, line, column, after, exit code and first failing line. The line is the first line that differs,
+# not counting white space. The column is the first byte of that line that differs and is not white space, and
+# "after" is the byte before it that is not white space (0 for none), both in the formatted file, which equals the
+# original file when the original is formatted. Gremlins gives the test run no mutator, so the record holds no mutator.
 # The mutant is read before the test binary starts, because gremlins restores the copy after a timeout while this
 # script, and the test binary, can still run: a late record then still names its own mutant.
 # A test run in the module itself (the coverage run of gremlins) differs from nothing and leaves no record.
@@ -43,17 +45,37 @@ for file in "$PWD"/*.go; do
 	cmp -s "$original/$name" "$file" && continue
 	gofmt "$original/$name" >"$tmp.orig" 2>/dev/null || continue
 	gofmt "$file" >"$tmp.copy" 2>/dev/null || continue
-	header=$(diff "$tmp.orig" "$tmp.copy" | head -n 1)
+	header=$(diff -w "$tmp.orig" "$tmp.copy" | head -n 1)
 	[ -n "$header" ] || continue
 	# The header of a change reads "12c12" or "12,13c12,13". The line is the number before the first letter or comma.
 	line=${header%%[acd,]*}
-	column=$(LC_ALL=C awk -v line="$line" '
+	# The columns ignore spaces and tabs: "column" is the first changed byte that is not white space, and "after" is the
+	# last byte before it that is not white space (0 for none). A mutation that changes the spacing before its token,
+	# or that adds or removes the "=" of a boundary token, then leaves the token where gremlins puts it.
+	places=$(LC_ALL=C awk -v line="$line" '
+		function squeeze(text, bytes, cols,   i, n, c) {
+			n = 0
+			for (i = 1; i <= length(text); i++) {
+				c = substr(text, i, 1)
+				if (c != " " && c != "\t") { n++; bytes[n] = c; cols[n] = i }
+			}
+			return n
+		}
 		NR == FNR { if (FNR == line) old = $0; next }
-		FNR == line { i = 1; while (i <= length(old) && i <= length($0) && substr(old, i, 1) == substr($0, i, 1)) i++; print i; exit }
+		FNR == line {
+			n = squeeze(old, ob, oc)
+			m = squeeze($0, nb, nc)
+			k = 1
+			while (k <= n && k <= m && ob[k] == nb[k]) k++
+			column = (k <= n) ? oc[k] : (n > 0 ? oc[n] + 1 : 1)
+			after = (k > 1) ? oc[k - 1] : 0
+			print column, after
+			exit
+		}
 	' "$tmp.orig" "$tmp.copy")
 	path=$name
 	[ -z "$rel" ] || path=$rel/$name
-	mutants="$mutants$path	$line	$column
+	mutants="$mutants$path	$line	${places% *}	${places#* }
 "
 done
 
@@ -69,8 +91,8 @@ if [ "$rc" -ne 0 ]; then
 	text=$(printf '%s' "$text" | tr '\t\n' '  ')
 fi
 
-printf '%s' "$mutants" | while IFS='	' read -r path line column; do
-	[ -z "$path" ] || printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$line" "$column" "$rc" "$text" >>"$MUTATION_EXIT_LOG"
+printf '%s' "$mutants" | while IFS='	' read -r path line column after; do
+	[ -z "$path" ] || printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$path" "$line" "$column" "$after" "$rc" "$text" >>"$MUTATION_EXIT_LOG"
 done
 
 exit "$rc"
