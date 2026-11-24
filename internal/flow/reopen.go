@@ -267,7 +267,8 @@ func (c *Client) reopenCanceledPhase(id string, opts ...dbos.RewindWorkflowOptio
 	}
 
 	// A gate that runs on a build host waits for a build job. The job goes back to work first, so the gate that replays finds it queued.
-	if phase.Name == exclusiveName {
+	// A gate that a person held keeps its job canceled: the release of the gate reopens it.
+	if phase.Name == exclusiveName && !heldBeforeMove(phase) {
 		if err := c.reopenCanceledPhases(id, opts...); err != nil {
 			return err
 		}
@@ -359,7 +360,18 @@ func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err err
 		return slotQueueName(class, in.SlotCount), in.HostKey, nil
 	}
 
+	if heldBeforeMove(row) {
+		return heldQueueName, in.Project, nil
+	}
+
 	return exclusiveQueueName, in.Project, nil
+}
+
+// heldBeforeMove reports whether a gate that a person held was canceled by a move. The cancel clears the queue of the row, and the mark of the move keeps the queue that it had.
+func heldBeforeMove(row dbos.WorkflowStatus) bool {
+	mark, marked := moveMarkOf(row)
+
+	return row.Name == exclusiveName && marked && mark.Queue == heldQueueName
 }
 
 // phaseRewindTarget returns the queue and the partition key that a rewound phase goes back to: the queue of its step and the partition of its login.

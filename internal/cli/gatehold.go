@@ -13,7 +13,7 @@ type GateHolding interface {
 	SetGatePriority(item, level string) error
 	// HoldGate stops the build job of the running gate of an item and frees its slot on the host.
 	HoldGate(item string) error
-	// ReleaseGate puts the held build job of the gate of an item back on the queue of its host with its place.
+	// ReleaseGate puts the held gate of an item back on the queue of its project with its place.
 	ReleaseGate(item string) error
 }
 
@@ -37,8 +37,8 @@ func (f flowCommands) gateHoldCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "hold <item>",
 		Short: "Stop the running gate of an item and free its host slot",
-		Long: "Stop the build job of the running gate of an item at the next tick of the engine and free its slot on the host. The gate waits and holds no slot of the host. " +
-			"Run beehave gate release to put the job back on the queue of the host with the place that it had. " +
+		Long: "Stop the build job of the running gate of an item at the next tick of the engine and free its slot on the host. The gate waits, and it holds no slot of the host and no place on the queue of its project, so another gate of the project starts. " +
+			"Run beehave gate release to put the gate back on the queue of its project with the place that it had. " +
 			"The command refuses an item with no open gate, a gate that waits in the queue, a gate that runs on this machine, and a gate that is held already.",
 		Args: oneItem,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -55,8 +55,8 @@ func (f flowCommands) gateReleaseCommand() *cobra.Command {
 
 	command := &cobra.Command{
 		Use:   "release <item>",
-		Short: "Put the held gate of an item back on the queue of its host",
-		Long: "Put the held build job of the gate of an item back on the queue of its host. The job keeps the place that it had, so it runs before the jobs that came to the queue after it. " +
+		Short: "Put the held gate of an item back on the queue of its project",
+		Long: "Put the held gate of an item back on the queue of its project. The gate keeps the place that it had, so it starts before the gates that came to the queue after it, and it reopens its build job on the queue of its host. " +
 			"The command refuses an item with no open gate and a gate that is not held.",
 		Args: oneItem,
 		RunE: func(cmd *cobra.Command, args []string) error {
