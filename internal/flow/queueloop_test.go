@@ -52,6 +52,8 @@ func holdsItem21(engine func() *Engine) func(ctx context.Context, item string) e
 
 // loopPreflight answers the preflight of each item. An item that is not in stops has no pull request that stops it.
 type loopPreflight struct {
+	noReads
+
 	mu    sync.Mutex
 	stops map[string]preflight.Result
 	asked []string

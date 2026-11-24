@@ -8,14 +8,19 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // preflighter judges the pull request of an item before an agent works on it. The caller finds the pull request: Request.PR is zero.
 // An item with no pull request yet has nothing that can have changed, so it gives Unchanged.
+// ReadPull finds the pull request of the item the same way and returns its facts. Facts with number 0 mean that the item has no pull request in any state.
+// IssueAssignees returns the logins that hold an issue. An empty repo is the repository of the project. A failed read is an error, never an empty list.
 type preflighter interface {
 	Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error)
+	ReadPull(ctx context.Context, project, item string) (model.PullFacts, error)
+	IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error)
 }
 
 var errNoPreflight = errors.New("this build cannot read the forge before a step. Use a build that sets a preflight reader")

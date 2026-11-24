@@ -209,6 +209,8 @@ var rules = map[string]rule{
 	"internal/flow.merger.Poll":                   {NotHeld: inAdapter},
 	"internal/flow.pollReader.Source":             {NotHeld: inAdapter},
 	"internal/flow.preflighter.Preflight":         {NotHeld: inAdapter},
+	"internal/flow.preflighter.ReadPull":          {Proof: "TestPRRead_AFailedReadEndsTheItemAndABuildWithNoReaderNamesTheFix", Needle: "err"},
+	"internal/flow.preflighter.IssueAssignees":    {Proof: "TestIssueAssignees_AFailedReadNamesTheIssueAndAnIssueBelowOneIsRefused", Needle: "err"},
 	"internal/flow.forge.Pull":                    {NotHeld: inAdapter},
 	"internal/flow.forge.ClosingIssues":           {NotHeld: inAdapter},
 	"internal/flow.forge.Comment":                 {NotHeld: inAdapter},

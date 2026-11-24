@@ -121,6 +121,16 @@ func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, st
 	return preflight.Result{}, nil
 }
 
+// ReadPull finds no pull request.
+func (e2eFiles) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+	return model.PullFacts{}, nil
+}
+
+// IssueAssignees finds an issue that nobody holds.
+func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
+}
+
 // Comments gives an item no comments: the pipeline of the example reads the parent of its item.
 func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { return nil, nil }
 
