@@ -19,9 +19,6 @@ const firstUnsupported = "3.0.0"
 // its own server, so the environment of the run (the login folder, the guard plugin) is the one that applies.
 const privateServerFrom = "2.0.0"
 
-// guardFailsFrom is the first OpenCode version whose guard plugin let a forbidden command run in a real step (2.2.5), so a guarded step does not start from it.
-const guardFailsFrom = "2.0.0"
-
 // stallNote names the likely cause of a run that printed nothing until its limit. With --format json, OpenCode prints no error for a model over its usage quota and retries.
 const stallNote = "OpenCode prints nothing and retries when the model is over its usage quota, which is the likely cause if the run printed no line. Check the quota of the model, or use a model with a key."
 
@@ -48,7 +45,6 @@ func (Adapter) Profile() agent.Profile {
 		StreamsCost: true,
 
 		VersionArgs:     []agent.VersionArgs{{From: privateServerFrom, Args: []string{"--standalone"}}},
-		GuardBefore:     guardFailsFrom,
 		SupportedFrom:   pinnedVersion,
 		SupportedBefore: firstUnsupported,
 		GuardPosixOnly:  true,
