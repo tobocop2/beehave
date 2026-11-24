@@ -171,8 +171,10 @@ func TestStoreView_TheEnginePlanRefusesARunUnderAMove(t *testing.T) {
 
 	inTheGap(t, func(g theGap) {
 		spawned, planErr := g.engine.planOne(context.Background(), ItemInput{Item: testItem, Project: testProject}, testItem, nil)
-		row, rowErr := g.engine.rowOf(context.Background(), model.Item{ID: testItem}, joinedPull{})
+		view, viewErr := g.engine.runOf(testItem)
+		row, rowErr := g.engine.rowOf(context.Background(), model.Item{ID: testItem}, joinedPull{}, view)
 
+		require.NoError(t, viewErr)
 		require.NoError(t, rowErr)
 		require.Error(t, planErr, "the engine plans a second run of the item")
 		assert.Empty(t, spawned.Run)

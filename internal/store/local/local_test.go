@@ -237,13 +237,13 @@ func TestItem_NamesTheMissingItem(t *testing.T) {
 	require.ErrorAs(t, err, &refusal)
 }
 
-func TestOpenItems_ListsTheOpenItemsOfTheProject(t *testing.T) {
+func TestItemList_ListsTheOpenItemsOfTheProject(t *testing.T) {
 	t.Parallel()
 
 	dir, clk := t.TempDir(), newClock()
 	alpha, beta := open(t, dir, "alpha", clk), open(t, dir, "beta", clk)
 
-	got, err := alpha.OpenItems(t.Context())
+	got, err := alpha.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	require.Empty(t, got)
 
@@ -253,7 +253,7 @@ func TestOpenItems_ListsTheOpenItemsOfTheProject(t *testing.T) {
 	require.NoError(t, alpha.Add(t.Context(), "x", "Closed", ""))
 	execRaw(t, raw(t, dir), "UPDATE items SET state = 'closed' WHERE id = 'x'")
 
-	got, err = alpha.OpenItems(t.Context())
+	got, err = alpha.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	require.Equal(t, []model.Item{
 		{ID: "b", Severity: model.SeverityUnknown, Title: "Second filed first"},
@@ -429,7 +429,7 @@ func TestMethods_RefuseWhenTheTablesAreGone(t *testing.T) {
 	_, err = s.Item(ctx, "1")
 	require.Error(t, err)
 
-	_, err = s.OpenItems(ctx)
+	_, err = s.ItemList(ctx, "")
 	require.Error(t, err)
 
 	_, err = s.HeldRows(ctx)

@@ -44,6 +44,12 @@ type memForge struct {
 	wrongHole bool
 	// emptyOn names the read that answers an empty value and no error.
 	emptyOn string
+	// ignoresBase makes the list of open pull requests answer every pull request whatever base it is asked for.
+	ignoresBase bool
+	// holeListed makes the list answer a pull request with no head branch instead of an error.
+	holeListed bool
+	// holeDropped makes the list answer the error of a pull request with no head branch and leave the pull request out.
+	holeDropped bool
 }
 
 func (m memForge) fail() error {
@@ -88,6 +94,32 @@ func (m memForge) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
 	}
 
 	return model.PullFacts{Number: forgetest.Seven, State: forgetest.SevenState, Head: forgetest.SevenTip, Base: forgetest.SevenBase, Author: forgetest.SevenReviewer, Assignees: []string{forgetest.SevenAssignee}}, m.fail()
+}
+
+// OpenPulls serves the open pull requests that the suite describes: pull request 7 on main and another on dev.
+func (m memForge) OpenPulls(_ context.Context, base string) ([]model.OpenPull, error) {
+	if base == forgetest.HoleBase {
+		if m.holeListed {
+			return []model.OpenPull{{Number: forgetest.OtherPull, Base: base}}, m.fail()
+		}
+
+		hole := model.OpenPull{Number: forgetest.OtherPull, Base: base}
+		if m.holeDropped {
+			return nil, hole.Check()
+		}
+
+		return []model.OpenPull{hole}, hole.Check()
+	}
+
+	var kept []model.OpenPull
+
+	for _, pull := range []model.OpenPull{forgetest.SevenOpen(), forgetest.OtherOpen()} {
+		if base == "" || m.ignoresBase || pull.Base == base {
+			kept = append(kept, pull)
+		}
+	}
+
+	return kept, m.fail()
 }
 
 func (m memForge) ItemFields() []string {
@@ -351,6 +383,38 @@ func TestCheckForgeReads_FailsAForgeThatNamesTheWrongMissingField(t *testing.T) 
 	r := &recorder{}
 	forgetest.CheckForgeReads(r, memForge{wrongHole: true})
 	assert.Len(t, r.failures, 3)
+}
+
+func TestPRList_ReturnsTheOpenPullRequestsOfABase(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	pulls, err := memForge{}.OpenPulls(t.Context(), forgetest.OtherBase)
+	require.NoError(t, err)
+	assert.Equal(t, []model.OpenPull{forgetest.OtherOpen()}, pulls)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{ignoresBase: true})
+	assert.Equal(t, []string{
+		"OpenPulls of a base: got [7 11], want [7]",
+		"OpenPulls of another base: got [7 11], want [11]",
+		"OpenPulls of a base with no pull request: got [7 11], want []",
+	}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{holeListed: true})
+	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want an IncompletePull that names it, got <nil>"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{holeDropped: true})
+	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got []"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{down: true})
+	assert.Contains(t, r.failures, "OpenPulls: unexpected error: down")
 }
 
 func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {

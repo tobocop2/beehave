@@ -61,9 +61,10 @@ func New(repo string, run proc.Runner) (*Store, error) {
 	return &Store{repo: repo, run: run}, nil
 }
 
-// OpenItems lists the open issues that are not epics. An issue with no P0 to P3 label has severity P?.
-func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
-	rows, err := s.openPage(ctx)
+// ItemList lists the open issues that are not epics, and with a label only those that carry it: gh issue list filters them (--label).
+// An issue with no P0 to P3 label has severity P?.
+func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error) {
+	rows, err := s.openPage(ctx, label)
 	if err != nil {
 		return nil, err
 	}
@@ -153,11 +154,16 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 }
 
 // openPage reads one page of open issues. A full page may be cut off, so it is a refusal, in every read.
-func (s *Store) openPage(ctx context.Context) ([]ghIssue, error) {
-	done := s.run.Run(ctx, []string{
+func (s *Store) openPage(ctx context.Context, label string) ([]ghIssue, error) {
+	args := []string{
 		argIssue, argList, argRepo, s.repo, argState, "open",
 		argLimit, strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees",
-	})
+	}
+	if label != "" {
+		args = append(args, "--label", label)
+	}
+
+	done := s.run.Run(ctx, args)
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("store: cannot list the open issues; refusing")
 	}

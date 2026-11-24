@@ -28,13 +28,23 @@ type fakeQueue struct {
 	states         map[int]string
 	stateErr       error
 	stateAsked     []int
+	// labelsAsked and basesAsked hold the label of each ItemList call and the base of each OpenPulls call.
+	labelsAsked []string
+	basesAsked  []string
 }
 
-func (q *fakeQueue) OpenItems(context.Context, string) ([]model.Item, error) {
+// ItemList serves the items that carry the label, or every item for an empty label, as a tracker does.
+func (q *fakeQueue) ItemList(_ context.Context, _, label string) ([]model.Item, error) {
 	q.mu.Lock()
 	q.reads++
 	first := q.reads == 1
+	q.labelsAsked = append(q.labelsAsked, label)
 	out, err := slices.Clone(q.items), q.itemsErr
+
+	if label != "" {
+		out = slices.DeleteFunc(out, func(item model.Item) bool { return !slices.Contains(item.Labels, label) })
+	}
+
 	q.mu.Unlock()
 
 	if first && q.afterFirstRead != nil {
@@ -44,11 +54,22 @@ func (q *fakeQueue) OpenItems(context.Context, string) ([]model.Item, error) {
 	return out, err
 }
 
-func (q *fakeQueue) OpenPulls(context.Context, string) ([]model.PullRequest, error) {
+// OpenPulls serves the pull requests on the base, or every pull request for an empty base, as the forge does.
+func (q *fakeQueue) OpenPulls(_ context.Context, _, base string) ([]model.OpenPull, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	return slices.Clone(q.pulls), q.pullsErr
+	q.basesAsked = append(q.basesAsked, base)
+
+	var pulls []model.OpenPull
+
+	for _, pull := range q.pulls {
+		if open := pull.Open(); base == "" || open.Base == base {
+			pulls = append(pulls, open)
+		}
+	}
+
+	return pulls, q.pullsErr
 }
 
 // PullState answers with the state that the test set for the pull request number, and records each number it was asked about.
@@ -393,6 +414,19 @@ func TestQueue_APullRequestJoinsItsItemByBranchName(t *testing.T) {
 	assert.Equal(t, []string{"21:ready:P1:7", "22:ready:P1:0", "free=2"}, seenBy(t, h))
 }
 
+func TestQueue_APullRequestWithNoHeadBranchIsListedAndStillQueuesTheOthers(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)}, queuePull(t, 7, "21"), model.PullRequest{Number: 9})
+
+	file := queueFlow(`name = "q"`) + `    command(name = "listed", run = ["listed"] + [str(p.number) + ":" + p.branch + ":" + p.item for p in q.pulls])` + "\n"
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"seen 21:ready:P1:7 22:ready:P1:0 free=2", "listed 7:21:21 9::"}, h.commands.ranBy(testItem))
+}
+
 func TestQueue_ABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
 	t.Parallel()
 
@@ -436,18 +470,17 @@ func TestQueue_AReplayReturnsTheRecordedRowsNotAFreshRead(t *testing.T) {
 	assert.Equal(t, []string{"seen 21:ready"}, h.commands.ran(), "the rows recorded before the stop come back, whatever the tracker says now")
 }
 
-func TestQueue_JoinPullsSkipsABranchlessPullKeepsTheLowestNumberAndMatchesLabelsByName(t *testing.T) {
+func TestQueue_JoinPullsKeepsTheLowestNumberAndMatchesLabelsByName(t *testing.T) {
 	t.Parallel()
 
-	joined := joinPulls([]model.PullRequest{
-		{Number: 3},
-		queuePull(t, 9, "21", "other"),
-		queuePull(t, 5, "21", "other"),
-		queuePull(t, 6, "21", "hold"),
+	joined := joinPulls([]model.OpenPull{
+		queuePull(t, 9, "21", "other").Open(),
+		queuePull(t, 5, "21", "other").Open(),
+		queuePull(t, 6, "21", "hold").Open(),
 	}, "hold")
 
-	assert.Equal(t, map[string]joinedPull{"21": {number: 5, held: true}}, joined, "the lowest number counts, one hold label holds, and a pull with no branch joins nothing")
-	assert.False(t, joinPulls([]model.PullRequest{queuePull(t, 9, "21", "other")}, "hold")["21"].held)
+	assert.Equal(t, map[string]joinedPull{"21": {number: 5, held: true}}, joined, "the lowest number counts and one hold label holds")
+	assert.False(t, joinPulls([]model.OpenPull{queuePull(t, 9, "21", "other").Open()}, "hold")["21"].held)
 }
 
 func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T) {
@@ -465,11 +498,62 @@ func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T)
 	_, err = engine.freeSlots()
 	require.ErrorContains(t, err, "count the open runs")
 
-	_, err = engine.queueRows(t.Context(), []model.Item{queueItem("21", model.SeverityP1)}, nil)
+	_, err = engine.runOf("21")
 	require.ErrorContains(t, err, "list the runs of item 21", "the run of an item cannot be read")
 
-	_, err = engine.queueRows(t.Context(), nil, nil)
+	rows, err := engine.queueRows(t.Context(), nil, nil, nil)
 	require.NoError(t, err, "no item has no run to read")
+	assert.Empty(t, rows)
+}
+
+func TestQueue_ARunThatEndsAfterTheSlotsAreReadShowsAsEndedWithItsSlotCounted(t *testing.T) {
+	t.Parallel()
+
+	running := true
+	slots := func() (int, error) {
+		free := 1
+		if running {
+			free = 0
+		}
+
+		running = false
+
+		return free, nil
+	}
+	runOf := func(item string) (runView, error) {
+		if running {
+			return runView{Item: item, State: queueRunning}, nil
+		}
+
+		return runView{Item: item, State: runNone}, nil
+	}
+
+	views, free, err := readRuns([]string{"21"}, slots, runOf)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, free, "the slots are read before the runs: the run still holds its slot")
+	assert.Equal(t, []runView{{Item: "21", State: runNone}}, views, "the run that ended after that read shows as ended")
+}
+
+func TestQueue_AFailedReadOfTheSlotsReadsNoRun(t *testing.T) {
+	t.Parallel()
+
+	reads := 0
+
+	_, _, err := readRuns([]string{"21"}, func() (int, error) { return 0, errFake },
+		func(string) (runView, error) { reads++; return runView{}, nil })
+
+	require.ErrorIs(t, err, errFake)
+	assert.Zero(t, reads, "no run is read")
+}
+
+func TestQueue_AFailedReadOfARunFailsTheRead(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := readRuns([]string{"21"}, func() (int, error) { return 1, nil },
+		func(string) (runView, error) { return runView{}, errFake })
+
+	require.ErrorIs(t, err, errFake)
 }
 
 func TestQueue_AFailedReadOfTheHoldAtStartStopsTheRunWithTheError(t *testing.T) {

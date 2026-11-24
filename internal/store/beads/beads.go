@@ -86,9 +86,9 @@ func New(run proc.Runner, block *model.Block) (*Store, error) {
 	return &Store{run: run, prefix: prefix}, nil
 }
 
-// OpenItems lists the items bd ready names. Epics and claim rows are not work.
-func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
-	ready, err := s.list(ctx, []string{"ready"}, "the ready list", "store: cannot read beads; refusing to list work")
+// ItemList lists the items bd ready names, and with a label only those that carry it: bd ready filters them (--label). Epics and claim rows are not work.
+func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error) {
+	ready, err := s.list(ctx, readyCommand(label), "the ready list", "store: cannot read beads; refusing to list work")
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +106,21 @@ func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
 	return queue(ready, held, parents)
 }
 
+// readVerb is the bd command that lists the ready items.
+const readVerb = "ready"
+
+// readyCommand is the bd command that lists the ready items, with a label only those that carry it.
+func readyCommand(label string) []string {
+	if label == "" {
+		return []string{readVerb}
+	}
+
+	return []string{readVerb, "--label", label}
+}
+
 // heldIDs reads the ids that carry the hold label. bd ready does not send the label.
 func (s *Store) heldIDs(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.list(ctx, []string{"ready", "--label", holdLabel}, "the held list", "store: cannot read the held items; refusing to list work")
+	rows, err := s.list(ctx, []string{readVerb, "--label", holdLabel}, "the held list", "store: cannot read the held items; refusing to list work")
 	if err != nil {
 		return nil, err
 	}

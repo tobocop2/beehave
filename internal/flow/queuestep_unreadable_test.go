@@ -13,6 +13,13 @@ func succeededRun(input, output string) run {
 	return run{Attempt: 1, Status: dbos.WorkflowStatus{ID: runID("21", 1), Status: dbos.WorkflowStatusSuccess, Input: input, Output: output}}
 }
 
+// settledView is the view of a stored run that ended with success, as the queue settles it.
+func settledView(item string, last run) (runView, error) {
+	view := runView{Item: item, State: runNone, last: last}
+
+	return view, view.settle()
+}
+
 const foreignOutput = `{"item": "21", "value": {"reason": "foreign", "pr": 7, "findings": [{"id": "f-1", "severity": "blocking", "path": "a.go", "text": "x"}]}}`
 
 func TestQueue_AForeignRunWhoseProjectCannotBeReadFailsClosedAndIsNotDone(t *testing.T) {
@@ -21,7 +28,10 @@ func TestQueue_AForeignRunWhoseProjectCannotBeReadFailsClosedAndIsNotDone(t *tes
 	q := &fakeQueue{states: map[int]string{7: "MERGED"}}
 	engine := &Engine{deps: Deps{Queue: q}}
 
-	settled, err := engine.stateOf(t.Context(), "21", succeededRun("not an item input", foreignOutput), true, false)
+	view, err := settledView("21", succeededRun("not an item input", foreignOutput))
+	require.NoError(t, err)
+
+	settled, err := engine.stateOf(t.Context(), view, false)
 
 	require.ErrorContains(t, err, "read the input of run "+runID("21", 1))
 	assert.Empty(t, settled.state, "an unreadable project gives no state, so the row is not reported as done")
@@ -34,7 +44,10 @@ func TestQueue_ARunWhoseValueIsNotAForeignRecordStaysDoneAndReadsNoState(t *test
 	q := &fakeQueue{states: map[int]string{7: "MERGED"}}
 	engine := &Engine{deps: Deps{Queue: q}}
 
-	settled, err := engine.stateOf(t.Context(), "21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, `{"item": "21", "value": "text"}`), true, false)
+	view, err := settledView("21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, `{"item": "21", "value": "text"}`))
+	require.NoError(t, err)
+
+	settled, err := engine.stateOf(t.Context(), view, false)
 
 	require.NoError(t, err)
 	assert.Equal(t, queueDone, settled.state)
@@ -52,15 +65,11 @@ func TestQueue_ARunWhoseResultCannotBeReadFailsClosedAndIsNotDone(t *testing.T) 
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			q := &fakeQueue{states: map[int]string{7: "MERGED"}}
-			engine := &Engine{deps: Deps{Queue: q}}
-
-			settled, err := engine.stateOf(t.Context(), "21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, output), true, false)
+			view, err := settledView("21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, output))
 
 			require.ErrorContains(t, err, "read the result of "+runID("21", 1))
 			require.ErrorContains(t, err, "Run beehave run 21 to start a new attempt")
-			assert.Empty(t, settled.state, "status reads the result the same way, so a result that status cannot read gives no row state")
-			assert.Empty(t, q.stateAsked)
+			assert.Equal(t, runNone, view.State, "status reads the result the same way, so a result that status cannot read gives no state")
 		})
 	}
 }

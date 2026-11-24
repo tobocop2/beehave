@@ -10,10 +10,11 @@ import (
 // Tracker is an issue tracker: work items and their parents. beads, GitHub Issues and the local store implement it. The claim rows are not part of it.
 // ItemFields lists the names of the fields that Item returns; every tracker declares id, title and body. It needs no call to the tracker.
 // Item reads one item and returns one value for each declared field. A failed read is an error.
+// ItemList returns the open items that carry the label, or every open item when label is empty. A label that no item carries gives an empty list. The tracker applies the label itself.
 type Tracker interface {
 	ItemFields() []string
 	Item(ctx context.Context, id string) (map[string]string, error)
-	OpenItems(ctx context.Context) ([]model.Item, error)
+	ItemList(ctx context.Context, label string) ([]model.Item, error)
 }
 
 // Reader is a tracker that a workflow can read beyond the fields of Item. It is a separate contract from Tracker, so a tracker with no read of comments

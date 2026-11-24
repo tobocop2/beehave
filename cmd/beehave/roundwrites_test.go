@@ -45,6 +45,10 @@ func (f *roundForge) PRList(context.Context, int, ...string) ([]model.PullReques
 	return nil, f.err
 }
 
+func (f *roundForge) OpenPulls(context.Context, string) ([]model.OpenPull, error) {
+	return nil, f.err
+}
+
 func (f *roundForge) CommitsAhead(context.Context, string, string) (int, error) {
 	return f.ahead, f.err
 }
