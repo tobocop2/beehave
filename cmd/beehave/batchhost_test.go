@@ -87,8 +87,8 @@ func pullFactsOf(number int, view model.PullRequest, err error) (model.PullFacts
 	facts := view.Facts()
 	facts.Number = number
 
-	if facts.State == "" || facts.Head == "" || facts.Base == "" {
-		return model.PullFacts{}, fmt.Errorf("pull request %d: the read has no state, head or base", number)
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
 	}
 
 	return facts, nil
@@ -394,7 +394,7 @@ func TestBatchHost_IntentRefusesAReadWithNoStateHeadOrBase(t *testing.T) {
 	} {
 		_, err := hostOver("", f, nil).Intent(t.Context(), "p", "item", "o/r", "main", "tip-tree", time.Time{})
 
-		require.ErrorContains(t, err, "the read has no state, head or base", name)
+		require.ErrorContains(t, err, "the read has no "+name, name)
 	}
 }
 

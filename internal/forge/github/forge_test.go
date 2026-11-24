@@ -641,7 +641,12 @@ func TestPullRead_RefusesAReadWithoutStateHeadOrBase(t *testing.T) {
 
 		_, err := f.PullRead(context.Background(), 6)
 
-		require.ErrorContains(t, err, "pull request 6: the read has no state, head or base", name)
+		var hole *model.IncompletePull
+
+		require.ErrorAs(t, err, &hole, name)
+		assert.Equal(t, []string{name}, hole.Missing, name)
+		assert.Equal(t, "cannot read pull request 6: the read has no "+name, err.Error())
+		assert.Equal(t, 6, hole.Facts.Number, "the error holds the facts that the read did give")
 	}
 }
 

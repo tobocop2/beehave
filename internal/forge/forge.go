@@ -85,7 +85,8 @@ type Standing interface {
 }
 
 // PullFactsRead is the typed read of one pull request.
-// PullRead returns the state, head commit, base branch, author and assignees. A read that lacks the state, the head or the base is an error, never a partial answer.
+// PullRead returns the number asked for, the state, head commit, base branch, author and assignees.
+// A read that lacks the state, the head or the base is a *model.IncompletePull, never a partial answer: the facts it holds are in the error.
 type PullFactsRead interface {
 	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
 }

@@ -31,7 +31,9 @@ var errDown = errors.New("down")
 type world struct {
 	first, later *model.PullRequest
 	// facts is the answer of the typed read. Nil means the facts of the first view.
-	facts      *model.PullFacts
+	facts *model.PullFacts
+	// laterFacts is the answer of the typed read after the first read. Nil means the facts of the later view, or of the first.
+	laterFacts *model.PullFacts
 	children   []model.PullRequest
 	checks     []model.Check
 	scopes     []string
@@ -193,33 +195,48 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 		return model.PullRequest{}, err
 	}
 
-	if w.views > 1 && w.later != nil {
+	if w.views > firstReads && w.later != nil {
 		return *w.later, w.fail("PRView later")
 	}
 
 	return *w.first, nil
 }
 
+// firstReads is the count of reads that the first read of a run makes: the view and the typed read. A later read answers from the later view.
+const firstReads = 2
+
 // PullRead answers the typed read: the facts field when it is set, else the facts of the first view. A hole in the state, head or base is refused, as the contract says.
 func (w *world) PullRead(_ context.Context, number int) (model.PullFacts, error) {
 	w.calls = append(w.calls, fmt.Sprintf("PullRead %d", number))
+
+	w.views++
+
+	if w.views == w.failAt {
+		return model.PullFacts{}, fmt.Errorf("PullRead %d: %w", w.views, errDown)
+	}
 
 	if err := w.fail("PullRead"); err != nil {
 		return model.PullFacts{}, err
 	}
 
 	facts := w.first.Facts()
-	if w.facts != nil {
+
+	switch {
+	case w.views > firstReads && w.laterFacts != nil:
+		facts = *w.laterFacts
+	case w.views > firstReads && w.later != nil:
+		if err := w.fail("PRView later"); err != nil {
+			return model.PullFacts{}, err
+		}
+
+		facts = w.later.Facts()
+	case w.facts != nil:
 		facts = *w.facts
 	}
 
 	facts.Number = number
 
-	if facts.State == "" || facts.Head == "" || facts.Base == "" {
-		return model.PullFacts{}, fmt.Errorf("PullRead %d: the read has no state, head or base", number)
-	}
-
-	return facts, nil
+	return facts, facts.Check()
 }
 
 func (w *world) PullCounts(context.Context, int) (commits, files int, err error) {

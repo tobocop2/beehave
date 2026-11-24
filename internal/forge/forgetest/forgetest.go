@@ -4,6 +4,7 @@ package forgetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -38,8 +39,11 @@ const (
 	SevenState    = "OPEN"
 	SevenBase     = "main"
 	SevenAssignee = "bob"
-	// HolePull is the pull request that the fake serves with no head commit. Its typed read must be an error, never a partial answer.
-	HolePull = 8
+	// NoHeadPull, NoStatePull and NoBasePull are the pull requests that the fake serves with no head commit, no state and no base branch.
+	// The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
+	NoHeadPull  = 8
+	NoStatePull = 9
+	NoBasePull  = 10
 )
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
@@ -155,8 +159,15 @@ func checkPullRead(c check, target forge.Forge) {
 	c.noError(err, "PullRead")
 	c.equal(facts, model.PullFacts{Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee}}, "pull facts")
 
-	_, err = target.PullRead(context.Background(), HolePull)
-	c.isError(err, "PullRead of a pull request with no head")
+	for pr, field := range map[int]string{NoHeadPull: "head", NoStatePull: "state", NoBasePull: "base"} {
+		_, err = target.PullRead(context.Background(), pr)
+
+		var hole *model.IncompletePull
+
+		if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{field}) {
+			c.r.Errorf("PullRead of a pull request with no %s: want an IncompletePull that names it, got %v", field, err)
+		}
+	}
 }
 
 // checkCounts runs the read of the forge's own counts.

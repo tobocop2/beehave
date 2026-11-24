@@ -51,6 +51,10 @@ func (w *shipWorld) PullRead(_ context.Context, pr int) (model.PullFacts, error)
 	facts := w.pull.Facts()
 	facts.Number = pr
 
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
+	}
+
 	return facts, nil
 }
 

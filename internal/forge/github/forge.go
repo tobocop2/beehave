@@ -131,8 +131,8 @@ func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
 	facts := view.Facts()
 	facts.Number = pr
 
-	if facts.State == "" || facts.Head == "" || facts.Base == "" {
-		return model.PullFacts{}, forge.Refuse("cannot read pull request %d: the read has no state, head or base", pr)
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
 	}
 
 	return facts, nil

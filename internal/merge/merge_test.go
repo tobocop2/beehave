@@ -112,6 +112,33 @@ func TestRun_TheStateHeadAndBaseCheckDecidesOnTheTypedRead(t *testing.T) {
 	assert.Equal(t, merge.Done, w.run(request()).Stop, "the view alone is not what the check reads")
 }
 
+func TestRun_AReadWithNoStateHeadOrBaseIsAPermanentRefusalWithABeforeLine(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		over map[string]any
+		want string
+	}{
+		"no state": {map[string]any{"state": nil}, "REFUSE: state is "},
+		"no base":  {map[string]any{"baseRefName": nil}, "REFUSE: base is , expected main"},
+		"no head":  {map[string]any{"headRefOid": nil}, "REFUSE: head  is not the gated " + sha + ". Re-gate."},
+	}
+	for name, one := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld(t).set(t, one.over)
+			result := w.run(request())
+
+			assert.Equal(t, merge.Refused, result.Stop)
+			assert.Equal(t, merge.Plain, result.Reason, "a read with a hole is a permanent refusal, not a retry")
+			assert.Equal(t, one.want, last(result))
+			assert.True(t, strings.HasPrefix(result.Lines[0], "before: "), result.Lines)
+			assert.Empty(t, w.writes)
+		})
+	}
+}
+
 func TestRun_AFailedTypedReadRefusesAsAnUnreadState(t *testing.T) {
 	t.Parallel()
 
@@ -337,12 +364,12 @@ func TestRun_AFailedReadyRefuses(t *testing.T) {
 
 	w = newWorld(t).set(t, map[string]any{"isDraft": true})
 	w.later = &still
-	w.failAt = 3
+	w.failAt = 4
 	assert.Equal(t, "REFUSE: cannot read #5 after it was marked ready", last(w.run(req)))
 	assert.Empty(t, merges(w))
 
 	w = newWorld(t).set(t, map[string]any{"isDraft": true})
-	w.failAt = 2
+	w.failAt = 3
 	assert.Equal(t, "REFUSE: cannot read the state of #5 before it is marked ready", last(w.run(req)))
 	assert.Empty(t, w.writes)
 }
@@ -358,6 +385,31 @@ func TestRun_AHeadThatMovesBeforeTheMergeRefuses(t *testing.T) {
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Equal(t, "REFUSE: head moved to "+moved+" while preparing. Re-gate.", last(result))
 	assert.Empty(t, merges(w))
+}
+
+func TestRun_TheReadRightBeforeTheMergeDecidesOnTheTypedRead(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		facts model.PullFacts
+		want  string
+	}{
+		"head moved": {model.PullFacts{State: "OPEN", Head: moved, Base: "main"}, "REFUSE: head moved to " + moved + " while preparing. Re-gate."},
+		"closed":     {model.PullFacts{State: "CLOSED", Head: sha, Base: "main"}, "REFUSE: #5 is CLOSED now, so nothing more is done to it."},
+	}
+	for name, one := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld(t)
+			w.laterFacts = &one.facts
+			result := w.run(request())
+
+			assert.Equal(t, merge.Refused, result.Stop)
+			assert.Equal(t, one.want, last(result))
+			assert.Empty(t, merges(w))
+		})
+	}
 }
 
 func TestRun_AHeadThatCannotBeReadAgainRefuses(t *testing.T) {

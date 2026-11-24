@@ -112,12 +112,12 @@ func (a *attempt) ancestor() *refusal {
 // unmoved refuses a pull request that is no longer open, or is a draft, or whose head moved since the gate, and a base whose tip moved since the start of the run.
 // It reads the pull request again right before the merge call.
 func (a *attempt) unmoved() *refusal {
-	again, err := a.forge.PRView(a.ctx, a.req.PR, "headRefOid", "state", "isDraft")
+	again, draft, err := a.readAgain()
 	if err != nil {
 		return transient(fmt.Sprintf("REFUSE: cannot read the head of #%d again", a.req.PR))
 	}
 
-	if stop := a.unchanged(again); stop != nil {
+	if stop := a.unchanged(again, draft); stop != nil {
 		return stop
 	}
 
@@ -133,17 +133,29 @@ func (a *attempt) unmoved() *refusal {
 	return nil
 }
 
-// unchanged refuses a read whose head is not the gated head, whose state is not open, or which is a draft.
-func (a *attempt) unchanged(again model.PullRequest) *refusal {
-	if head := model.Deref(again.HeadRefOid); head != a.req.Gated {
-		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", head))
+// readAgain makes the typed read of the state and the head, and the view of the draft flag, right before the merge call.
+func (a *attempt) readAgain() (model.PullFacts, model.PullRequest, error) {
+	again, err := pins(a.ctx, a.forge, a.req.PR)
+	if err != nil {
+		return again, model.PullRequest{}, err
 	}
 
-	if stop := a.stillOpen(again); stop != nil {
+	draft, err := a.forge.PRView(a.ctx, a.req.PR, "isDraft")
+
+	return again, draft, err
+}
+
+// unchanged refuses a read whose head is not the gated head, whose state is not open, or which is a draft.
+func (a *attempt) unchanged(again model.PullFacts, draft model.PullRequest) *refusal {
+	if again.Head != a.req.Gated {
+		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", again.Head))
+	}
+
+	if stop := a.stillOpen(again.State); stop != nil {
 		return stop
 	}
 
-	if again.IsDraft != nil && *again.IsDraft {
+	if draft.IsDraft != nil && *draft.IsDraft {
 		return refuse(fmt.Sprintf("REFUSE: #%d turned into a draft while preparing.", a.req.PR))
 	}
 
@@ -151,8 +163,8 @@ func (a *attempt) unchanged(again model.PullRequest) *refusal {
 }
 
 // stillOpen refuses a read whose state is not OPEN. A state the read does not hold counts as not open: an unknown state is not a passing one.
-func (a *attempt) stillOpen(view model.PullRequest) *refusal {
-	if state := model.Deref(view.State); state != stateOpen {
+func (a *attempt) stillOpen(state string) *refusal {
+	if state != stateOpen {
 		return refuse(fmt.Sprintf("REFUSE: #%d is %s now, so nothing more is done to it.", a.req.PR, state))
 	}
 
@@ -232,12 +244,12 @@ func (a *attempt) readyNow() *refusal {
 
 // openBeforeReady reads the state of the pull request again right before it is marked ready.
 func (a *attempt) openBeforeReady() *refusal {
-	before, err := a.forge.PRView(a.ctx, a.req.PR, "state")
+	before, err := pins(a.ctx, a.forge, a.req.PR)
 	if err != nil {
 		return transient(fmt.Sprintf("REFUSE: cannot read the state of #%d before it is marked ready", a.req.PR))
 	}
 
-	return a.stillOpen(before)
+	return a.stillOpen(before.State)
 }
 
 // merged says the merge and the tip of the base after it, and returns the tip. A tip that cannot be read does not undo the merge: the result is empty.

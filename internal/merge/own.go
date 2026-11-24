@@ -1,6 +1,8 @@
 package merge
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -78,7 +80,7 @@ func (a *attempt) readFirst() *refusal {
 
 	a.view = view
 
-	facts, err := a.forge.PullRead(a.ctx, a.req.PR)
+	facts, err := pins(a.ctx, a.forge, a.req.PR)
 	if err != nil {
 		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}
@@ -86,6 +88,18 @@ func (a *attempt) readFirst() *refusal {
 	a.facts = facts
 
 	return nil
+}
+
+// pins makes the typed read. A read that lacks the state, the head or the base is no failed read: the facts it did give go on to the guards, which refuse on the empty value.
+func pins(ctx context.Context, forge Pins, pr int) (model.PullFacts, error) {
+	facts, err := forge.PullRead(ctx, pr)
+
+	var hole *model.IncompletePull
+	if errors.As(err, &hole) {
+		return hole.Facts, nil
+	}
+
+	return facts, err
 }
 
 // readCommitters reads the committer of each commit. The commit list of the first read names only authors.
