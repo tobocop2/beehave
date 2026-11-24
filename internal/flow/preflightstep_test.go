@@ -190,7 +190,7 @@ func TestPreflight_TheStepIsRecordedUnderItsName(t *testing.T) {
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("preflight(name = \"intake\")\n")), modeOff())
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"scope:intake#1", "preflight:intake#1"}, stepNames(t, engine), "the first review read of the run item fixes the scope before it reads")
+	assert.Equal(t, []string{"preflight:intake#1"}, stepNames(t, engine), "the read of the run item records one step, and the engine fixes no scope")
 }
 
 func TestPreflight_AStopOfAStepWithNoNameIsReportedAsPreflight(t *testing.T) {

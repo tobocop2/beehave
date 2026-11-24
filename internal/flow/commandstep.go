@@ -286,10 +286,6 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	if err := s.fixScope(label); err != nil {
-		return nil, err
-	}
-
 	return s.recordGate(label, outputs)
 }
 

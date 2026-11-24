@@ -105,7 +105,7 @@ var goldenKinds = map[string][]string{
 	"star30": {
 		"agent", "base_tip", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
 		"issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "login", "now",
-		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
+		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 
@@ -169,8 +169,8 @@ func TestStepsVersion_EveryPathThatRecordsAStepRefusesAKindOutsideTheTable(t *te
 
 // goldenBatchSteps are the step names of one merge of items 1 and 3 under the steps version.
 var goldenBatchSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.scope#1", "batch:b.intent#1",
-	"batch:b.tip#3", "batch:b.scope#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
+	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.intent#1",
+	"batch:b.tip#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
 }
 
 func TestStepsVersion_TheStepNamesOfABatchMergeMatchTheGoldenListOfTheStepsVersion(t *testing.T) {
@@ -201,8 +201,8 @@ var goldenBatchGateSteps = []string{"batch_gate:job", "batch_gate"}
 // goldenLostBatchSteps are the steps of merge in the item run when the first gate of the union loses its job and the rerun passes:
 // the record of the loss comes after the first gate and before the members merge.
 var goldenLostBatchSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.gate#1/host-loss", "batch:b.tip#2", "batch:b.scope#1", "batch:b.intent#1",
-	"batch:b.tip#3", "batch:b.scope#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
+	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.gate#1/host-loss", "batch:b.tip#2", "batch:b.intent#1",
+	"batch:b.tip#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
 }
 
 func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGoldenList(t *testing.T) {

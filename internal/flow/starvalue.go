@@ -71,9 +71,6 @@ type script struct {
 	// patches holds the names of the patched calls of this run, so that a name is never used twice.
 	patches map[string]bool
 
-	// scopeOff is true once a scope step recorded that the project has no forge, so no later call reads the forge for a scope.
-	scopeOff bool
-
 	// undos are the finished writes of this run that name an undo, in the order of the writes. A failed run runs them in reverse.
 	undos []undoStep
 
@@ -105,10 +102,6 @@ type script struct {
 
 	// hostChosen is the cluster that host_up recorded. host_teardown stops that cluster when the call names none.
 	hostChosen string
-
-	// fixed is true once the first gate, review read or merge call has recorded scope, the closing issues of the pull request at the first review.
-	fixed bool
-	scope []model.IssueRef
 }
 
 // name returns the name of the DBOS step of one call: `<builtin>:<label>#<n>`, or `<builtin>#<n>` for a call with no label.
