@@ -343,6 +343,14 @@ type commands interface {
 	Run(ctx context.Context, request CommandRequest) (CommandOutput, error)
 }
 
+// waitSource ends the sleeps, waits and receives of a run at once and answers each wait and receive. A nil waitSource means each one takes its real time.
+// The dry run is the only build that sets it. label is the name of the call, empty for a call with no name.
+// Wait gives the answer of a wait call, and refuses a wait that has no deadline and no answer. Recv gives the message of a recv call, and whether it timed out.
+type waitSource interface {
+	Wait(label string, deadline bool) (heard, error)
+	Recv(label string) (envelope, bool, error)
+}
+
 // items reads the fields of an item, which are the `item` argument of main in a workflow file.
 type items interface {
 	Fields(ctx context.Context, project, item string) (map[string]string, error)
@@ -377,7 +385,9 @@ type Deps struct {
 	Preflight preflighter
 	Commands  commands
 	Items     items
-	Writer    writer
+	// Waits replaces the time of a sleep, a wait and a recv. A nil Waits means they take their real time.
+	Waits  waitSource
+	Writer writer
 	// Reader serves item_read. A nil Reader means the tracker of the build cannot read comments or parents: an item_read call fails and says so.
 	Reader reader
 	// Batch serves merge. A nil Batch means the build cannot run it.

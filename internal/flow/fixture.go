@@ -21,6 +21,20 @@ type Fixture struct {
 	shapes map[string]fixtureShape
 	agents map[string]fixtureCalls[agentResult]
 	gates  map[string]fixtureCalls[gateResult]
+	waits  map[string]fixtureCalls[waitResult]
+	recvs  map[string]fixtureCalls[recvResult]
+}
+
+// waitResult is the scripted result of one wait call: the answer, and whether the wait timed out with none.
+type waitResult struct {
+	TimedOut bool   `json:"timed_out"`
+	Answer   string `json:"answer"`
+}
+
+// recvResult is the scripted result of one recv call: the value of the message, as JSON, and whether the call timed out with none.
+type recvResult struct {
+	TimedOut bool            `json:"timed_out"`
+	Value    json.RawMessage `json:"value"`
 }
 
 // gateResult is the scripted result of one gate call. A result with no passed field passes.
@@ -45,10 +59,12 @@ type fixtureShape struct {
 	object  bool
 }
 
-// fixtureAgent and fixtureGate are the builtins of the keys that script an agent call and a gate call.
+// The builtins of the keys that script a call. A key is one of them, with the label of the call after a colon.
 const (
 	fixtureAgent = "agent"
 	fixtureGate  = "gate"
+	fixtureWait  = "wait"
+	fixtureRecv  = "recv"
 )
 
 // LoadFixture reads the fixture file at the path. It refuses an unknown key, an unknown field and a value of the wrong type, and names the file in each message.
@@ -63,7 +79,7 @@ func LoadFixture(path string) (Fixture, error) {
 		return Fixture{}, fmt.Errorf("fixture %s: the file must hold a JSON object of calls: %w", path, err)
 	}
 
-	loaded := Fixture{file: path, keys: slices.Sorted(maps.Keys(top)), shapes: map[string]fixtureShape{}, agents: map[string]fixtureCalls[agentResult]{}, gates: map[string]fixtureCalls[gateResult]{}}
+	loaded := Fixture{file: path, keys: slices.Sorted(maps.Keys(top)), shapes: map[string]fixtureShape{}, agents: map[string]fixtureCalls[agentResult]{}, gates: map[string]fixtureCalls[gateResult]{}, waits: map[string]fixtureCalls[waitResult]{}, recvs: map[string]fixtureCalls[recvResult]{}}
 
 	for _, key := range loaded.keys {
 		if err := loaded.add(key, top[key]); err != nil {
@@ -91,7 +107,25 @@ func (f *Fixture) add(key string, raw json.RawMessage) error {
 		return err
 	}
 
-	return fmt.Errorf("the builtin must be %s or %s", fixtureAgent, fixtureGate)
+	return f.addTimed(key, builtin, raw)
+}
+
+// addTimed decodes the value of a key of a wait or a recv, and refuses any other builtin.
+func (f *Fixture) addTimed(key, builtin string, raw json.RawMessage) error {
+	switch builtin {
+	case fixtureWait:
+		calls, err := decodeCalls[waitResult](raw)
+		f.waits[key], f.shapes[key] = calls, calls.shape()
+
+		return err
+	case fixtureRecv:
+		calls, err := decodeCalls[recvResult](raw)
+		f.recvs[key], f.shapes[key] = calls, calls.shape()
+
+		return err
+	}
+
+	return fmt.Errorf("the builtin must be %s, %s, %s or %s", fixtureAgent, fixtureGate, fixtureWait, fixtureRecv)
 }
 
 // decodeCalls reads a list of results, or one object, and refuses a field that the result does not have.
@@ -199,6 +233,45 @@ func (r *fixtureRun) gatePassed(call string) (bool, error) {
 	}
 
 	return result.Passed == nil || *result.Passed, nil
+}
+
+// wait counts one wait call and returns its answer. A wait with no entry in the file times out at once when it has a deadline, and is refused when it has none.
+func (r *fixtureRun) wait(label string, deadline bool) (heard, error) {
+	var result *waitResult
+
+	if r != nil {
+		var err error
+		if result, _, err = nextResult(r, callKey(fixtureWait, label), r.waits); err != nil {
+			return heard{}, err
+		}
+	}
+
+	switch {
+	case result != nil:
+		return heard{answer: result.Answer, timedOut: result.TimedOut}, nil
+	case deadline:
+		return heard{timedOut: true}, nil
+	}
+
+	return heard{}, fmt.Errorf("the wait %s has no deadline and the fixture gives no answer for it: add timeout to the call, or add the key %s to the fixture", callKey(fixtureWait, label), callKey(fixtureWait, label))
+}
+
+// recv counts one recv call and returns its message. A recv with no entry in the file times out at once.
+func (r *fixtureRun) recv(label string) (envelope, bool, error) {
+	if r == nil {
+		return envelope{}, true, nil
+	}
+
+	result, _, err := nextResult(r, callKey(fixtureRecv, label), r.recvs)
+
+	switch {
+	case err != nil:
+		return envelope{}, false, err
+	case result == nil:
+		return envelope{}, true, nil
+	}
+
+	return envelope{Value: result.Value}, result.TimedOut, nil
 }
 
 // callKey is the key of a call of the builtin: its name, then a colon and the label when the call has one.

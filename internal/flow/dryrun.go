@@ -93,7 +93,7 @@ type DryOption func(*dryChoice)
 // The command beehave check has no flag for it: the option is for tests of the library.
 func WithVoidGates(count int) DryOption { return func(c *dryChoice) { c.voidGates = count } }
 
-// WithFixture scripts the agent calls and the gate calls of the dry run from the fixture, so that a review rejects twice and then approves, or a gate is red once.
+// WithFixture scripts the agent, gate, wait and recv calls of the dry run from the fixture, so that a review rejects twice and then approves, or a gate is red once.
 // With a fixture, an agent call or a gate call whose key the file does not list fails the run. The gate of a merge has no key and always passes.
 func WithFixture(fixture Fixture) DryOption { return func(c *dryChoice) { c.script = fixture.start() } }
 
@@ -250,6 +250,7 @@ func dryDeps(tree, head, item string, chosen dryChoice) Deps {
 	gate.void = chosen.voidGates
 
 	return Deps{
+		Waits:  dryWaits{script: chosen.script},
 		Agents: agents, Gate: gate, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Rounds: dryRounds{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots, SkillLine: drySkillLine,
@@ -491,6 +492,15 @@ func dryVerdict(passed, void bool) (bool, []GateStep) {
 
 	return status == passStatus, []GateStep{{Name: gatepkg.StepCommand, Status: status}}
 }
+
+// dryWaits ends every wait and recv at once. The fixture gives the answer of a call; a call with no entry times out, or is refused when it has no deadline to time out on.
+type dryWaits struct{ script *fixtureRun }
+
+func (w dryWaits) Wait(label string, deadline bool) (heard, error) {
+	return w.script.wait(label, deadline)
+}
+
+func (w dryWaits) Recv(label string) (envelope, bool, error) { return w.script.recv(label) }
 
 type dryLogins struct{}
 

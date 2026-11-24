@@ -34,7 +34,7 @@ func (s *script) sleep(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, err
 	}
 
-	slept, err := dbos.Sleep(s.ctx, length)
+	slept, err := s.pause(length)
 	if err != nil {
 		return nil, fmt.Errorf("sleep of item %s: %w", s.in.Item, err)
 	}
@@ -42,6 +42,15 @@ func (s *script) sleep(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	return s.durable(sleepKind, label, func(context.Context, string) (stepResult, error) {
 		return stepResult{Outputs: sleepOutputs(slept)}, nil
 	})
+}
+
+// pause sleeps for the length of time. A build with Waits sleeps none, and the sleep call reports 0 seconds.
+func (s *script) pause(length time.Duration) (time.Duration, error) {
+	if s.e.deps.Waits != nil {
+		return 0, nil
+	}
+
+	return dbos.Sleep(s.ctx, length)
 }
 
 // sleepArgs reads the label and the duration of a sleep call with the rules of the check.
