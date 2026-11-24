@@ -214,8 +214,32 @@ func TestParseUsage_TheReplyGivesBothWindowsWithTheirResetTimes(t *testing.T) {
 
 	usage := usageOf(t, claude.ParseUsage(noise+reply(window(12.5, "2026-10-24T05:00:00Z"), window(40, "2026-10-25T07:00:00+00:00"))))
 
-	if usage.FiveHour.Percent != 12.5 || !usage.FiveHour.ResetsAt.Equal(t1) || usage.SevenDay.Percent != 40 || !usage.SevenDay.ResetsAt.Equal(t2) {
+	if fiveHourOf(usage).Percent != 12.5 || !fiveHourOf(usage).ResetsAt.Equal(t1) || sevenDayOf(usage).Percent != 40 || !sevenDayOf(usage).ResetsAt.Equal(t2) {
 		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func fiveHourOf(usage model.Usage) model.Window { return usage.Windows[0] }
+
+func sevenDayOf(usage model.Usage) model.Window { return usage.Windows[1] }
+
+func TestParseUsage_TheReadingHoldsTheWindowsOfTheProfileInOrder(t *testing.T) {
+	t.Parallel()
+
+	usage := usageOf(t, claude.ParseUsage(reply(window(1, nil), window(2, nil))))
+
+	if len(usage.Windows) != 2 || usage.Windows[0].Name != "five_hour" || usage.Windows[1].Name != "seven_day" {
+		t.Fatalf("windows = %+v", usage.Windows)
+	}
+
+	null := usageOf(t, claude.ParseUsage(reply(nil, nil)))
+	if null.Windows[0].Name != "five_hour" || null.Windows[1].Name != "seven_day" {
+		t.Fatalf("a null window keeps its name: %+v", null.Windows)
+	}
+
+	declared := claude.Adapter{}.Profile().Windows
+	if len(declared) != 2 || declared[0] != (model.WindowSpec{Name: "five_hour", DefaultMax: 90}) || declared[1] != (model.WindowSpec{Name: "seven_day", DefaultMax: 95}) {
+		t.Fatalf("profile windows = %+v", declared)
 	}
 }
 
@@ -223,12 +247,12 @@ func TestParseUsage_ANaiveResetTimeIsUTCAndABadOneIsDropped(t *testing.T) {
 	t.Parallel()
 
 	usage := usageOf(t, claude.ParseUsage(reply(window(1, "2026-10-24T05:00:00"), window(1, "garbage"))))
-	if !usage.FiveHour.ResetsAt.Equal(t1) || !usage.SevenDay.ResetsAt.IsZero() {
+	if !fiveHourOf(usage).ResetsAt.Equal(t1) || !sevenDayOf(usage).ResetsAt.IsZero() {
 		t.Fatalf("usage = %+v", usage)
 	}
 
 	usage = usageOf(t, claude.ParseUsage(reply(window(1, nil), window(1, "2026-10-25T07:00:00Z"))))
-	if !usage.FiveHour.ResetsAt.IsZero() {
+	if !fiveHourOf(usage).ResetsAt.IsZero() {
 		t.Fatalf("usage = %+v", usage)
 	}
 }
@@ -252,7 +276,7 @@ func TestParseUsage_TheEndsOf0To100AreValid(t *testing.T) {
 	t.Parallel()
 
 	usage := usageOf(t, claude.ParseUsage(reply(window(0, nil), window(100, nil))))
-	if usage.FiveHour.Percent != 0 || usage.SevenDay.Percent != 100 {
+	if fiveHourOf(usage).Percent != 0 || sevenDayOf(usage).Percent != 100 {
 		t.Fatalf("usage = %+v", usage)
 	}
 }
@@ -272,7 +296,7 @@ func TestParseUsage_ALoggedInReplyGivesBothWindows(t *testing.T) {
 	t.Parallel()
 
 	usage := usageOf(t, claude.ParseUsage(fixture(t, "logged-in.json")))
-	if usage.FiveHour.Percent != 16 || usage.SevenDay.Percent != 27 || usage.FiveHour.ResetsAt.IsZero() || usage.SevenDay.ResetsAt.IsZero() {
+	if fiveHourOf(usage).Percent != 16 || sevenDayOf(usage).Percent != 27 || fiveHourOf(usage).ResetsAt.IsZero() || sevenDayOf(usage).ResetsAt.IsZero() {
 		t.Fatalf("usage = %+v", usage)
 	}
 }
@@ -281,12 +305,12 @@ func TestParseUsage_ANullWindowReadsAsZeroPercentWithNoResetTime(t *testing.T) {
 	t.Parallel()
 
 	usage := usageOf(t, claude.ParseUsage(fixture(t, "idle-five-hour.json")))
-	if usage.FiveHour.Percent != 0 || !usage.FiveHour.ResetsAt.IsZero() || usage.SevenDay.Percent != 62 || usage.SevenDay.ResetsAt.IsZero() {
+	if fiveHourOf(usage).Percent != 0 || !fiveHourOf(usage).ResetsAt.IsZero() || sevenDayOf(usage).Percent != 62 || sevenDayOf(usage).ResetsAt.IsZero() {
 		t.Fatalf("usage = %+v", usage)
 	}
 
 	both := usageOf(t, claude.ParseUsage(reply(nil, nil)))
-	if both.FiveHour.Percent != 0 || both.SevenDay.Percent != 0 {
+	if fiveHourOf(both).Percent != 0 || sevenDayOf(both).Percent != 0 {
 		t.Fatalf("both null: usage = %+v", both)
 	}
 }
@@ -373,7 +397,7 @@ func TestUsageReader_SendsGetUsageAndReturnsTheWindows(t *testing.T) {
 	cli := fake(t, answer)
 
 	usage := usageOf(t, cli.read(t, login(t)))
-	if usage.FiveHour.Percent != 12.5 || usage.SevenDay.Percent != 40 {
+	if fiveHourOf(usage).Percent != 12.5 || sevenDayOf(usage).Percent != 40 {
 		t.Fatalf("usage = %+v", usage)
 	}
 
@@ -680,7 +704,7 @@ func TestUsageReader_AnAnswerToAnotherRequestIsSkipped(t *testing.T) {
 	cli := fake(t, answer)
 	cli.set(t, "reply", replyOf("other", window(99, nil), window(99, nil))+goodReply())
 
-	if usage := usageOf(t, cli.read(t, login(t))); usage.FiveHour.Percent != 12.5 {
+	if usage := usageOf(t, cli.read(t, login(t))); fiveHourOf(usage).Percent != 12.5 {
 		t.Fatalf("usage = %+v", usage)
 	}
 }
@@ -758,7 +782,7 @@ func TestAdapter_ReadUsageReadsTheRunnerThroughTheCLIOnThePathOfItsEnvironment(t
 	cli := fake(t, answer)
 
 	usage := usageOf(t, claude.New(cli.base).ReadUsage(t.Context(), login(t)))
-	if usage.FiveHour.Percent != 12.5 || usage.SevenDay.Percent != 40 {
+	if fiveHourOf(usage).Percent != 12.5 || sevenDayOf(usage).Percent != 40 {
 		t.Fatalf("usage = %+v", usage)
 	}
 }

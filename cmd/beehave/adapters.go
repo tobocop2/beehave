@@ -302,6 +302,7 @@ func (a adapters) registry() config.Adapters {
 		if built := a.agent(name); built != nil {
 			loading := *entry
 			loading.LoadsSkills = built.Profile().SkillLine != nil
+			loading.Windows = built.Profile().Windows
 			agents[name] = &loading
 		}
 	}

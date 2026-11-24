@@ -107,19 +107,25 @@ func failureText(failure any) string {
 	return strings.TrimSpace(fmt.Sprint(failure))
 }
 
-// usageOf returns both windows of the reply, or the reason one is unusable.
+// usageWindows returns the windows of the plan limits that the pool caps: the five-hour window, then the seven-day window.
+func usageWindows() []model.WindowSpec {
+	return []model.WindowSpec{{Name: "five_hour", DefaultMax: defaultFiveHourMax}, {Name: "seven_day", DefaultMax: defaultSevenDayMax}}
+}
+
+// usageOf returns the windows of the reply that the profile declares, in the order of the profile, or the reason one is unusable.
 func usageOf(limits map[string]json.RawMessage) (model.Usage, string) {
-	five, reason := windowOf(limits["five_hour"], "five_hour")
-	if reason != "" {
-		return model.Usage{}, reason
+	var usage model.Usage
+
+	for _, spec := range usageWindows() {
+		window, reason := windowOf(limits[spec.Name], spec.Name)
+		if reason != "" {
+			return model.Usage{}, reason
+		}
+
+		usage.Windows = append(usage.Windows, window)
 	}
 
-	seven, reason := windowOf(limits["seven_day"], "seven_day")
-	if reason != "" {
-		return model.Usage{}, reason
-	}
-
-	return model.Usage{FiveHour: five, SevenDay: seven}, ""
+	return usage, ""
 }
 
 // windowOf returns a window of the reply, or the reason it is unusable.
@@ -127,7 +133,7 @@ func usageOf(limits map[string]json.RawMessage) (model.Usage, string) {
 // A missing window, or one that is not an object, is unusable.
 func windowOf(raw json.RawMessage, name string) (model.Window, string) {
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		return model.Window{}, ""
+		return model.Window{Name: name}, ""
 	}
 
 	var window rawWindow
@@ -145,7 +151,7 @@ func windowOf(raw json.RawMessage, name string) (model.Window, string) {
 		return model.Window{}, fmt.Sprintf("the %s window has utilization out of range", name)
 	}
 
-	return model.Window{Percent: percent, ResetsAt: resetTime(window.ResetsAt)}, ""
+	return model.Window{Name: name, Percent: percent, ResetsAt: resetTime(window.ResetsAt)}, ""
 }
 
 // number returns the JSON number in raw. A number beyond the float range is infinite, so the range check refuses it.
