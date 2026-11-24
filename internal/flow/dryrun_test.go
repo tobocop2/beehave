@@ -766,10 +766,10 @@ func countStep(names []string, prefix string) int {
 	return n
 }
 
-func TestDryRun_WithSendBackTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
+func TestDryRun_AFixtureThatRejectsTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
 	t.Parallel()
 
-	names := reviewStepNames(t, WithSendBack())
+	names := reviewStepNames(t, WithFixture(fixtureOf(t, `{"agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}], "agent:fix": {}}`)))
 
 	assert.Equal(t, 2, countStep(names, "agent:review"), names)
 	assert.Equal(t, 1, countStep(names, "agent:fix"), names)
@@ -794,7 +794,7 @@ func reviewStepNames(t *testing.T, options ...DryOption) []string {
 	return names
 }
 
-func TestDryRun_WithoutSendBackTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
+func TestDryRun_WithNoFixtureTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
 	t.Parallel()
 
 	names := reviewStepNames(t)
