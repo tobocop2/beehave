@@ -399,7 +399,7 @@ func (e *Engine) runJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue, o
 
 // queueJob queues the host job of in on queue, under the HostKey of in.
 func (e *Engine) queueJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue) (dbos.WorkflowHandle[ExclusiveOutput], error) {
-	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(in.Priority))
+	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(e.currentPlace(ctx, in.Priority)))
 	if err != nil {
 		return nil, fmt.Errorf("queue the build job of item %s on host %s: %w", in.Item, strings.TrimPrefix(in.HostKey, hostKeyPrefix), err)
 	}
@@ -407,9 +407,9 @@ func (e *Engine) queueJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue)
 	return handle, nil
 }
 
-// awaitJob waits for the host job of handle and stores its output in out.
+// awaitJob waits for the host job of handle and stores its output in out. A job that a person holds keeps the gate waiting (see awaitHeld).
 func (e *Engine) awaitJob(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], out *ExclusiveOutput) error {
-	done, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
+	done, err := e.awaitHeld(ctx, handle)
 	if err != nil {
 		return err
 	}
