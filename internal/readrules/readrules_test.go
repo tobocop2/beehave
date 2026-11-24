@@ -117,6 +117,8 @@ var rules = map[string]rule{
 	"internal/flow.hostKeeper.Ready":        {Proof: "TestPlaceOnHost_AHostThatCannotBeReadIsSkipped", Needle: "readErr"},
 	"internal/host.readier.Ready":           {Proof: "TestReady_AStatusThatFailsIsAnErrorWithItsCause", Needle: "statusErr"},
 	"internal/flow.hostKeeper.LostProof":    {Proof: "TestLostJob_AProofReadThatFailsFailsTheGate", Needle: "proofErr"},
+	"internal/flow.hostKeeper.Sized":        {Proof: "TestGateStart_AGateEndsWithTheErrorOfAHostThatCannotBeReadOrStarted", Needle: "sizedErr"},
+	"internal/flow.hostKeeper.Defer":        {Proof: "TestHostUp_AHostThatCannotBeReadFailsTheCallAndAHostThatIsUpStartsNormally", Needle: "deferErr"},
 
 	// Methods that start, create or record something. The error is the result of the action, not a read that a guard depends on.
 	"internal/batch.Recorder.Step":      {Exempt: doesWork},

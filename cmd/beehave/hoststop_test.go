@@ -12,9 +12,11 @@ import (
 
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/host/sshtest"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 type tearingHost struct {
@@ -37,7 +39,7 @@ func stopOf(h host.Host, err error) hostStop {
 
 // upOf starts the host of project p and gives back whether the call launched it and the error.
 func upOf(stop hostStop) (bool, error) {
-	started, _, err := stop.Up(context.Background(), "p", "")
+	started, _, err := stop.Up(context.Background(), "p", "", noWaiting)
 
 	return started, err
 }
@@ -73,6 +75,72 @@ func (h *startingHost) Up(context.Context) error {
 	h.ups++
 
 	return h.upErr
+}
+
+// noWaiting says no gate waits on any cluster.
+func noWaiting(string) (int, error) { return 0, nil }
+
+// sizedStartingHost is a startingHost whose size follows the queue. It records the queue length that it started with.
+type sizedStartingHost struct {
+	startingHost
+
+	queued []int
+}
+
+func (*sizedStartingHost) HasSizeTable() bool { return true }
+
+func (h *sizedStartingHost) UpQueued(_ context.Context, queued int) error {
+	h.queued = append(h.queued, queued)
+
+	return h.upErr
+}
+
+func TestHostStop_UpStartsAHostWithASizeTableWithTheGatesThatWaitOnItsCluster(t *testing.T) {
+	t.Parallel()
+
+	sized := &sizedStartingHost{startingHost: startingHost{state: model.HostAbsent}}
+	asked := ""
+
+	started, _, err := stopOf(sized, nil).Up(t.Context(), "p", "gpu", func(cluster string) (int, error) {
+		asked = cluster
+
+		return 12, nil
+	})
+
+	require.NoError(t, err)
+	assert.True(t, started)
+	assert.Equal(t, []int{12}, sized.queued)
+	assert.Equal(t, "gpu", asked)
+	assert.Zero(t, sized.ups, "the plain start is not used")
+}
+
+func TestHostStop_UpReadsNoQueueForAHostWithNoSizeTableOrAHostThatRuns(t *testing.T) {
+	t.Parallel()
+
+	plain := &startingHost{state: model.HostAbsent}
+	sized := &sizedStartingHost{startingHost: startingHost{state: model.HostUp}}
+	forbidden := func(string) (int, error) { return 0, errors.New("the queue is read") }
+
+	_, _, err := stopOf(plain, nil).Up(t.Context(), "p", "", forbidden)
+	require.NoError(t, err)
+	assert.Equal(t, 1, plain.ups)
+
+	started, _, err := stopOf(sized, nil).Up(t.Context(), "p", "", forbidden)
+	require.NoError(t, err)
+	assert.False(t, started, "a host that runs keeps its size")
+	assert.Empty(t, sized.queued)
+}
+
+func TestHostStop_UpRefusesToStartASizedHostWhenTheQueueCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	sized := &sizedStartingHost{startingHost: startingHost{state: model.HostAbsent}}
+	unread := errors.New("the store does not answer")
+
+	_, _, err := stopOf(sized, nil).Up(t.Context(), "p", "", func(string) (int, error) { return 0, unread })
+
+	require.ErrorIs(t, err, unread)
+	assert.Empty(t, sized.queued, "no host starts at a guessed size")
 }
 
 func TestHostStop_UpStartsAnAbsentHostAndReusesALiveOne(t *testing.T) {
@@ -125,6 +193,132 @@ func TestHostStop_UpRefusesAReadThatFailsAndStartsNothingForAProjectWithNoHost(t
 	require.ErrorIs(t, err, broken)
 }
 
+func TestHostStop_SizedIsTrueOnlyForAProviderWithASizeTable(t *testing.T) {
+	t.Parallel()
+
+	var built []string
+
+	sized, err := clusters(&built, &sizedStartingHost{}).Sized("p", "gpu-b")
+	require.NoError(t, err)
+	assert.True(t, sized)
+	assert.Equal(t, []string{"gpu-b"}, built, "the cluster of the run is the one that is built")
+
+	sized, err = stopOf(&startingHost{}, nil).Sized("p", "")
+	require.NoError(t, err)
+	assert.False(t, sized, "a provider with no size table")
+
+	sized, err = stopOf(nil, errNoHost).Sized("p", "")
+	require.NoError(t, err)
+	assert.False(t, sized, "a project with no host block")
+
+	broken := errors.New("host config is unreadable")
+	_, err = stopOf(nil, broken).Sized("p", "")
+	require.ErrorIs(t, err, broken)
+
+	_, err = clusters(&built, &sizedStartingHost{}).Sized("p", "rogue")
+	require.Error(t, err, "a cluster that the project does not declare")
+
+	_, err = clusters(&built, &sizedStartingHost{}).Sized("other", "")
+	require.ErrorIs(t, err, errUnknownProject)
+}
+
+func TestHostStop_DeferLeavesOnlyAnAbsentHostWithASizeTableForTheFirstGate(t *testing.T) {
+	t.Parallel()
+
+	var built []string
+
+	deferred, chosen, err := clusters(&built, &sizedStartingHost{startingHost: startingHost{state: model.HostAbsent}}).Defer(t.Context(), "p", "gpu-b")
+	require.NoError(t, err)
+	assert.True(t, deferred)
+	assert.Equal(t, "gpu-b", chosen)
+
+	for name, h := range map[string]host.Host{
+		"a host that is up":        &sizedStartingHost{startingHost: startingHost{state: model.HostUp}},
+		"a provider with no table": &startingHost{state: model.HostAbsent},
+	} {
+		deferred, _, err = stopOf(h, nil).Defer(t.Context(), "p", "")
+		require.NoError(t, err, name)
+		assert.False(t, deferred, name)
+	}
+
+	deferred, _, err = stopOf(nil, errNoHost).Defer(t.Context(), "p", "")
+	require.NoError(t, err)
+	assert.False(t, deferred, "a project with no host block")
+}
+
+func TestHostStop_DeferPassesOnEveryFaultThatItCannotSettle(t *testing.T) {
+	t.Parallel()
+
+	var built []string
+
+	_, _, err := clusters(&built, &sizedStartingHost{}).Defer(t.Context(), "p", "rogue")
+	require.Error(t, err, "a cluster that the project does not declare")
+
+	broken := errors.New("host config is unreadable")
+	_, _, err = stopOf(nil, broken).Defer(t.Context(), "p", "")
+	require.ErrorIs(t, err, broken)
+
+	unreadable := &sizedStartingHost{startingHost: startingHost{statusErr: errors.New("sky status failed")}}
+	_, _, err = stopOf(unreadable, nil).Defer(t.Context(), "p", "")
+	require.ErrorContains(t, err, "sky status failed")
+}
+
+// skyPilotStop loads a project whose skypilot host block holds the keys, and builds its real SkyPilot host over a scripted sky that lists no cluster.
+func skyPilotStop(t *testing.T, keys string) (hostStop, *proctest.Scripted) {
+	t.Helper()
+
+	project, problems := loadHostProject(t, hostProjectTail+`, host = host(provider = "skypilot", disk_floor_gb = 50, idle_minutes = 30`+keys+`)`)
+	require.Empty(t, problems)
+
+	sky, sshRunner := &proctest.Scripted{}, &proctest.Scripted{}
+	sky.Plan("[]", "status")
+	sky.Plan("", "launch")
+	sshRunner.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
+
+	h, err := skypilot.New(project.BuildHost, *project.Host, sky, sshRunner, slurmQueue)
+	require.NoError(t, err)
+
+	return stopOf(h, nil), sky
+}
+
+func TestHostStop_OnlyAnInstanceSizesTableLeavesAnAbsentSkyPilotHostForTheFirstGate(t *testing.T) {
+	t.Parallel()
+
+	unread := func(string) (int, error) { return 0, errors.New("the queue is read for a host with no size table") }
+
+	for name, tc := range map[string]struct {
+		keys     string
+		deferred bool
+		launch   []string
+	}{
+		"instance_type_alone": {`, skypilot = skypilot(instance_type = "n2-standard-8")`, false, []string{"-t", "n2-standard-8"}},
+		"no_size_key":         {`, skypilot = skypilot(cloud = "gcp")`, false, []string{"--infra", "gcp"}},
+		"no_block":            {"", false, []string{"--down"}},
+		"instance_sizes":      {`, skypilot = skypilot(instance_sizes = "3:n2-standard-4,n2-standard-16")`, true, nil},
+	} {
+		stop, sky := skyPilotStop(t, tc.keys)
+
+		sized, err := stop.Sized("p", "")
+		require.NoError(t, err, name)
+		assert.Equal(t, tc.deferred, sized, name+": only a host with an instance_sizes table is sized")
+
+		deferred, _, err := stop.Defer(t.Context(), "p", "")
+		require.NoError(t, err, name)
+		assert.Equal(t, tc.deferred, deferred, name+": host_up records a deferral only for a host with an instance_sizes table")
+
+		if tc.deferred {
+			assert.False(t, sky.Called("launch"), name)
+
+			continue
+		}
+
+		started, _, err := stop.Up(t.Context(), "p", "", unread)
+		require.NoError(t, err, name)
+		assert.True(t, started, name+": host_up starts the host as at the base")
+		assert.True(t, sky.Called(tc.launch...), name)
+	}
+}
+
 func TestHostStop_PassesOnAHostLookupErrorThatIsNotNoHost(t *testing.T) {
 	t.Parallel()
 
@@ -169,12 +363,12 @@ func TestHostStop_AWorkflowThatNamesTheLocalHostStartsNothingOnAProjectThatBuild
 		hosts:    func(_, _ string) (host.Host, error) { return nil, errNoHost },
 	}}
 
-	started, chosen, err := stop.Up(t.Context(), "p", "local")
+	started, chosen, err := stop.Up(t.Context(), "p", "local", noWaiting)
 	require.NoError(t, err, "host_up(host = \"local\") works on a project that builds here")
 	assert.False(t, started)
 	assert.Equal(t, "local", chosen)
 
-	_, _, err = stop.Up(t.Context(), "p", "gpu")
+	_, _, err = stop.Up(t.Context(), "p", "gpu", noWaiting)
 	require.ErrorIs(t, err, model.ErrUndeclaredHost, "a cluster name is still refused there")
 }
 
@@ -184,7 +378,7 @@ func TestHostStop_UpStartsTheClusterThatTheRunNamedAndReportsIt(t *testing.T) {
 	var built []string
 
 	absent := &startingHost{state: model.HostAbsent}
-	started, chosen, err := clusters(&built, absent).Up(t.Context(), "p", "gpu-b")
+	started, chosen, err := clusters(&built, absent).Up(t.Context(), "p", "gpu-b", noWaiting)
 
 	require.NoError(t, err)
 	assert.True(t, started)
@@ -192,7 +386,7 @@ func TestHostStop_UpStartsTheClusterThatTheRunNamedAndReportsIt(t *testing.T) {
 	assert.Equal(t, []string{"gpu-b"}, built, "the host of the chosen cluster is built, not the build host of the project")
 
 	built = nil
-	_, chosen, err = clusters(&built, absent).Up(t.Context(), "p", "")
+	_, chosen, err = clusters(&built, absent).Up(t.Context(), "p", "", noWaiting)
 
 	require.NoError(t, err)
 	assert.Equal(t, "gpu", chosen, "a run that names no host gets the build host of the project")
@@ -205,7 +399,7 @@ func TestHostStop_RefusesAClusterThatTheProjectDoesNotDeclare(t *testing.T) {
 	var built []string
 
 	absent := &startingHost{state: model.HostAbsent}
-	_, _, err := clusters(&built, absent).Up(t.Context(), "p", "rogue")
+	_, _, err := clusters(&built, absent).Up(t.Context(), "p", "rogue", noWaiting)
 
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	assert.Empty(t, built)
