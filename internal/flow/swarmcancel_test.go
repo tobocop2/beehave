@@ -211,6 +211,9 @@ func TestGatherDeadline_ReturnLeavesTheOpenRunOpenAndReadsOpenTrue(t *testing.T)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ready", "after False deadline True"}, h.commands.ranBy(testItem))
+
+	// The gather reads the run as open while the queue still holds it, so the test waits for the queue to start the run before it reads that the run runs.
+	soon(t, func() bool { return statusOf(t, engine, "item-21-r1") != dbos.WorkflowStatusEnqueued }, "the queue starts the open run")
 	assert.Equal(t, dbos.WorkflowStatusPending, statusOf(t, engine, "item-21-r1"), "return leaves the run running")
 }
 
