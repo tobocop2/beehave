@@ -1,6 +1,7 @@
 package github_test
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/tobocop2/beehave/internal/forge"
@@ -23,10 +24,20 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run := &proctest.Scripted{}
 		run.Plan(toJSON(t, []any{[]fields{{"user": fields{"login": forgetest.SevenReviewer}, "state": "APPROVED"}}}), "api", "--paginate", "--slurp", "repos/owner/name/pulls/7/reviews")
 		run.Plan(forgetest.SevenBody, "pr", "view", "7", "-R")
-		run.Plan(toJSON(t, fields{"title": forgetest.SevenTitle, "number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "headRefOid": forgetest.SevenTip, "author": fields{"login": forgetest.SevenReviewer}, "state": forgetest.SevenState, "baseRefName": forgetest.SevenBase, "assignees": []fields{{"login": forgetest.SevenAssignee}}}), "pr", "view", "7", "--repo")
-		run.Plan(toJSON(t, fields{"number": forgetest.NoHeadPull, "state": forgetest.SevenState, "baseRefName": forgetest.SevenBase}), "pr", "view", "8", "--repo")
-		run.Plan(toJSON(t, fields{"number": forgetest.NoStatePull, "headRefOid": forgetest.SevenTip, "baseRefName": forgetest.SevenBase}), "pr", "view", "9", "--repo")
-		run.Plan(toJSON(t, fields{"number": forgetest.NoBasePull, "state": forgetest.SevenState, "headRefOid": forgetest.SevenTip}), "pr", "view", "10", "--repo")
+		run.Plan(toJSON(t, fields{"title": forgetest.SevenTitle, "number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "headRefOid": forgetest.SevenTip, "author": fields{"login": forgetest.SevenReviewer}, "state": forgetest.SevenState, "baseRefName": forgetest.SevenBase, "assignees": []fields{{"login": forgetest.SevenAssignee}},
+			"isDraft": true, "labels": []fields{{"name": forgetest.SevenLabel}}, "body": forgetest.SevenBody, "reviews": []fields{}, "reviewRequests": []fields{{"login": forgetest.SevenAsked}}}), "pr", "view", "7", "--repo")
+
+		whole := func(pr int, drop string) {
+			view := fields{"number": pr, "state": forgetest.SevenState, "headRefOid": forgetest.SevenTip, "baseRefName": forgetest.SevenBase, "isDraft": false, "labels": []fields{}, "assignees": []fields{}}
+			delete(view, drop)
+			run.Plan(toJSON(t, view), "pr", "view", strconv.Itoa(pr), "--repo")
+		}
+		whole(forgetest.NoHeadPull, "headRefOid")
+		whole(forgetest.NoStatePull, "state")
+		whole(forgetest.NoBasePull, "baseRefName")
+		whole(forgetest.NoDraftPull, "isDraft")
+		whole(forgetest.NoLabelsPull, "labels")
+		whole(forgetest.NoAssigneesPull, "assignees")
 		run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
 		seven := fields{"number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "baseRefName": forgetest.SevenBase, "author": fields{"login": forgetest.SevenReviewer}, "isDraft": false, "title": forgetest.SevenTitle, "labels": []fields{{"name": forgetest.SevenLabel}}, "reviewDecision": "APPROVED"}
 		other := fields{"number": forgetest.OtherPull, "headRefName": "other", "baseRefName": forgetest.OtherBase, "author": fields{"login": forgetest.SevenAssignee}, "isDraft": true, "title": "Other work", "labels": []fields{}, "reviewDecision": ""}

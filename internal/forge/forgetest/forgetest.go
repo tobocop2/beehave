@@ -39,11 +39,17 @@ const (
 	SevenState    = "OPEN"
 	SevenBase     = "main"
 	SevenAssignee = "bob"
-	// NoHeadPull, NoStatePull and NoBasePull are the pull requests that the fake serves with no head commit, no state and no base branch.
-	// The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
-	NoHeadPull  = 8
-	NoStatePull = 9
-	NoBasePull  = 10
+	// SevenLabel is the one label of pull request 7, and SevenAsked the login that was asked to review it. Pull request 7 is a draft, and its body links issue 5.
+	SevenLabel = "hold"
+	SevenAsked = "carol"
+	// NoHeadPull, NoStatePull, NoBasePull, NoDraftPull, NoLabelsPull and NoAssigneesPull are the pull requests that the fake serves with no head commit, no state, no base branch,
+	// no draft flag, no label list and no assignee list. The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
+	NoHeadPull      = 8
+	NoStatePull     = 9
+	NoBasePull      = 10
+	NoDraftPull     = 11
+	NoLabelsPull    = 12
+	NoAssigneesPull = 13
 )
 
 // The open pull requests that the fake serves, with the base that each is on: OtherPull is on OtherBase. A list of HoleBase holds a pull request with no head branch,
@@ -171,15 +177,23 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 	checkStanding(c, target)
 }
 
+// SevenFacts is the typed read that every forge serves for pull request 7.
+func SevenFacts() model.PullFacts {
+	return model.PullFacts{
+		Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee},
+		Draft: true, Labels: []string{SevenLabel}, Links: []model.IssueLink{{Number: 5}}, Reviewers: []string{SevenAsked},
+	}
+}
+
 // checkPullRead runs the typed read of pull request 7.
 func checkPullRead(c check, target forge.Forge) {
 	c.r.Helper()
 
 	facts, err := target.PullRead(context.Background(), Seven)
 	c.noError(err, "PullRead")
-	c.equal(facts, model.PullFacts{Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee}}, "pull facts")
+	c.equal(facts, SevenFacts(), "pull facts")
 
-	for pr, field := range map[int]string{NoHeadPull: "head", NoStatePull: "state", NoBasePull: "base"} {
+	for pr, field := range map[int]string{NoHeadPull: "head", NoStatePull: "state", NoBasePull: "base", NoDraftPull: "draft", NoLabelsPull: "labels", NoAssigneesPull: "assignees"} {
 		_, err = target.PullRead(context.Background(), pr)
 
 		var hole *model.IncompletePull
