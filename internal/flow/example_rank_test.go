@@ -49,7 +49,7 @@ func rankedRows(t *testing.T, items []model.Item, pulls []model.PullRequest, row
 	return strings.Fields(ran[0])[1:]
 }
 
-// rankedBy runs rank over the rows of the queue step.
+// rankedBy runs rank over the rows of the queue function.
 func rankedBy(t *testing.T, items []model.Item, pulls []model.PullRequest) []string {
 	t.Helper()
 
