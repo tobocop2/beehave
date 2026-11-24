@@ -57,7 +57,13 @@ type fakeHosts struct {
 	live     bool // the host was up before the run, so Up starts nothing
 }
 
-func (f *fakeHosts) Up(_ context.Context, project, _ string) (bool, string, error) {
+func (*fakeHosts) Sized(string, string) (bool, error) { return false, nil }
+
+func (*fakeHosts) Defer(_ context.Context, _, cluster string) (bool, string, error) {
+	return false, cluster, nil
+}
+
+func (f *fakeHosts) Up(_ context.Context, project, _ string, _ func(string) (int, error)) (bool, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -154,7 +160,15 @@ func TestExampleHost_ARoundThatFoundTheHostLiveDoesNotStopIt(t *testing.T) {
 
 type failingHosts struct{ err error }
 
-func (failingHosts) Up(context.Context, string, string) (bool, string, error) { return false, "", nil }
+func (failingHosts) Sized(string, string) (bool, error) { return false, nil }
+
+func (failingHosts) Defer(context.Context, string, string) (bool, string, error) {
+	return false, "", nil
+}
+
+func (failingHosts) Up(context.Context, string, string, func(string) (int, error)) (bool, string, error) {
+	return false, "", nil
+}
 
 func (f failingHosts) Teardown(context.Context, string, string) error { return f.err }
 
