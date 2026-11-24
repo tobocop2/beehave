@@ -2,6 +2,7 @@
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
 load("@beehave//claims.star", "claim_stop")
+load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
@@ -27,9 +28,6 @@ LOOP_STEPS = ["implement", "review", "fix", "fix_late", "design"]
 IDLE_HOURS = "1"
 GRACE_HOURS = "1"
 
-# The severities in the order of the queue, most severe first. A severity that is not in the list sorts last.
-SEVERITIES = ["P0", "P1", "P2", "P3", "P4"]
-
 # The attribution patterns, each case-insensitive. No line of a pull request body, a commit message, an issue, a comment or a pull request title may match them.
 # The merge adds the pattern of the tracker id of each item (id_patterns); the posting steps use only this list, because their text names the item.
 ATTRIBUTION = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"]
@@ -39,33 +37,6 @@ CLOSING_KEYWORDS = ["(?i)\\b(close|closes|closed|fix|fixes|fixed|resolve|resolve
 
 # A line of the mutation output is a finding only when it starts with this text. The log of the tool prints other lines, such as the line of a killed mutant that gremlins writes as KILLED TYPE at file:line:col.
 FINDING_PREFIX = "finding: "
-
-def _severity(row):
-    if row.severity in SEVERITIES:
-        return SEVERITIES.index(row.severity)
-
-    return len(SEVERITIES)
-
-def _group(row, me):
-    # The work of others is a pull request whose author is not `me`. A review request does not decide it. It stays first whatever its review state is, so a pull request of another author with requested changes is here and not in group 1.
-    if row.pr > 0 and row.author != "" and row.author != me:
-        return 0
-
-    if row.changes_requested:
-        return 1
-
-    if row.pr > 0:
-        return 2
-
-    return 3
-
-def rank(rows, me):
-    """Returns the ready rows in the order of work: first the pull requests of other authors than `me` (the work of others, whatever their review state),
-    then our pull requests with requested changes, then our other work in flight (an open pull request), then the new rows.
-    Inside each group, the rows of a container come before the loose rows, then the rows go by severity, then by item id. A row that is not ready is not offered.
-    Two rows with the same keys keep the order of their item ids, so the input order does not change the result."""
-    ready = [r for r in rows if r.state == "ready"]
-    return sorted(ready, key = lambda r: (_group(r, me), 0 if r.parent != "" else 1, _severity(r), r.item))
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.

@@ -133,7 +133,8 @@ func TestDryRun_AStepThatTheDryRunDoesNotFakeIsNotRunAndIsNotAnError(t *testing.
 
 	for name, tc := range map[string]struct{ body, want string }{
 		"host":  {body: "host_teardown(name = \"stop\")", want: "not run in a dry run: stop the build host"},
-		"queue": {body: "queue(name = \"q\")", want: "not run in a dry run: read the open work of the project"},
+		"items": {body: "item_list(name = \"q\")", want: "not run in a dry run: read the open items of the project"},
+		"pulls": {body: "pr_list(name = \"q\")", want: "not run in a dry run: read the open pull requests of the project"},
 		"state": {body: "pr_state(pr = 41, name = \"s\")", want: "not run in a dry run: read the state of a pull request"},
 		"batch": {body: "merge(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
 	} {
@@ -458,12 +459,12 @@ func TestDryFailure_AnAbsentErrorJoinedWithARealErrorIsAFailureAndPrintsBoth(t *
 
 	var out bytes.Buffer
 
-	err := dryFailure(&out, "step 3 x", fmt.Errorf("gather: %w", errors.Join(errNoQueue, errors.New("the child failed for real"))))
+	err := dryFailure(&out, "step 3 x", fmt.Errorf("gather: %w", errors.Join(errNoItemList, errors.New("the child failed for real"))))
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrDryRunEndedEarly)
 	assert.Contains(t, out.String(), "the child failed for real")
-	assert.Contains(t, out.String(), errNoQueue.Error())
+	assert.Contains(t, out.String(), errNoItemList.Error())
 	assert.Contains(t, out.String(), "the run stopped after step 3 x")
 	assert.NotContains(t, out.String(), "not run in a dry run")
 }
@@ -473,7 +474,7 @@ func TestDryFailure_SeveralAbsentErrorsAndNothingElseIsAPartialRun(t *testing.T)
 
 	var out bytes.Buffer
 
-	err := dryFailure(&out, "step 3 x", errors.Join(errNoQueue, errNoHosts))
+	err := dryFailure(&out, "step 3 x", errors.Join(errNoItemList, errNoHosts))
 
 	require.ErrorIs(t, err, ErrDryRunEndedEarly)
 	assert.Contains(t, out.String(), "the dry run ended early at a step it does not fake: ")
@@ -715,7 +716,7 @@ func TestDryRun_ARoundRunsWithNoEnvironmentVariables(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 	assert.Contains(t, out.String(), "host_up:round-host#1")
-	assert.Contains(t, out.String(), "not run in a dry run: read the open work of the project")
+	assert.Contains(t, out.String(), "not run in a dry run: read the open items of the project")
 	assert.NotContains(t, out.String(), "agent:queue-audit-1#1")
 	assert.NotContains(t, out.String(), "FAILED")
 	assert.NotContains(t, out.String(), "env:")
@@ -733,7 +734,7 @@ func TestDryRun_TheSwarmExampleFilesItsBacklogAndChecksTheStopFileThenEndsEarlyA
 
 	assert.Contains(t, out.String(), "item_create:create-1")
 	assert.Contains(t, out.String(), "command:stop-0")
-	assert.Contains(t, out.String(), "not run in a dry run: read the open work of the project")
+	assert.Contains(t, out.String(), "not run in a dry run: read the open items of the project")
 }
 
 func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
@@ -741,7 +742,7 @@ func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
 
 	var out bytes.Buffer
 
-	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "queue", "workflow.star"), "12", map[string]string{}, &out)
+	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "queue", "workflow.star"), "12", map[string]string{"BASE": "main"}, &out)
 	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 }
 

@@ -227,7 +227,7 @@ func TestExampleBatch_APassThatStopsEveryItemAtTheIntakeReadsTheQueueAgainBefore
 
 	reads := 0
 	for _, name := range stepNames(t, rig.last) {
-		if strings.HasPrefix(name, "queue:round-queue-") {
+		if strings.HasPrefix(name, "item_list:round-queue-") && strings.Contains(name, "-items#") {
 			reads++
 		}
 	}

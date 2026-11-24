@@ -9,7 +9,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// queueReads reads the open work of a project for the queue builtin: the open items of its tracker and the open pull requests of its forge.
+// queueReads reads the open work of a project for the queue library: the open items of its tracker and the open pull requests of its forge.
 type queueReads struct {
 	items trackerItems
 	pulls pulls

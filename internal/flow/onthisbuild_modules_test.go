@@ -381,6 +381,19 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedARetiredAssignStepAndNam
 	}
 }
 
+func TestClient_ResumeOnThisBuildRefusesARunThatRecordedTheRetiredQueueStepAndNamesTheRoundModule(t *testing.T) {
+	t.Parallel()
+
+	// Round module 5 recorded the step queue. The queue is a library function now, and this build retired the step.
+	harness, other := olderRoundRun(t, testItem, moduleRound, 5)
+	recordSteps(t, harness, testItem, "queue:q#1")
+
+	err := other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("the step %q, and an older build recorded it for the %s module, and this build does not record it", "queue:q#1", moduleRound))
+}
+
 func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfNoModuleAndNamesTheStep(t *testing.T) {
 	t.Parallel()
 

@@ -5,7 +5,7 @@
 # Set PAUSE_AFTER_FAILURE to the time that the loop sleeps after a pass that saw a failed run, such as "2m". The default is "30s".
 #
 # Each pass does four things:
-#   1. queue() reads the items and the pull requests again. A merge in an earlier pass shows here, so an item that the merge unblocked is ready now.
+#   1. queue() of the library reads the items and the pull requests on BASE again. A merge in an earlier pass shows here, so an item that the merge unblocked is ready now.
 #   2. spawn starts the ready items that fit in the free slots. A held item is never ready, and a failed item is never ready.
 #   3. first_of(runs = live) waits until an open run ends, and its field `runs` lists every run that ended in the same read. The other runs keep their slots, so one item that loops does not stop the rest.
 #   4. The loop removes the ended runs from its list, holds each failed item with a comment, and sleeps before it starts runs after a pass that saw a failure.
@@ -17,6 +17,7 @@
 # The child function `work` is the one place to put the pipeline of one item: replace its agent call with the steps of the remediation example.
 
 load("@beehave//claims.star", "claim_stop")
+load("@beehave//queue.star", "queue")
 
 # The label of the forge that holds an item. Change it to the label that your repository uses.
 HOLD = "hold"
@@ -57,7 +58,7 @@ def main(item):
     pause = False
 
     for n in range(MAX_PASSES):
-        q = queue(name = "q-%d" % n, hold = HOLD)
+        q = queue(name = "q-%d" % n, hold = HOLD, base = env("BASE"))
 
         # An item that has a run is `running`, `done` or `failed`, so only `ready` rows start. The list `live` guards the same rule on this side.
         open = [r.item for r in live]
