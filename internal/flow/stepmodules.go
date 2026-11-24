@@ -79,7 +79,8 @@ const agentVersion = 15
 // Version 8 removed the foreign, pr, head and author fields from the record of the preflight step.
 // Version 9 adds the run and run_item fields to the input of the merge of a member.
 // Version 10 adds the step batch:<call>.kept#<item> after an owner line that keeps issues, and the kept field to the record of the scope check.
-const landVersion = 10
+// Version 11 records each issue of the scope as text: "#N" for the repository of the pull request and "owner/repo#N" for another repository. A record of version 10 holds numbers and still reads.
+const landVersion = 11
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 const trackerVersion = 2

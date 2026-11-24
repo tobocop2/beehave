@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/closing"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // shortSHA is the length of a commit id in a line of a refusal.
@@ -36,20 +37,20 @@ func (a *attempt) commitKeywords() *refusal {
 }
 
 // closedBy returns the references in a message that name an issue other than the issues of the item or the issues the owner kept.
-// A reference of another repository is always one of them. A reference with the name of this repository counts as a plain number.
+// A reference of another repository is one of them unless the owner kept it as a full reference. A reference with the name of this repository counts as a plain number.
 func (a *attempt) closedBy(message string) []string {
 	var out []string
 
 	for _, ref := range closing.References(message) {
 		repo, digits, _ := strings.Cut(ref, "#")
-		if repo != "" && !strings.EqualFold(repo, a.req.Repo) {
-			out = append(out, ref)
-
-			continue
-		}
-
 		number, err := strconv.Atoi(digits)
-		if err != nil || !slices.Contains(a.req.Names, number) && !slices.Contains(a.req.Kept, number) {
+
+		switch {
+		case repo != "" && !strings.EqualFold(repo, a.req.Repo):
+			if err != nil || !slices.Contains(a.req.Kept, model.ElsewhereIssue(repo, number)) {
+				out = append(out, ref)
+			}
+		case err != nil || !slices.Contains(a.req.Names, number) && !slices.Contains(a.req.Kept, model.OwnIssue(number)):
 			out = append(out, "#"+digits)
 		}
 	}

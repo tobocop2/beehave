@@ -102,7 +102,7 @@ type script struct {
 
 	// fixed is true once the first gate has recorded scope, the closing issues of the pull request at the first review.
 	fixed bool
-	scope []int
+	scope []model.IssueRef
 }
 
 // name returns the name of the DBOS step of one call: `<builtin>:<label>#<n>`, or `<builtin>#<n>` for a call with no label.

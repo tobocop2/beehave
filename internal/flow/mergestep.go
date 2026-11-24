@@ -30,7 +30,7 @@ type MergeSettings struct {
 	// Intent is the record that merge wrote before the merge. It lets a pull request that is already merged count as done.
 	Intent *merge.Intent
 	// Kept are the issues that the owner kept by an answer at the scope check. A closing keyword in a commit message may name them.
-	Kept []int
+	Kept []model.IssueRef
 	// Statuses are the commit statuses that the merge posts on the head after every guard passed and right before the merge call. Empty posts none.
 	Statuses []model.CommitStatus
 }
