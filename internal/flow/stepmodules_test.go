@@ -74,8 +74,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge10.land13.gate6.host1.round6", applicationVersion("v1"))
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge10.land13.gate7.host1.round6", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land13.gate7.host1.round6", applicationVersion("v1"))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land13.gate7.host1.round6", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {
@@ -106,10 +106,11 @@ func TestStepModules_TheLandModuleIsAtVersionThirteen(t *testing.T) {
 		"and each member records the issues that its pull request must close, which the merge audits, at land13")
 }
 
-func TestStepModules_TheGateModuleIsAtVersionSix(t *testing.T) {
+func TestStepModules_TheGateModuleIsAtVersionSeven(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate6", "the gate step records a lost job and host_losses, the wait for its proof records gate:lost-start and gate:lost-look.<k>, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate7", "the gate step records the step field, the name of its own step, so a run that recorded a gate before this version does not replay it, "+
+		"records a lost job and host_losses, the wait for its proof records gate:lost-start and gate:lost-look.<k>, "+
 		"the owner wait records <call>/lost-ask.<n>, the item run records a lost job with a proof as <call>/host-loss, gate records the revert field, and the kind before_review is retired")
 }
 

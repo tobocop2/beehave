@@ -71,6 +71,13 @@ const (
 	NoClosingPull                        = 14
 )
 
+// What the issue read serves. Issue SevenIssue is open and ClosedIssue is closed.
+const (
+	ClosedIssue = 6
+	IssueOpen   = "OPEN"
+	IssueClosed = "CLOSED"
+)
+
 // SevenClosingRefs is the closing read of pull request 7 as every forge gives it.
 func SevenClosingRefs() model.ClosingRefs {
 	return model.ClosingRefs{BaseBranch: SevenBase, DefaultBranch: DefaultBranch, Issues: []int{SevenClosing}, Elsewhere: []model.IssueRef{SevenClosingElsewhere}}
@@ -294,14 +301,22 @@ func checkCounts(c check, target forge.Forge) {
 	c.equal(len(committers), SevenCommits, "committers")
 }
 
+// checkReadSuites runs the reads that have a check of their own: the open pull requests, the closing references and the state of an issue.
+func checkReadSuites(c check, target forge.Forge) {
+	c.r.Helper()
+
+	CheckOpenPulls(c.r, target)
+	CheckClosingRefs(c.r, target)
+	CheckIssueState(c.r, target)
+}
+
 // checkStanding runs the batched read of our pull requests, the title of an item and the annotations of a check run.
 func checkStanding(c check, target forge.Forge) {
 	c.r.Helper()
 
 	checkCounts(c, target)
 	checkPullRead(c, target)
-	CheckOpenPulls(c.r, target)
-	CheckClosingRefs(c.r, target)
+	checkReadSuites(c, target)
 
 	ctx := context.Background()
 
@@ -416,6 +431,27 @@ func CheckClosingRefs(r Reporter, target forge.Lookup) {
 		got, err := target.ClosingRefs(context.Background(), one.pr)
 		c.noError(err, "ClosingRefs")
 		c.equal(got, one.want, "ClosingRefs of "+one.what)
+	}
+}
+
+// CheckIssueState checks the state read on a forge that serves issue SevenIssue as open and issue ClosedIssue as closed. The state is the name that the forge gives,
+// OPEN or CLOSED. The failed command is checked by CheckForgeFails.
+func CheckIssueState(r Reporter, target forge.Lookup) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what   string
+		number int
+		want   string
+	}{
+		{"an open issue", SevenIssue, IssueOpen},
+		{"a closed issue", ClosedIssue, IssueClosed},
+	} {
+		got, err := target.IssueState(context.Background(), one.number)
+		c.noError(err, "IssueState")
+		c.equal(got, one.want, "IssueState of "+one.what)
 	}
 }
 

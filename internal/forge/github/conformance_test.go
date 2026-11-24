@@ -21,6 +21,12 @@ func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
 	forgetest.CheckClosingRefs(t, conformanceForge(t, false))
 }
 
+func TestIssueState_ReturnsOpenOrClosed(t *testing.T) {
+	t.Parallel()
+
+	forgetest.CheckIssueState(t, conformanceForge(t, false))
+}
+
 // conformanceForge is the forge of the conformance suite over a fake command line that serves pull request 7, or one whose every command fails when broken is true.
 func conformanceForge(t *testing.T, broken bool) forge.Forge {
 	t.Helper()
@@ -79,6 +85,8 @@ func conformanceServing(t *testing.T) forge.Forge {
 	run.PlanFail(realNotFound, "api", "repos/owner/name/git/ref/heads/"+forgetest.GoneBranch)
 	run.Plan("owner/name\n", "api", "repos/owner/name", "--jq", ".full_name")
 	run.Plan(forgetest.SevenTitle+"\n", "issue", "view", "7")
+	run.Plan(forgetest.IssueOpen+"\n", "issue", "view", strconv.Itoa(forgetest.SevenIssue), "-R", repo, "--json", "state")
+	run.Plan(forgetest.IssueClosed+"\n", "issue", "view", strconv.Itoa(forgetest.ClosedIssue), "-R", repo, "--json", "state")
 	run.PlanContaining(searchAnswer(t, 1, fields{"number": forgetest.Seven}), "search(query")
 	run.Plan("[]", "api", "repos/owner/name/check-runs/9/annotations")
 	run.Plan("", "pr", "comment")

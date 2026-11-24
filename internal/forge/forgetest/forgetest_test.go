@@ -54,6 +54,8 @@ type memForge struct {
 	closingDropsElsewhere bool
 	// closingNil makes the closing read of a pull request that closes none answer nil lists.
 	closingNil bool
+	// issueAlwaysOpen makes the state read answer OPEN for a closed issue.
+	issueAlwaysOpen bool
 }
 
 func (m memForge) fail() error {
@@ -294,12 +296,20 @@ func (m memForge) DefaultBranch(context.Context) (string, error) {
 	return forgetest.DefaultBranch, m.fail()
 }
 
-func (m memForge) IssueState(context.Context, int) (string, error) {
+func (m memForge) IssueState(_ context.Context, number int) (string, error) {
 	if m.emptyOn == "IssueState" {
 		return "", nil
 	}
 
-	return "", errors.New("this forge cannot read the state of an issue")
+	if err := m.fail(); err != nil {
+		return "", err
+	}
+
+	if number == forgetest.ClosedIssue && !m.issueAlwaysOpen {
+		return forgetest.IssueClosed, nil
+	}
+
+	return forgetest.IssueOpen, nil
 }
 
 func (m memForge) ClosingRefs(_ context.Context, pr int) (model.ClosingRefs, error) {
@@ -465,6 +475,40 @@ func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
 	r = &recorder{}
 	forgetest.CheckClosingRefs(r, memForge{down: true})
 	assert.Contains(t, r.failures, "ClosingRefs: unexpected error: down")
+}
+
+func TestIssueState_ReturnsOpenOrClosed(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckIssueState(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	state, err := memForge{}.IssueState(t.Context(), forgetest.ClosedIssue)
+	require.NoError(t, err)
+	assert.Equal(t, forgetest.IssueClosed, state)
+
+	r = &recorder{}
+	forgetest.CheckIssueState(r, memForge{issueAlwaysOpen: true})
+	require.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "IssueState of a closed issue")
+
+	r = &recorder{}
+	forgetest.CheckIssueState(r, memForge{down: true})
+	assert.Contains(t, r.failures, "IssueState: unexpected error: down")
+}
+
+func TestCheckForgeReads_RunsTheIssueStateCheckOnEveryAdapter(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{})
+	assert.Empty(t, r.failures, "a forge that answers the state of an issue right passes the whole read suite")
+
+	r = &recorder{}
+	forgetest.CheckForgeReads(r, memForge{issueAlwaysOpen: true})
+	require.Len(t, r.failures, 1, "the read suite fails a forge that reads a closed issue as open")
+	assert.Contains(t, r.failures[0], "IssueState of a closed issue")
 }
 
 func TestCheckForgeReads_RunsTheClosingIssueCheckOnEveryAdapter(t *testing.T) {

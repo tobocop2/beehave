@@ -7,6 +7,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 // queueReads reads the open work of a project for the queue library: the open items of its tracker and the open pull requests of its forge.
@@ -52,6 +53,39 @@ func (q queueReads) PullState(ctx context.Context, project string, pr int) (stri
 	}
 
 	return *pull.State, nil
+}
+
+// IssueState reads the state of the issue with the number on the forge of the project: OPEN or CLOSED. Only the GitHub tracker has issue numbers for ids,
+// so a project of another tracker gives found false and no read runs, as in the check after a batch (batchHost.Issues). A project with no forge cannot show
+// one, and a read that fails is an error.
+func (q queueReads) IssueState(ctx context.Context, project string, number int) (string, bool, error) {
+	found, err := q.pulls.projectOf(project)
+	if err != nil {
+		return "", false, err
+	}
+
+	if found.Tracker != storegithub.Tracker {
+		return "", false, nil
+	}
+
+	built, err := q.pulls.forgeOf(project)
+	if err != nil {
+		return "", false, err
+	}
+
+	state, err := built.IssueState(ctx, number)
+
+	return state, err == nil, err
+}
+
+// PullClosing reads the issues that merging the pull request with the number closes on the forge of the project. A project with no forge is an error that matches forge.ErrNoForge.
+func (q queueReads) PullClosing(ctx context.Context, project string, pr int) ([]model.IssueRef, error) {
+	built, err := q.pulls.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return closingIssues(ctx, built, pr)
 }
 
 // isHole is true when the error holds holes and nothing else: every error of a join is a pull request that lacks a field of the list.
