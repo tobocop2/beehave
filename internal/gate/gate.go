@@ -880,21 +880,28 @@ func stepMarkerResults(log string, project model.Project) []Step {
 	return steps
 }
 
-// stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up.
+// stepKillGrace is the seconds that `timeout` waits after its TERM before it sends KILL, so a step that ignores TERM still ends.
+const stepKillGrace = "3"
+
+// stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up,
+// and `--kill-after` makes a step that traps TERM end after the grace.
 func stepLimited(spec model.GateSpec, command string) string {
 	if spec.Timeout <= 0 {
 		return command
 	}
 
-	return "timeout " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+	return "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
 }
 
-// hostTimeoutCode is the exit status that `timeout` gives for a command that it killed.
-const hostTimeoutCode = "124"
+// The exit statuses that `timeout` gives for a step that it killed: 124 after TERM, and 137 (128 plus KILL) when it had to send KILL.
+const (
+	hostTimeoutCode = "124"
+	hostKilledCode  = "137"
+)
 
-// hostStepTimedOut is true for a step with a timeout whose marker line gives the code of `timeout`.
+// hostStepTimedOut is true for a step with a timeout whose marker line gives a code of `timeout`.
 func hostStepTimedOut(spec model.GateSpec, code string) bool {
-	return spec.Timeout > 0 && code == hostTimeoutCode
+	return spec.Timeout > 0 && (code == hostTimeoutCode || code == hostKilledCode)
 }
 
 // timedOutReport names each step of a host gate that ran past its timeout, one line for each, or is empty when none did.
