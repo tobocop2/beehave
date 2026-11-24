@@ -369,7 +369,7 @@ func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutpu
 		return err
 	}
 
-	err = e.awaitJob(ctx, handle, out)
+	err = e.awaitJob(ctx, handle, slotQueueName(model.GateClass, cmp.Or(in.SlotCount, 1)), out)
 	out.HostStarted = started
 
 	return err
@@ -415,7 +415,7 @@ func (e *Engine) runJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue, o
 		return err
 	}
 
-	return e.awaitJob(ctx, handle, out)
+	return e.awaitJob(ctx, handle, queue.GetName(), out)
 }
 
 // queueJob queues the host job of in on queue, under the HostKey of in.
@@ -428,9 +428,9 @@ func (e *Engine) queueJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue)
 	return handle, nil
 }
 
-// awaitJob waits for the host job of handle and stores its output in out. A job that a person holds keeps the gate waiting (see awaitHeld).
-func (e *Engine) awaitJob(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], out *ExclusiveOutput) error {
-	done, err := e.awaitHeld(ctx, handle)
+// awaitJob waits for the host job of handle, which runs on queue, and stores its output in out. A job that a person holds is reopened when the gate starts again (see awaitHeld).
+func (e *Engine) awaitJob(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], queue string, out *ExclusiveOutput) error {
+	done, err := e.awaitHeld(ctx, handle, queue)
 	if err != nil {
 		return err
 	}
