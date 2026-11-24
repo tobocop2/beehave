@@ -118,8 +118,9 @@ type Messaging interface {
 	Send(item string, msg flow.Outgoing) (string, error)
 }
 
-// Canceling stops runs.
+// Canceling stops runs, and holds the gate of an item.
 type Canceling interface {
+	GateHolding
 	Cancel(item string) error
 	// CancelRun stops the one open run with this run id, even when it is not the latest run of its item.
 	CancelRun(runID string) error
@@ -152,14 +153,10 @@ func (f flowCommands) add(root *cobra.Command) {
 		return
 	}
 
-	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.forkCommand(), f.cancelCommand())
+	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.forkCommand(), f.cancelCommand(), f.gateGroup())
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
-	}
-
-	if f.ownProgram != nil {
-		root.AddCommand(f.gateCommand())
 	}
 }
 
