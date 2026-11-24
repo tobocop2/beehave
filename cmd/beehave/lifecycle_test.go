@@ -188,13 +188,13 @@ func TestPulls_CommentPostsOneCommentForOneKeyEvenWhenTheCallRunsTwice(t *testin
 func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIsNotFound(t *testing.T) {
 	t.Parallel()
 
-	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refs: model.ClosingRefs{Issues: []int{12}}}
+	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refs: model.ClosingRefs{Issues: []int{12}, Elsewhere: []model.IssueRef{"other-org/other-repo#5"}}}
 
 	issues, found, err := pullsOver(f).ClosingIssues(t.Context(), "p", "bb-1")
 
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, []int{12}, issues)
+	assert.Equal(t, []model.IssueRef{"#12", "other-org/other-repo#5"}, issues, "an issue of another repository stays in the scope as a full reference")
 
 	_, found, err = pullsOver(&pullForge{}).ClosingIssues(t.Context(), "p", "bb-1")
 

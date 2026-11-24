@@ -622,7 +622,7 @@ func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
 
 // memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues and the statuses are facts about this
 // member only, so the call settings never carry them.
-func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, kept []int, statuses []model.CommitStatus) MergeSettings {
+func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, kept []model.IssueRef, statuses []model.CommitStatus) MergeSettings {
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept = prefixTree, intent, m.Approved, kept
 	settings.OwnDraft, settings.Statuses = m.OwnDraft, statuses

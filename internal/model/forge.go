@@ -95,6 +95,8 @@ type ClosingRefs struct {
 	BaseBranch    string
 	DefaultBranch string
 	Issues        []int
+	// Elsewhere are the issues of other repositories that the pull request closes, as full references, sorted and without a repeat. The result is never nil.
+	Elsewhere []IssueRef
 }
 
 // PullRequest holds the fields of gh pr list and gh pr view that beehave reads.

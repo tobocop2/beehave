@@ -66,7 +66,7 @@ func TestClosingRefs_OneCallGivesTheIssuesTheBaseAndTheDefaultBranch(t *testing.
 
 	refs, err := f.ClosingRefs(context.Background(), 792)
 	require.NoError(t, err)
-	assert.Equal(t, model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{751, 12}}, refs)
+	assert.Equal(t, model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{751, 12}, Elsewhere: []model.IssueRef{}}, refs)
 	require.Len(t, run.Calls, 1, "one forge call for the whole check")
 	assert.Equal(t, []string{"api", "graphql", "-f", "o=owner", "-f", "n=name", "-F", "p=792"}, run.Calls[0][:8])
 
@@ -87,14 +87,26 @@ func TestClosingRefs_AnIssueIsKeptWhenItsRepositoryIsTheBaseRepositoryOfTheAnswe
 	assert.Equal(t, []int{4}, refs.Issues)
 }
 
-func TestClosingRefs_AnIssueOfAnotherRepositoryIsLeftOut(t *testing.T) {
+func TestClosingRefs_AnIssueOfAnotherRepositoryIsKeptAsAFullReferenceAndANodeWithNoRepositoryIsLeftOut(t *testing.T) {
 	t.Parallel()
 
-	f, _ := fixed(t, answer(t, "main", repo, issueList(3, issue(4, "Owner/Name"), issue(5, "other/repo"), fields{"number": 6})))
+	f, _ := fixed(t, answer(t, "main", repo, issueList(5, issue(4, "Owner/Name"), issue(5, "Other-Org/Other-Repo"), fields{"number": 6}, issue(5, "other-org/other-repo"), issue(2, "third/repo"))))
 
 	refs, err := f.ClosingRefs(context.Background(), 7)
 	require.NoError(t, err)
 	assert.Equal(t, []int{4}, refs.Issues)
+	assert.Equal(t, []model.IssueRef{"other-org/other-repo#5", "third/repo#2"}, refs.Elsewhere)
+}
+
+func TestClosingRefs_AnAnswerWhoseOnlyIssueIsInAnotherRepositoryKeepsThatIssueAndRefusesNothing(t *testing.T) {
+	t.Parallel()
+
+	f, _ := fixed(t, answer(t, "main", repo, issueList(1, issue(5, "other-org/other-repo"))))
+
+	refs, err := f.ClosingRefs(context.Background(), 7)
+	require.NoError(t, err)
+	assert.Empty(t, refs.Issues)
+	assert.Equal(t, []model.IssueRef{"other-org/other-repo#5"}, refs.Elsewhere)
 }
 
 func TestClosingRefs_NoIssueIsAnEmptyListNotAnError(t *testing.T) {
@@ -131,7 +143,7 @@ func TestClosingRefs_ARefusalNamesThePullRequestAndNeverGuesses(t *testing.T) {
 		want   string
 	}{
 		{"more_issues_than_one_page", answer(t, "main", repo, issueList(101)), "pull request 7 closes 101 issues, more than one page; the rest are unknown"},
-		{"every_issue_dropped", answer(t, "main", repo, issueList(2, issue(5, "other/repo"), issue(6, "third/repo"))), "pull request 7 lists 2 closing issues, and none is in " + repo + "; the answer cannot be trusted"},
+		{"no_issue_names_its_repository", answer(t, "main", repo, issueList(2, fields{"number": 5}, fields{"number": 6})), "pull request 7 lists 2 closing issues, and none names its repository; the answer cannot be trusted"},
 		{"an_empty_object", "{}", base + ": the answer holds none"},
 		{"no_pull_request", `{"data":{"repository":null}}`, base + ": the answer holds none"},
 		{"no_issue_list", answer(t, "main", repo, nil), base + ": the answer holds none"},
@@ -178,10 +190,10 @@ func TestClosingRefs_APullRequestIntoAnotherBaseTakesTheIssuesOfTheBodyAndTheCom
 
 	refs, err := f.ClosingRefs(context.Background(), 7)
 	require.NoError(t, err)
-	assert.Equal(t, model.ClosingRefs{BaseBranch: "integration/r2", DefaultBranch: "main", Issues: []int{5, 12, 99}}, refs)
+	assert.Equal(t, model.ClosingRefs{BaseBranch: "integration/r2", DefaultBranch: "main", Issues: []int{5, 12, 99}, Elsewhere: []model.IssueRef{}}, refs)
 }
 
-func TestClosingRefs_AKeywordForAnotherRepositoryIsLeftOutAndOneForThisRepositoryCounts(t *testing.T) {
+func TestClosingRefs_AKeywordForAnotherRepositoryIsAFullReferenceAndOneForThisRepositoryIsANumber(t *testing.T) {
 	t.Parallel()
 
 	body := "Closes other/repo#3\nResolves Owner/Name#4\nCloses https://github.com/other/repo/issues/8\nFixes: https://github.com/OWNER/name/issues/9\nSee #50"
@@ -190,6 +202,7 @@ func TestClosingRefs_AKeywordForAnotherRepositoryIsLeftOutAndOneForThisRepositor
 	refs, err := f.ClosingRefs(context.Background(), 7)
 	require.NoError(t, err)
 	assert.Equal(t, []int{4, 9}, refs.Issues)
+	assert.Equal(t, []model.IssueRef{"other/repo#3", "other/repo#8"}, refs.Elsewhere)
 
 	f, _ = fixed(t, textOf(t, "integration/r2", "Closes #99999999999999999999 and closes #6", commitList(0)))
 
