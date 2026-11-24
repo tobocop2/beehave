@@ -50,6 +50,10 @@ type memForge struct {
 	holeListed bool
 	// holeDropped makes the list answer the error of a pull request with no head branch and leave the pull request out.
 	holeDropped bool
+	// closingDropsElsewhere makes the closing read of pull request 7 leave out the issue of another repository.
+	closingDropsElsewhere bool
+	// closingNil makes the closing read of a pull request that closes none answer nil lists.
+	closingNil bool
 }
 
 func (m memForge) fail() error {
@@ -298,12 +302,29 @@ func (m memForge) IssueState(context.Context, int) (string, error) {
 	return "", errors.New("this forge cannot read the state of an issue")
 }
 
-func (m memForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+func (m memForge) ClosingRefs(_ context.Context, pr int) (model.ClosingRefs, error) {
 	if m.emptyOn == "ClosingRefs" {
 		return model.ClosingRefs{}, nil
 	}
 
-	return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
+	if err := m.fail(); err != nil {
+		return model.ClosingRefs{}, err
+	}
+
+	refs := forgetest.NoClosingRefs()
+	if pr == forgetest.Seven {
+		refs = forgetest.SevenClosingRefs()
+	}
+
+	if m.closingDropsElsewhere {
+		refs.Elsewhere = []model.IssueRef{}
+	}
+
+	if m.closingNil && pr == forgetest.NoClosingPull {
+		refs.Issues, refs.Elsewhere = nil, nil
+	}
+
+	return refs, nil
 }
 
 func (m memForge) BranchRef(_ context.Context, branch string) (string, bool, error) {
@@ -417,6 +438,46 @@ func TestPRList_ReturnsTheOpenPullRequestsOfABase(t *testing.T) {
 	r = &recorder{}
 	forgetest.CheckOpenPulls(r, memForge{down: true})
 	assert.Contains(t, r.failures, "OpenPulls: unexpected error: down")
+}
+
+func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	refs, err := memForge{}.ClosingRefs(t.Context(), forgetest.Seven)
+	require.NoError(t, err)
+	assert.Equal(t, []int{forgetest.SevenClosing}, refs.Issues)
+	assert.Equal(t, []model.IssueRef{forgetest.SevenClosingElsewhere}, refs.Elsewhere)
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{closingDropsElsewhere: true})
+	assert.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes two issues")
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{closingNil: true})
+	assert.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes none")
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{down: true})
+	assert.Contains(t, r.failures, "ClosingRefs: unexpected error: down")
+}
+
+func TestCheckForgeReads_RunsTheClosingIssueCheckOnEveryAdapter(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{})
+	assert.Empty(t, r.failures, "a forge that answers the closing issues right passes the whole read suite")
+
+	r = &recorder{}
+	forgetest.CheckForgeReads(r, memForge{closingDropsElsewhere: true})
+	require.Len(t, r.failures, 1, "the read suite fails a forge that drops the closing issue of another repository")
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes two issues")
 }
 
 func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {

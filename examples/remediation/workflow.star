@@ -517,6 +517,15 @@ def closes_of(project, base, id, stacked):
 
     return [number]
 
+def recorded_scope(item):
+    """Returns the closing issues that an earlier read of this run or of an earlier run of the item recorded, newest first, and an empty list when none found a pull request.
+    No entry calls it yet: the scope check still runs inside the engine until the library function for it lands (#500)."""
+    for read in earlier_reads(kind = "pr_closing", name = "scope", item = item, own_run = True).reads:
+        if read["found"]:
+            return read["issues"]
+
+    return pr_closing(name = "scope", item = item).issues
+
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
     A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""

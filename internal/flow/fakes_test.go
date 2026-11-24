@@ -661,16 +661,18 @@ type harness struct {
 	preflight preflighter // nil unless a test sets it
 	rounds    rounds      // replaces the round writer that answers through the fake commands when set
 	forge     *fakeForge
-	trees     *fakeTrees
-	beats     *fakeBeats
-	commands  *fakeCommands
-	items     *fakeItems
-	writer    writer      // nil unless a test sets it
-	reader    reader      // nil unless a test sets it
-	hosts     hostKeeper  // nil unless a test sets it
-	queue     queueReader // nil unless a test sets it
-	poll      pollReader  // nil unless a test sets it
-	others    *fakeOthers // nil unless a test sets it
+	// noForge leaves Deps.Forge nil, as a build with no forge reader has it.
+	noForge  bool
+	trees    *fakeTrees
+	beats    *fakeBeats
+	commands *fakeCommands
+	items    *fakeItems
+	writer   writer      // nil unless a test sets it
+	reader   reader      // nil unless a test sets it
+	hosts    hostKeeper  // nil unless a test sets it
+	queue    queueReader // nil unless a test sets it
+	poll     pollReader  // nil unless a test sets it
+	others   *fakeOthers // nil unless a test sets it
 	// sandboxDefault is the live sandbox default of a project, read for a run that stored no mode. It is nil, and so off, unless a test sets it.
 	sandboxDefault func(project string) bool
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
@@ -776,6 +778,10 @@ func (h *harness) deps() Deps {
 	}
 	if h.rounds != nil {
 		deps.Rounds = h.rounds
+	}
+
+	if h.noForge {
+		deps.Forge = nil
 	}
 
 	if h.merge != nil {
