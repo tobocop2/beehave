@@ -84,13 +84,14 @@ const agentVersion = 15
 // Version 12 adds the scope step at the first review read (preflight) and at the first merge call of a run that no gate fixed a scope for, and the no_forge field to the record of the scope step.
 const landVersion = 12
 
-// trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
-const trackerVersion = 2
+// trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee. Version 3 adds the item_list step.
+const trackerVersion = 3
 
 // forgeVersion is the version of the forge module. Version 2 added the pr_state step. Version 3 retires the kind pr_assign, which version 2 recorded.
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
 // Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
-const forgeVersion = 7
+// Version 8 adds the pr_list step.
+const forgeVersion = 8
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -105,7 +106,8 @@ const gateVersion = 6
 // Version 3 adds the pulls field to the result of queue and the labels field to each of its rows.
 // Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
 // Version 5 adds the field value to each row: the value that the last run of a done row returned.
-const roundVersion = 5
+// Version 6 adds the run_read step.
+const roundVersion = 6
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.
@@ -132,12 +134,12 @@ func moduleTable() []stepModule {
 			steps:   []string{receiveStepName},
 		},
 		{name: moduleAgent, version: agentVersion, kinds: []string{agentStepName, loginStepName}},
-		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", "item_read", "item_status"}, retired: []string{"item_assign"}},
-		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, "pr_comment", prHistoryKind, "pr_open", prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
+		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", itemListKind, "item_read", "item_status"}, retired: []string{"item_assign"}},
+		{name: moduleForge, version: forgeVersion, kinds: []string{boardCardKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
 		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},
-		{name: moduleRound, version: roundVersion, kinds: []string{kindQueue, scopeStep}, engine: []string{kindHold}, retired: []string{"scope-check"}},
+		{name: moduleRound, version: roundVersion, kinds: []string{kindQueue, runReadKind, scopeStep}, engine: []string{kindHold}, retired: []string{"scope-check"}},
 	}
 }
 

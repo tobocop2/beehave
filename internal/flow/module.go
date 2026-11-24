@@ -67,6 +67,7 @@ func repositoryDefs() []builtinDef {
 		{name: "pr_comment", call: (*script).prComment, repository: true},
 		{name: prHistoryKind, call: (*script).prHistory, repository: true},
 		{name: "pr_open", call: (*script).prOpen, repository: true},
+		{name: prListKind, call: (*script).prList, repository: true},
 		{name: prStateKind, call: (*script).prState, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},
@@ -78,6 +79,7 @@ func itemDefs() []builtinDef {
 	return []builtinDef{
 		{name: "item_comment", call: (*script).itemComment},
 		{name: "item_create", call: (*script).itemCreate},
+		{name: itemListKind, call: (*script).itemList},
 		{name: "item_read", call: (*script).itemRead},
 		{name: "item_status", call: (*script).itemStatus},
 	}
@@ -107,6 +109,7 @@ func runDefs() []builtinDef {
 		{name: "paths_outside", call: pathsOutside},
 		{name: "patched", call: (*script).patched},
 		{name: "queue", call: (*script).queue},
+		{name: runReadKind, call: (*script).runRead},
 		{name: "sandbox", call: (*script).sandbox},
 		{name: "sleep", call: (*script).sleep},
 		{name: "struct", call: structCall},

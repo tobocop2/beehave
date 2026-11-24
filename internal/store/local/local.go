@@ -209,9 +209,14 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 	return map[string]string{"id": id, "title": title, "body": body, "severity": string(model.SeverityUnknown)}, nil
 }
 
-// OpenItems lists the open items and the held items of the project in the order they were added. A local item has no severity.
+// ItemList lists the open items and the held items of the project in the order they were added. A local item has no severity.
 // An item with state hold has Hold set, as a beads item with the hold label has. A closed item is not listed.
-func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
+// The local store keeps no labels, so a label lists no item.
+func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error) {
+	if label != "" {
+		return []model.Item{}, nil
+	}
+
 	return list(ctx, s.db, "the open items", func(rows *sql.Rows) (model.Item, error) {
 		item := model.Item{Severity: model.SeverityUnknown}
 		var state string

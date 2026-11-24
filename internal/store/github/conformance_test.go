@@ -21,6 +21,8 @@ func TestStore_ConformsToTracker(t *testing.T) {
 		run := proctest.Always(model.CommandResult{ExitCode: 1, Stderr: "boom"})
 		if !broken {
 			run.Plan(`{"number":5,"title":"A finding","body":"The body."}`, "issue", "view")
+			run.Plan(`[{"number":5,"title":"A finding","labels":[{"name":"bug"}],"assignees":[]}]`, "issue", "list")
+			run.Plan(`[]`, "--label", "no-item-carries-this-label")
 		}
 
 		gh, err := github.New(ghRepo, run)

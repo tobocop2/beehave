@@ -9,17 +9,14 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// openPullLimit is the limit of the search for the open pull requests of a project. A list at the limit is refused, so a queue never reads a cut list.
-const openPullLimit = 500
-
 // queueReads reads the open work of a project for the queue builtin: the open items of its tracker and the open pull requests of its forge.
 type queueReads struct {
 	items trackerItems
 	pulls pulls
 }
 
-// OpenItems lists the open items of the tracker of the project.
-func (q queueReads) OpenItems(ctx context.Context, project string) ([]model.Item, error) {
+// ItemList lists the open items of the tracker of the project that carry the label, or every open item when the label is empty.
+func (q queueReads) ItemList(ctx context.Context, project, label string) ([]model.Item, error) {
 	found, ok := q.items.projects[project]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", errUnknownProject, project)
@@ -30,7 +27,7 @@ func (q queueReads) OpenItems(ctx context.Context, project string) ([]model.Item
 		return nil, err
 	}
 
-	items, err := tracker.OpenItems(ctx)
+	items, err := tracker.ItemList(ctx, label)
 
 	return items, closeAfter(err, tracker)
 }
@@ -57,9 +54,8 @@ func (q queueReads) PullState(ctx context.Context, project string, pr int) (stri
 	return *pull.State, nil
 }
 
-// OpenPulls lists the open pull requests of the forge of the project, with their head and base branch, labels, review decision, author, draft state and title.
-// A project with no forge has none.
-func (q queueReads) OpenPulls(ctx context.Context, project string) ([]model.PullRequest, error) {
+// OpenPulls lists the open pull requests of the forge of the project on the base, or every open pull request when the base is empty. A project with no forge has none.
+func (q queueReads) OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error) {
 	built, err := q.pulls.forgeOf(project)
 	if errors.Is(err, forge.ErrNoForge) {
 		return nil, nil
@@ -69,10 +65,10 @@ func (q queueReads) OpenPulls(ctx context.Context, project string) ([]model.Pull
 		return nil, err
 	}
 
-	rows, err := built.PRList(ctx, openPullLimit, "--state", "open", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title")
+	pulls, err := built.OpenPulls(ctx, base)
 	if err != nil {
 		return nil, fmt.Errorf("list the open pull requests of project %s: %w", project, err)
 	}
 
-	return rows, nil
+	return pulls, nil
 }

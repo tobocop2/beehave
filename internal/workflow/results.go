@@ -35,6 +35,9 @@ const (
 	itemCommentName      = "item_comment"
 	itemCreateName       = "item_create"
 	itemReadName         = "item_read"
+	itemListName         = "item_list"
+	prListName           = "pr_list"
+	runReadName          = "run_read"
 	itemStatusName       = "item_status"
 	prCommentName        = "pr_comment"
 	prOpenName           = "pr_open"
@@ -51,6 +54,9 @@ const (
 	numberField          = "number"
 	statusField          = "status"
 	attemptsField        = "attempts"
+	pullsField           = "pulls"
+	runsField            = "runs"
+	itemsKeyword         = "items"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -67,7 +73,8 @@ func resultFields() map[string][]string {
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
 		preflightName:    {"ok", "stop", "code", reasonField},
-		queueName:        {"rows", "free", "pulls"},
+		queueName:        {"rows", "free", pullsField},
+		runReadName:      {runsField, "free"},
 		sleepName:        {"slept"},
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
@@ -101,13 +108,15 @@ func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		itemCommentName: {"id"},
 		itemCreateName:  {"id", "created"},
+		itemListName:    {itemsKeyword},
 		itemReadName:    {"found", "id", "fields", "comments", "parent"},
 		itemStatusName:  {"id", statusField},
 		prCommentName:   {numberField},
 		prOpenName:      {numberField, "created", "stack"},
+		prListName:      {pullsField},
 		prStateName:     {stateField},
 		pushName:        {headField},
-		prHistoryName:   {"pulls"},
+		prHistoryName:   {pullsField},
 	}
 }
 

@@ -57,11 +57,13 @@ var goldenShapes = map[string][]string{
 		"integration_pull: number,state",
 		"item_comment: id",
 		"item_create: created,id",
+		"item_list: items",
 		"item_read: comments,fields,found,id,parent",
 		"item_status: id,status",
 		"merge: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
 		"pr_comment: number",
 		"pr_history: pulls",
+		"pr_list: pulls",
 		"pr_open: created,number,stack",
 		"pr_state: state",
 		"pr_take: code,lines",
@@ -72,6 +74,7 @@ var goldenShapes = map[string][]string{
 		"round_cut: lines",
 		"round_land: base_tip,branch,head,number,reason,source,state",
 		"round_sync: base_tip,branch,head,number,reason,source,state",
+		"run_read: free,runs",
 		"send: id",
 		"sleep: slept",
 		"spawn: runs",
@@ -95,8 +98,8 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 var goldenKinds = map[string][]string{
 	"star30": {
 		"agent", "board_card", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
-		"item_comment", "item_create", "item_read", "item_status", "login", "now",
-		"pr_comment", "pr_history", "pr_open", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "queue", "recv", "round_cut", "round_land", "round_sync", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
+		"item_comment", "item_create", "item_list", "item_read", "item_status", "login", "now",
+		"pr_comment", "pr_history", "pr_list", "pr_open", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "queue", "recv", "round_cut", "round_land", "round_sync", "run_read", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 

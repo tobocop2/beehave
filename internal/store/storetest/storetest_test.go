@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -45,6 +46,11 @@ type memTracker struct {
 	dropped     string
 	extra       bool
 	wrongID     bool
+	// ignoresLabel makes ItemList answer every item whatever label it is asked for. noItem leaves the item ItemID out of the list.
+	ignoresLabel bool
+	noItem       bool
+	// failsOnLabel makes ItemList fail when it is asked for a label.
+	failsOnLabel bool
 }
 
 func newMem() *memTracker {
@@ -118,7 +124,30 @@ func (m *memTracker) Free(_ context.Context, row model.ClaimRow) error {
 	return m.err()
 }
 
-func (m *memTracker) OpenItems(context.Context) ([]model.Item, error) { return nil, m.err() }
+// ItemList serves item 5 with the label round and item 6 with none.
+func (m *memTracker) ItemList(_ context.Context, label string) ([]model.Item, error) {
+	if err := m.err(); err != nil {
+		return nil, err
+	}
+
+	if label != "" && m.failsOnLabel {
+		return nil, errDown
+	}
+
+	var kept []model.Item
+
+	for _, one := range []model.Item{{ID: storetest.ItemID, Labels: []string{"round"}}, {ID: "6"}} {
+		if one.ID == storetest.ItemID && m.noItem {
+			continue
+		}
+
+		if label == "" || m.ignoresLabel || slices.Contains(one.Labels, label) {
+			kept = append(kept, one)
+		}
+	}
+
+	return kept, nil
+}
 
 func (m *memTracker) ItemFields() []string {
 	if m.fields != nil {
@@ -151,6 +180,45 @@ func (m *memTracker) Item(context.Context, string) (map[string]string, error) {
 	}
 
 	return got, nil
+}
+
+func TestItemList_ReturnsTheItemsOfALabel(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckItemList(r, newMem())
+	assert.Empty(t, r.failures)
+
+	mem := newMem()
+	mem.ignoresLabel = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{
+		"ItemList of the label round: got [5 6], want [5]",
+		"ItemList of a label that no item carries: got [5 6], want []",
+	}, r.failures)
+
+	mem = newMem()
+	mem.noItem = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{`ItemList of no label: want the item "5" among [6]`}, r.failures)
+
+	mem = newMem()
+	mem.down = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{"ItemList: unexpected error: down"}, r.failures)
+
+	mem = newMem()
+	mem.failsOnLabel = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{"ItemList: unexpected error: down", "ItemList: unexpected error: down"}, r.failures)
 }
 
 func TestCheckItem_AcceptsATrackerThatReturnsTheDeclaredFields(t *testing.T) {
@@ -314,7 +382,7 @@ func TestCheckTrackerFails_FailsATrackerThatAnswersAfterAFailure(t *testing.T) {
 
 	r := &recorder{}
 	storetest.CheckTrackerFails(r, newMem())
-	assert.Contains(t, r.failures, "OpenItems: want an error from a failed command, got none")
+	assert.Contains(t, r.failures, "ItemList: want an error from a failed command, got none")
 }
 
 func TestCheckClaimRowsFail_AcceptsRowsThatErrorEverywhere(t *testing.T) {

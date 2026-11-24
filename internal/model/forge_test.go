@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -100,4 +101,27 @@ func TestIsRepoPart(t *testing.T) {
 	for text, want := range map[string]bool{"": false, ".": false, "..": false, "...": true, ".a": true, "a-b_c.1": true, "A9": true, "a b": false, "a/b": false, "é": false, "a;": false} {
 		assert.Equal(t, want, model.IsRepoPart(text), text)
 	}
+}
+
+func TestPullRequestOpen_ReadsTheFieldsOfTheList(t *testing.T) {
+	t.Parallel()
+
+	var full model.PullRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"number":7,"title":"t","isDraft":true,"baseRefName":"main","headRefName":"21","reviewDecision":"APPROVED","author":{"login":"ann"},"labels":[{"name":"hold"},{"name":"bug"}]}`), &full))
+
+	assert.Equal(t, model.OpenPull{Number: 7, Branch: "21", Base: "main", Author: "ann", Draft: true, Title: "t", Labels: []string{"hold", "bug"}, ReviewDecision: "APPROVED"}, full.Open())
+	assert.Equal(t, model.OpenPull{}, model.PullRequest{}.Open(), "a list that lacks the fields gives empty values")
+}
+
+func TestOpenPullCheck_NamesEachMissingField(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, model.OpenPull{Number: 1, Branch: "21", Base: "main"}.Check())
+
+	err := model.OpenPull{Number: 0}.Check()
+
+	var incomplete *model.IncompletePull
+
+	require.ErrorAs(t, err, &incomplete)
+	assert.Equal(t, []string{"number", "branch", "base"}, incomplete.Missing)
 }

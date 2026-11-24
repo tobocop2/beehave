@@ -38,7 +38,7 @@ func newBeads(t *testing.T) (*beads.Store, *proctest.Scripted) {
 	return bd, run
 }
 
-func TestBeadsOpenItems_CarrySeverityHoldParentAndAssignee(t *testing.T) {
+func TestBeadsItemList_CarrySeverityHoldParentAndAssignee(t *testing.T) {
 	t.Parallel()
 
 	bd, run := newBeads(t)
@@ -56,7 +56,7 @@ func TestBeadsOpenItems_CarrySeverityHoldParentAndAssignee(t *testing.T) {
 	run.Plan(toJSON(t, []any{map[string]any{"id": "p-1"}}), "children", "p-9")
 	run.Plan(toJSON(t, []any{map[string]any{"id": "p-1"}, map[string]any{"id": "p-2"}}), "children", "p-8")
 
-	items, err := bd.OpenItems(context.Background())
+	items, err := bd.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{
 		{ID: "p-1", Severity: model.SeverityP2, Parent: "p-9", Title: "child task"},
@@ -69,7 +69,7 @@ func TestBeadsOpenItems_CarrySeverityHoldParentAndAssignee(t *testing.T) {
 	}, items)
 }
 
-func TestBeadsOpenItems_AnEpicAndAClaimRowAreNotWork(t *testing.T) {
+func TestBeadsItemList_AnEpicAndAClaimRowAreNotWork(t *testing.T) {
 	t.Parallel()
 
 	bd, run := newBeads(t)
@@ -80,17 +80,17 @@ func TestBeadsOpenItems_AnEpicAndAClaimRowAreNotWork(t *testing.T) {
 		task("p-4", "has lock: inside", 3, nil),
 	}), "ready")
 
-	items, err := bd.OpenItems(context.Background())
+	items, err := bd.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"p-1", "p-4"}, []string{items[0].ID, items[1].ID})
 	assert.Len(t, items, 2)
 }
 
-func TestBeadsOpenItems_AsksBeadsForTheListingsItNames(t *testing.T) {
+func TestBeadsItemList_AsksBeadsForTheListingsItNames(t *testing.T) {
 	t.Parallel()
 
 	bd, run := newBeads(t)
-	_, err := bd.OpenItems(context.Background())
+	_, err := bd.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, [][]string{
 		{"ready", "--limit", "5000", "--json"},
@@ -132,7 +132,7 @@ func TestBeadsReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 			bd, run := newBeads(t)
 			tt.setup(run)
 
-			_, err := bd.OpenItems(context.Background())
+			_, err := bd.ItemList(context.Background(), "")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Equal(t, store.CodeRefused, codeOf(t, err))
@@ -140,13 +140,22 @@ func TestBeadsReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 	}
 }
 
-func TestBeadsOpenItems_OneRowUnderAFullPageIsListed(t *testing.T) {
+func TestBeadsItemList_WithALabelAsksBeadsForThatLabel(t *testing.T) {
+	t.Parallel()
+
+	bd, run := newBeads(t)
+	_, err := bd.ItemList(context.Background(), "bug")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ready", "--label", "bug", "--limit", "5000", "--json"}, run.Calls[0])
+}
+
+func TestBeadsItemList_OneRowUnderAFullPageIsListed(t *testing.T) {
 	t.Parallel()
 
 	bd, run := newBeads(t)
 	run.Plan(toJSON(t, fill(4999, map[string]any{"issue_type": "task"})), "ready")
 
-	items, err := bd.OpenItems(context.Background())
+	items, err := bd.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Len(t, items, 4999)
 }

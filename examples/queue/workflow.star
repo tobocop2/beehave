@@ -9,6 +9,7 @@
 #   2. spawn starts the ready items that fit in the free slots. A held item is never ready, and a failed item is never ready.
 #   3. first_of(runs = live) waits until an open run ends, and its field `runs` lists every run that ended in the same read. The other runs keep their slots, so one item that loops does not stop the rest.
 #   4. The loop removes the ended runs from its list, holds each failed item with a comment, and sleeps before it starts runs after a pass that saw a failure.
+# Before the first pass, item_list, pr_list and run_read read the held items, the open pull requests of BASE and the last run of each held item on their own, so the loop knows if it starts after a failure.
 # The loop ends when no item is ready and no run is open.
 #
 # One login runs one agent step at a time on each queue: a step with edits = False can run beside a step that edits on the same login. The pick of a login prefers a login with no agent step running or queued, so the items spread over your logins. The parent run holds no login. With one login, the items run one at a time.
@@ -45,12 +46,19 @@ def work(item):
     if implement.stop != "":
         fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (implement.stop, item.id, item.id, item.id))
 
+def failed_before_start():
+    """True when a held item has a last run that failed and no open pull request claims it. The loop was stopped after a failure that left no work to look at."""
+    held = [i.item for i in item_list(label = HOLD, name = "held").items]
+    claimed = [p.branch for p in pr_list(base = env("BASE"), name = "claimed").pulls]
+    runs = run_read(items = held, name = "held-runs").runs
+    return any([r.state == "failed" and r.item not in claimed for r in runs])
+
 def main(item):
     # The runs that this parent started and has not seen end.
     live = []
 
-    # True after a pass that saw a failed run.
-    pause = False
+    # True after a pass that saw a failed run. A loop that starts right after such a failure sleeps first, as it does after a pass.
+    pause = failed_before_start()
 
     for n in range(MAX_PASSES):
         q = queue(name = "q-%d" % n, hold = HOLD)

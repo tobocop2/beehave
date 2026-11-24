@@ -144,6 +144,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_create` | `severity` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `shared` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `title` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `item_list` | `-` | #498: new, the open items of the tracker, or only those with a label | 1: `examples/queue/workflow.star` |
+| `item_list` | `label` | #498: new, the open items of the tracker, or only those with a label | 1: `examples/queue/workflow.star` |
+| `item_list` | `name` | #498: new, the open items of the tracker, or only those with a label | 1: `examples/queue/workflow.star` |
 | `item_read` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `of` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -177,6 +180,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_comment` | `text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `-` | #700: new, the pull requests of the item in every state, with the closing comment of each closed or merged one | 1: `examples/remediation/workflow.star` |
 | `pr_history` | `name` | #700: new | 1: `examples/remediation/workflow.star` |
+| `pr_list` | `-` | #498: new, the open pull requests of the forge, or only those on a base | 1: `examples/queue/workflow.star` |
+| `pr_list` | `base` | #498: new, the open pull requests of the forge, or only those on a base | 1: `examples/queue/workflow.star` |
+| `pr_list` | `name` | #498: new, the open pull requests of the forge, or only those on a base | 1: `examples/queue/workflow.star` |
 | `pr_open` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_open` | `body` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -240,6 +246,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `round_sync` | `base` | #381: new | 1: `examples/remediation/workflow.star` |
 | `round_sync` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
 | `round_sync` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
+| `run_read` | `-` | #498: new, the last run of each item and the free slots | 1: `examples/queue/workflow.star` |
+| `run_read` | `items` | #498: new, the last run of each item and the free slots | 1: `examples/queue/workflow.star` |
+| `run_read` | `name` | #498: new, the last run of each item and the free slots | 1: `examples/queue/workflow.star` |
 | `sandbox` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `sandbox` | `network` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run, of a child run or of the open run of an item of the project | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
