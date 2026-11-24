@@ -31,6 +31,7 @@ const (
 	waitName             = "wait"
 	sleepName            = "sleep"
 	mergeName            = "merge"
+	handOffName          = "hand_off"
 	preflightName        = "preflight"
 	itemListName         = "item_list"
 	prListName           = "pr_list"
@@ -71,7 +72,6 @@ const (
 func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills", "commit_subject", "commit_body"},
-		mergeName:        {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"},
 		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
 		earlierCallsName: {"count"},
 		hostTeardownName: {"down", reasonField},
@@ -96,7 +96,10 @@ const runsResult = "runs"
 
 // swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
 func swarmResultFields() map[string][]string {
-	return map[string][]string{spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
+	return map[string][]string{
+		spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"},
+		mergeName: append(handOffFields(), statusField, reasonField, "commit"), handOffName: handOffFields(),
+	}
 }
 
 // earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
@@ -435,4 +438,9 @@ func texts(items []syntax.Expr) ([]string, bool) {
 	}
 
 	return names, true
+}
+
+// handOffFields are the fields of the result of a list of pull requests: the result of hand_off and of merge with `prs`. A merge with `member` returns merged as a bool, with status, reason, tree and commit.
+func handOffFields() []string {
+	return []string{"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"}
 }

@@ -135,6 +135,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `gather` | `on_timeout` | #593: new, `cancel` or `return` for the runs still open at the deadline | 1: `examples/planner/workflow.star` |
 | `gather` | `runs` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `gather` | `timeout` | #593: new, the deadline of the group | 1: `examples/planner/workflow.star` |
+| `hand_off` | `-` | #503: new, marks the pull requests ready and waits for the owner to merge them. It is the hand-off of `merge` with its own name | 1: `examples/remediation/workflow.star` |
+| `hand_off` | `base` | #503: new | 1: `examples/remediation/workflow.star` |
+| `hand_off` | `name` | #503: new | 1: `examples/remediation/workflow.star` |
+| `hand_off` | `prs` | #503: new | 1: `examples/remediation/workflow.star` |
+| `hand_off` | `repo` | #503: new | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -189,11 +194,15 @@ The Change column says how the pair differs from the contract that the five piec
 | `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
 | `merge` | `-` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `base` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
+| `merge` | `expect_tree` | #503: new, the merge stops as unsettled when the base tip has another tree | 1: `examples/remediation/workflow.star` |
 | `merge` | `forbid_text` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
+| `merge` | `gate` | #503: new, the result of a gate call of this run. The engine posts the statuses of that gate and trusts none that the run did not record | 1: `examples/remediation/workflow.star` |
 | `merge` | `gate_run` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
 | `merge` | `hand_off` | #653: new, marks the pull requests ready and waits for the owner to merge them | 1: `examples/remediation/workflow.star` |
+| `merge` | `gated_tree` | #503: new, the tree that the gate ran on | 1: `examples/remediation/workflow.star` |
 | `merge` | `hold` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `integration` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
+| `merge` | `member` | #503: new, lands one pull request | 1: `examples/remediation/workflow.star` |
 | `merge` | `name` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `own` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `prs` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |

@@ -196,7 +196,7 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 // removedPRArgument is the sentence for an argument that pr_open or pr_comment no longer takes. It is empty for any other keyword.
 func removedPRArgument(builtin, keyword string) string {
 	switch {
-	case (builtin == prOpenName || builtin == prCommentName) && keyword == "integration":
+	case (builtin == prOpenName || builtin == prCommentName) && keyword == integrationKeyword:
 		return builtin + " takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue."
 	case builtin == prOpenName && keyword == "issue":
 		return "pr_open takes no argument issue. Write the closing line in body, such as Closes #12."

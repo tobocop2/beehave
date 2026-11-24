@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `hand_off`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -599,9 +599,23 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 - Git 2.38 or newer is the minimum on the gate host.
 - For each member, the step `batch:<name>.intent#<item>` records the pull request as OPEN before the step `batch:<name>.merge#<item>` merges it. A resume after a crash therefore counts a merge that the forge already made as done.
 
+#### `merge` of one pull request
+
+`merge(member, base, repo, gate, gated_tree, expect_tree, name)` merges one pull request. `member` is one `struct(item, head, approved, own_draft, closes)`. A call takes `prs` or `member`, not both. A call with `member` takes no `gate_run`, `integration` or `hand_off`, and a call with `prs` takes no `gate`, `gated_tree` or `expect_tree`. `beehave check workflow` refuses the same calls.
+
+- `gate` is the result of a `gate` call of this run, and `gated_tree` is the tree that the gate ran on. The two keywords go together. A call with neither merges and posts no status.
+- The engine never trusts the value that the workflow passes. It keeps the record of each `gate` call of the run, by the step name, and reads that record. A resume fills the record again from the recorded step. A made-up value, a gate of another run, a gate call after the merge and a gate that did not pass post no status and merge nothing, and the call fails with the reason. A gate with a step that is not a pass fails the same way. A `gated_tree` that is not the tree of the recorded gate also fails.
+- The gate must also belong to the member. In the intent step, before any status, the engine merges the head of the member into the base tip without a working copy and compares the tree it makes with `gated_tree`. A gate that ran on another tree, or a head that conflicts with the tip, is a refusal with the reason, and no status is posted. `expect_tree` stays optional: an empty value skips the check of the base tip only, and the binding of the gate to the member runs for every call with `gate`.
+- When the gate is trusted, the engine posts the statuses `beehave/gate` and, for an approved member, `beehave/review` on the head of the member after the guards of the merge, and right before the merge call.
+- `expect_tree` is the tree that the base tip must have. If the tip has another tree, the call merges nothing and returns `status` `unsettled`. The check is part of the recorded intent step, so a resume decides the same way.
+- The call returns `merged` (a bool), `status` (`merged`, `refused` or `unsettled`), `reason` (every line of a refusal), `tree` and `commit` of the base tip after the call. A refusal is a status and not an error.
+- The step `batch:<name>.tip` records the tip after the call.
+
 #### `hand_off`
 
-`hand_off = True` hands the landing to the owner. The call lands nothing, runs no gate and takes no `hold`, `own`, `forbid_text`, `gate_run` or `integration`: a call with one of them fails and names it. `beehave check workflow` refuses the same call when `hand_off` is the literal `True`.
+`hand_off(prs, base, repo, name)` hands the landing to the owner. It behaves as `merge` with `hand_off = True`, and the keyword form stays until the list form leaves `merge`.
+
+`hand_off = True` of `merge` hands the landing to the owner. The call lands nothing, runs no gate and takes no `hold`, `own`, `forbid_text`, `gate_run` or `integration`: a call with one of them fails and names it. `beehave check workflow` refuses the same call when `hand_off` is the literal `True`.
 
 - For each member, the step `batch:<name>.ready#<item>` reads the pull request. A draft at the head of the member is marked ready. A resume replays the step and marks nothing ready again.
 - The call does not mark a draft ready while a review asks for changes, the pull request conflicts with its base branch, or a review thread is unresolved. The member goes into `rejected` with the reasons, and the draft stays a draft. A read of the reviews or the threads that fails fails the call.
