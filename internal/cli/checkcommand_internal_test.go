@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,14 @@ func TestCheckCommand_RefusesAnEventThatIsNotAShellCallWithACommand(t *testing.T
 		assert.Equal(t, 2, code, name)
 		assert.Contains(t, stderr, "beehave refused the command: the ", name)
 	}
+}
+
+func TestDecodeEvent_AnUnreadableStdinIsAnError(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeEvent(iotest.ErrReader(errors.New("pipe closed")), claude.DecodeHook)
+
+	require.ErrorContains(t, err, "cannot read the hook event: pipe closed")
 }
 
 func TestCheckCommand_ReadsAnEventUpToTheCapAndRefusesALongerOne(t *testing.T) {
