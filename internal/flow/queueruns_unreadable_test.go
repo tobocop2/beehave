@@ -20,40 +20,6 @@ func settledView(item string, last run) (runView, error) {
 	return view, view.settle()
 }
 
-const foreignOutput = `{"item": "21", "value": {"reason": "foreign", "pr": 7, "findings": [{"id": "f-1", "severity": "blocking", "path": "a.go", "text": "x"}]}}`
-
-func TestQueue_AForeignRunWhoseProjectCannotBeReadFailsClosedAndIsNotDone(t *testing.T) {
-	t.Parallel()
-
-	q := &fakeQueue{states: map[int]string{7: "MERGED"}}
-	engine := &Engine{deps: Deps{Queue: q}}
-
-	view, err := settledView("21", succeededRun("not an item input", foreignOutput))
-	require.NoError(t, err)
-
-	settled, err := engine.stateOf(t.Context(), view, false)
-
-	require.ErrorContains(t, err, "read the input of run "+runID("21", 1))
-	assert.Empty(t, settled.state, "an unreadable project gives no state, so the row is not reported as done")
-	assert.Empty(t, q.stateAsked, "no pull request state is read without a project")
-}
-
-func TestQueue_ARunWhoseValueIsNotAForeignRecordStaysDoneAndReadsNoState(t *testing.T) {
-	t.Parallel()
-
-	q := &fakeQueue{states: map[int]string{7: "MERGED"}}
-	engine := &Engine{deps: Deps{Queue: q}}
-
-	view, err := settledView("21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, `{"item": "21", "value": "text"}`))
-	require.NoError(t, err)
-
-	settled, err := engine.stateOf(t.Context(), view, false)
-
-	require.NoError(t, err)
-	assert.Equal(t, queueDone, settled.state)
-	assert.Empty(t, q.stateAsked, "a value that is not a foreign record reads no pull request state")
-}
-
 func TestQueue_ARunWhoseResultCannotBeReadFailsClosedAndIsNotDone(t *testing.T) {
 	t.Parallel()
 

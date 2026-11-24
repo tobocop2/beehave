@@ -274,11 +274,20 @@ func (g *graph) problems(err error) {
 		g.report(placeOf(syntaxed.Pos), sentence(syntaxed.Msg))
 	case errors.As(err, &resolved):
 		for _, one := range resolved {
-			g.report(placeOf(one.Pos), sentence(one.Msg))
+			g.report(placeOf(one.Pos), sentence(one.Msg)+removedHint(one.Msg))
 		}
 	default:
 		g.report(Diagnostic{}, err.Error())
 	}
+}
+
+// removedHint names the library that replaces the queue builtin, which a file that still calls it does not define.
+func removedHint(msg string) string {
+	if msg != "undefined: queue" {
+		return ""
+	}
+
+	return ` Load the library function: load("@beehave//queue.star", "queue").`
 }
 
 func placeOf(pos syntax.Position) Diagnostic {

@@ -10,8 +10,14 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// runNone is the state of an item that has no run to settle: it never ran, or its last run was canceled.
-const runNone = "none"
+// The states of the last run of an item. none is the state of an item that has no run to settle: it never ran, or its last run was canceled.
+const (
+	runNone      = "none"
+	queueRunning = "running"
+	queueDone    = "done"
+	queueFailed  = "failed"
+	queueStopped = "stopped"
+)
 
 // runView is the last run of one item. State is none, running, failed, stopped or done. Value is the JSON value that the last run of a done item returned.
 // StopStep and StopReason name the step that ended a stopped run and the start of what it printed.
@@ -50,6 +56,16 @@ func (e *Engine) pullsOf(ctx context.Context, project, base string) ([]model.Ope
 // It reads the last run with latestRun, as spawn does, so the queue and spawn agree on what is open, failed and done.
 func (e *Engine) lastRuns(ids []string) ([]runView, int, error) {
 	return readRuns(ids, e.freeSlots, e.runOf)
+}
+
+// freeSlots is the cap of the items queue less the runs that the library holds on it as open. The library keeps the count: the engine keeps none.
+func (e *Engine) freeSlots() (int, error) {
+	open, err := e.store().Open(itemsQueueName)
+	if err != nil {
+		return 0, fmt.Errorf("count the open runs of the %s queue: %w", itemsQueueName, err)
+	}
+
+	return max(0, e.maxConcurrent-len(open)), nil
 }
 
 // readRuns calls slots once, then runOf for each id in order. The order is the contract of lastRuns.

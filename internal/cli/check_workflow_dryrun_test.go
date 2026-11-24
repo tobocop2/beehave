@@ -40,7 +40,7 @@ func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheRead
 	require.Equal(t, 3, code, stderr)
 	assert.Empty(t, stderr)
 	assert.Contains(t, stdout, "host_up:round-host#1", stdout)
-	assert.Contains(t, stdout, "not run in a dry run: read the open work of the project")
+	assert.Contains(t, stdout, "not run in a dry run: read the open items of the project")
 	assert.NotContains(t, stdout, "agent:queue-audit-1#1", "the queue audit judges the rows of the queue read, so the dry run ends before it")
 	assert.NotContains(t, stdout, "FAILED")
 	assert.NotContains(t, stdout, "env:")

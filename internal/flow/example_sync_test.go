@@ -311,7 +311,7 @@ func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWi
 	assert.Contains(t, joined, "round_sync:sync-again-1#", "the round checks the trunk again after the agent")
 	assert.Contains(t, joined, "wait:round-wait#")
 	assert.NotContains(t, joined, "agent:queue-audit-1#", "no item builds on the stale base")
-	assert.NotContains(t, joined, "queue:round-queue-1#")
+	assert.NotContains(t, joined, "item_list:round-queue-1-items#")
 	assert.NotContains(t, joined, "gate:")
 
 	resolve := slices.IndexFunc(rig.h.agents.requests, func(request AgentRequest) bool { return strings.Contains(request.Prompt, syncResolveMarker) })

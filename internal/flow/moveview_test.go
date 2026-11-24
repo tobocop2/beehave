@@ -11,8 +11,6 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 // theGap is a move of the run to this build, stopped between its cancel and its rewind.
@@ -172,13 +170,11 @@ func TestStoreView_TheEnginePlanRefusesARunUnderAMove(t *testing.T) {
 	inTheGap(t, func(g theGap) {
 		spawned, planErr := g.engine.planOne(context.Background(), ItemInput{Item: testItem, Project: testProject}, testItem, nil)
 		view, viewErr := g.engine.runOf(testItem)
-		row, rowErr := g.engine.rowOf(context.Background(), model.Item{ID: testItem}, joinedPull{}, view)
 
 		require.NoError(t, viewErr)
-		require.NoError(t, rowErr)
 		require.Error(t, planErr, "the engine plans a second run of the item")
 		assert.Empty(t, spawned.Run)
-		assert.Equal(t, queueRunning, row.State, "the queue offers the item again")
+		assert.Equal(t, queueRunning, view.State, "the queue offers the item again")
 	})
 }
 
