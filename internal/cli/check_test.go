@@ -101,6 +101,51 @@ func TestCheckConfig_AProjectWithNoSandboxKeyGetsOneNoteThatItsStepsRunInTheSand
 	require.Contains(t, stderr, "note: project unset sets no sandbox key, so its agent steps run in the sandbox. To run them with no sandbox, write sandbox = \"off\" in "+filepath.Join(dir, "projects", "unset.star")+".\n")
 }
 
+// runCheckConfigWhereTheGateRuns runs check config on a machine where the given refusal decides whether a gate runs here.
+func runCheckConfigWhereTheGateRuns(t *testing.T, refusal cli.GateRefusal, dir string) (int, string) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+
+	code := cli.Execute(t.Context(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Registry: registry(), Version: "x", GateRefusal: refusal}, map[string]string{}, &stdout, &stderr)
+
+	return code, stderr.String()
+}
+
+const gateHomeNote = "its gate runs in the sandbox on this machine"
+
+func TestCheckConfig_AProjectWithNoSandboxKeyWhoseGateRunsHereGetsOneNoteThatTheGateCannotReadTheHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+	writeConfig(t, dir, "projects/on.star", strings.NewReplacer(`sandbox = "off"`, `sandbox = "on"`, `"o/n"`, `"o/on"`).Replace(offProject))
+	writeConfig(t, dir, "projects/off.star", strings.Replace(offProject, `"o/n"`, `"o/off"`, 1))
+
+	code, stderr := runCheckConfigWhereTheGateRuns(t, func(config.Project, bool) string { return "" }, dir)
+
+	require.Equal(t, 0, code, stderr)
+	require.Equal(t, 1, strings.Count(stderr, gateHomeNote), "one note, for the project with no key: "+stderr)
+	require.Contains(t, stderr, "note: project unset sets no sandbox key, so "+gateHomeNote+". The gate cannot read the home folder there, "+
+		"so a gate tool under it, such as a mise or asdf shim or ~/go/bin, fails. Add the folders of those tools to sandbox_read, or write sandbox = \"off\" in "+
+		filepath.Join(dir, "projects", "unset.star")+".\n")
+}
+
+func TestCheckConfig_AProjectWithNoSandboxKeyWhoseGateIsRefusedGetsTheRefusalNoteOnly(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+
+	code, stderr := runCheckConfigWhereTheGateRuns(t, func(config.Project, bool) string { return "no enforcer" }, dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Contains(t, stderr, "note: project unset has the sandbox on, but no enforcer\n")
+	require.NotContains(t, stderr, gateHomeNote, "a gate that does not run here gets no note about what it reads")
+}
+
 func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t *testing.T) {
 	t.Parallel()
 

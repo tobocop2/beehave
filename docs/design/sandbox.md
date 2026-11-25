@@ -389,6 +389,8 @@ A run that recorded a gate pass while the sandbox was off keeps that pass when i
 
 To run the gate on this machine, set `sandbox = "off"` in the project file. `beehave check config` prints the same note for each such project, and `beehave check workflow --project` lists each such call with its position.
 
+When an enforcer runs on this machine, the gate of a project with no `sandbox` key runs in the sandbox. The gate reads nothing under the home folder except the `sandbox_read` paths, so a gate tool under it, such as a mise or asdf shim or `~/go/bin`, fails. `beehave check config` prints one note for each such project. To fix it, add the folders of those tools to `sandbox_read`, or set `sandbox = "off"`.
+
 ### A gate on a build host
 
 A gate on a build host (a `build_host` other than `local`) runs outside the sandbox. The sandbox covers only a command that `beehave` starts on this machine. `beehave check config` prints a note for each such project that has the sandbox on.
