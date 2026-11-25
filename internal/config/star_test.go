@@ -1,6 +1,13 @@
 package config_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"maps"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,12 +116,84 @@ func TestLoadFolder_ABlockOfTheWrongKindIsRefusedWithTheRightName(t *testing.T) 
 	}
 }
 
+// writtenArguments lists the argument names that the source of the package writes as string literals in a function that returns a spec.
+func writtenArguments(t *testing.T) []string {
+	t.Helper()
+
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+
+	var names []string
+
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		require.NoError(t, err)
+
+		for _, decl := range file.Decls {
+			if fn, isFunc := decl.(*ast.FuncDecl); isFunc && returnsSpec(fn) {
+				names = append(names, stringLists(fn)...)
+			}
+		}
+	}
+
+	return names
+}
+
+// returnsSpec reports whether a function returns one spec: the schema of a constructor.
+func returnsSpec(fn *ast.FuncDecl) bool {
+	results := fn.Type.Results
+	if results == nil || len(results.List) != 1 {
+		return false
+	}
+
+	result, isName := results.List[0].Type.(*ast.Ident)
+
+	return isName && result.Name == "spec"
+}
+
+// stringLists returns the strings of every []string literal in a function, without the optional mark.
+func stringLists(fn *ast.FuncDecl) []string {
+	var names []string
+
+	ast.Inspect(fn, func(node ast.Node) bool {
+		list, isLiteral := node.(*ast.CompositeLit)
+		if !isLiteral {
+			return true
+		}
+
+		if kind, isArray := list.Type.(*ast.ArrayType); !isArray || !isStringType(kind.Elt) {
+			return true
+		}
+
+		for _, element := range list.Elts {
+			if text, isText := element.(*ast.BasicLit); isText {
+				names = append(names, strings.TrimSuffix(strings.Trim(text.Value, `"`), "?"))
+			}
+		}
+
+		return true
+	})
+
+	return names
+}
+
+func isStringType(expr ast.Expr) bool {
+	name, isName := expr.(*ast.Ident)
+
+	return isName && name.Name == "string"
+}
+
 func TestLoadFolder_EveryArgumentNamesItsConstructor(t *testing.T) {
 	t.Parallel()
 
-	// The table comes from the constructor definitions, so no second copy exists.
+	// The table comes from the constructor definitions. The census comes from the source text of those definitions and from the adapter fixture, so a constructor that the table leaves out fails here.
 	owners := config.ArgumentOwners()
-	require.Len(t, owners, 78)
+	census := slices.Sorted(slices.Values(slices.Concat(writtenArguments(t), config.FixtureArguments())))
+	require.Equal(t, slices.Compact(census), slices.Sorted(maps.Keys(owners)), "the constructors in the source and the table of the test hold different arguments")
 	require.Equal(t, "credential", owners["ci_locked"])
 	require.Equal(t, "host", owners["setup_command"])
 	require.Equal(t, "agents", owners["trace_parent"])
