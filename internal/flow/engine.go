@@ -37,8 +37,6 @@ const (
 	treeName         = "tree"
 	phaseName        = "phase"
 	databaseFile     = "dbos.db"
-	// ledgerSourceName names the data source of ledger.db in the logs of the library.
-	ledgerSourceName = "ledger"
 	logFileName      = "flow.log"
 	logFileMode      = 0o600
 	stateScheme      = "sqlite:"
@@ -202,8 +200,6 @@ type Engine struct {
 	registry step.Registry
 	// ledger is the open ledger.db of the state folder. The retention of the runs never touches it.
 	ledger *ledger.Ledger
-	// source is the data source over ledger: a write through dbos.RunAsTransaction commits with the record of its step.
-	source *dbos.DataSource
 	// queue is the agents queue: the steps of the kind implement.
 	queue dbos.Queue
 	// reviewQueue is the queue of the steps of the kind review.
@@ -287,7 +283,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	engine := newEngine(opts, deps, state, held, registry)
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), removeEngineFiles(state.dir), held.Unlock(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the state folder: %w", err), removeEngineFiles(state.dir), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts))
@@ -389,7 +385,7 @@ func (e *Engine) registered(err error) (*Engine, error) {
 	return nil, errors.Join(err, e.Shutdown())
 }
 
-// open opens the ledger and the workflow store, and makes the data source of the ledger before the library launches. The engine does not take the cancel of ctx.
+// open opens the ledger and the workflow store. The engine does not take the cancel of ctx.
 // A failure leaves nothing open.
 func (e *Engine) open(ctx context.Context, opts Options, state store) error {
 	held, err := ledger.Open(ctx, state.dir)
@@ -399,15 +395,10 @@ func (e *Engine) open(ctx context.Context, opts Options, state store) error {
 
 	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
 	if err != nil {
-		return errors.Join(err, held.Close())
+		return errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Close())
 	}
 
-	source, err := dbos.NewDataSource(flowCtx, held.DB(), dbos.WithDataSourceName(ledgerSourceName))
-	if err != nil {
-		return errors.Join(fmt.Errorf("open the data source of the ledger: %w", err), dbos.Shutdown(flowCtx, shutdownTimeout), held.Close())
-	}
-
-	e.ctx, e.ledger, e.source = flowCtx, held, source
+	e.ctx, e.ledger = flowCtx, held
 
 	return nil
 }

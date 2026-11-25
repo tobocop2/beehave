@@ -371,7 +371,6 @@ linters:
             - github.com/tobocop2/beehave/internal/roundintegration
             - github.com/tobocop2/beehave/internal/takeover
             - github.com/tobocop2/beehave/internal/gomod
-            - github.com/tobocop2/beehave/internal/ledger
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
             - github.com/tobocop2/beehave/internal/proc
