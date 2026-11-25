@@ -154,9 +154,10 @@ func TestSpend_AfterTheRetentionTheSameRunIdWritesTheRowOfTheNewRun(t *testing.T
 	harness.flowIs(t, "def main(item):\n    agent(name = \"fix\", prompt = \"prompts/work.md\", model = \"m\")\n")
 	finishedRun(t, harness)
 
+	// One second is past the retention of a nanosecond and inside the lease of the claim, which a clock an hour ahead would end.
 	harness.opts.Retention = time.Nanosecond
 	later := harness.deps()
-	later.Clock.Wall = func() time.Time { return time.Now().Add(time.Hour) }
+	later.Clock.Wall = func() time.Time { return time.Now().Add(time.Second) }
 
 	engine, err := NewEngine(t.Context(), harness.opts, later)
 	require.NoError(t, err)
@@ -234,7 +235,7 @@ func TestStartSpend_AnAgentThatHasNotExitedLeavesARowWithAnUnknownCost(t *testin
 
 	engine := newAgentRig(t).h.opened(t)
 
-	execution, err := engine.startSpend(t.Context(), PhaseInput{Run: "r", Tree: "t", Item: "12", Call: "agent:x#1"})
+	execution, err := engine.startSpend(t.Context(), PhaseInput{Run: "r", Item: "12", Call: "agent:x#1"})
 	require.NoError(t, err)
 
 	rows := spendRows(t, engine)

@@ -21,8 +21,6 @@ import (
 // Model, Timeout and IdleTimeout go to the agent as they are. Forbid lists the kinds of command that the step forbids.
 type PhaseInput struct {
 	Run string `json:"run"`
-	// Tree is the root run of the item tree of Run. The spend row of the phase names it. It is left out of a phase that the engine did not queue.
-	Tree string `json:"tree,omitempty"`
 	// Call is the name of the agent call, such as agent:fix#1. The stop at a cap and the error of a look name it.
 	Call    string `json:"call,omitempty"`
 	Item    string `json:"item"`
@@ -404,13 +402,6 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 	if _, err := e.claimed(in.Run, in.Item); err != nil {
 		return PhaseOutput{}, err
 	}
-
-	tree, err := rootRun(e.store(), in.Run)
-	if err != nil {
-		return PhaseOutput{}, fmt.Errorf("find the item tree of item %s: %w", in.Item, err)
-	}
-
-	in.Tree = tree
 
 	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.agentQueue(in.NoEdits)), dbos.WithQueuePartitionKey(in.Login), dbos.WithPriority(placeOf(model.Severity(in.Severity), false)))
 	if err != nil {
