@@ -23,20 +23,24 @@ var (
 
 // originReads is a preflight reader that answers who wrote the item. The issue comes from the first answer. Each read of the pull request, by ReadPull
 // or by Preflight, takes the next answer, and the last one repeats, so a lookup can find another pull request on a later call.
+// As the reader of the build does, it reads the author of the pull request only for a caller that asks for it, and authors lists those reads.
 type originReads struct {
 	*fakePreflight
 
 	mu      sync.Mutex
 	answers []originAnswer
 	asked   []string
+	authors []string
 	pulls   int
 }
 
 // originAnswer is one answer of the forge: the issue and the pull request of the item with their authors, and the error of each read.
+// authorErr fails the read of the author of the pull request alone, so only a caller that asks for the author sees it.
 type originAnswer struct {
-	origin   model.Origin
-	issueErr error
-	pullErr  error
+	origin    model.Origin
+	issueErr  error
+	pullErr   error
+	authorErr error
 }
 
 func (o *originReads) IssueAuthor(_ context.Context, _, item string) (model.Authored, error) {
@@ -48,30 +52,38 @@ func (o *originReads) IssueAuthor(_ context.Context, _, item string) (model.Auth
 	return o.answers[0].origin.Issue, o.answers[0].issueErr
 }
 
-// nextPull takes the answer of the next read of the pull request.
-func (o *originReads) nextPull(kind, item string) originAnswer {
+// nextPull takes the answer of the next read of the pull request: the pull request that the lookup finds, and the error of the read.
+// A caller that asks for no author gets the number alone, and no read of the author is made or fails.
+func (o *originReads) nextPull(kind, item string, author bool) (model.Authored, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
 	o.asked = append(o.asked, kind+" "+item)
 	o.pulls++
 
-	return o.answers[min(o.pulls, len(o.answers))-1]
+	answer := o.answers[min(o.pulls, len(o.answers))-1]
+	if !author {
+		return model.Authored{Number: answer.origin.Pull.Number}, answer.pullErr
+	}
+
+	o.authors = append(o.authors, kind+" "+item)
+
+	return answer.origin.Pull, cmp.Or(answer.pullErr, answer.authorErr)
 }
 
-func (o *originReads) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
-	answer := o.nextPull("pull", item)
+func (o *originReads) ReadPull(_ context.Context, _, item string, author bool) (model.PullFacts, error) {
+	pull, err := o.nextPull("pull", item, author)
 
-	return model.PullFacts{Number: answer.origin.Pull.Number, Association: answer.origin.Pull.Association}, answer.pullErr
+	return model.PullFacts{Number: pull.Number, Association: pull.Association}, err
 }
 
-func (o *originReads) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
-	answer := o.nextPull("preflight", item)
+func (o *originReads) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
+	pull, pullErr := o.nextPull("preflight", item, author)
 
-	result, err := o.fakePreflight.Preflight(ctx, project, item, req)
-	result.Pull = answer.origin.Pull
+	result, err := o.fakePreflight.Preflight(ctx, project, item, req, author)
+	result.Pull = pull
 
-	return result, cmp.Or(answer.pullErr, err)
+	return result, cmp.Or(pullErr, err)
 }
 
 func (o *originReads) items() []string {
@@ -79,6 +91,14 @@ func (o *originReads) items() []string {
 	defer o.mu.Unlock()
 
 	return append([]string(nil), o.asked...)
+}
+
+// authorReads lists the reads that asked who wrote the pull request.
+func (o *originReads) authorReads() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return append([]string(nil), o.authors...)
 }
 
 // checkedHosts is a host keeper whose credential check gives check.
@@ -378,6 +398,64 @@ func TestStart_TheCheckOfALaterReadJudgesThePullRequestThatTheSameReadFound(t *t
 			require.ErrorContains(t, err, "item "+testItem+" stopped: its pull request #40 comes from another account (CONTRIBUTOR)")
 			assert.Equal(t, []string{"issue " + testItem, "pull " + testItem, test.kind + " " + testItem}, reads.items(),
 				"each read finds the pull request once, so no second lookup can name another one")
+			assert.Equal(t, []string{"pull " + testItem, test.kind + " " + testItem}, reads.authorReads(),
+				"each read of the item of the run asks for the author once, on that one lookup")
+		})
+	}
+}
+
+func TestStart_ALaterReadOfAnotherItemReadsNoAuthorAndCannotFailOnOne(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		body, kind string
+	}{
+		"pr_read":   {body: "pr_read(id = \"other\")\n", kind: "pull"},
+		"preflight": {body: "preflight(id = \"other\")\n", kind: "preflight"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.facts = forgeFacts
+			// The other item has a foreign pull request, #88, and the read of its author fails.
+			other := lookupFinds(88, model.AssociationContributor)
+			other.authorErr = errFake
+			reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{lookupFinds(31, model.AssociationOwner), other}}
+			h.preflight = reads
+
+			_, err := walkBody(t, h, test.body)
+
+			require.NoError(t, err, "a failed read of the author of another item's pull request cannot end the run, because no such read is made")
+			assert.Equal(t, []string{"issue " + testItem, "pull " + testItem, test.kind + " other"}, reads.items())
+			assert.Equal(t, []string{"pull " + testItem}, reads.authorReads(), "only the start asks for an author: the one of the item of the run")
+		})
+	}
+}
+
+func TestStart_AFailedAuthorReadAtALaterReadOfTheItemOfTheRunEndsTheRun(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		body, kind string
+	}{
+		"pr_read":   {body: "pr_read()\n", kind: "pull"},
+		"preflight": {body: "preflight()\n", kind: "preflight"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.facts = forgeFacts
+			later := lookupFinds(31, model.AssociationOwner)
+			later.authorErr = errFake
+			reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{lookupFinds(31, model.AssociationOwner), later}}
+			h.preflight = reads
+
+			_, err := walkBody(t, h, test.body)
+
+			require.ErrorContains(t, err, errFake.Error())
+			assert.Equal(t, []string{"pull " + testItem, test.kind + " " + testItem}, reads.authorReads())
 		})
 	}
 }
@@ -415,6 +493,7 @@ func TestStart_ALaterReadOfTheItemOfTheRunByItsIdJudgesItsAuthor(t *testing.T) {
 	_, err := walkBody(t, h, "pr_read(id = \""+testItem+"\")\n")
 
 	require.ErrorContains(t, err, "item "+testItem+" stopped")
+	assert.Equal(t, []string{"pull " + testItem, "pull " + testItem}, reads.authorReads(), "the read by the id of the item of the run asks for its author")
 }
 
 func TestStart_ALaterReadInAProjectWithNoForgeJudgesNoPullRequest(t *testing.T) {
@@ -429,6 +508,7 @@ func TestStart_ALaterReadInAProjectWithNoForgeJudgesNoPullRequest(t *testing.T) 
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"issue " + testItem, "preflight " + testItem}, reads.items())
+	assert.Empty(t, reads.authorReads(), "a project with no forge judges no pull request, so no read asks for an author")
 }
 
 func TestDryPreflight_FindsNoIssue(t *testing.T) {

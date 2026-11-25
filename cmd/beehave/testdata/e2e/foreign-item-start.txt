@@ -36,11 +36,28 @@ env PULL=
 exec beehavereal run 414 issues-off --workflow flow/pass.star
 stdout 'item 414 finished'
 
+# A read of the pull request of another item reads no author. The fake fails the author read of #88, the pull request of the item other-item, and the run
+# finishes: it read the pull request of the other item, and it asked for the author of no pull request.
+exec beehavereal item add pulls-on read-other --title 'Read another item' --body-file body.txt
+exec beehavereal run read-other pulls-on --workflow flow/other.star
+stdout 'item read-other finished'
+grep 'pr view 88' gh.log
+! grep 'graphql.*p=88 ' gh.log
+
+# The same fake does fail that author read when a run asks for it: the item other-item itself, whose pull request is #88, is refused at its start.
+exec beehavereal item add pulls-on other-item --title 'The other item' --body-file body.txt
+exitcode 1 beehavereal run other-item pulls-on --workflow flow/pass.star
+stderr 'item other-item was not started: beehave cannot read who wrote it'
+grep 'graphql.*p=88 ' gh.log
+
 -- body.txt --
 Fix the login.
 -- flow/pass.star --
 def main(item):
     pass
+-- flow/other.star --
+def main(item):
+    pr_read(id = "other-item")
 -- config/projects/issues-off.star --
 project(
     repo        = "o/r",
@@ -69,9 +86,13 @@ project(
 -- fake/gh --
 #!/bin/sh
 # The stand-in for gh: every call is logged, the author read answers ASSOC, and the open pull request list answers PULL when it is set.
+# The item other-item has the open pull request #88, and the author read of #88 fails.
 echo "$*" >> "@WORK@/gh.log"
 case "$*" in
   "auth token"*) echo fake-token ;;
+  *graphql*"p=88 "*) echo 'graphql: error' >&2; exit 1 ;;
+  "pr list"*"--head other-item --state open"*) echo '[{"number":88}]' ;;
+  "pr view 88"*) echo '{"number":88,"state":"OPEN","headRefOid":"abc123","baseRefName":"main","author":{"login":"someone"},"assignees":[],"labels":[],"reviews":[],"reviewRequests":[],"isDraft":false,"body":""}' ;;
   *graphql*issueOrPullRequest*) printf '{"data":{"repository":{"issueOrPullRequest":{"authorAssociation":"%s"}}}}\n' "$ASSOC" ;;
   "pr list"*"--state open"*) if [ -n "$PULL" ]; then printf '[{"number":%s}]\n' "$PULL"; else echo '[]'; fi ;;
   "pr view"*) echo '{"number":77,"state":"OPEN","headRefOid":"abc123","baseRefName":"main","author":{"login":"someone"},"assignees":[],"labels":[],"reviews":[],"reviewRequests":[],"isDraft":false,"body":""}' ;;

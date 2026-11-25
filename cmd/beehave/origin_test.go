@@ -173,10 +173,10 @@ func TestReadPull_TheAuthorIsOfThePullRequestThatTheSameLookupFound(t *testing.T
 
 	f := &turningForge{opens: []int{31, 40}, authors: map[int]model.Association{31: model.AssociationOwner, 40: model.AssociationContributor}}
 
-	first, err := f.over().ReadPull(t.Context(), "p", "7")
+	first, err := f.over().ReadPull(t.Context(), "p", "7", true)
 	require.NoError(t, err)
 
-	second, err := f.over().ReadPull(t.Context(), "p", "7")
+	second, err := f.over().ReadPull(t.Context(), "p", "7", true)
 	require.NoError(t, err)
 
 	assert.Equal(t, model.Authored{Number: 31, Association: model.AssociationOwner}, first.Authored())
@@ -192,10 +192,10 @@ func TestPreflight_TheResultNamesThePullRequestThatItJudgedWithItsAuthor(t *test
 	f := &turningForge{opens: []int{31, 40}, authors: map[int]model.Association{31: model.AssociationOwner, 40: model.AssociationContributor}}
 	f.state = "OPEN"
 
-	first, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
+	first, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, true)
 	require.NoError(t, err)
 
-	second, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
+	second, err := f.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, model.Authored{Number: 31, Association: model.AssociationOwner}, first.Pull)
@@ -209,15 +209,37 @@ func TestReadPullAndPreflight_AFailedReadOfTheAuthorIsAnError(t *testing.T) {
 
 	f := &authorForge{readForge: readForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 31}}}, state: "OPEN"}}, failing: 31}
 
-	_, err := f.on(beads.Tracker).ReadPull(t.Context(), "p", "7")
+	_, err := f.on(beads.Tracker).ReadPull(t.Context(), "p", "7", true)
 	require.ErrorIs(t, err, errFake)
 	assert.Empty(t, f.reads, "no facts are read for a pull request whose author is unknown")
 
 	g := &preflightForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 31}}}, state: "OPEN"}, failing: 31}
 
-	_, err = g.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{})
+	_, err = g.over().Preflight(t.Context(), "p", "bb-1", preflight.Request{}, true)
 	require.ErrorIs(t, err, errFake)
 	assert.Empty(t, g.reads, "no pull request is judged whose author is unknown")
+}
+
+func TestReadPullAndPreflight_ACallerThatAsksForNoAuthorMakesNoAuthorReadAndCannotFailOnOne(t *testing.T) {
+	t.Parallel()
+
+	f := &authorForge{readForge: readForge{pullForge: pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 88}}}, state: "OPEN"}}, failing: 88}
+
+	facts, err := f.on(beads.Tracker).ReadPull(t.Context(), "p", "other", false)
+	require.NoError(t, err, "the read of the author of #88 would fail, and it is not made")
+	assert.Equal(t, model.Authored{Number: 88}, facts.Authored(), "the facts name the pull request and no author")
+	assert.Equal(t, []int{88}, f.reads, "the facts are read on the number of the one lookup")
+	assert.Empty(t, f.asked, "no author is read")
+
+	g := &turningForge{opens: []int{88}, authors: map[int]model.Association{88: model.AssociationContributor}}
+	g.state = "OPEN"
+
+	result, err := g.over().Preflight(t.Context(), "p", "other", preflight.Request{}, false)
+	require.NoError(t, err)
+	assert.Equal(t, model.Authored{Number: 88}, result.Pull, "the result names the pull request that it judged and no author")
+	assert.Equal(t, []int{88}, g.reads)
+	assert.Empty(t, g.asked, "no author is read")
+	assert.Equal(t, 1, g.calls, "the preflight looks the pull request up once")
 }
 
 func TestNoneHostsOf_PassesOnlyAProjectThatDeclaresItsHostWithNoCredentials(t *testing.T) {

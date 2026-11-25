@@ -73,7 +73,7 @@ type Request struct {
 }
 
 // Result is the verdict: the stop, a one-line summary of the pull request, and the lines to show.
-// Pull is the pull request that the verdict judged, with the association of its author, when the caller read it. It is zero when there is none.
+// Pull is the pull request that the verdict judged, with the association of its author when the caller read it. It is zero when there is none.
 type Result struct {
 	Stop    Stop
 	Summary string

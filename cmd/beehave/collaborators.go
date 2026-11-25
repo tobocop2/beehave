@@ -1299,9 +1299,9 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
 // An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
-// The result names the pull request that it judged and who wrote it, read on the number of the one lookup.
-func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
-	built, pull, err := p.authoredPull(ctx, project, item)
+// The result names the pull request that it judged and, with author true, who wrote it, read on the number of the one lookup.
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
 	if err != nil {
 		return preflight.Result{}, err
 	}
@@ -1318,16 +1318,17 @@ func (p pulls) Preflight(ctx context.Context, project, item string, req prefligh
 	return result, err
 }
 
-// authoredPull finds the pull request of the item once and reads who wrote it, on that number. An item with no pull request in any state gives number 0.
-func (p pulls) authoredPull(ctx context.Context, project, item string) (opened, model.Authored, error) {
+// authoredPull finds the pull request of the item once and, with author true, reads who wrote it, on that number. With author false it makes no such read
+// and gives the number alone. An item with no pull request in any state gives number 0.
+func (p pulls) authoredPull(ctx context.Context, project, item string, author bool) (opened, model.Authored, error) {
 	built, err := p.forgeOf(project)
 	if err != nil {
 		return opened{}, model.Authored{}, err
 	}
 
 	number, err := anyState(ctx, built, item)
-	if err != nil || number == 0 {
-		return built, model.Authored{}, err
+	if err != nil || number == 0 || !author {
+		return built, model.Authored{Number: number}, err
 	}
 
 	pull, err := authored(ctx, built, number)
@@ -1336,9 +1337,9 @@ func (p pulls) authoredPull(ctx context.Context, project, item string) (opened, 
 }
 
 // ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
-// The facts carry who wrote the pull request, read on the number of the one lookup.
-func (p pulls) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
-	built, pull, err := p.authoredPull(ctx, project, item)
+// With author true, the facts carry who wrote the pull request, read on the number of the one lookup.
+func (p pulls) ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
 	if err != nil || pull.Number == 0 {
 		return model.PullFacts{}, err
 	}

@@ -117,12 +117,12 @@ func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, er
 }
 
 // Preflight finds nothing changed: the scripts own no pull request before the first agent.
-func (e2eFiles) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
+func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, bool) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
 
 // ReadPull finds no pull request.
-func (e2eFiles) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+func (e2eFiles) ReadPull(context.Context, string, string, bool) (model.PullFacts, error) {
 	return model.PullFacts{}, nil
 }
 

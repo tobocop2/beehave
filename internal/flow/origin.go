@@ -48,7 +48,7 @@ func (e *Engine) readOrigin(ctx context.Context, in ItemInput) (model.Origin, er
 		return model.Origin{Issue: issue}, err
 	}
 
-	facts, err := reader.ReadPull(ctx, in.Project, in.Item)
+	facts, err := reader.ReadPull(ctx, in.Project, in.Item, true)
 
 	return model.Origin{Issue: issue, Pull: facts.Authored()}, err
 }
@@ -101,10 +101,15 @@ func (e *Engine) mayHoldForeign(ctx context.Context, in ItemInput) (string, bool
 	return "", true
 }
 
+// owns reports whether a later read of the item with the id judges its author: the id names the item of the run, or is empty, and the project has a forge.
+func (s *script) owns(id string) bool {
+	return (id == "" || id == s.in.Item) && s.e.facts(s.in.Project).Forge != ""
+}
+
 // admitOwn applies the rule of the start again to the pull request that a later read of the item of the run found, because a pull request can open
-// after the start. The check judges the pull request of that one read. A read of another item, or a project with no forge, passes.
-func (s *script) admitOwn(ctx context.Context, id string, pull model.Authored) error {
-	if (id != "" && id != s.in.Item) || s.e.facts(s.in.Project).Forge == "" {
+// after the start. The check judges the pull request of that one read, which carries its author. A read that is not own passes.
+func (s *script) admitOwn(ctx context.Context, own bool, pull model.Authored) error {
+	if !own {
 		return nil
 	}
 

@@ -60,7 +60,7 @@ type loopPreflight struct {
 	asked []string
 }
 
-func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request) (preflight.Result, error) {
+func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request, _ bool) (preflight.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -70,7 +70,7 @@ func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight
 }
 
 // ReadPull gives the pull request of the item, if the test set one.
-func (p *loopPreflight) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+func (p *loopPreflight) ReadPull(_ context.Context, _, item string, _ bool) (model.PullFacts, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
