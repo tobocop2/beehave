@@ -194,9 +194,12 @@ func requireUnread(t *testing.T, answers map[string]model.CommandResult) {
 		f := newForge(t, repo, proctest.Always(answer))
 
 		got, err := f.CanWriteCI(context.Background())
-		require.Error(t, err, name)
+
+		var refusal *forge.Error
+
+		require.ErrorAs(t, err, &refusal, name)
+		assert.Equal(t, forge.CodeRefused, refusal.Code, name)
 		assert.Equal(t, model.CIWriteUnknown, got, name)
-		assert.Contains(t, err.Error(), "cannot read whether the token can change workflow files", name)
 	}
 }
 

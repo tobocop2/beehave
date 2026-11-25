@@ -97,25 +97,20 @@ func (f *Forge) DisableAutoMergePR(ctx context.Context, pr int) error {
 func (f *Forge) CanWriteCI(ctx context.Context) (model.CIWrite, error) {
 	done := f.run.Run(ctx, []string{"auth", "status", "--active", "--hostname", githubHost, argJSON, "hosts"})
 	if done.ExitCode != 0 {
-		return model.CIWriteUnknown, ciUnread(refused(done, "%s exited with code %d", cmdAuthStatus, done.ExitCode))
+		return model.CIWriteUnknown, refused(done, "%s exited with code %d", cmdAuthStatus, done.ExitCode)
 	}
 
 	status, err := model.Decode[authStatus](cmdAuthStatus, done.Stdout)
 	if err != nil {
-		return model.CIWriteUnknown, ciUnread(err)
+		return model.CIWriteUnknown, forge.Refusal("cannot parse the answer of "+cmdAuthStatus, err)
 	}
 
 	account, err := status.active()
 	if err != nil {
-		return model.CIWriteUnknown, ciUnread(err)
+		return model.CIWriteUnknown, forge.Refusal(err.Error(), err)
 	}
 
 	return account.write(), nil
-}
-
-// ciUnread is the refusal for an answer of gh auth status that the read cannot use. It keeps the cause in the text.
-func ciUnread(err error) error {
-	return &forge.Error{Code: forge.CodeRefused, Message: "cannot read whether the token can change workflow files: " + err.Error(), Err: err}
 }
 
 // authStatus is the answer of `gh auth status --json hosts`: the accounts of each host.
