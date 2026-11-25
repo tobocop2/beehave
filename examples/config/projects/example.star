@@ -84,10 +84,13 @@ project(
     #     lost_after = "5m",       # how long a job gets no answer to a read before the wait ends as lost; above zero (default "5m")
     #     stop_limit = "5m",       # how long a job may take to end after a cancel; above zero (default "5m")
     #     private_remote = "git@example.com:your-org/your-repo-private.git",  # where beehave pushes unbanked work before the host goes down
+    #     setup_command = "make setup",  # runs once in a clone of the project when the cluster is created; skypilot only (default: no set-up)
     #     skypilot = skypilot(
     #         cloud = "gcp",       # empty leaves the choice to SkyPilot
     #         region = "us-central1",
     #         instance_type = "n2-standard-8",   # one size for every queue; or give instance_sizes, never both
+    #         disk_size_gb = 100,  # boot disk size, 10 to 65536 (default: the size SkyPilot picks)
+    #         spot = True,         # a spot instance; True or False (default False). A spot cluster has no max_run setting; the queue still ends each job at max_run
     #         # instance_sizes = "3:n2-standard-4,n2-standard-16",  # up to 3 waiting gates: the first type; more: the last type. The first gate starts the host
     #     ),
     # ),

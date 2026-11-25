@@ -194,3 +194,43 @@ func TestLoadFolder_AProjectValueHoldsTheBlockOfItsChosenAdapter(t *testing.T) {
 	assert.Equal(t, `{prefix="p"}`, project.Blocks["beads"].String())
 	assert.Contains(t, project.Blocks["beads"].At(), "p.star:1:", "the block keeps the position of its call")
 }
+
+func TestLoadFolder_ABoolArgumentOfABlockTakesTrueOrFalseAndRefusesAnyOtherValue(t *testing.T) {
+	t.Parallel()
+
+	flagged := &config.Block{Name: "shelf", Args: []config.Arg{{Key: "warm", Kind: config.BoolArg, Optional: true}, {Key: "zone", Optional: true}}}
+	registered := blockRegistry(flagged, nil)
+
+	project, problems := loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", shelf = shelf(warm = True, zone = "a"), `+blockTail))
+
+	require.Empty(t, problems)
+
+	warm, given := project.Blocks["shelf"].Bool("warm")
+	zone, _ := project.Blocks["shelf"].Text("zone")
+
+	assert.True(t, given)
+	assert.True(t, warm)
+	assert.Equal(t, "a", zone, "the key beside the bool key still comes from the call")
+
+	project, problems = loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", shelf = shelf(warm = False), `+blockTail))
+
+	require.Empty(t, problems)
+
+	warm, given = project.Blocks["shelf"].Bool("warm")
+	assert.True(t, given)
+	assert.False(t, warm)
+
+	project, problems = loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", shelf = shelf(zone = "b"), `+blockTail))
+
+	require.Empty(t, problems)
+
+	_, given = project.Blocks["shelf"].Bool("warm")
+	assert.False(t, given, "a bool key that the call leaves out is not given")
+
+	for _, value := range []string{`"yes"`, `1`} {
+		_, problems = loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", shelf = shelf(warm = `+value+`), `+blockTail))
+
+		require.Len(t, problems, 1, value)
+		assert.Contains(t, problems[0].Error(), "want True or False", value)
+	}
+}

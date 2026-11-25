@@ -18,6 +18,8 @@ const (
 	TextArg ArgKind = iota
 	// WholeArg is a whole-number argument.
 	WholeArg
+	// BoolArg is a True or False argument.
+	BoolArg
 )
 
 // Arg is one argument of an adapter block: its key, its kind and whether the call may leave it out.
