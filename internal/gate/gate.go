@@ -906,13 +906,22 @@ func stepMarkerResults(log string, project model.Project) []Step {
 const stepKillGrace = "3"
 
 // stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up,
-// and `--kill-after` makes a step that traps TERM end after the grace.
+// and `--kill-after` makes a step that traps TERM end after the grace. `timeout` leads its own process group, and uutils `timeout` kills only
+// its child, so after a kill the wrap sends KILL to that group: the group id is the pid of `timeout`.
+// The wrap runs `timeout` in the background to learn that pid. A background command of a shell gets no stdin, so the wrap saves its own stdin
+// on descriptor 3 and gives it back. A TERM that stops the wrap, such as the run limit of the host, goes on to the group of the step, because
+// the wrap is the only process that the run limit signals. The kill commands write no error: after a `timeout` that killed the group
+// itself, the group is already empty.
 func stepLimited(spec model.GateSpec, command string) string {
 	if spec.Timeout <= 0 {
 		return command
 	}
 
-	return "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+	limit := "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+	forward := `trap '[ -n "$p" ] || exit 143; kill -s TERM -- "-$p" 2>/dev/null; wait "$p"; kill -s KILL -- "-$p" 2>/dev/null; exit 143' TERM; `
+
+	return "sh -c " + model.ShellQuote(`p=; `+forward+`exec 3<&0; `+limit+` <&3 3<&- & p=$!; wait "$p"; rc=$?; case "$rc" in `+
+		hostTimeoutCode+"|"+hostKilledCode+` ) kill -s KILL -- "-$p" 2>/dev/null ;; esac; exit "$rc"`)
 }
 
 // The exit statuses that `timeout` gives for a step that it killed: 124 after TERM, and 137 (128 plus KILL) when it had to send KILL.
