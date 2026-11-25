@@ -505,6 +505,16 @@ An empty `own` checks no assignee and no author.
 - A stop of the item of the run goes into the `stopped` field of the result of the run, under the step `claim_stop:<name>`.
 - The reason also gives the recovery: leave the item to the holder, or ask the holder first.
 
+#### `hold_item`
+
+`hold_item` is a function of the library: `load("@beehave//hold.star", "hold_item")`. `hold_item(name, id, raw, forbid_text)` puts an item on hold with a note for the owner, and returns the text of the note.
+
+- `raw` is the JSON text of one object with the keys `question`, `options` and `recommendation`. `options` is a list of at least two texts.
+- The call refuses a note with a blank question, a blank recommendation, fewer than two options or a blank option. It refuses text that is not a JSON object, and shows the first 200 characters. Each refusal starts with `REFUSE:` and names the field. A refused note writes no comment and no status.
+- A good note is one `item_comment` under the key `hold-note`, with the question, the numbered options and the recommendation. Then one `item_status` with the status `hold`. The steps are `<name>-note` and `<name>-status`.
+- The call does not use `wait`. A `wait` blocks the run, and the item must wait for the owner while the queue goes on. The queue never starts a held item.
+- The example gives the implement agent and each fix agent the output `hold`. An empty text means no hold. A note of the implement agent ends the item with the reason `needs-user` before the sweep, the push and the draft. A note of a fix agent ends the review loop through `lane_asks`.
+
 #### Other orchestrators
 
 At the start of a run, the engine lists the other orchestrators that hold items in the claim store of the project. `beehave status` shows them for an open run. A store that cannot be read ends the run, because a failed read is not "nobody else runs".

@@ -181,7 +181,7 @@ case $step in
     git add "$id-$n.txt"
     git -c user.name=dev -c user.email=agent@example.com commit -q -m "task $id attempt $n"
     git push -q origin "HEAD:refs/heads/$id"
-    printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
+    printf '{"report":"# Report\\n","uncaused":"[]","hold":""}\n' > "$(field write)"
     ;;
 esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
