@@ -24,7 +24,7 @@ func registry() config.Adapters {
 		Claims:   map[model.ClaimsName]*config.Entry{"local": {}, "beads": beads()},
 		Forges:   map[model.ForgeName]*config.Entry{"github": github()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			"skypilot": {Idle: true, Block: &config.Block{Name: "skypilot", Args: []config.Arg{{Key: "cloud", Optional: true}, {Key: "region", Optional: true}, {Key: "instance_type", Optional: true}}}},
+			"skypilot": {Idle: true, StartsWithOwnerCredentials: true, Block: &config.Block{Name: "skypilot", Args: []config.Arg{{Key: "cloud", Optional: true}, {Key: "region", Optional: true}, {Key: "instance_type", Optional: true}}}},
 			"ssh":      {Block: machineBlock("ssh")},
 			"slurm":    {Block: machineBlock("slurm")},
 		},

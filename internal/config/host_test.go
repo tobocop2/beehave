@@ -198,6 +198,59 @@ func TestHostConfig_TheLostAndStopLimitsDefaultToFiveMinutesAndAreDistinctFromLo
 	require.Equal(t, 5*time.Minute, project.Host.LostAfter, "lost_after keeps its default when only stop_limit is written")
 }
 
+func TestHostConfig_CredentialsNoneLoadsForSSHAndSlurmAndAnUnsetKeyStaysEmptyForEveryProvider(t *testing.T) {
+	t.Parallel()
+
+	for name, text := range map[string]string{"ssh": sshCall(`, credentials = "none"`), "slurm": `host(provider = "slurm", disk_floor_gb = 50, credentials = "none")`} {
+		project, problems := loadProjectText(t, call(clusterProject+", host = "+text))
+		require.Empty(t, problems, name)
+		require.Equal(t, model.HostCredentialsNone, project.Host.Credentials, name)
+	}
+
+	for name, text := range map[string]string{"skypilot": hostCall(""), "ssh": sshCall("")} {
+		project, problems := loadProjectText(t, call(clusterProject+", host = "+text))
+		require.Empty(t, problems, name)
+		require.Empty(t, project.Host.Credentials, name)
+	}
+}
+
+func TestHostConfig_CredentialsNoneOnAProviderThatStartsItsMachineWithCredentialsOfTheOwnerIsRefusedWithTheReasonAndTheFix(t *testing.T) {
+	t.Parallel()
+
+	for name, extra := range map[string]string{
+		"alone":         "",
+		"with a set-up": `, setup_command = "make setup"`,
+		"with a block":  `, skypilot = skypilot(cloud = "gcp")`,
+	} {
+		_, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, credentials = "none"`+extra)))
+
+		require.Len(t, problems, 1, name)
+		require.ErrorIs(t, problems[0], config.ErrRefused, name)
+		require.ErrorContains(t, problems[0], `"none" is not allowed for provider "skypilot"`, name)
+		require.ErrorContains(t, problems[0], "forward your SSH agent and copies your cloud credentials", name)
+		require.ErrorContains(t, problems[0], "Remove the key.", name)
+	}
+
+	_, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, credentials = "some"`)))
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], `the only value is "none"`, "a value that is not none is refused for its value first")
+}
+
+func TestHostConfig_ACredentialsValueOtherThanNoneIsRefusedAndNamesNone(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{"some", "None", ""} {
+		_, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall(`, credentials = "`+text+`"`)))
+
+		require.Len(t, problems, 1, text)
+		require.ErrorIs(t, problems[0], config.ErrRefused, text)
+		require.ErrorContains(t, problems[0], "`host.credentials`", text)
+	}
+
+	_, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall(`, credentials = "some"`)))
+	require.ErrorContains(t, problems[0], `the only value is "none"`)
+}
+
 func TestHostConfig_ALostAfterOrStopLimitThatIsNegativeOrNotADurationIsRefused(t *testing.T) {
 	t.Parallel()
 
