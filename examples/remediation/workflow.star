@@ -754,7 +754,7 @@ def land(approved, project, round_settings, n, run):
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
-    No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands. `author` is the author of the pull request, from the queue row.
+    No entry calls it yet (#438). The engine starts a foreign item only in the sandbox on a build host declared credentials = "none". `author` is the author of the pull request, from the queue row.
     1. A review agent posts the findings as a changes-requested review. The notice is refused until the review is on the pull request.
     2. The engine step pr_take posts, as the writer, the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
     3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take.
@@ -803,7 +803,7 @@ def wontfix_text(ledger, heading):
 
 def foreign_followup(recorded, project):
     """Files one follow-up issue for the findings that a foreign review left open, once the reviewed pull request merged, and returns its id. It returns "" when it files nothing.
-    No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands (#438), and that change wires it in.
+    No entry calls it yet (#438). The engine starts a foreign item only in the sandbox on a build host declared credentials = "none".
     `recorded` is the value of the foreign review run: `pr` is the number that the intake preflight gave, and `findings` the open findings of the review, each with an `id`, a `severity`, a `path` and a `text`.
     `project` is the value of facts().
     The step reads the state of that number. It does not look the pull request up again, so a branch that is not the item id and a base that is not vars.round.base change nothing.

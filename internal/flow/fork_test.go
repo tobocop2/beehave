@@ -450,9 +450,12 @@ func TestFork_AReadOfTheOverlayThatFailsFailsTheFactsOfTheForkedRun(t *testing.T
 
 	var armed atomic.Bool
 
+	// The store fails from the read of the facts after the claim: the read of who wrote the item before the claim also reads the project.
 	w := &forkWorld{h: newHarness(t)}
 	w.h.facts = func(project string) model.Project {
-		armed.Store(true)
+		if slices.Contains(w.h.life.seen(), "claim:"+testItem) {
+			armed.Store(true)
+		}
 
 		return model.Project{Name: project, Repo: "o/n", BaseBranch: "main", Vars: map[string]any{"mode": "a", "keep": "k"}}
 	}

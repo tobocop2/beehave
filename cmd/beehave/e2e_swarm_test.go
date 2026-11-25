@@ -384,6 +384,11 @@ func (swarmForgeAt) Reviews(context.Context, int) ([]model.Review, error) { retu
 
 func (f swarmForgeAt) IssueState(context.Context, int) (string, error) { return "", errFake }
 
+// Association says the owner wrote every issue and pull request: the scripts stand for the repository of the owner.
+func (swarmForgeAt) Association(context.Context, int) (model.Association, error) {
+	return model.AssociationOwner, nil
+}
+
 // ClosingRefs reports that no pull request closes an issue, and that the base is the base of the forge.
 func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{BaseBranch: f.base(), DefaultBranch: "main"}, nil

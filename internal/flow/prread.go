@@ -35,6 +35,8 @@ func (s *script) unpackReads(b *starlark.Builtin, args starlark.Tuple, kwargs []
 
 // prRead reads the pull request of an item, found as the preflight finds it: the open one on its branch, then an open one that names the item, then the merged one, then the newest closed one.
 // An item with no pull request in any state gives found false. The read is a recorded step, so a replay returns the answer of the first read, and a failed read ends the run.
+// A read of the item of the run applies the rule of the start again to the pull request of the facts, so a foreign pull request that opened after the start ends
+// a run that may not hold it. A read of another item reads no author.
 func (s *script) prRead(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var id, label string
 
@@ -43,8 +45,14 @@ func (s *script) prRead(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	}
 
 	return s.durable(prReadKind, label, func(ctx context.Context, _ string) (stepResult, error) {
-		facts, err := s.e.deps.Preflight.ReadPull(ctx, s.in.Project, cmp.Or(id, s.in.Item))
+		own := s.owns(id)
+
+		facts, err := s.e.deps.Preflight.ReadPull(ctx, s.in.Project, cmp.Or(id, s.in.Item), own)
 		if err != nil {
+			return stepResult{}, err
+		}
+
+		if err := s.admitOwn(ctx, own, facts.Authored()); err != nil {
 			return stepResult{}, err
 		}
 

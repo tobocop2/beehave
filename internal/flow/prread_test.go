@@ -23,11 +23,11 @@ type readsFake struct {
 	failIssue bool
 }
 
-func (f *readsFake) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
+func (f *readsFake) Preflight(context.Context, string, string, preflight.Request, bool) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
 
-func (f *readsFake) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+func (f *readsFake) ReadPull(_ context.Context, _, item string, _ bool) (model.PullFacts, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -48,6 +48,11 @@ func (f *readsFake) IssueAssignees(_ context.Context, _, repo string, number int
 	}
 
 	return f.issues[link], f.err
+}
+
+// IssueAuthor finds no issue.
+func (f *readsFake) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }
 
 func readsHarness(t *testing.T, fake *readsFake) (*harness, *fakeWriter) {

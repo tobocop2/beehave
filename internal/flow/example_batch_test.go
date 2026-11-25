@@ -36,7 +36,7 @@ type remoteBranches struct {
 }
 
 // ReadPull gives the draft of the item, written by the owner of the round, or no pull request.
-func (r *remoteBranches) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+func (r *remoteBranches) ReadPull(_ context.Context, _, item string, _ bool) (model.PullFacts, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -51,7 +51,7 @@ func (r *remoteBranches) ReadPull(_ context.Context, _, item string) (model.Pull
 	return model.PullFacts{Number: r.drafts[item], State: "OPEN", Draft: true, Author: shipOwner}, nil
 }
 
-func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req preflight.Request) (preflight.Result, error) {
+func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req preflight.Request, _ bool) (preflight.Result, error) {
 	if r.before != nil {
 		r.before(ctx, item)
 	}
