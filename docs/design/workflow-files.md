@@ -285,13 +285,13 @@ The `parent` argument:
 
 #### `pr_closing`
 
-`pr_closing(item, pr, name)` reads the issues that a pull request closes. It returns `found`, `issues` and `forge`. `item` is the item of the run when it is empty.
+`pr_closing(item, pr, name)` reads the issues that a pull request closes. It returns `found`, `issues`, `forge` and `error`. `item` is the item of the run when it is empty.
 
-- `pr` names the pull request by its number, such as the integration pull request of a round. A call with `item` and `pr` is refused, and so is a `pr` below zero. A pull request that is read by its number is `found` when the read succeeds, and a pull request that is gone ends the step with an error. A build with no queue reader fails the call, and a dry run does not fake the read.
+- `pr` names the pull request by its number, such as the integration pull request of a round. A call with `item` and `pr` is refused, and so is a `pr` below zero. A pull request that is read by its number is `found` when the read succeeds. A read by number that fails, a pull request that is gone included, gives `found = False`, no issues and the cause in `error`. A build with no queue reader fails the call, and a dry run does not fake the read.
 - `issues` is the sorted list of the references that the forge shows as closed by that pull request. An issue of another repository is a full reference, such as `other-org/other-repo#3`.
 - An item with no pull request gives `found = False` and no issues.
 - A project with no forge gives `forge = False`, `found = False` and no issues.
-- A read that fails ends the step with an error. The call never gives an empty set for a failed read.
+- A failed read of the pull request of an item ends the step with an error. The call never gives an empty set with `found = True` for a failed read.
 - The read is a recorded step named `pr_closing:<name>#<n>`, so a resumed run replays the first answer. The dry run gives a pull request that closes no issue.
 
 #### `earlier_reads`
@@ -653,8 +653,8 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 
 - An issue that is not closed is a finding. A read that fails is the finding "cannot read issue #N: <error>", never a pass, and the audit reads the next issue.
 - The id of an item of the GitHub tracker is the number of its issue. An id that is not a plain number is a finding, and its issue is not read.
-- If `integration` is not 0, it also reads the closing references of that pull request with `pr_closing`. An issue that it closes and no landed item names is a finding.
-- A tracker with no issue numbers gives no findings and the note "issue states: the tracker of the project has no issue numbers, so no read ran." A batch that landed nothing reads no issue and gives the note "issue states: no member landed, so no read ran."
+- If `integration` is not 0, it also reads the closing references of that pull request with `pr_closing`. An issue that it closes and no landed item names is a finding. A read that fails is the finding "cannot read the closing references of pull request #N: <error>", and the audit goes on.
+- A tracker with no issue numbers gives no findings and the note "issue states: the tracker of the project has no issue numbers, so no read ran." The first issue read tells it. If no landed id is a plain number, `facts()` tells it, and the ids are no findings. A batch that landed nothing reads no issue and gives the note "issue states: no member landed, so no read ran."
 - The audit never closes or reopens an issue. A finding does not fail the call, because the batch has landed. The workflow reads `findings` and decides what to tell the owner.
 
 #### `hand_off`

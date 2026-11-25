@@ -68,7 +68,7 @@ var goldenShapes = map[string][]string{
 		"item_stop: recorded",
 		"landing_proof: unproven",
 		"merge: deferred,merged,moved,reason,rejected,rest,tip",
-		"pr_closing: forge,found,issues",
+		"pr_closing: error,forge,found,issues",
 		"pr_comment: number",
 		"pr_history: pulls",
 		"pr_list: pulls",

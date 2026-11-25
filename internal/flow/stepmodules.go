@@ -99,7 +99,9 @@ const trackerVersion = 4
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
 // Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
 // Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step. Version 10 adds the pr_closing step. Version 11 adds the base_tip and issue_state steps.
-// Version 12 adds the landing_proof step, and the error field of the issue_state step: a failed read is recorded with its cause and no state.const forgeVersion = 12
+// Version 12 adds the landing_proof step, and the error field of the issue_state step: a failed read is recorded with its cause and no state.
+// It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
+const forgeVersion = 12
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).

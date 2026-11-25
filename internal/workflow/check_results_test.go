@@ -27,7 +27,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"item_list", `item_list()`, "3:11 haed is not a field of the result of item_list. It has: items."},
 		{"pr_list", `pr_list()`, "3:11 haed is not a field of the result of pr_list. It has: pulls."},
 		{"run_read", `run_read(items = ["1"])`, "3:11 haed is not a field of the result of run_read. It has: runs, free."},
-		{"pr_closing", `pr_closing()`, "3:11 haed is not a field of the result of pr_closing. It has: found, issues, forge."},
+		{"pr_closing", `pr_closing()`, "3:11 haed is not a field of the result of pr_closing. It has: found, issues, forge, error."},
 		{"base_tip", `base_tip(base = "main")`, "3:11 haed is not a field of the result of base_tip. It has: commit, tree."},
 		{"landing_proof", `landing_proof(base = "main", start = struct(commit = "c", tree = "t"), end = struct(commit = "c", tree = "t"), landed = [])`, "3:11 haed is not a field of the result of landing_proof. It has: unproven."},
 		{"issue_state", `issue_state(number = 7)`, "3:11 haed is not a field of the result of issue_state. It has: state, found, error."},

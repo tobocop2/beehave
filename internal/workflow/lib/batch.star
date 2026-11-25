@@ -208,11 +208,15 @@ def _land(st, members):
 def issue_audit(landed, integration = 0, name = ""):
     """Reads the issue of each landed item and, when integration is not 0, the issues that the integration pull request closes.
     An issue of a landed item that is still open is a finding, and so is an issue that the integration pull request closes and no landed item names.
-    An issue read that fails is a finding, never a pass. The id of an item of the GitHub tracker is the number of its issue.
-    A tracker with no issue numbers gives no findings and the note NO_ISSUE_NUMBERS_NOTE. Returns struct(findings, note)."""
+    A read that fails, of an issue or of the closing references, is a finding, never a pass, and the audit goes on. The id of an item of the GitHub tracker is the number of its issue.
+    A tracker with no issue numbers gives no findings and the note NO_ISSUE_NUMBERS_NOTE: the first issue read tells it, or facts() when no id is a plain number.
+    Returns struct(findings, note)."""
+    plain = [item for item in landed if _plain_number(item)]
+    if len(plain) == 0 and facts().tracker != "github":
+        return struct(findings = [], note = NO_ISSUE_NUMBERS_NOTE)
     findings, claimed = [], {}
     for item in landed:
-        if item == "" or item.lstrip("0123456789") != "" or item.startswith("0"):
+        if not _plain_number(item):
             findings.append("the id \"%s\" of a landed item is not a plain issue number, so its issue was not read" % item)
             continue
         number = int(item)
@@ -225,11 +229,17 @@ def issue_audit(landed, integration = 0, name = ""):
         elif read.state != "CLOSED":
             findings.append("issue #%d of item %s is not closed after the batch landed (the forge says \"%s\")" % (number, item, read.state))
     if integration > 0:
-        refs = pr_closing(pr = integration, name = name + ".closing").issues
-        for number in sorted([int(ref[1:]) for ref in refs if ref.startswith("#")]):
+        closing = pr_closing(pr = integration, name = name + ".closing")
+        if closing.error != "":
+            findings.append("cannot read the closing references of pull request #%d: %s" % (integration, closing.error))
+        for number in sorted([int(ref[1:]) for ref in closing.issues if ref.startswith("#")]):
             if number not in claimed:
                 findings.append("pull request #%d closes issue #%d and no landed item names it" % (integration, number))
     return struct(findings = findings, note = "")
+
+def _plain_number(item):
+    """True for an id that is a plain issue number: digits only, with no leading zero."""
+    return item != "" and item.lstrip("0123456789") == "" and not item.startswith("0")
 
 def batch_merge(name, prs, base, repo, hold = "", own = {}, forbid_text = [], gate_run = [], integration = 0):
     """Lands the pull requests of prs with one gate run for the whole set. The members fold in item order onto the base tip, the union is gated, and a red union splits in halves.

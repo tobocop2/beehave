@@ -63,6 +63,7 @@ const (
 	statusField          = "status"
 	attemptsField        = "attempts"
 	foundField           = "found"
+	errorField           = "error"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -73,7 +74,7 @@ const (
 func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills", "commit_subject", "commit_body"},
-		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
+		commandName:      {"stdout", "stderr", "rc", attemptsField, errorField},
 		earlierCallsName: {"count"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
@@ -131,12 +132,12 @@ func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		baseTipName:        {"commit", treeKeyword},
 		landingProofName:   {"unproven"},
-		issueStateName:     {stateField, foundField, "error"},
+		issueStateName:     {stateField, foundField, errorField},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},
 		itemStatusName:     {"id", statusField},
-		prClosingName:      {foundField, "issues", "forge"},
+		prClosingName:      {foundField, "issues", "forge", errorField},
 		prCommentName:      {numberField},
 		prOpenName:         {numberField, "created", "stack"},
 		prStateName:        {stateField},

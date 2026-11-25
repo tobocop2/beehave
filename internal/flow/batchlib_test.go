@@ -542,12 +542,59 @@ def main(item):
 	assert.Empty(t, q.closingAsked)
 }
 
+func TestBatchLibrary_ATrackerWithNoIssueNumbersAndOnlyTextIdsGivesTheNoteAndNoFindings(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{noIssueNumbers: true}
+	h.queue = q
+	h.facts = func(string) model.Project { return model.Project{Tracker: "beads"} }
+
+	body := `load("@beehave//batch.star", "issue_audit")
+
+def main(item):
+    out = issue_audit(landed = ["bb-1", "bb-2"], integration = 70, name = "a")
+    command(name = "seen", run = ["seen", str(len(out.findings)), out.note])
+`
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"seen 0 issue states: the tracker of the project has no issue numbers, so no read ran."}, h.commands.ran(),
+		"as the base audit, the tracker comes before the ids: no id of a tracker with no issue numbers is a finding")
+	assert.Empty(t, q.issueAsked)
+	assert.Empty(t, q.closingAsked)
+}
+
+func TestBatchLibrary_AFailedReadOfTheClosingReferencesIsAFindingAndTheAuditGoesOn(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{issueStates: map[int]string{4: issueOpen}, closingErr: errors.New("the forge is down")}
+	h.queue = q
+
+	body := `load("@beehave//batch.star", "issue_audit")
+
+def main(item):
+    out = issue_audit(landed = ["4"], integration = 70, name = "a")
+    for line in out.findings:
+        command(name = "seen", run = ["seen", line])
+`
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
+
+	require.NoError(t, err, "a failed read is a finding, as the base audit made it, and never ends the call")
+	assert.Equal(t, []string{
+		`seen issue #4 of item 4 is not closed after the batch landed (the forge says "OPEN")`,
+		"seen cannot read the closing references of pull request #70: read the issues that pull request 70 closes: the forge is down",
+	}, h.commands.ran())
+}
+
 func TestBatchLibrary_AnIdWithALeadingZeroOrNoDigitsIsNotAPlainIssueNumber(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	q := &fakeQueue{}
 	h.queue = q
+	h.facts = func(string) model.Project { return model.Project{Tracker: "github"} }
 
 	body := `load("@beehave//batch.star", "issue_audit")
 
