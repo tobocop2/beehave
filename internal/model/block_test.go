@@ -56,3 +56,36 @@ func TestBlock_StringListsTheKeysInOrderAndLeavesOutThePosition(t *testing.T) {
 	assert.Equal(t, `{port=22 user="ci"}`, one.String())
 	assert.Equal(t, one.String(), other.String())
 }
+
+func TestBlock_ATrueOrFalseKeyReadsAsABoolAndAsNeitherTextNorWhole(t *testing.T) {
+	t.Parallel()
+
+	block := model.NewBlock("p.star:3:5", []model.BlockEntry{model.BoolEntry("spot", true), model.BoolEntry("warm", false), model.TextEntry("user", "ci")})
+
+	spot, given := block.Bool("spot")
+	assert.True(t, given)
+	assert.True(t, spot)
+
+	warm, given := block.Bool("warm")
+	assert.True(t, given, "a key that the call set to False is given")
+	assert.False(t, warm)
+
+	_, given = block.Bool("user")
+	assert.False(t, given, "a text key is no bool key")
+
+	_, given = block.Text("spot")
+	assert.False(t, given, "a bool key is no text key")
+
+	_, given = block.Whole("spot")
+	assert.False(t, given, "a bool key is no whole-number key")
+
+	_, given = block.Bool("zone")
+	assert.False(t, given)
+
+	assert.Equal(t, `{spot=true user="ci" warm=false}`, block.String())
+
+	var none *model.Block
+
+	_, given = none.Bool("spot")
+	assert.False(t, given)
+}

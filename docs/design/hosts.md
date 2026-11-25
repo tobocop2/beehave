@@ -125,6 +125,9 @@ It composes the Slurm adapter: SkyPilot creates and deletes the cluster, and the
 
 - `Up` is the first call and `Down` the last.
 - `Up` runs `sky launch --down` with `host.idle_minutes`. It passes `host.max_run` as the SkyPilot setting for the lifetime of an instance, which SkyPilot documents for GPU instances only.
+- With `spot = True`, `Up` adds `--use-spot` and leaves out the `host.max_run` setting. SkyPilot refuses a spot instance in the instance group that the setting makes. The queue still limits each job to `host.max_run`, so the run limit still ends the job.
+- With `disk_size_gb`, `Up` adds `--disk-size`. With `host.setup_command`, `Up` writes a task file and adds it to the launch line. SkyPilot runs the `setup` field of the file once, when it creates the cluster. The setup clones the project at the head of `base_branch` into `~/beehave-setup/<project>` and runs the command there. The command installs the tools. Each gate job still clones its own head. `Up` deletes the task file after the launch.
+- A cluster that SkyPilot takes back deletes itself with the instance. beehave starts no watchdog: `--down -i` is the only self-delete.
 - `Status` reads `sky status -o json`, then `sinfo` and `df` through the Slurm adapter.
 - The Slurm adapter calls the SkyPilot slot: `Hold` after the job is queued, `Release` once the work is banked.
 - The `skypilot` provider keeps its own slot and its own run limit (the `timeout` in the slot command).
@@ -267,6 +270,7 @@ A project selects a host with `build_host` and the `host` block.
 - Each provider declares its own block, and the config reads no key of it. The `skypilot` provider takes the `skypilot` block, `ssh` takes the `ssh` block, and `slurm` takes the `slurm` block.
 - A block of another provider is refused, and the refusal names the block and the provider.
 - `idle_minutes` is refused for `ssh` and `slurm`, because beehave does not delete a machine it does not own.
+- `setup_command` is a command that runs once, in a clone of the project, when beehave creates the machine. It is refused when it is empty, and refused for `ssh` and `slurm`, because beehave does not create a machine it does not own. The default is no set-up, and then no task file is written.
 - An unknown key or block is refused.
 - `lost_job_wait` is a duration with the default `"60m"`, from `"1m"` to `"24h"`. It is the time that the engine waits for a proof that a lost job no longer runs. It is allowed for all three providers. A value outside the range, or text that is not a duration, is refused, and the refusal names the key and the range.
 - `lost_after` is a duration above zero with the default `"5m"`. It is the time without an answered read of a job before the wait for the job ends as lost. It is not `lost_job_wait`: that key is the time the engine waits for a proof after the loss. It is allowed for all three providers.
@@ -302,7 +306,7 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 
 | Block | Keys |
 |---|---|
-| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`, `instance_sizes`. The cluster name is `build_host`. |
+| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`, `instance_sizes`, `disk_size_gb` (a whole number from 10 to 65536; the default is the disk size that SkyPilot picks), `spot` (`True` or `False`; the default is `False`; any other value is refused). The cluster name is `build_host`. |
 | `slurm` | The keys of the `ssh` block. `work_root` is refused, because jobs run in the login folder. `build_host` is the ssh alias of the head node. |
 | `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, with no trailing dot, no `..` and no `.-`, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
 

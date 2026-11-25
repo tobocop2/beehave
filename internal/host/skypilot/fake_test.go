@@ -64,11 +64,27 @@ func (q *fakeQueue) Resume(context.Context) error { return nil }
 type scripts struct{ sky, ssh *proctest.Scripted }
 
 // placed is the skypilot block of a test, with the keys that the project gives. An empty field means the project leaves the key out.
-type placed struct{ cloud, region, instanceType, instanceSizes string }
+// diskSizeGB zero and a nil spot mean the project leaves the key out.
+type placed struct {
+	cloud, region, instanceType, instanceSizes string
+	diskSizeGB                                 int
+	spot                                       *bool
+}
+
+// flag returns the address of a bool, for the spot key of a placement.
+func flag(value bool) *bool { return &value }
 
 // block returns the skypilot block of the placement, with an entry for each key that it sets.
 func (p placed) block() *model.Block {
 	var entries []model.BlockEntry
+
+	if p.diskSizeGB != 0 {
+		entries = append(entries, model.WholeEntry(BlockDiskSizeGB, p.diskSizeGB))
+	}
+
+	if p.spot != nil {
+		entries = append(entries, model.BoolEntry(BlockSpot, *p.spot))
+	}
 
 	for key, value := range map[string]string{BlockCloud: p.cloud, BlockRegion: p.region, BlockInstanceType: p.instanceType, BlockInstanceSizes: p.instanceSizes} {
 		if value != "" {
