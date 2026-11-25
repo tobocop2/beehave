@@ -352,6 +352,7 @@ linters:
             - "**/internal/roundintegration/**"
             - "**/internal/takeover/**"
             - "**/internal/gomod/**"
+            - "**/internal/ledger/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -370,6 +371,7 @@ linters:
             - github.com/tobocop2/beehave/internal/roundintegration
             - github.com/tobocop2/beehave/internal/takeover
             - github.com/tobocop2/beehave/internal/gomod
+            - github.com/tobocop2/beehave/internal/ledger
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
             - github.com/tobocop2/beehave/internal/proc
@@ -497,6 +499,7 @@ linters:
             - github.com/tobocop2/beehave/internal/roundcut
             - github.com/tobocop2/beehave/internal/roundintegration
             - github.com/tobocop2/beehave/internal/takeover
+            - github.com/tobocop2/beehave/internal/ledger
         unlisted-package:
           list-mode: lax
           files:
@@ -524,6 +527,7 @@ linters:
             - "!**/internal/roundintegration/**"
             - "!**/internal/takeover/**"
             - "!**/internal/gomod/**"
+            - "!**/internal/ledger/**"
             - "!**/internal/check/**"
             - "!**/internal/ci/**"
             - "!**/internal/batch/**"

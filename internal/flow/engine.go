@@ -21,6 +21,7 @@ import (
 	"github.com/gofrs/flock"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/ledger"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/step"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -36,6 +37,8 @@ const (
 	treeName         = "tree"
 	phaseName        = "phase"
 	databaseFile     = "dbos.db"
+	// ledgerSourceName names the data source of ledger.db in the logs of the library.
+	ledgerSourceName = "ledger"
 	logFileName      = "flow.log"
 	logFileMode      = 0o600
 	stateScheme      = "sqlite:"
@@ -197,6 +200,10 @@ type Engine struct {
 	ctx dbos.Context
 	// registry holds the builtins, the step kinds and the tables of signatures and results of the modules that this engine runs.
 	registry step.Registry
+	// ledger is the open ledger.db of the state folder. The retention of the runs never touches it.
+	ledger *ledger.Ledger
+	// source is the data source over ledger: a write through dbos.RunAsTransaction commits with the record of its step.
+	source *dbos.DataSource
 	// queue is the agents queue: the steps of the kind implement.
 	queue dbos.Queue
 	// reviewQueue is the queue of the steps of the kind review.
@@ -382,12 +389,27 @@ func (e *Engine) registered(err error) (*Engine, error) {
 	return nil, errors.Join(err, e.Shutdown())
 }
 
-// open opens the workflow store. The engine does not take the cancel of ctx.
+// open opens the ledger and the workflow store, and makes the data source of the ledger before the library launches. The engine does not take the cancel of ctx.
+// A failure leaves nothing open.
 func (e *Engine) open(ctx context.Context, opts Options, state store) error {
-	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
-	e.ctx = flowCtx
+	held, err := ledger.Open(ctx, state.dir)
+	if err != nil {
+		return err
+	}
 
-	return err
+	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
+	if err != nil {
+		return errors.Join(err, held.Close())
+	}
+
+	source, err := dbos.NewDataSource(flowCtx, held.DB(), dbos.WithDataSourceName(ledgerSourceName))
+	if err != nil {
+		return errors.Join(fmt.Errorf("open the data source of the ledger: %w", err), dbos.Shutdown(flowCtx, shutdownTimeout), held.Close())
+	}
+
+	e.ctx, e.ledger, e.source = flowCtx, held, source
+
+	return nil
 }
 
 // engineConfig is the setup of the workflow engine for one state folder.
@@ -1024,7 +1046,7 @@ func (e *Engine) shutdown() error {
 	e.callers.Wait()
 	e.holds.clear()
 
-	return errors.Join(killed, waited, e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
+	return errors.Join(killed, waited, e.ledger.Close(), e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
 }
 
 // refuseStarts waits for each start in flight to hand its run to the library, and makes every later start fail.
