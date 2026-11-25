@@ -180,6 +180,13 @@ func runGateCommandWithOutput(t *testing.T, gateCommand string, env ...string) (
 func runProjectCommand(t *testing.T, project model.Project, env ...string) (int, string, bool, string) {
 	t.Helper()
 
+	return runProjectCommandOn(t, project, nil, env...)
+}
+
+// runProjectCommandOn is runProjectCommand with the folders in first before the system folders on the PATH of the command.
+func runProjectCommandOn(t *testing.T, project model.Project, first []string, env ...string) (int, string, bool, string) {
+	t.Helper()
+
 	home, bin := t.TempDir(), t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), gitShim))
 
@@ -189,7 +196,7 @@ func runProjectCommand(t *testing.T, project model.Project, env ...string) (int,
 	require.Len(t, remote.submitted, 1)
 
 	cmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", remote.submitted[0].Command) //nolint:gosec // the command is the one the code under test composes, run against a shim git
-	dirs := []string{bin, "/usr/bin", "/bin"}
+	dirs := append(append([]string{bin}, first...), "/usr/bin", "/bin")
 
 	for _, tool := range []string{"timeout", "flock"} {
 		if found, lookErr := exec.LookPath(tool); lookErr == nil {

@@ -906,13 +906,16 @@ func stepMarkerResults(log string, project model.Project) []Step {
 const stepKillGrace = "3"
 
 // stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up,
-// and `--kill-after` makes a step that traps TERM end after the grace.
+// and `--kill-after` makes a step that traps TERM end after the grace. `timeout` leads its own process group, and uutils `timeout` kills only
+// its child, so after a kill the wrap sends KILL to that group: the group id is the pid of `timeout`.
 func stepLimited(spec model.GateSpec, command string) string {
 	if spec.Timeout <= 0 {
 		return command
 	}
 
-	return "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+	limit := "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+
+	return "sh -c " + model.ShellQuote(limit+` & p=$!; wait "$p"; rc=$?; case "$rc" in `+hostTimeoutCode+"|"+hostKilledCode+` ) kill -s KILL -- "-$p" ;; esac; exit "$rc"`)
 }
 
 // The exit statuses that `timeout` gives for a step that it killed: 124 after TERM, and 137 (128 plus KILL) when it had to send KILL.
