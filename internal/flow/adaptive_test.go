@@ -599,7 +599,7 @@ func TestAdaptive_ACountOfWaitingPhasesOnAStoppedEngineIsAnError(t *testing.T) {
 	require.ErrorContains(t, err, "list the phases that wait")
 }
 
-func TestAdaptive_LaunchFailsWhenTheFloorCannotBeWritten(t *testing.T) {
+func TestAdaptive_StartControllerFailsWhenTheQueueRowCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -611,7 +611,7 @@ func TestAdaptive_LaunchFailsWhenTheFloorCannotBeWritten(t *testing.T) {
 	require.NoError(t, engine.Shutdown())
 
 	err = engine.startController()
-	require.ErrorContains(t, err, "set the limit of the agents queue to 1")
+	require.ErrorContains(t, err, "read the agents queue for the controller")
 }
 
 func TestDryLogins_HaveNoHeadroomBecauseADryRunStartsNoController(t *testing.T) {
@@ -642,7 +642,7 @@ func TestAdaptive_TheControllerTicksOnTheIntervalOfTheControllerAndThatIntervalI
 
 	h := newHarness(t)
 	engine := h.engine(t)
-	assert.Equal(t, time.Minute, engine.newController().tick, "the controller of an engine takes the constant")
+	assert.Equal(t, time.Minute, engine.newController(engine.queue).tick, "the controller of an engine takes the constant")
 
 	counted := make(chan struct{}, 1)
 	control := controllerOf(1, 4, &queueFake{}, new(bool), new(int), nil)
