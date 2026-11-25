@@ -310,6 +310,38 @@ func TestInit_AFolderInsideARepositoryIsRefusedAlsoWithAnEmptyDotGitFolder(t *te
 	assert.Empty(t, filesBelow(t, inner))
 }
 
+// assertRefusedAndNothingWritten asserts that init refused the folder as no top folder of a repository and wrote no file of its own.
+func assertRefusedAndNothingWritten(t *testing.T, code int, stderr, confDir, dir string) {
+	t.Helper()
+
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "top folder of a git repository")
+	assert.Empty(t, filesBelow(t, confDir))
+	assert.NoFileExists(t, filepath.Join(dir, initWorkflow))
+	assert.NoDirExists(t, filepath.Join(dir, "prompts"))
+}
+
+func TestInit_ABareRepositoryIsRefusedAndNothingIsWritten(t *testing.T) {
+	confDir := t.TempDir()
+	bare := filepath.Join(t.TempDir(), "work.git")
+	git(t, t.TempDir(), "init", "-q", "--bare", bare)
+	t.Chdir(bare)
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+	assertRefusedAndNothingWritten(t, code, stderr, confDir, bare)
+}
+
+func TestInit_TheInsideOfADotGitFolderIsRefusedAndNothingIsWritten(t *testing.T) {
+	confDir := t.TempDir()
+	gitDir := filepath.Join(initRepo(t, "main"), ".git")
+	t.Chdir(gitDir)
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir, "--name", "work")
+
+	assertRefusedAndNothingWritten(t, code, stderr, confDir, gitDir)
+}
+
 func TestInit_WithNoGitOnPathSaysThatGitWasNotFound(t *testing.T) {
 	confDir := t.TempDir()
 	initRepo(t, "main")

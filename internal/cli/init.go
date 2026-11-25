@@ -81,7 +81,7 @@ func newInitCommand(ctx context.Context, env map[string]string) *cobra.Command {
 }
 
 func runInit(ctx context.Context, out io.Writer, env map[string]string, opts initOptions) error {
-	repo, _ := os.Getwd() //nolint:errcheck // a folder that cannot be read leaves repo empty, and the check for the git entry then refuses it
+	repo, _ := os.Getwd() //nolint:errcheck // a folder that cannot be read leaves repo empty, and git then refuses it as no top folder of a repository
 
 	files, err := planInit(ctx, env, opts, repo)
 	if err != nil {
@@ -123,13 +123,13 @@ func planInit(ctx context.Context, env map[string]string, opts initOptions, repo
 
 // checkInputs refuses a folder that is not the top folder of a repository, an unusable name and an empty gate or test report. It returns the project name.
 func checkInputs(ctx context.Context, opts initOptions, repo string) (string, error) {
-	// Git prints the path of the folder below the top of its repository: nothing when the folder is the top.
-	prefix, err := askGit(ctx, repo, errNotARepository, "rev-parse", "--show-prefix")
+	// Git prints "true" and the path below the top of the work tree, so only the top prints "true" alone; a bare repository or a .git folder prints "false".
+	answer, err := askGit(ctx, repo, errNotARepository, "rev-parse", "--is-inside-work-tree", "--show-prefix")
 	if err != nil {
 		return "", err
 	}
 
-	if prefix != "" {
+	if answer != "true" {
 		return "", errNotARepository
 	}
 
