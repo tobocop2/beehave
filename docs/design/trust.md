@@ -247,9 +247,9 @@ The package `internal/ledger` owns `<state folder>/ledger.db`, a SQLite file wit
 
 - `rounds`: one row per round with its status, last pass, integration pull request and the version of the build with the version of each step module.
 - `round_items`: one row per item with its attempt, run id, branch, pull request, the head that the engine last pushed (the fence) and its state.
-- `spend`: one row per agent execution with its tree, run, step, session, item, pull request, call name and cost. A `NULL` cost means unknown.
+- `spend`: one row per agent execution, keyed by an execution id that the agent step makes. It holds the tree, run, step, session, item, pull request, call name and cost. A `NULL` cost means unknown.
 
-An agent step writes its `spend` row with `INSERT OR IGNORE` after the agent exits and before the step returns. A replay of a finished step does not run the body. The fix cap counts the `fix` rows of a pull request. The tree budget sums the cost by tree, and any unknown cost fails the check.
+An agent step inserts its `spend` row with plain SQL when the agent starts, with a `NULL` cost. It sets the cost when the agent exits. A run id and a step number repeat across a rewind, so only the execution id gives a row its identity. The fix cap counts the `fix` rows of a pull request. The tree budget sums the cost by tree, and any unknown cost fails the check.
 
 ### The round is a chain of short workflows
 
