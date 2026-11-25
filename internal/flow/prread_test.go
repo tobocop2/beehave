@@ -23,11 +23,11 @@ type readsFake struct {
 	failIssue bool
 }
 
-func (f *readsFake) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
+func (f *readsFake) Preflight(context.Context, string, string, preflight.Request, bool) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
 
-func (f *readsFake) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+func (f *readsFake) ReadPull(_ context.Context, _, item string, _ bool) (model.PullFacts, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -50,6 +50,14 @@ func (f *readsFake) IssueAssignees(_ context.Context, _, repo string, number int
 	return f.issues[link], f.err
 }
 
+// IssueAuthor finds no issue.
+func (f *readsFake) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// SameItem keys items as their text.
+func (f *readsFake) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
 func readsHarness(t *testing.T, fake *readsFake) (*harness, *fakeWriter) {
 	t.Helper()
 
@@ -67,20 +75,20 @@ func TestPRRead_ReturnsTheFactsOfThePullRequestToTheWorkflow(t *testing.T) {
 	t.Parallel()
 
 	fake := &readsFake{facts: map[string]model.PullFacts{
-		testItem: {Number: 7, State: "OPEN", Author: "dev", Draft: true, Labels: []string{"hold"}, Assignees: []string{"a"}, Reviewers: []string{"r"}, Links: []model.IssueLink{{Number: 3}, {Repo: "acme/tools", Number: 9}}},
-		"other":  {Number: 8, State: "MERGED"},
+		testItem:     {Number: 7, State: "OPEN", Author: "dev", Draft: true, Labels: []string{"hold"}, Assignees: []string{"a"}, Reviewers: []string{"r"}, Links: []model.IssueLink{{Number: 3}, {Repo: "acme/tools", Number: 9}}},
+		"other-item": {Number: 8, State: "MERGED"},
 	}}
 	h, w := readsHarness(t, fake)
 
 	_, err := walkBody(t, h, `pull = pr_read(name = "a")
-other = pr_read(name = "b", id = "other")
-none = pr_read(name = "c", id = "nothing")
+other = pr_read(name = "b", id = "other-item")
+none = pr_read(name = "c", id = "no-item")
 item_comment(id = "1", key = "k", text = "|".join([str(pull.found), str(pull.number), pull.state, str(pull.draft), ",".join(pull.labels), pull.author, ",".join(pull.assignees), ",".join(pull.reviewers), pull.links[1]["repo"] + "#" + str(pull.links[1]["number"]), other.state, str(none.found), str(none.number), str(none.links), str(none.labels)]))
 `)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{testProject + "|1|" + testRun + ":k|True|7|OPEN|True|hold|dev|a|r|acme/tools#9|MERGED|False|0|[]|[]"}, w.notes)
-	assert.Equal(t, []string{"pull " + testItem, "pull other", "pull nothing"}, fake.asked, "an empty id reads the item of the run")
+	assert.Equal(t, []string{"pull " + testItem, "pull other-item", "pull no-item"}, fake.asked, "an empty id reads the item of the run")
 }
 
 func TestPRRead_AFailedReadEndsTheItemAndABuildWithNoReaderNamesTheFix(t *testing.T) {

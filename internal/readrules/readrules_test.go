@@ -37,11 +37,12 @@ const (
 	dryWaitHeld = "only the dry run sets this source, and its refusals have their own tests (TestDryRun_AWaitPastTheEndOfItsListIsRefused, TestDryRun_AWaitWithNoDeadlineAndNoEntryIsRefused); a real run reads no such source"
 	inAdapter   = "the adapter or the consumer has its own failure tests, and this test does not prove them"
 
-	assigneesHeld = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
-	readyHeld     = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
-	cardHeld      = "the github adapter test TestBoarder_ConformsToTheFailedCommandRules goes red when the read maps a failed command to an empty status; this package cannot drive the adapter"
-	noEngine      = "a read for display or for a command line, which this test does not prove"
-	doesWork      = "the method starts, creates or records something; its error is the result of the action"
+	assigneesHeld   = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
+	associationHeld = "the github adapter test TestAssociation_RefusesAnAnswerThatNamesNoKnownAuthor goes red when the read maps a failed command or an unknown value to an author; this package cannot drive the adapter"
+	readyHeld       = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
+	cardHeld        = "the github adapter test TestBoarder_ConformsToTheFailedCommandRules goes red when the read maps a failed command to an empty status; this package cannot drive the adapter"
+	noEngine        = "a read for display or for a command line, which this test does not prove"
+	doesWork        = "the method starts, creates or records something; its error is the result of the action"
 
 	queueReadProof = "TestQueueReads_AFailedReadOfTheQueueReachesTheCallerOfTheHost"
 )
@@ -58,7 +59,7 @@ var rules = map[string]rule{
 	"internal/merge.Reads.OpenChangeRequests": {Proof: mergeProof, Needle: "OpenChangeRequests"},
 	"internal/merge.Reads.UnresolvedThreads":  {Proof: mergeProof, Needle: "UnresolvedThreads"},
 	"internal/merge.Reads.StackID":            {Proof: mergeProof, Needle: "StackID"},
-	"internal/merge.Reads.TokenScopes":        {Proof: mergeProof, Needle: "TokenScopes"},
+	"internal/merge.Reads.CanWriteCI":         {Proof: mergeProof, Needle: "CanWriteCI"},
 	"internal/merge.Reads.BranchRef":          {Proof: mergeProof, Needle: "BranchRef"},
 	"internal/merge.Closings.ClosingRefs":     {Proof: mergeProof, Needle: "closing references"},
 	"internal/merge.Approvals.Reviews":        {Proof: mergeProof, Needle: "Reviews"},
@@ -78,6 +79,7 @@ var rules = map[string]rule{
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},
 	"internal/review.Reader.ReadyMarks":           {Proof: "TestPoll_AFailedReadOfTheReadyMarksOfADraftStopsThePoll", Needle: "ReadyMarks"},
 	"internal/forge.AssigneeReads.IssueAssignees": {NotHeld: assigneesHeld},
+	"internal/forge.AssociationReads.Association": {NotHeld: associationHeld},
 	"internal/forge.ReadyReads.ReadyMarks":        {NotHeld: readyHeld},
 
 	"internal/review.Reader.PRList":            {Proof: "TestPoll_AFailedReadStopsWithAnUnreadError", Needle: "PRList"},
@@ -199,7 +201,9 @@ var rules = map[string]rule{
 	"internal/flow.pollReader.Source":             {NotHeld: inAdapter},
 	"internal/flow.preflighter.Preflight":         {NotHeld: inAdapter},
 	"internal/flow.preflighter.ReadPull":          {Proof: "TestPRRead_AFailedReadEndsTheItemAndABuildWithNoReaderNamesTheFix", Needle: "err"},
+	"internal/flow.preflighter.IssueAuthor":       {Proof: "TestStart_TheRefusalOfAForeignItemSaysWhichPartIsForeignAndWhatToChange", Needle: "READ_FAILS"},
 	"internal/flow.preflighter.IssueAssignees":    {Proof: "TestIssueAssignees_AFailedReadNamesTheIssueAndAnIssueBelowOneIsRefused", Needle: "err"},
+	"internal/flow.preflighter.SameItem":          {Proof: "TestStart_ALaterReadEndsTheRunWhenTheTrackerCannotSayWhetherTheIdIsTheItemOfTheRun", Needle: "sameErr"},
 	"internal/flow.forge.Pull":                    {NotHeld: inAdapter},
 	"internal/flow.forge.ClosingIssues":           {NotHeld: inAdapter},
 	"internal/flow.forge.Comment":                 {NotHeld: inAdapter},
@@ -226,7 +230,7 @@ var rules = map[string]rule{
 	"internal/forge.Activity.ReviewComments":      {NotHeld: inAdapter},
 	"internal/forge.Lookup.PullCounts":            {NotHeld: inAdapter},
 	"internal/forge.Lookup.Committers":            {NotHeld: inAdapter},
-	"internal/forge.Lookup.TokenScopes":           {NotHeld: inAdapter},
+	"internal/forge.Lookup.CanWriteCI":            {NotHeld: inAdapter},
 	"internal/forge.Lookup.Search":                {NotHeld: inAdapter},
 	"internal/forge.Lookup.DefaultBranch":         {NotHeld: inAdapter},
 	"internal/forge.Lookup.BranchRef":             {NotHeld: inAdapter},

@@ -14,7 +14,7 @@ Also built: the engine `push` step, the base program of the local gate (see [gat
 
 The engine `push` step of a project with a `source` and no forge pushes to that `source`. With no `credentials`, git runs that push under the login of the owner; with a writer credential, it runs as the writer. The branch is the one that the workflow names, and an empty `expect` pushes with no lease, so git takes only a new branch or a fast forward.
 
-This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `CanWriteCI` and `Protection` start checks (the tree still has `TokenScopes`), the `Login` forge method, the `reviewer` role and the `login` and `ci_locked` fields of `credential`, the `As(role)` forge calls, the status posts of a `gate` step of a workflow (only the batch `merge` and the owner command post a status; see [merge.md](merge.md#commit-statuses)), and the network lists of the `swarm` example, whose agent steps still push and open pull requests themselves. The sandbox default and the ledger lift are also design only. Of the claim lease, the push with a lease on an expected head, the merge pinned to the head and `claim_stop` are built; the fence head in `round_items`, and an empty `expect` that refuses a branch that exists, are not. The ruleset in this page is not posted.
+This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `Login` forge method, the `reviewer` role and the `login` field of `credential`, the `As(role)` forge calls, the status posts of a `gate` step of a workflow (only the batch `merge` and the owner command post a status; see [merge.md](merge.md#commit-statuses)), and the network lists of the `swarm` example, whose agent steps still push and open pull requests themselves. The sandbox default and the ledger lift are also design only. Of the claim lease, the push with a lease on an expected head, the merge pinned to the head and `claim_stop` are built; the fence head in `round_items`, and an empty `expect` that refuses a branch that exists, are not. The ruleset in this page is not posted.
 
 ## The threat model
 
@@ -61,7 +61,8 @@ project(
 
 - `credential(file?, command?, login?, ci_locked?)` takes exactly one of `file` and `command`. There is no `env` source: the start block of the environment of the engine stays readable by `ps eww` and `/proc/<pid>/environ` (see "Platform gaps"), even after the engine removes the variable.
 - `file`: a path inside `~/.config/beehave/credentials/`, mode 0600, in a folder of mode 0700. The loader refuses any other mode and path.
-- `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`.
+- `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`. The token of a `gh` login usually has the `workflow` scope, and the start check refuses such a token (see "The CI lock").
+- `ci_locked`: optional, `True` or `False`, default `False`. The owner states that the token has no Workflows permission. Set it for a fine-grained token, whose permissions the engine cannot read.
 - `login`: optional. The engine reads the login of the token at start with the forge method `Login` and refuses when it differs.
 - A workflow that pushes, posts or merges needs `writer`. Without it, `beehave check workflow` refuses.
 
@@ -116,13 +117,15 @@ The CI of a head runs with the workflow files of that head. A workflow that an a
 - The `writer` token has no Workflows permission. GitHub refuses a push that creates or updates a workflow file with such a token. The forge enforces this, not beehave.
 - `ci.yaml` has `permissions: contents: read`, so the code that `check` and `test` run cannot post a status.
 
-A lane that must change a workflow file is held for the owner. The owner lands that change by hand.
+A lane that must change a workflow file is held for the owner. The owner lands that change by hand. In a project with `credentials`, `merge` refuses a pull request that changes `.github/workflows/` with exit code 3 and reads nothing from the forge.
 
-The start check asks the forge adapter whether the `writer` can change CI files. It has three answers.
+At start, for each project with a `writer`, the engine asks the forge adapter, as the writer, whether the token can change CI files. The check runs once for `run`, `serve` and the owner command, before any step. A read that fails refuses the start. A project with no forge has no one to ask, so its answer is `unknown`. The answers:
 
 - `no`: the engine starts.
 - `yes`: the engine refuses to start, whatever `ci_locked` says. On GitHub, a classic token whose scopes hold `workflow` gives `yes`.
 - `unknown`: the engine starts only when the `writer` entry sets `ci_locked = True`. A fine-grained token gives `unknown`, because the engine cannot read its permissions. `ci_locked` is the statement of the owner that the token has no Workflows permission.
+
+On GitHub the answer is the `scopes` field of the active account on github.com in `gh auth status --active --hostname github.com --json hosts`. The engine reads the JSON only, never the text. Scopes that hold `workflow`, in any case, are `yes`, and scopes without it are `no`. GitHub shows scopes only for a classic or an OAuth token, so an account with no scopes is `unknown`. These answers are a read that failed: a failed exit, JSON that the engine cannot read, no active account on github.com, and a login that GitHub did not accept. A gh older than the `--json` flag of `auth status` fails the read. Use gh 2.101 or newer.
 
 ## The forge enforces the merge
 
@@ -162,7 +165,7 @@ With a `reviewer` credential, the owner posts [`trust/integration-ruleset.review
 
 ### The merge checks no flag
 
-The merge request carries no `Approved` flag. The forge refuses a merge without the required statuses at the head. The engine merges pinned with `--match-head-commit`. The engine still reads the protection of the branch at the start of a round, and reports which required context is missing when the forge refuses.
+The merge request carries no `Approved` flag. The forge refuses a merge without the required statuses at the head. The engine merges pinned with `--match-head-commit`. Before any write, `merge` reads the rules of the base and names what the base does not require (the protection guard in [merge.md](merge.md)). The base of a round is a value of the workflow, so the engine does not read it at start.
 
 ### The forge capability methods
 
@@ -200,7 +203,9 @@ The step fails closed: no sandbox capability, Windows, a CLI below the minimum v
 
 A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check runs `ssh -G` with the ssh options of the link of the host, so a `Match` block on the address applies. It refuses any `forwardagent` or `forwardx11` value but `no`, a `gssapidelegatecredentials yes`, any `sendenv` but `LANG` and `LC_*`, a `setenv` with a secret name, and any `proxyjump` or `proxycommand`, because the check cannot see what ssh gives a jump host. Every ssh call to such a host also passes `ForwardAgent=no`, `ClearAllForwardings=yes`, `ForwardX11=no`, `ForwardX11Trusted=no`, `ControlMaster=no`, `ControlPath=none` and `GSSAPIDelegateCredentials=no`, so no call joins a connection opened earlier with the agent. Only the `ssh` and `slurm` providers accept the key. The `skypilot` provider refuses it, because `sky launch` can forward the agent of the owner and copies the cloud credentials of the owner to the cluster, and beehave cannot stop either. The key and the check are built (see [hosts](hosts.md#the-host-block)); the start rule of a foreign pull request is not built yet.
+A foreign item refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. An item is foreign when another account wrote its issue or its pull request. Only the account that the forge reports as `OWNER` is the owner: a member or a collaborator of the repository is another account. The engine reads who wrote the item at a recorded step named `origin`, before the claim. A refused item takes no claim and starts no agent. The engine checks again at each later `pr_read` and `preflight` of the item of the run, because a pull request can open after the start. A read names the item of the run when its `id` is left out, is the same text, or names the same item in the tracker. Only a `github` tracker keys two spellings as one item: there, in a run of `0412`, the id `412` names issue 412. The `local` and `beads` trackers key an item by its exact text, so `0412` and `412` are two items. Both calls refuse an `id` that is not an item id, such as `#412`, before they read. A read whose tracker cannot answer whether the `id` names the item of the run fails and ends the run. Each of these reads finds the pull request once and reads its author on that same pull request, so the check and the result never name two pull requests. A `pr_read` or a `preflight` of another item reads the pull request of that item and not its author, so it cannot fail on that read. A read that fails counts as foreign. When the tracker is `github`, the engine reads the author of the issue through the GitHub access of the tracker, also when the project has no `forge` key. A project with no `forge` key reads no pull request, and a project whose tracker keeps no GitHub issues and that has no `forge` key reads nothing.
+
+The key `credentials = "none"` is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check runs `ssh -G` with the ssh options of the link of the host, so a `Match` block on the address applies. It refuses any `forwardagent` or `forwardx11` value but `no`, a `gssapidelegatecredentials yes`, any `sendenv` but `LANG` and `LC_*`, a `setenv` with a secret name, and any `proxyjump` or `proxycommand`, because the check cannot see what ssh gives a jump host. Every ssh call to such a host also passes `ForwardAgent=no`, `ClearAllForwardings=yes`, `ForwardX11=no`, `ForwardX11Trusted=no`, `ControlMaster=no`, `ControlPath=none` and `GSSAPIDelegateCredentials=no`, so no call joins a connection opened earlier with the agent. Only the `ssh` and `slurm` providers accept the key. The `skypilot` provider refuses it, because `sky launch` can forward the agent of the owner and copies the cloud credentials of the owner to the cluster, and beehave cannot stop either. The key and the check are described in [hosts](hosts.md#the-host-block).
 
 ### Platform gaps
 

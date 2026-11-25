@@ -374,7 +374,7 @@ func (swarmForgeAt) SetBody(context.Context, int, string) error { return nil }
 
 func (swarmForgeAt) StackID(context.Context, int) (string, error) { return "", nil }
 
-func (swarmForgeAt) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (swarmForgeAt) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (swarmForgeAt) TreeBlobs(context.Context, string) (map[string]string, error) { return nil, nil }
 
@@ -383,6 +383,11 @@ func (swarmForgeAt) DefaultBranch(context.Context) (string, error) { return "mai
 func (swarmForgeAt) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
 
 func (f swarmForgeAt) IssueState(context.Context, int) (string, error) { return "", errFake }
+
+// Association says the owner wrote every issue and pull request: the scripts stand for the repository of the owner.
+func (swarmForgeAt) Association(context.Context, int) (model.Association, error) {
+	return model.AssociationOwner, nil
+}
 
 // ClosingRefs reports that no pull request closes an issue, and that the base is the base of the forge.
 func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {

@@ -117,12 +117,12 @@ func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, er
 }
 
 // Preflight finds nothing changed: the scripts own no pull request before the first agent.
-func (e2eFiles) Preflight(context.Context, string, string, preflight.Request) (preflight.Result, error) {
+func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, bool) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
 
 // ReadPull finds no pull request.
-func (e2eFiles) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+func (e2eFiles) ReadPull(context.Context, string, string, bool) (model.PullFacts, error) {
 	return model.PullFacts{}, nil
 }
 
@@ -130,6 +130,17 @@ func (e2eFiles) ReadPull(context.Context, string, string) (model.PullFacts, erro
 func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, error) {
 	return nil, nil
 }
+
+// IssueAuthor finds no issue: the items of the scripts are local.
+func (e2eFiles) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// SameItem keys items as their text, as the local store does.
+func (e2eFiles) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
+// CheckCredentials refuses every project: the project of the scripts has no build host.
+func (e2eFiles) CheckCredentials(context.Context, string) error { return errNoNoneHost }
 
 // Comments gives an item no comments: the pipeline of the example reads the parent of its item.
 func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { return nil, nil }

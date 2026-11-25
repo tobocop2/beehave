@@ -385,9 +385,9 @@ func checkBranches(c check, target forge.Forge) {
 	c.noError(err, "BranchRef of a missing branch")
 	c.equal([]any{tip, found}, []any{"", false}, "missing branch")
 
-	scopes, err := target.TokenScopes(ctx)
-	c.noError(err, "TokenScopes")
-	c.equal(scopes, []string{ScopeRepo, ScopeWorkflow}, "token scopes")
+	answer, err := target.CanWriteCI(ctx)
+	c.noError(err, "CanWriteCI")
+	c.equal(answer, model.CIWriteYes, "the token holds the scopes repo and workflow, so it can change CI")
 }
 
 func checkLists(c check, target forge.Forge) {
@@ -585,14 +585,14 @@ func newCalls(target forge.Forge) []call {
 	}
 }
 
-// mergeCalls are the merge, the branch and pull request edits and the scope read.
+// mergeCalls are the merge, the branch and pull request edits and the CI write read.
 func mergeCalls(target forge.Forge) []call {
 	return []call{
 		{"MergePR", func(ctx context.Context) error { return target.MergePR(ctx, Seven, SevenTip) }},
 		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
-		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
+		{"CanWriteCI", func(ctx context.Context) error { _, err := target.CanWriteCI(ctx); return err }},
 		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
 	}
 }

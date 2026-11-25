@@ -367,8 +367,8 @@ func (m memForge) SetBase(context.Context, int, string) error { return m.fail() 
 
 func (m memForge) SetBody(context.Context, int, string) error { return m.fail() }
 
-func (m memForge) TokenScopes(context.Context) ([]string, error) {
-	return []string{forgetest.ScopeRepo, forgetest.ScopeWorkflow}, m.fail()
+func (m memForge) CanWriteCI(context.Context) (model.CIWrite, error) {
+	return model.CIWriteYes, m.fail()
 }
 
 func TestCheckForgeReads_ReportsAMissingBranchThatReadsAsPresent(t *testing.T) {

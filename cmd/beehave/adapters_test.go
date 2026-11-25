@@ -145,6 +145,19 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	assert.Nil(t, forge)
 }
 
+func TestAdapters_TheIssueReadOfAGitHubTrackerNeedsNoForgeKey(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
+
+	reads, err := table.issueReads(model.Project{Name: "p", Tracker: storegithub.Tracker, Repo: "o/r"})
+	require.NoError(t, err)
+	assert.Implements(t, (*forge.AssociationReads)(nil), reads, "the access of the tracker reads who wrote an issue")
+
+	_, err = table.issueReads(model.Project{Name: "p", Tracker: storegithub.Tracker, Repo: "bad"})
+	require.Error(t, err)
+}
+
 func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testing.T) {
 	t.Parallel()
 

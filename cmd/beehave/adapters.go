@@ -205,6 +205,8 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 
 	// A host that creates its machine clones the project for its set-up, so it asks the forge table for the clone URL.
 	table.hosts = hostEntries(table.forge)
+	// The start check asks the forge of each project with a writer whether its token can change CI.
+	roles.forges = table.forge
 
 	return table
 }
@@ -460,6 +462,12 @@ func (a adapters) tracker(ctx context.Context, project model.Project) (store.Tra
 	}
 
 	return entry.build(ctx, project)
+}
+
+// issueReads builds the GitHub access that the GitHub tracker of the project uses: its repository and the runner of its role. The read of who wrote an
+// issue goes through it, so it needs no forge key.
+func (a adapters) issueReads(project model.Project) (forge.Forge, error) { //nolint:ireturn // the same constructor as the forge entry
+	return newGithubForge(a.writers, project)
 }
 
 // forge builds the forge the project names. A project with no forge gets an error that matches forge.ErrNoForge.

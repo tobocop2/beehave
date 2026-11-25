@@ -176,6 +176,7 @@ func runGateCommandWithOutput(t *testing.T, gateCommand string, env ...string) (
 }
 
 // runProjectCommand runs the command that the gate sends to the host for project, with the shim as git.
+// It reads the output from a file, as the host job log is a file: a pipe would wait on any descendant that a killed step leaves behind.
 func runProjectCommand(t *testing.T, project model.Project, env ...string) (int, string, bool, string) {
 	t.Helper()
 
@@ -198,9 +199,15 @@ func runProjectCommand(t *testing.T, project model.Project, env ...string) (int,
 
 	cmd.Env = append([]string{"HOME=" + home, "PATH=" + strings.Join(dirs, ":")}, env...)
 
+	logPath := filepath.Join(t.TempDir(), "job.log")
+	logFile, err := os.Create(logPath) //nolint:gosec // a path in the test's own temporary folder
+	require.NoError(t, err)
+
+	cmd.Stdout = logFile
 	code := 0
 
-	out, err := cmd.Output()
+	err = cmd.Run()
+	require.NoError(t, logFile.Close())
 
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
@@ -208,6 +215,9 @@ func runProjectCommand(t *testing.T, project model.Project, env ...string) (int,
 	} else {
 		require.NoError(t, err)
 	}
+
+	out, err := os.ReadFile(logPath) //nolint:gosec // the file created above
+	require.NoError(t, err)
 
 	_, statErr := os.Stat(filepath.Join(home, "gate-ran"))
 

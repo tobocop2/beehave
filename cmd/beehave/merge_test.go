@@ -114,7 +114,7 @@ func (*shipForge) Compare(context.Context, string, string) (model.Comparison, er
 	return model.Comparison{Status: "ahead", AheadBy: 1}, nil
 }
 
-func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (*shipForge) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (*shipForge) IssueState(context.Context, int) (string, error) {
 	return "", errFake
