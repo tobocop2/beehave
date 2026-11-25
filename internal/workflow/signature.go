@@ -304,6 +304,7 @@ func allowRule(v starlark.Value) error {
 const (
 	pathsOutsideName      = "paths_outside"
 	closingReferencesName = "closing_references"
+	keepIssuesName        = "keep_issues"
 	allowWord             = "allow"
 )
 
@@ -390,9 +391,10 @@ func valueSignatures() map[string][]Param {
 		factsName: {},
 		// patched records a marker of DBOS and no step of its own. Its name is the name of the patch.
 		patchedName: {{Name: nameKeyword, Kind: KindText, Required: true, Rule: patchNameRule, Why: "The name is the name of the patch, such as \"plan-first\"."}},
-		// The two matchers judge text and run no step. They read the dialect of the agent scope and the grammar of the merge guard.
+		// The three matchers judge text and run no step. They read the dialect of the agent scope, the grammar of the merge guard and the owner line that keeps issues.
 		pathsOutsideName:      {{Name: "allow", Kind: KindList, Required: true, Rule: pathsOutsideRule}, {Name: "paths", Kind: KindList, Required: true, Rule: wordsRule("paths")}},
 		closingReferencesName: {req("text", KindText)},
+		keepIssuesName:        {req("text", KindText)},
 	}
 }
 

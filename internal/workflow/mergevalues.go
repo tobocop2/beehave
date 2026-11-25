@@ -7,6 +7,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // The functions of this file own the rules for the arguments of the builtins that land pull requests: merge and preflight.
@@ -21,14 +23,24 @@ const ownDraftField = "own_draft"
 // closesField is the required list field of a member of prs: the issues that the pull request must close.
 const closesField = "closes"
 
+// keptField is the optional list field of a member of prs: the issues that the owner kept, which a closing keyword in a commit message may name.
+const keptField = "kept"
+
+// closingField is the optional list field of a member of prs: the closing issues that a check read, and that the merge reads again and refuses on a difference.
+const closingField = "closing"
+
 // PullRequest is one member of the prs argument of a merge call. Approved is true when another step accepted the head of this member.
 // OwnDraft is the number of the draft that the run opened for this member, or zero when the member names none.
 // Closes holds the issues that the pull request must close, and nothing else: an empty list means it closes no issue.
+// Kept holds the issues that the owner kept. Closing is nil when the member pins no set, and a list (empty for no issue) when it does.
+// The fields are those of a batch member in the same order, so the merge converts one into the other and a field that only one of them has does not compile.
 type PullRequest struct {
 	Item, Head string
 	Approved   bool
 	OwnDraft   int
 	Closes     []int
+	Kept       []model.IssueRef
+	Closing    []model.IssueRef
 }
 
 // errNoPullRequest is returned for a prs argument with no member.
@@ -111,9 +123,72 @@ func (m *PullRequest) readFields(pr *starlarkstruct.Struct) (err error) {
 		return err
 	}
 
-	m.Closes, err = prCloses(pr)
+	if m.Closes, err = prCloses(pr); err != nil {
+		return err
+	}
+
+	if m.Kept, err = prIssues(pr, keptField); err != nil {
+		return err
+	}
+
+	m.Closing, err = prIssues(pr, closingField)
 
 	return err
+}
+
+// prIssues reads an optional field of a member struct that lists issues as text: "#12" or "owner/repo#12". A member that leaves the field out, or gives a value that only the run knows, has none (nil).
+// A field that is present gives a list that is never nil, so an empty closing list is a set of no issue and not a missing set.
+func prIssues(pr *starlarkstruct.Struct, field string) ([]model.IssueRef, error) {
+	fields := starlark.StringDict{}
+	pr.ToStringDict(fields)
+
+	value, found := fields[field]
+	if !found {
+		return nil, nil
+	}
+
+	if _, later := value.(computed); later {
+		return nil, nil
+	}
+
+	list, isList := value.(*starlark.List)
+	if !isList {
+		return nil, fmt.Errorf("`%s` of a member of `prs` must be a list of issues as text, such as [\"#12\", \"owner/repo#5\"], not %s", field, value.Type())
+	}
+
+	return issueList(field, list)
+}
+
+// issueList reads each element of a list field of a member as an issue as text. An element that only the run knows is left out.
+func issueList(field string, list *starlark.List) ([]model.IssueRef, error) {
+	issues := make([]model.IssueRef, 0, list.Len())
+
+	for i := range list.Len() {
+		if _, later := list.Index(i).(computed); later {
+			continue
+		}
+
+		issue, err := issueText(field, list.Index(i))
+		if err != nil {
+			return nil, err
+		}
+
+		issues = append(issues, issue)
+	}
+
+	return issues, nil
+}
+
+// issueText reads one issue as text of a list field of a member.
+func issueText(field string, value starlark.Value) (model.IssueRef, error) {
+	text, isText := value.(starlark.String)
+	issue, valid := model.ParseIssue(text.GoString())
+
+	if !isText || !valid {
+		return "", fmt.Errorf("`%s` of a member of `prs` holds %s, which is not an issue as text. Write \"#12\" or \"owner/repo#5\"", field, value)
+	}
+
+	return issue, nil
 }
 
 // prCloses reads the required list field closes of a member struct: issue numbers of 1 or more, each once. A value that only the run knows is left to the run.

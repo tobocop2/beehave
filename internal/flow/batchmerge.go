@@ -82,6 +82,10 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, err
 	}
 
+	if err := s.trustKept(call); err != nil {
+		return nil, err
+	}
+
 	if call.single {
 		return s.mergeOne(call)
 	}
@@ -190,11 +194,6 @@ func (s *script) batchGit(call batchCall) (batch.Git, error) { //nolint:ireturn 
 		return nil, err
 	}
 
-	// The first merge call of a run that no gate gave a scope fixes it here, before any member is checked.
-	if err := s.fixScope(call.name); err != nil {
-		return nil, fmt.Errorf("merge %q: %w", call.name, err)
-	}
-
 	dir, err := s.tree(s.ctx)
 	if err != nil {
 		return nil, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)
@@ -279,7 +278,7 @@ func (c *batchCall) fillOne(member, forbid, own starlark.Value) error {
 	}
 
 	c.single = true
-	c.members = []batch.Member{{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft, Closes: pr.Closes}}
+	c.members = []batch.Member{batch.Member(pr)}
 
 	return c.settings.read(forbid, own)
 }
@@ -360,7 +359,7 @@ func members(v starlark.Value) ([]batch.Member, error) {
 
 	list := make([]batch.Member, len(prs))
 	for i, pr := range prs {
-		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft, Closes: pr.Closes}
+		list[i] = batch.Member(pr)
 	}
 
 	return list, nil
@@ -662,15 +661,6 @@ func (b *batchBase) Tip(ctx context.Context) (batch.Tip, error) {
 // made before a crash counts as ours on the replay. A mergeable state that stays UNKNOWN is read again after a durable sleep.
 // The statuses go to the merge run in its settings, and the run posts them after its guards and right before its merge call.
 func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string, statuses []model.CommitStatus) (batch.MergeOutcome, error) {
-	refused, kept, err := b.holdScope(m)
-	if err != nil {
-		return batch.MergeOutcome{}, err
-	}
-
-	if refused != "" {
-		return batch.MergeOutcome{Status: batch.StatusRefused, Reason: refused}, nil
-	}
-
 	read, err := b.recordedIntent(m)
 	if err != nil {
 		return batch.MergeOutcome{}, err
@@ -680,7 +670,7 @@ func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string
 		return out, nil
 	}
 
-	return b.mergeReads(ctx, m, b.memberSettings(m, prefixTree, &read.Intent, kept, statuses))
+	return b.mergeReads(ctx, m, b.memberSettings(m, prefixTree, &read.Intent, statuses))
 }
 
 // recordedIntent is the intent step of the member.
@@ -692,9 +682,9 @@ func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
 
 // memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues, the closed issues and the statuses are facts about this
 // member only, so the call settings never carry them.
-func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, kept []model.IssueRef, statuses []model.CommitStatus) MergeSettings {
+func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, statuses []model.CommitStatus) MergeSettings {
 	settings := b.call.settings
-	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept = prefixTree, intent, m.Approved, kept
+	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept, settings.Closing = prefixTree, intent, m.Approved, m.Kept, m.Closing
 	settings.OwnDraft, settings.Statuses, settings.Closes = m.OwnDraft, statuses, m.Closes
 
 	return settings
