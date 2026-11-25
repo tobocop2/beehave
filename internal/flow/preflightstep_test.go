@@ -237,7 +237,12 @@ func (p preflightOver) IssueAssignees(ctx context.Context, _, repo string, numbe
 	return p.world.IssueAssignees(ctx, repo, number)
 }
 
-// noReads is the part of a preflight fake that finds no pull request and no issue holder.
+// Origin finds an item that the owner wrote.
+func (preflightOver) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
+}
+
+// noReads is the part of a preflight fake that finds no pull request, no issue holder and no foreign author.
 type noReads struct{}
 
 func (noReads) ReadPull(context.Context, string, string) (model.PullFacts, error) {
@@ -246,6 +251,10 @@ func (noReads) ReadPull(context.Context, string, string) (model.PullFacts, error
 
 func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, error) {
 	return nil, nil
+}
+
+func (noReads) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
 }
 
 // goneBranch is a forge whose head branch is no longer on the remote.

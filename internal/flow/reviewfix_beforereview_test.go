@@ -566,6 +566,7 @@ func TestReviewFixBeforeReview_AProjectWithAForgeAndNoSourceHasARepository(t *te
 	h := reviewHarness(t, tree, cleanChecks())
 	h.bare = true
 	h.facts = func(string) model.Project { return model.Project{Forge: "github"} }
+	h.preflight = &fakePreflight{} // the owner wrote the item, so the run starts
 	h.commands.reply = gitReply(t, tree.dir)
 
 	_, err := walkText(t, h, libReviewFlow(tree.base, ""))

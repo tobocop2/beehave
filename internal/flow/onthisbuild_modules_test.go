@@ -24,14 +24,15 @@ func buildWithModule(c *Client, module string, version int) *Client {
 	return c
 }
 
-// buildAtVersionOne is a client of another build whose core and agent modules, the two that every waiting run of the harness recorded a step of, are at version 1.
+// buildAtVersionOne is a client of another build whose core, agent and forge modules are at version 1: every waiting run of the harness recorded a step of
+// the core and the agent module, and the forge module covers the step that reads who wrote the item in every run.
 func buildAtVersionOne(c *Client) *Client {
 	table := moduleTable()
 	parts := make([]string, len(table))
 
 	for i, entry := range table {
 		number := entry.version
-		if entry.name == moduleCore || entry.name == moduleAgent {
+		if entry.name == moduleCore || entry.name == moduleAgent || entry.name == moduleForge {
 			number = 1
 		}
 
@@ -229,7 +230,7 @@ func TestClient_ResumeOnThisBuildMovesARunStoredUnderAListOfSomeModules(t *testi
 	t.Parallel()
 
 	harness, _, other := strandedHarness(t)
-	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?", testVersion+"+core"+strconv.Itoa(coreVersion)+".agent"+strconv.Itoa(agentVersion), testRun)
+	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?", testVersion+"+core"+strconv.Itoa(coreVersion)+".agent"+strconv.Itoa(agentVersion)+".forge"+strconv.Itoa(forgeVersion), testRun)
 	require.NoError(t, err)
 
 	buildWithModule(other, moduleGate, gateVersion+1)
@@ -287,6 +288,21 @@ func TestClient_ResumeOnThisBuildRefusesARoundRunOfABuildWithAnOlderRoundModuleA
 	row, rowErr := other.row(runID(testRound, 1))
 	require.NoError(t, rowErr)
 	assert.Equal(t, testVersion, buildVersion(row.ApplicationVersion), "a refused run stays where it was")
+}
+
+func TestClient_ResumeOnThisBuildRefusesARunOfABuildWithAnOlderForgeModuleAndNamesTheStepThatReadsWhoWroteTheItem(t *testing.T) {
+	t.Parallel()
+
+	for _, item := range []string{testItem, testRound} {
+		_, other := olderRoundRun(t, item, moduleForge, forgeVersion-1)
+
+		err := other.ResumeOnThisBuild(item)
+
+		require.ErrorIs(t, err, errStranded, item)
+		require.ErrorContains(t, err, fmt.Sprintf("forge module at version %d, and this build has version %d", forgeVersion-1, forgeVersion), item)
+		require.ErrorContains(t, err, `the step "origin"`, item)
+		require.ErrorContains(t, err, "start the item again: beehave run "+item, item)
+	}
 }
 
 func TestClient_ResumeOnThisBuildMovesARunOfAnItemThatIsNotARoundWhenOnlyTheRoundModuleChanged(t *testing.T) {

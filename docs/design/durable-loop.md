@@ -41,10 +41,11 @@ When an engine already holds the state folder (`beehave serve` or another `beeha
 
 The workflow runs these steps in order:
 
-1. Claim the item.
-2. For a round item, make its worktree in a recorded step that stores the commit of the worktree (see "The folder of a program" in the workflow files). A resume replays the step, so the run keeps the commit that it started on, and a later step makes a removed worktree again at that commit. Any other item gets its worktree from its first `agent` call.
-3. Run `main(item)` of the workflow file on one Starlark thread. Each builtin call runs as a recorded step, so a restart replays `main` and skips the steps that finished. Then run `finish(item)` if the file defines it, unless the run was canceled.
-4. Release the worktree, then release the claim.
+1. Read who wrote the item, in the step `origin`. A foreign item that the run may not hold ends the run here, with no claim (see [trust](trust.md)).
+2. Claim the item.
+3. For a round item, make its worktree in a recorded step that stores the commit of the worktree (see "The folder of a program" in the workflow files). A resume replays the step, so the run keeps the commit that it started on, and a later step makes a removed worktree again at that commit. Any other item gets its worktree from its first `agent` call.
+4. Run `main(item)` of the workflow file on one Starlark thread. Each builtin call runs as a recorded step, so a restart replays `main` and skips the steps that finished. Then run `finish(item)` if the file defines it, unless the run was canceled.
+5. Release the worktree, then release the claim.
 
 #### The login of the run
 
@@ -724,6 +725,7 @@ The command refuses in these cases:
 | The workflow file or a pinned file changed since the run started. | Names the file, names `--on-this-build --on-this-file` as the way to keep the finished steps, and counts the `command` calls whose script is not known, which are not pinned. A script outside the repository that starts with `#!` is a pinned file. |
 | The run recorded a step of a step module whose version differs from the version in this build. The application version ends in one version for each module, such as `+core7.agent12.tracker2.forge6.land9.gate6.host1.round3`. The kind at the start of each step name (`gate:g#1`) names the module of that step. A recorded receive of the answer of the owner counts as a step of the core module, so a run that only waited is refused when the core version differs. A module that the run recorded no step of may differ. | Names the module and both versions, and says to start the item again. |
 | The run recorded a step that this build does not record. The steps of the engine (the claim, the worktree, a step that DBOS records) are recorded by every build. A kind that only an older build recorded keeps its module in the table: `merge:<label>#<n>` of the single merge (land), `scope-check:<label>#<n>` (round) and the `watch` read of the owner merge wait (core). The replay cannot reach such a step, so the move fails closed, even when the stored list equals the list of this build. | Names the step and the module of the older build, or says that no module records it, and says to start the item again. |
+| The version of the forge module differs from the version in this build. The version of the forge module covers the step `origin`, which reads who wrote the item at the start of every run, so every run uses the module, even a run that an older build recorded with no such step. | Names the forge versions and the step `origin`, and says to finish the run on the build that started it or to start the item again. |
 | The run is a run of a round item, and the version of the round module differs from the version in this build. The version of the round module covers the step that makes the worktree at the start of every round item, so every round run uses the module, even a run that an older build recorded with no such step. | Names the step that makes the worktree, and says to finish the run on the build that started it or to start the item again. |
 | The run was recorded under an older single version of the steps (the `+star<N>` part of the stored version), other than `star30`. Its recorded steps have another format, so it is not moved. | Names both versions and says to start the item again. |
 

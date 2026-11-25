@@ -677,3 +677,8 @@ func (dryPreflight) ReadPull(_ context.Context, _, _ string) (model.PullFacts, e
 func (dryPreflight) IssueAssignees(context.Context, string, string, int) ([]string, error) {
 	return nil, nil
 }
+
+// Origin finds an item that the owner wrote, so the start of a dry run reads no forge and refuses nothing.
+func (dryPreflight) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
+}

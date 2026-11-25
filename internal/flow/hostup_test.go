@@ -74,6 +74,9 @@ func (u *upHosts) Teardown(_ context.Context, _, cluster string) error {
 // Ready says every host is ready.
 func (*upHosts) Ready(context.Context, string, string) (bool, error) { return true, nil }
 
+// CheckCredentials passes every host.
+func (*upHosts) CheckCredentials(context.Context, string) error { return nil }
+
 func (u *upHosts) LostProof(_ context.Context, _, cluster, job string) (model.LostProof, error) {
 	u.mu.Lock()
 

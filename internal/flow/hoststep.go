@@ -31,6 +31,9 @@ type hostKeeper interface {
 	// Ready says whether cluster takes a new job now: it is up and its disk holds the floor of the project. A host that is absent, draining or under its floor gives false.
 	// A host that cannot be read gives the error. The engine reads it only to place a gate of a project that declares more than one host.
 	Ready(ctx context.Context, project, cluster string) (bool, error)
+	// CheckCredentials returns nil only when the project declares its build host credentials = "none" and every cluster passes the credential check.
+	// It reads the ssh config and connects to no host. The engine calls it only for a foreign item, before the claim and at a later read of its pull request.
+	CheckCredentials(ctx context.Context, project string) error
 }
 
 var errNoHosts = &absentError{message: "this build cannot stop a host. Use a build that sets a host keeper", step: "stop the build host"}

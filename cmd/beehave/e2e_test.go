@@ -131,6 +131,14 @@ func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, 
 	return nil, nil
 }
 
+// Origin finds an item that the owner wrote.
+func (e2eFiles) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
+}
+
+// CheckCredentials refuses every project: the project of the scripts has no build host.
+func (e2eFiles) CheckCredentials(context.Context, string) error { return errNoNoneHost }
+
 // Comments gives an item no comments: the pipeline of the example reads the parent of its item.
 func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { return nil, nil }
 

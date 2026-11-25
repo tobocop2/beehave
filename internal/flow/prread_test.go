@@ -50,6 +50,11 @@ func (f *readsFake) IssueAssignees(_ context.Context, _, repo string, number int
 	return f.issues[link], f.err
 }
 
+// Origin finds an item that the owner wrote.
+func (f *readsFake) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
+}
+
 func readsHarness(t *testing.T, fake *readsFake) (*harness, *fakeWriter) {
 	t.Helper()
 

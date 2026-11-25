@@ -230,7 +230,7 @@ func TestModulesUsed_TheStepsThatTheEngineOrAnOlderBuildRecordsForAModuleAreStep
 func TestUnreplayableStep_IsTheFirstStepThatThisBuildDoesNotRecordWithTheModuleOfTheOlderBuild(t *testing.T) {
 	t.Parallel()
 
-	engine := []string{"item", "claim", "ready", "release", "worktree", "make worktree", "others", "phase", "exclusive", "host_job", "DBOS.sleep", "DBOS.getResult"}
+	engine := []string{originStepName, "item", "claim", "ready", "release", "worktree", "make worktree", "others", "phase", "exclusive", "host_job", "DBOS.sleep", "DBOS.getResult"}
 	_, _, found := unreplayableStep(slices.Concat(engine, []string{"wait:w#1", "agent:a#1/render", "batch:b.ready#1", "merge:u.plan", "merge:u.intent#1", "merge:u.poll#1", "merge:u.tip", "now#1", "undo:write:w#1", holdStep}))
 	assert.False(t, found, "this build records every step")
 

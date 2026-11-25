@@ -62,6 +62,11 @@ func (p *turningPreflight) IssueAssignees(ctx context.Context, project, repo str
 	return preflightOver{p.world}.IssueAssignees(ctx, project, repo, number)
 }
 
+// Origin finds an item that the owner wrote.
+func (p *turningPreflight) Origin(context.Context, string, string) (model.Origin, error) {
+	return model.Origin{}, nil
+}
+
 // stopLoopRig is the example rig with a review that asks for changes on every pass and a forge that turns at the call turnAt.
 func stopLoopRig(t *testing.T, turnAt int, over map[string]any, gone bool) (*agentRig, string, *turningPreflight) {
 	t.Helper()

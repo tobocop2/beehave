@@ -22,6 +22,9 @@ type preflighter interface {
 	Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error)
 	ReadPull(ctx context.Context, project, item string) (model.PullFacts, error)
 	IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error)
+	// Origin reads who wrote the item: its issue, when the tracker of the project keeps its items on the forge, and its pull request, found as ReadPull finds it.
+	// A failed read and an unknown author are errors.
+	Origin(ctx context.Context, project, item string) (model.Origin, error)
 }
 
 var errNoPreflight = errors.New("this build cannot read the forge before a step. Use a build that sets a preflight reader")
@@ -41,6 +44,7 @@ func preflightOutputs(result preflight.Result) map[string]any {
 
 // preflight reads the pull request of the item and returns the first stop in the fixed order of the preflight package.
 // A read that fails ends the step with an error, because the call then knows nothing.
+// A read of the item of the run first applies the rule of the start again, so a foreign pull request that opened after the start ends a run that may not hold it.
 func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	req, label, id, err := preflightArgs(b, args, kwargs)
 	if err != nil {
@@ -81,6 +85,10 @@ func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.T
 // ask is the recorded read of one preflight call, on the pull request of the item with the id.
 func (s *script) ask(id string, req preflight.Request) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
+		if err := s.admitOwn(ctx, id); err != nil {
+			return stepResult{}, err
+		}
+
 		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req)
 
 		return stepResult{Outputs: preflightOutputs(result)}, err

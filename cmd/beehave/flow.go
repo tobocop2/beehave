@@ -24,6 +24,7 @@ import (
 var (
 	errUnknownProject = errors.New("the config has no project of this name")
 	errUnknownRunner  = errors.New("the config has no runner of this name")
+	errNoNoneHost     = errors.New(`the project declares no build host with credentials = "none"`)
 )
 
 // logins picks the runner of an agent step that names none, from the pool.
@@ -209,7 +210,7 @@ func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) 
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, Rounds: roundWrites{pulls: life.pulls},
 		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker}, Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
 		Batch: batchHost{pulls: life.pulls, programs: commands, base: trees},
-		Hosts: hostStop{programs: commands},
+		Hosts: hostStop{programs: commands, credentials: noneHostsOf(cfg, table)},
 		Queue: queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
 		Poll:  pollReads{projects: cfg.Projects, pulls: life.pulls},
 		Kept:  table.hostErrors(),
@@ -370,6 +371,23 @@ func buildHostOf(cfg config.Config, table adapters, project, cluster string) (ho
 	found.BuildHost = chosen
 
 	return table.host(found.Project)
+}
+
+// noneHostsOf checks that a project declares its build host credentials = "none" and that every cluster of the project passes the credential check.
+// A project with no host block, or with a host that does not declare the key, is refused without a check.
+func noneHostsOf(cfg config.Config, table adapters) func(ctx context.Context, project string) error {
+	return func(ctx context.Context, project string) error {
+		found, ok := cfg.Projects[project]
+		if !ok {
+			return fmt.Errorf("%w: %q", errUnknownProject, project)
+		}
+
+		if found.Host == nil || found.Host.Credentials != model.HostCredentialsNone {
+			return errNoNoneHost
+		}
+
+		return table.checkHosts(ctx, found.Project)
+	}
 }
 
 // declaredHostOf gives the cluster a run chose for the project, or refuses a cluster that the project file does not declare.
