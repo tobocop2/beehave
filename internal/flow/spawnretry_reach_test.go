@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,47 +121,52 @@ def main(item):
 	require.ErrorContains(t, err, "send: item 21 has no open run: its last attempt item-21-r1 ended")
 }
 
-// rowReadFails fails the first list of runs that holds only the run id, after armed is set. The engine reads the rows on a copy that the parent does not cancel,
+// rowReadFails fails each list of runs that the open check of a send makes, and passes every other read. The child reads its own row when it starts and when it ends,
+// so a failure keyed on the first read of the row went to whichever reader came first. The engine reads the rows on a copy that the parent does not cancel,
 // so the copy keeps the failure.
 type rowReadFails struct {
 	dbos.Context
-
-	id    string
-	armed *atomic.Bool
 }
 
 func (r *rowReadFails) WithoutCancel(ctx dbos.Context) dbos.Context {
-	return &rowReadFails{Context: r.Context.WithoutCancel(ctx), id: r.id, armed: r.armed}
+	return &rowReadFails{Context: r.Context.WithoutCancel(ctx)}
 }
 
 func (r *rowReadFails) ListWorkflows(_ dbos.Client, opts ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(r.Context, opts...)
-	if err == nil && len(rows) == 1 && rows[0].ID == r.id && r.armed.CompareAndSwap(true, false) {
+	if calledFrom(".(*Engine).checkOpen") {
 		return nil, errors.New("the store failed")
 	}
 
-	return rows, err
+	return dbos.ListWorkflows(r.Context, opts...) //nolint:wrapcheck // the fake passes the store through
+}
+
+// calledFrom is true when a function whose name ends with suffix is on the stack of the caller.
+func calledFrom(suffix string) bool {
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+
+	for {
+		frame, more := frames.Next()
+		if strings.HasSuffix(frame.Function, suffix) {
+			return true
+		}
+
+		if !more {
+			return false
+		}
+	}
 }
 
 func TestSpawnRetries_ASendWhoseReadOfTheChildFailsStopsTheStepAndFailsTheParent(t *testing.T) {
 	t.Parallel()
 
-	var armed atomic.Bool
-
 	h := newHarness(t)
-	h.commands.before = func(_ context.Context, request CommandRequest) error {
-		if request.Item == testItem {
-			armed.Store(true)
-		}
-
-		return nil
-	}
 
 	var store dbos.Context
 
 	engine := h.engineWith(t, func(e *Engine) {
 		store = e.ctx
-		e.ctx = &rowReadFails{Context: e.ctx, id: runID("21", 1), armed: &armed}
+		e.ctx = &rowReadFails{Context: e.ctx}
 	})
 
 	body := `def child(item):
@@ -168,7 +174,6 @@ func TestSpawnRetries_ASendWhoseReadOfTheChildFailsStopsTheStepAndFailsTheParent
 
 def main(item):
     a = spawn(items = ["21"], entry = "child", name = "a")
-    command(name = "arm", run = ["arm"])
     send(to = a.runs[0], topic = "job", value = "x", name = "give")
     gather(a, name = "all")
 `
