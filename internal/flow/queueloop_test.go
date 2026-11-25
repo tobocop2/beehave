@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -100,6 +101,49 @@ func TestQueueLoop_AnItemWithAnOpenPullRequestOfAnotherLoginStartsNoAgentAndIsHe
 	assert.Equal(t, []string{testProject + "|22|hold"}, r.w.statuses)
 	require.Len(t, r.w.notes, 1)
 	assert.Contains(t, r.w.notes[0], "its author is 'dev', who is not on the list of own logins. The item is claimed.")
+}
+
+func TestQueueLoop_TheEnginePushesAndOpensThePullRequestOnlyForAnAgentThatCommitted(t *testing.T) {
+	t.Parallel()
+
+	for name, commits := range map[string]bool{"commits": true, "commits_nothing": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newLoopRig(t, queueItem("21", model.SeverityP1))
+			// The item 21 reads its own id, title and body, which differ from the default fields of the fake reader, so the branch shows that it is the id of the item.
+			r.h.items = &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}, byItem: map[string]map[string]string{"21": {"id": "21", "title": "title of 21", "body": "body of 21"}}}
+			r.agents.setAct(func(ctx context.Context, _ string) error {
+				if !commits {
+					return nil
+				}
+
+				commit := exec.CommandContext(ctx, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "work of 21")
+				commit.Dir = r.h.trees.dir
+
+				return commit.Run()
+			})
+
+			require.NoError(t, r.run(t))
+
+			r.h.forge.mu.Lock()
+			pushed, opened := slices.Clone(r.h.forge.pushed), slices.Clone(r.h.forge.opened)
+			r.h.forge.mu.Unlock()
+
+			if !commits {
+				assert.Empty(t, pushed, "a step with no commit pushes nothing")
+				assert.Empty(t, opened, "a step with no commit opens nothing")
+
+				return
+			}
+
+			require.Len(t, pushed, 1)
+			head := strings.TrimSpace(gitIn(t, r.h.trees.dir, "rev-parse", "HEAD"))
+			assert.Equal(t, testProject+"|21|21|"+head+"|", pushed[0], "the engine pushes the commit of the step to the branch named by the id of the item, with no lease")
+			require.Len(t, opened, 1)
+			assert.Equal(t, testProject+"|21|title of 21|body of 21|integration|", opened[0], "the pull request of the item goes to BASE")
+		})
+	}
 }
 
 func TestQueueLoop_APullRequestOpenedSinceTheLastPassStopsTheItemThatThePassReads(t *testing.T) {

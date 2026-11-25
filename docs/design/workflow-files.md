@@ -372,7 +372,7 @@ The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_s
 - The run must hold a trusted claim on the item. A run that lost its claim pushes nothing and stops with the loss, and a loss during the push stops the push.
 - A branch already at `head` is no error. A replay after a crash between the push and its step record therefore passes, whatever its lease. A resume after the step record reads the record and pushes nothing.
 - A branch that moved since the lease is refused with an error that names the branch, and the item stops.
-- An empty `branch` or `head` is refused before the push. So is a project with no clone, and a project with no forge, which pushes nothing.
+- An empty `branch` or `head` is refused before the push. So is a project with no clone, and a project with no `source` and no forge, which pushes nothing. A project with a `source` and no forge pushes to its `source`.
 - In a dry run the push writes nothing and returns `head`.
 
 #### Forge writes of a round

@@ -760,6 +760,13 @@ def take_over(item, pr, author, project, round_settings):
     3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take.
     4. The step pr_take takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the step, and a person reads the replies.
     The run of the item holds the claim, so the take writes none. A refusal of the step (code 2) ends the item with the lines it showed."""
+
+    # The round fetches the head of the pull request into the folder, so the review agent reads it there and reaches no host. GitHub keeps that head under refs/pull for a fork too.
+    # No entry calls this function yet, so no open run recorded the review without this step, and the step needs no patched.
+    fetch = command(name = "take-fetch", run = ["git", "fetch", "origin", "+refs/pull/%s/head:refs/remotes/origin/pr-%s" % (pr, pr)])
+    if fetch.rc != 0:
+        fail("REFUSE: the step take-fetch could not fetch the head of pull request %s into the folder. Check the folder and the pull request. %s" % (pr, fetch.stderr.strip()))
+
     agent(
         name = "take-review",
         prompt = "prompts/take_review.md",
@@ -767,7 +774,7 @@ def take_over(item, pr, author, project, round_settings):
         runner = _runner(round_settings, "take_review"),
         edits = False,
         label = "take review",
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        sandbox = sandbox(),
         inputs = {"item": item, "pr": pr, "facts": project},
     )
 
@@ -910,7 +917,8 @@ def sync_land(item, project, round_settings, line, n):
         output_tries = 2,
         forbid_commands = FORBID + ["git-write"],
         protect_paths = protected(round_settings),
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        # The folder is at the head of the sync, so the review reads local commits and reaches no host.
+        sandbox = sandbox(),
         inputs = {"pr": line["pr"], "branch": line["branch"], "head": head, "base": round_settings["base"], "facts": project},
     )
     capped(review, "sync-review", item)
@@ -928,10 +936,16 @@ def sync_land(item, project, round_settings, line, n):
 
 def sync_trunk(item, project, round_settings, n):
     """Merges a moved trunk into the round branch at the start of pass `n`, before its queue audit. Returns sync_end: a reason of SYNC_REASONS that ends the pass, or an empty reason, and the host_losses that its gate read.
-    A conflict gets one agent step, sync-resolve-<n>, on the sync branch, the push of its head by the engine, and then one more check. The tool merges the forge side and writes no checkout."""
+    A conflict gets the fetch of both branches, sync-resolve-fetch-<n>, one agent step, sync-resolve-<n>, on the sync branch, the push of its head by the engine, and then one more check. The tool merges the forge side and writes no checkout."""
     line = sync_check("sync-%d" % n, round_settings, project)
 
     if line["state"] == "conflict":
+        # The round fetches both sides of the merge into the folder of the round, so the agent reaches no host.
+        # The fetch sits behind patched. An open run that recorded the start of the resolve agent before the fetch step existed replays it with no fetch, so its agent works on what the folder already holds and reaches no host.
+        fetch = "sync-resolve-fetch-%d" % n
+        if patched(fetch) and command(name = fetch, run = ["git", "fetch", "origin", line["branch"], line["source"]]).rc != 0:
+            fail("REFUSE: the step %s could not fetch %s and %s into the folder of the round. Check the folder of the round. %s" % (fetch, line["branch"], line["source"], restart_steps(item)))
+
         resolve = agent(
             name = "sync-resolve-%d" % n,
             prompt = "prompts/sync.md",
@@ -939,7 +953,7 @@ def sync_trunk(item, project, round_settings, n):
             runner = _runner(round_settings, "sync_resolve"),
             forbid_commands = FORBID,
             protect_paths = protected(round_settings),
-            sandbox = sandbox(network = ["github.com", "api.github.com"]),
+            sandbox = sandbox(),
             inputs = {"branch": line["branch"], "source": line["source"], "base": round_settings["base"], "facts": project},
         )
         capped(resolve, "sync-resolve", item)
@@ -1313,8 +1327,8 @@ def _lane(item, project, round_settings):
     # The implementer, each fix and each review read the known base reds of the round from the data file that the engine writes, not from the record of the owner.
     lane_data = {"base_reds": round_settings["base_reds"], "base": base}
 
-    # The implement step and its sweep share one sandbox: the forge is the only host that they reach.
-    lane_box = sandbox(network = ["github.com", "api.github.com"])
+    # The implement step and its sweep share one sandbox with no network: the engine pushes their head, and their forge data comes from the data file.
+    lane_box = sandbox()
 
     implement = agent(
         name = "implement",
