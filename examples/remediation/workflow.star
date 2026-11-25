@@ -786,6 +786,13 @@ def take_over(item, pr, author, project, round_settings):
     3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take.
     4. The step pr_take takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the step, and a person reads the replies.
     The run of the item holds the claim, so the take writes none. A refusal of the step (code 2) ends the item with the lines it showed."""
+
+    # The round fetches the head of the pull request into the folder, so the review agent reads it there and reaches no host. GitHub keeps that head under refs/pull for a fork too.
+    # No entry calls this function yet, so no open run recorded the review without this step, and the step needs no patched.
+    fetch = command(name = "take-fetch", run = ["git", "fetch", "origin", "+refs/pull/%s/head:refs/remotes/origin/pr-%s" % (pr, pr)])
+    if fetch.rc != 0:
+        fail("REFUSE: the step take-fetch could not fetch the head of pull request %s into the folder. Check the folder and the pull request. %s" % (pr, fetch.stderr.strip()))
+
     agent(
         name = "take-review",
         prompt = "prompts/take_review.md",
@@ -960,8 +967,9 @@ def sync_trunk(item, project, round_settings, n):
 
     if line["state"] == "conflict":
         # The round fetches both sides of the merge into the folder of the round, so the agent reaches no host.
+        # The fetch sits behind patched. An open run that recorded the start of the resolve agent before the fetch step existed replays it with no fetch, so its agent works on what the folder already holds and reaches no host.
         fetch = "sync-resolve-fetch-%d" % n
-        if command(name = fetch, run = ["git", "fetch", "origin", line["branch"], line["source"]]).rc != 0:
+        if patched(fetch) and command(name = fetch, run = ["git", "fetch", "origin", line["branch"], line["source"]]).rc != 0:
             fail("REFUSE: the step %s could not fetch %s and %s into the folder of the round. Check the folder of the round. %s" % (fetch, line["branch"], line["source"], restart_steps(item)))
 
         resolve = agent(

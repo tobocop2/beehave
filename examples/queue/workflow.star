@@ -26,7 +26,7 @@ HOLD = "hold"
 MAX_PASSES = 500
 
 def work(item):
-    """Runs for each item as a child run. The agent commits in its own work folder, and the engine pushes the branch that has the id of the item and opens the pull request."""
+    """Runs for each item as a child run. The agent commits in its own work folder, and the engine pushes the branch that has the id of the item and opens the draft pull request."""
 
     # The forge is read here, at the start of the item, so a pull request that was opened after the pass read the queue still stops the item.
     # An open pull request of a login that is not OWNER_LOGIN claims the item. The failure holds the item with the reason, and no agent starts.
@@ -50,7 +50,8 @@ def work(item):
     if implement.stop != "":
         fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (implement.stop, item.id, item.id, item.id))
 
-    # The agent has no credential, so the engine pushes the commit of the step and opens the draft pull request. A step that made no commit opens nothing.
+    # The agent has no credential, so the engine pushes the commit of the step and opens the pull request. pr_open opens a draft; mark it ready when you want it reviewed.
+    # A step that made no commit opens nothing. These two steps need no patched: they come after the last step that an open run of the earlier file recorded, so that run takes them as new steps.
     if implement.committed:
         push(name = "push", branch = item.id, head = implement.head_sha, expect = "")
         pr_open(name = "open", title = item.title, body = item.body, base = env("BASE"))

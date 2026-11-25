@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/forge"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -203,12 +204,10 @@ func TestNewEngine_ARefusedCredentialStopsTheEngineBeforeItStarts(t *testing.T) 
 	require.ErrorContains(t, err, "project p: the writer credential")
 }
 
-func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfTheOwnerReachesIt(t *testing.T) {
-	t.Setenv("GH_TOKEN", "owner-token")
-	t.Setenv("GITHUB_TOKEN", "owner-github-token")
-	t.Setenv("SSH_AUTH_SOCK", "/owner/agent.sock")
+// pushAsTheWriter pushes the head of the rig, with the owner credentials in the environment of the test, and checks that git ran the push as the writer only.
+func pushAsTheWriter(t *testing.T, rig pushRig) {
+	t.Helper()
 
-	rig := credentialRig(t)
 	seen := filepath.Join(t.TempDir(), "hook-env")
 	hook := "#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"${GIT_CONFIG_GLOBAL:-unset}\" \"${GH_TOKEN:-unset}\" \"${GITHUB_TOKEN:-unset}\" \"${SSH_AUTH_SOCK:-unset}\" \"${BEEHAVE_FORGE_TOKEN:-unset}\" >> " + seen + "\nexit 0\n"
 	require.NoError(t, exectest.Write(filepath.Join(rig.remote, "hooks", "pre-receive"), hook))
@@ -219,6 +218,26 @@ func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfT
 	require.NoError(t, err)
 	assert.Equal(t, "/dev/null|unset|unset|unset|"+writerToken, strings.TrimSpace(string(got)))
 	assert.Equal(t, rig.head, rig.remoteHead(t))
+}
+
+func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfTheOwnerReachesIt(t *testing.T) {
+	t.Setenv("GH_TOKEN", "owner-token")
+	t.Setenv("GITHUB_TOKEN", "owner-github-token")
+	t.Setenv("SSH_AUTH_SOCK", "/owner/agent.sock")
+
+	pushAsTheWriter(t, credentialRig(t))
+}
+
+func TestPulls_PushOfAProjectWithASourceAndNoForgeRunsGitAsTheWriter(t *testing.T) {
+	t.Setenv("GH_TOKEN", "owner-token")
+	t.Setenv("GITHUB_TOKEN", "owner-github-token")
+	t.Setenv("SSH_AUTH_SOCK", "/owner/agent.sock")
+
+	rig := credentialRig(t)
+	// The project reads no forge: the push goes to the source, and the writer runs it as for a project with a forge.
+	rig.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+	pushAsTheWriter(t, rig)
 }
 
 func TestWritersStart_ASourceOfAProjectWithCredentialsMustBeAnHTTPSAddress(t *testing.T) {

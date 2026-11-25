@@ -469,6 +469,84 @@ func TestRoundSync_AConflictWhoseBranchesTheRoundCannotFetchStopsTheRunBeforeThe
 	assert.NotContains(t, strings.Join(stepNames(t, rig.last), " "), "agent:sync-resolve-1#", "no agent starts on a folder without both branches")
 }
 
+// An open round that recorded the start of the resolve agent under the file before the fetch step existed replays after adoption of the file with no fetch
+// and no unexpected step. The old file is the current one with the patched call false, which is the step order of that file.
+func TestRoundSync_AnOpenRoundStoppedInTheResolveAgentOfTheOldFileReplaysWithNoFetch(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "")
+	withSync(t, rig, &syncScript{lines: []string{"state=conflict branch=" + syncBranch + " source=main base_tip=abc", "synced", "state=current"}})
+
+	current, err := os.ReadFile(rig.file)
+	require.NoError(t, err)
+
+	old := strings.Replace(string(current), "if patched(fetch) and command(", "if False and command(", 1)
+	require.NotEqual(t, string(current), old, "the example holds the patched fetch")
+	require.NoError(t, os.WriteFile(rig.file, []byte(old), 0o600)) //nolint:gosec // the example copy of this test
+
+	rig.h.agents.hangAt = 1 // the resolve agent is the first agent of the round, and it holds, so the round is open after it recorded the start of that agent
+
+	// The stop ends the first start of the resolve agent before it commits; only the start after the resume makes the merge commit.
+	resolved := rig.h.agents.result
+	starts := 0
+	rig.h.agents.result = func(request AgentRequest) agent.Result {
+		if strings.Contains(request.Prompt, syncResolveMarker) {
+			starts++
+			if starts == 1 {
+				return agent.Result{Outcome: agent.OutcomeExited}
+			}
+		}
+
+		return resolved(request)
+	}
+
+	deps := rig.deps()
+	deps.Gate = itemGate{treeGate: rig.gate, kids: rig.kids}
+
+	if rig.forge != nil {
+		deps.Merge = rig.forge
+	}
+
+	stopCtx, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopCtx, rig.h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	go func() { _, _ = first.RunFile(testItem, testProject, rig.file, modeOff()) }() //nolint:errcheck // the stop of the engine ends the run, and the test reads the store
+
+	waitOn(t, conditionOf(runOfEngine(t, first), func() bool { return len(rig.h.agents.seen()) >= 1 }))
+	stop()
+	require.NoError(t, first.Shutdown())
+	expireLease(rig.h)
+
+	require.NoError(t, os.WriteFile(rig.file, current, 0o600)) //nolint:gosec // the example copy of this test
+	rig.h.agents.hangAt = 0
+	require.NoError(t, rig.h.client(t, testVersion).ResumeOnThisFile(testItem))
+
+	engine := rig.engine(t)
+
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool {
+		last, found, readErr := latestRun(engine.store(), testItem)
+
+		return readErr == nil && found && (last.terminal() || slices.ContainsFunc(stepNamesOf(t, engine, testRun), func(name string) bool {
+			return strings.HasPrefix(name, "round_sync:sync-again-1#")
+		}))
+	}))
+
+	last, found, err := latestRun(engine.store(), testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	if last.Status.Error != nil {
+		assert.NotContains(t, last.Status.Error.Error(), "UnexpectedStep", "the replay of the recorded steps meets no other step")
+	}
+
+	names := strings.Join(stepNamesOf(t, engine, testRun), " ")
+	assert.NotContains(t, names, "command:sync-resolve-fetch-1#", "a run that recorded the old resolve runs no fetch")
+	assert.NotContains(t, names, "DBOS.patch-sync-resolve-fetch-1", "a run that passed the call records no marker")
+	assert.Contains(t, names, "round_sync:sync-again-1#", "the round went on past the resolve")
+}
+
 // A write of the sync that the forge refuses ends the item with the error of the forge as its lines. The run does not fail.
 func TestRoundSync_AWriteThatTheForgeRefusesEndsTheItemWithTheError(t *testing.T) {
 	t.Parallel()

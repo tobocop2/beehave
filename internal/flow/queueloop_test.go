@@ -111,6 +111,8 @@ func TestQueueLoop_TheEnginePushesAndOpensThePullRequestOnlyForAnAgentThatCommit
 			t.Parallel()
 
 			r := newLoopRig(t, queueItem("21", model.SeverityP1))
+			// The item 21 reads its own id, title and body, which differ from the default fields of the fake reader, so the branch shows that it is the id of the item.
+			r.h.items = &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}, byItem: map[string]map[string]string{"21": {"id": "21", "title": "title of 21", "body": "body of 21"}}}
 			r.agents.setAct(func(ctx context.Context, _ string) error {
 				if !commits {
 					return nil
@@ -136,10 +138,10 @@ func TestQueueLoop_TheEnginePushesAndOpensThePullRequestOnlyForAnAgentThatCommit
 			}
 
 			require.Len(t, pushed, 1)
-			// The fake item reader gives every item the id testItem, and the branch is the id of the item.
-			assert.True(t, strings.HasPrefix(pushed[0], testProject+"|21|"+testItem+"|"), "the engine pushes the branch of the item: %s", pushed[0])
+			head := strings.TrimSpace(gitIn(t, r.h.trees.dir, "rev-parse", "HEAD"))
+			assert.Equal(t, testProject+"|21|21|"+head+"|", pushed[0], "the engine pushes the commit of the step to the branch named by the id of the item, with no lease")
 			require.Len(t, opened, 1)
-			assert.True(t, strings.HasSuffix(opened[0], "|integration|"), "the pull request goes to BASE: %s", opened[0])
+			assert.Equal(t, testProject+"|21|title of 21|body of 21|integration|", opened[0], "the pull request of the item goes to BASE")
 		})
 	}
 }

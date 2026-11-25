@@ -69,5 +69,6 @@ def main(item):
 
     # The branch goes into the source repository under the id of the item. An item that used all of its passes is not pushed.
     # The engine pushes the head that the gate and the review saw, so no step of the item needs a credential. With no lease, git takes only a new branch or a fast forward.
+    # The push is the last step, so it needs no patched: a run that passed the old command push has ended, and a resume of a run whose push failed starts again at the failed step.
     if approved:
         push(name = "push", branch = item.id, head = check.head, expect = "")

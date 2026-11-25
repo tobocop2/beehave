@@ -213,8 +213,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `-` | #586: new, lists the changed paths outside an allowed set | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `allow` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
-| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
-| `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
+| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 2: `examples/local/workflow.star`, `examples/remediation/workflow.star` |
+| `patched` | `name` | #933: new | 2: `examples/local/workflow.star`, `examples/remediation/workflow.star` |
 | `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
 | `pr_closing` | `item` | #500: new | 1: `internal/workflow/lib/scope.star` |
 | `pr_closing` | `name` | #500: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
