@@ -14,7 +14,10 @@ import (
 // sshG is the part of an `ssh -G` answer that does not change between the cases: the locale variables of the system config of macOS.
 const sshG = "user ci\nhostname 10.9.9.9\nbatchmode yes\nclearallforwardings no\nsendenv LANG\nsendenv LC_*\n"
 
-func TestWithCredentials_NoneForcesNoAgentAndNoForwardOnEveryCallAndLeavesTheLinkItCopies(t *testing.T) {
+// clean is the part of an `ssh -G` answer that gives the host neither the agent nor the X display of the owner.
+const clean = "forwardagent no\nforwardx11 no\nforwardx11trusted no\n"
+
+func TestWithCredentials_NoneForcesNoAgentNoForwardNoDisplayAndNoSharedConnectionOnEveryCallAndLeavesTheLinkItCopies(t *testing.T) {
 	t.Parallel()
 
 	ssh := proctest.Always(model.CommandResult{})
@@ -30,7 +33,10 @@ func TestWithCredentials_NoneForcesNoAgentAndNoForwardOnEveryCallAndLeavesTheLin
 	require.NoError(t, err)
 
 	options := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "HostName=10.9.9.9", "-o", "StrictHostKeyChecking=yes"}
-	forced := []string{"-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes"}
+	forced := []string{
+		"-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ForwardX11=no", "-o", "ForwardX11Trusted=no",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none",
+	}
 
 	assert.Equal(t, [][]string{
 		append(append(append([]string{}, options...), forced...), "--", "box", "true"),
@@ -51,7 +57,7 @@ func TestCheckCredentials_RunsNothingForAHostWithoutTheDeclaration(t *testing.T)
 func TestCheckCredentials_RunsSshGWithTheOptionsOfTheLinkWithoutTheForcedOnes(t *testing.T) {
 	t.Parallel()
 
-	ssh := proctest.Always(model.CommandResult{Stdout: sshG + "forwardagent no\n"})
+	ssh := proctest.Always(model.CommandResult{Stdout: sshG + clean})
 
 	machine, err := link.ForMachine("box", link.Options{Address: "10.9.9.9", User: "ci"}, ssh)
 	require.NoError(t, err)
@@ -68,22 +74,26 @@ func TestCheckCredentials_RunsSshGWithTheOptionsOfTheLinkWithoutTheForcedOnes(t 
 	}, ssh.Calls)
 }
 
-func TestCheckCredentials_AcceptsOnlyNoAgentAndLocaleVariablesAndNoSecretSetting(t *testing.T) {
+func TestCheckCredentials_AcceptsOnlyNoAgentNoDisplayNoProxyLocaleVariablesAndNoSecretSetting(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		answer string
 		refuse []string // each part of the refusal; empty means the host passes
 	}{
-		"agent off":                         {answer: "forwardagent no\n"},
-		"agent off and a plain setenv":      {answer: "forwardagent no\nsetenv TERM=xterm\n"},
-		"agent on":                          {answer: "forwardagent yes\n", refuse: []string{"forwardagent yes", "box", "credentials = \"none\""}},
-		"agent socket path":                 {answer: "forwardagent /tmp/agent.sock\n", refuse: []string{"forwardagent /tmp/agent.sock", "box"}},
-		"agent from the variable":           {answer: "forwardagent $SSH_AUTH_SOCK\n", refuse: []string{"forwardagent $SSH_AUTH_SOCK", "box"}},
-		"no agent line":                     {answer: "", refuse: []string{"forwardagent", "box"}},
-		"a sent variable that is a secret":  {answer: "forwardagent no\nsendenv GH_TOKEN\n", refuse: []string{"sendenv GH_TOKEN", "box", "only LANG and LC_*"}},
-		"a sent pattern of every variable":  {answer: "forwardagent no\nsendenv *\n", refuse: []string{"sendenv *", "box"}},
-		"a set variable with a secret name": {answer: "forwardagent no\nsetenv GH_TOKEN=ghp_hidden\n", refuse: []string{"setenv GH_TOKEN=...", "box"}},
+		"agent and display off":             {answer: clean},
+		"agent off and a plain setenv":      {answer: clean + "setenv TERM=xterm\n"},
+		"agent on":                          {answer: "forwardagent yes\nforwardx11 no\n", refuse: []string{"forwardagent yes", "box", "credentials = \"none\""}},
+		"agent socket path":                 {answer: "forwardagent /tmp/agent.sock\nforwardx11 no\n", refuse: []string{"forwardagent /tmp/agent.sock", "box"}},
+		"agent from the variable":           {answer: "forwardagent $SSH_AUTH_SOCK\nforwardx11 no\n", refuse: []string{"forwardagent $SSH_AUTH_SOCK", "box"}},
+		"no agent line":                     {answer: "forwardx11 no\n", refuse: []string{"forwardagent", "box"}},
+		"display on":                        {answer: "forwardagent no\nforwardx11 yes\nforwardx11trusted yes\n", refuse: []string{"forwardx11 yes", "X display", "box"}},
+		"no display line":                   {answer: "forwardagent no\n", refuse: []string{"forwardx11", "box"}},
+		"a jump host":                       {answer: clean + "proxyjump jump\n", refuse: []string{"proxyjump", "box", "credentials = \"none\""}},
+		"a proxy command":                   {answer: clean + "proxycommand ssh -A jump -W %h:%p -o Token=ghp_hidden\n", refuse: []string{"proxycommand", "box"}},
+		"a sent variable that is a secret":  {answer: clean + "sendenv GH_TOKEN\n", refuse: []string{"sendenv GH_TOKEN", "box", "only LANG and LC_*"}},
+		"a sent pattern of every variable":  {answer: clean + "sendenv *\n", refuse: []string{"sendenv *", "box"}},
+		"a set variable with a secret name": {answer: clean + "setenv GH_TOKEN=ghp_hidden\n", refuse: []string{"setenv GH_TOKEN=...", "box"}},
 	}
 
 	for name, tt := range tests {

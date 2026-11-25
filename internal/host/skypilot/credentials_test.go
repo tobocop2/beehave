@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/host/hosttest"
 	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
@@ -23,7 +24,7 @@ func TestUp_AClusterDeclaredCredentialsNoneIsCheckedAfterTheLaunchAndBeforeAnyCa
 
 	h, _, sky, ssh := newHost(t, declaredNone())
 	sky.Plan("", "launch")
-	ssh.Plan("forwardagent yes\n", "-G")
+	ssh.Plan("forwardagent yes\nforwardx11 no\n", "-G")
 
 	err := h.Up(t.Context())
 
@@ -43,12 +44,12 @@ func TestUp_AClusterThatFailsToLaunchRunsNoCheck(t *testing.T) {
 	assert.Empty(t, ssh.Calls, "the ssh config entry of the cluster exists only after the launch")
 }
 
-func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsNoAgentAndNoForwardOnTheQueueLink(t *testing.T) {
+func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayAndNoSharedConnectionOnTheQueueLink(t *testing.T) {
 	t.Parallel()
 
 	sky, ssh := &proctest.Scripted{}, &proctest.Scripted{}
 	sky.Plan("", "launch")
-	ssh.Plan("forwardagent no\n", "-G")
+	ssh.Plan(hosttest.CleanSSHConfig, "-G")
 	ssh.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
 
 	var queueLink *link.Link
@@ -63,7 +64,10 @@ func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsNoAgentAndNoForwardOnTh
 
 	queueLink.Exec(t.Context(), "true")
 
-	forced := []string{"-o", "BatchMode=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", clusterName}
+	forced := []string{
+		"-o", "BatchMode=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ForwardX11=no", "-o", "ForwardX11Trusted=no",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none", clusterName,
+	}
 	assert.Equal(t, [][]string{
 		{"-G", "-o", "BatchMode=yes", clusterName},
 		append(append([]string{}, forced...), model.ShellQuote("flock"), model.ShellQuote("--version")),

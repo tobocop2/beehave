@@ -1,7 +1,6 @@
 package ssh_test
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -13,25 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/host/sshtest"
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
 )
-
-// sshConfig answers `ssh -G` with the agent setting given and passes every other call to the machine.
-type sshConfig struct {
-	forwardAgent string
-	machine      proc.Runner
-	asked        int
-}
-
-func (c *sshConfig) Run(ctx context.Context, args []string) model.CommandResult {
-	if args[0] == "-G" {
-		c.asked++
-
-		return model.CommandResult{Stdout: "forwardagent " + c.forwardAgent + "\n"}
-	}
-
-	return c.machine.Run(ctx, args)
-}
 
 func declaredNone() model.HostConfig {
 	cfg := config()
@@ -44,7 +25,7 @@ func TestUp_AHostDeclaredCredentialsNoneThatGetsTheAgentIsRefusedBeforeAnyCallRe
 	t.Parallel()
 
 	m := sshtest.New(hosttest.Working)
-	runner := &sshConfig{forwardAgent: "yes", machine: m.SSH()}
+	runner := &hosttest.SSHConfig{Answer: "forwardagent yes\nforwardx11 no\n", Next: m.SSH()}
 
 	h, err := ssh.New("gates", declaredNone(), runner)
 	require.NoError(t, err)
@@ -53,26 +34,27 @@ func TestUp_AHostDeclaredCredentialsNoneThatGetsTheAgentIsRefusedBeforeAnyCallRe
 
 	require.ErrorIs(t, err, link.ErrConfig)
 	require.ErrorContains(t, err, "forwardagent yes")
-	assert.Equal(t, 1, runner.asked)
+	assert.Equal(t, 1, runner.Asked)
 	assert.Empty(t, m.Calls, "no call reaches the machine")
 }
 
-func TestUp_AHostDeclaredCredentialsNoneThatPassesGetsNoAgentAndNoForwardOnEveryCall(t *testing.T) {
+func TestUp_AHostDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayAndNoSharedConnectionOnEveryCall(t *testing.T) {
 	t.Parallel()
 
 	m := sshtest.New(hosttest.Working)
-	runner := &sshConfig{forwardAgent: "no", machine: m.SSH()}
+	runner := &hosttest.SSHConfig{Answer: hosttest.CleanSSHConfig, Next: m.SSH()}
 
 	h, err := ssh.New("gates", declaredNone(), runner)
 	require.NoError(t, err)
 
 	require.NoError(t, h.Up(t.Context()))
-	assert.Equal(t, 1, runner.asked)
+	assert.Equal(t, 1, runner.Asked)
 	require.NotEmpty(t, m.Options)
 
 	for _, options := range m.Options {
-		assert.True(t, slices.Contains(options, "ForwardAgent=no"), options)
-		assert.True(t, slices.Contains(options, "ClearAllForwardings=yes"), options)
+		for _, forced := range []string{"ForwardAgent=no", "ClearAllForwardings=yes", "ForwardX11=no", "ForwardX11Trusted=no", "ControlMaster=no", "ControlPath=none"} {
+			assert.True(t, slices.Contains(options, forced), "%s in %v", forced, options)
+		}
 	}
 }
 
@@ -80,12 +62,12 @@ func TestUp_AHostWithoutTheDeclarationRunsNoSshG(t *testing.T) {
 	t.Parallel()
 
 	m := sshtest.New(hosttest.Working)
-	runner := &sshConfig{forwardAgent: "yes", machine: m.SSH()}
+	runner := &hosttest.SSHConfig{Answer: "forwardagent yes\n", Next: m.SSH()}
 
 	h, err := ssh.New("gates", config(), runner)
 	require.NoError(t, err)
 
 	require.NoError(t, h.Up(t.Context()))
-	assert.Zero(t, runner.asked)
+	assert.Zero(t, runner.Asked)
 	assert.False(t, slices.Contains(m.Options[0], "ForwardAgent=no"))
 }

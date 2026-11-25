@@ -9,19 +9,23 @@ import (
 
 // The values of the ssh settings that a host declared credentials = "none" may get.
 const (
-	agentOff       = "no"
+	forwardOff     = "no"
 	localeVariable = "LANG"
 	localePrefix   = "LC_"
 )
 
-// sshSettings is what `ssh -G` says ssh gives the host: the agent setting, the variable patterns that it sends, and the NAME=value pairs that it sets.
+// sshSettings is what `ssh -G` says ssh gives the host: the agent and X11 settings, the variable patterns that it sends, the NAME=value pairs that
+// it sets, and the keys of the proxy settings that route the connection through another host.
 type sshSettings struct {
-	forwardAgent    string
-	sendEnv, setEnv []string
+	forwardAgent, forwardX11 string
+	sendEnv, setEnv, proxies []string
 }
 
-// forcedOptions are the ssh options that every call of a link to a host declared credentials = "none" adds: no agent and no forwarded port.
-func forcedOptions() []string { return []string{"ForwardAgent=no", "ClearAllForwardings=yes"} }
+// forcedOptions are the ssh options that every call of a link to a host declared credentials = "none" adds: no agent, no forwarded port, no X11
+// display, and no connection shared with an earlier ssh, which can hold an agent that the forced options of a later call cannot remove.
+func forcedOptions() []string {
+	return []string{"ForwardAgent=no", "ClearAllForwardings=yes", "ForwardX11=no", "ForwardX11Trusted=no", "ControlMaster=no", "ControlPath=none"}
+}
 
 // WithCredentials returns a copy of the link for a host with the credentials declaration given. The link itself runs nothing.
 func (l *Link) WithCredentials(credentials model.HostCredentials) *Link {
@@ -40,8 +44,9 @@ func (l *Link) forced() []string {
 	return forcedOptions()
 }
 
-// CheckCredentials refuses a link to a host declared credentials = "none" when ssh, after its config, would forward the agent to the host, send it a
-// variable other than LANG and LC_*, or set a variable with a secret name. It runs `ssh -G` with the options of the link, which connects to nothing.
+// CheckCredentials refuses a link to a host declared credentials = "none" when ssh, after its config, would forward the agent or the X11 display
+// to the host, send it a variable other than LANG and LC_*, set a variable with a secret name, or reach it through another host.
+// It runs `ssh -G` with the options of the link, which connects to nothing.
 // It runs nothing for a host without the declaration.
 func (l *Link) CheckCredentials(ctx context.Context) error {
 	if l.credentials != model.HostCredentialsNone {
@@ -67,6 +72,10 @@ func decodeSettings(text string) sshSettings {
 		switch key {
 		case "forwardagent":
 			settings.forwardAgent = value
+		case "forwardx11":
+			settings.forwardX11 = value
+		case "proxyjump", "proxycommand":
+			settings.proxies = append(settings.proxies, key)
 		case "sendenv":
 			settings.sendEnv = append(settings.sendEnv, value)
 		case "setenv":
@@ -77,19 +86,55 @@ func decodeSettings(text string) sshSettings {
 	return settings
 }
 
-// check refuses settings that give the host a credential of the owner. Only "no" keeps the agent: a socket path forwards it too.
+// check refuses settings that give the host, or a host on the way to it, a credential of the owner.
 func (s sshSettings) check(target string) error {
-	if s.forwardAgent != agentOff {
+	if err := s.checkForwards(target); err != nil {
+		return err
+	}
+
+	if err := checkProxies(target, s.proxies); err != nil {
+		return err
+	}
+
+	if err := checkSendEnv(target, s.sendEnv); err != nil {
+		return err
+	}
+
+	return checkSetEnv(target, s.setEnv)
+}
+
+// checkForwards refuses the agent and the X11 display. Only "no" passes: a socket path forwards the agent too, and a missing line is not a "no".
+func (s sshSettings) checkForwards(target string) error {
+	if s.forwardAgent != forwardOff {
 		return Refusal("", "the build host %s gets the SSH agent (ssh -G says forwardagent %s). A host with credentials = \"none\" must not. Set ForwardAgent no for %s in ~/.ssh/config, or remove credentials = \"none\"", target, s.forwardAgent, target)
 	}
 
-	for _, pattern := range s.sendEnv {
+	if s.forwardX11 != forwardOff {
+		return Refusal("", "the build host %s gets the X display of this computer (ssh -G says forwardx11 %s). A host with credentials = \"none\" must not. Set ForwardX11 no for %s in ~/.ssh/config, or remove credentials = \"none\"", target, s.forwardX11, target)
+	}
+
+	return nil
+}
+
+// checkProxies refuses a host that ssh reaches through another host. beehave cannot check what ssh gives that other host, such as the agent.
+// The refusal names the key only: a proxy command can hold a secret.
+func checkProxies(target string, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	return Refusal("", "the build host %s is reached through another host (ssh -G sets %s). beehave cannot check what ssh gives that host, such as the SSH agent, so a host with credentials = \"none\" must not use ProxyJump or ProxyCommand. Remove it for %s in ~/.ssh/config, or remove credentials = \"none\" for this host", target, keys[0], target)
+}
+
+// checkSendEnv refuses a variable pattern that ssh sends to the host, other than LANG and LC_*.
+func checkSendEnv(target string, patterns []string) error {
+	for _, pattern := range patterns {
 		if pattern != localeVariable && !strings.HasPrefix(pattern, localePrefix) {
 			return Refusal("", "the build host %s gets the variables %s of this computer (ssh -G says sendenv %s). A host with credentials = \"none\" gets only LANG and LC_*. Remove SendEnv %s for %s in ~/.ssh/config, or remove credentials = \"none\"", target, pattern, pattern, pattern, target)
 		}
 	}
 
-	return checkSetEnv(target, s.setEnv)
+	return nil
 }
 
 // checkSetEnv refuses a variable that ssh sets on the host when its name marks a secret. The refusal names the variable and never shows its value.
