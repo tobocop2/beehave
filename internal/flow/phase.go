@@ -128,23 +128,12 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 	return e.agentStep(ctx, claim, holder, in, cmp.Or(lost, in.Limited))
 }
 
-// agentStep runs the agent of the phase as a step, under the claim of the attempt holder. A failed step returns no output, so it leaves the cost of the failed run
-// in an event that the queuing run reads. lost is the lost or limited run that the start follows, or nil.
+// agentStep runs the agent of the phase as a step, under the claim of the attempt holder. The record of a failed step holds its output and its error, so the cost of the failed run is in the record.
+// lost is the lost or limited run that the start follows, or nil.
 func (e *Engine) agentStep(ctx dbos.Context, claim context.Context, holder *attempt, in PhaseInput, lost *LostRun) (PhaseOutput, error) { //nolint:revive // ctx of the workflow first, then the context of the claim
-	var spent agent.Spend
-
-	out, err := runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
-		ran, runErr := e.runAgent(c, claim, holder, in, lost)
-		spent = ran.Spend
-
-		return ran, runErr
+	return runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
+		return e.runAgent(c, claim, holder, in, lost)
 	})
-
-	if err != nil && spent != (agent.Spend{}) {
-		return out, errors.Join(err, dbos.SetEvent(ctx, costEvent, spent)) // Join drops a nil error
-	}
-
-	return out, err
 }
 
 // runAgent starts the agent of one phase under the context of the claim of its run, and waits for it. The agent dies with its process group when
@@ -409,26 +398,7 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
 
-	out, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
-	// A stopped wait leaves the reading goroutine running, and it shares the step counter of the workflow: a stopped run, or a run of a stopped engine, reads no cost.
-	if err != nil && ctx.Err() == nil && e.ctx.Err() == nil {
-		out.Spend = failedCost(ctx, handle.GetWorkflowID())
-	}
-
-	return out, err
-}
-
-// costEvent is the key of the event in which a failed phase leaves the cost of its run. A failed workflow returns no output, and an event outlives the failure.
-const costEvent = "spend"
-
-// failedCost reads the cost that a failed phase left in its event, marks included. A phase that left none, or whose event cannot be read, cost 0.
-func failedCost(ctx dbos.Context, phaseID string) agent.Spend {
-	spend, err := dbos.GetEvent[agent.Spend](ctx, phaseID, costEvent, 0)
-	if err != nil {
-		return agent.Spend{}
-	}
-
-	return spend
+	return awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
 }
 
 // childResult is how a child workflow ended.

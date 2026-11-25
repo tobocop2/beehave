@@ -348,7 +348,7 @@ func TestEngine_PinsTheApplicationVersionToTheBuildVersion(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	assert.Equal(t, "v1.2.3-pinned+core20.agent15.tracker4.forge12.land16.gate8.host1.round7", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
+	assert.Equal(t, "v1.2.3-pinned+core20.agent16.tracker4.forge12.land16.gate8.host1.round7", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
 
 	infos, err := harness.client(t, "v1.2.3-pinned").Status()
 	require.NoError(t, err)
