@@ -38,7 +38,7 @@ At each start, `beehave run` deletes the finished runs that are older than `agen
 
 - With `agents.retention_days = 0`, it deletes none.
 - Failed and cancelled runs stay, because `beehave resume` can reopen them.
-- A kept run is the record that `earlier_calls` counts.
+- The retention never deletes a `spend` row of the ledger. `earlier_calls` and the tree and week caps read the ledger, not the runs.
 
 ### Dependencies
 
