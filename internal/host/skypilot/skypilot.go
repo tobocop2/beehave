@@ -118,7 +118,7 @@ func (h *Host) apply(options []Option) error {
 	}
 
 	if h.config.SetupCommand != "" && slices.Contains([]string{h.checkout.project, h.checkout.branch, h.checkout.url}, "") {
-		return fmt.Errorf("%w: `host.setup_command` needs the clone URL and the base branch of the project", ErrConfig)
+		return fmt.Errorf("%w: `host.setup_command` needs the project name, the base branch and the clone URL: give all three, or remove the key", ErrConfig)
 	}
 
 	return nil

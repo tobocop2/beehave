@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -92,6 +93,7 @@ func TestUp_ALaunchWithNoNewKeyIsTheLaunchOfTheHostWithoutThem(t *testing.T) {
 type taskReader struct {
 	*proctest.Scripted
 	path, text string
+	mode       os.FileMode
 }
 
 func (r *taskReader) Run(ctx context.Context, args []string) model.CommandResult {
@@ -100,6 +102,10 @@ func (r *taskReader) Run(ctx context.Context, args []string) model.CommandResult
 	raw, err := os.ReadFile(r.path)
 	if err == nil {
 		r.text = string(raw)
+	}
+
+	if info, statErr := os.Stat(r.path); statErr == nil {
+		r.mode = info.Mode().Perm()
 	}
 
 	return r.Scripted.Run(ctx, args)
@@ -129,7 +135,78 @@ func TestUp_ASetupCommandGoesToATaskFileThatClonesTheProjectAndRunsTheCommandAnd
 	assert.Equal(t, `setup: "set -e\nmkdir -p \"$HOME/beehave-setup\"\ncd \"$HOME/beehave-setup\"\ngit clone --branch main https://example.test/o/n.git beehave\ncd beehave\nmake setup"`+"\n", sky.text)
 
 	_, err = os.Stat(sky.path)
-	assert.ErrorIs(t, err, os.ErrNotExist, "the task file is deleted after the launch")
+	require.ErrorIs(t, err, os.ErrNotExist, "the task file is deleted after the launch")
+
+	_, err = os.Stat(filepath.Dir(sky.path))
+	require.ErrorIs(t, err, os.ErrNotExist, "the folder of the task file is deleted after the launch")
+}
+
+func TestUp_TheTaskFileIsReadableByTheOwnerOnly(t *testing.T) {
+	t.Parallel()
+
+	sky := launchWithSetup(t, "make setup", "beehave", "main", "https://example.test/o/n.git")
+
+	assert.Equal(t, os.FileMode(0o600), sky.mode, "a set-up command can hold a secret")
+}
+
+// launchWithSetup runs Up on a host that has the command and the checkout and returns the reader that saw the task file.
+func launchWithSetup(t *testing.T, command string, project, branch, url string) *taskReader {
+	t.Helper()
+
+	cfg := hostConfig(nil)
+	cfg.SetupCommand = command
+	sky := &taskReader{Scripted: &proctest.Scripted{}}
+	sky.Plan("", "launch")
+
+	ssh := &proctest.Scripted{}
+	ssh.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
+
+	h, err := New(clusterName, cfg, sky, ssh, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} },
+		WithCheckout(project, branch, url))
+	require.NoError(t, err)
+	require.NoError(t, h.Up(context.Background()))
+
+	return sky
+}
+
+// setupText returns the task file text that a launch with the command and the checkout reads.
+func setupText(t *testing.T, command string, project, branch, url string) string {
+	t.Helper()
+
+	return launchWithSetup(t, command, project, branch, url).text
+}
+
+func TestUp_AnyUserSetupCommandReachesTheTaskFileAsOneYAMLScalarThatReadsBackToTheScript(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{
+		`echo "a b" && echo 'c'`,
+		"echo $HOME $(date) `id`",
+		"pip install -r req.txt\nmake setup\n",
+		"cat <<EOF\n${VAR} {{ x }}\tend\nEOF",
+		"echo \\ done # not: a comment\n---",
+	} {
+		text := setupText(t, command, "beehave", "main", "https://example.test/o/n.git")
+
+		require.True(t, strings.HasPrefix(text, "setup: \""), command)
+		require.True(t, strings.HasSuffix(text, "\"\n"), command)
+
+		script, err := strconv.Unquote(strings.TrimSuffix(strings.TrimPrefix(text, "setup: "), "\n"))
+		require.NoError(t, err, command)
+		assert.True(t, strings.HasSuffix(script, "\ncd beehave\n"+command), "the command is the last lines of the script, unchanged: %q", script)
+	}
+}
+
+func TestUp_TheCloneURLTheBranchAndTheProjectAreQuotedForTheShell(t *testing.T) {
+	t.Parallel()
+
+	text := setupText(t, "make setup", "my proj'x$y", "feat/a b'c$d", "https://example.test/o/a b'c$d.git")
+
+	script, err := strconv.Unquote(strings.TrimSuffix(strings.TrimPrefix(text, "setup: "), "\n"))
+	require.NoError(t, err)
+
+	assert.Contains(t, script, `git clone --branch 'feat/a b'\''c$d' 'https://example.test/o/a b'\''c$d.git' 'my proj'\''x$y'`)
+	assert.Contains(t, script, `cd 'my proj'\''x$y'`)
 }
 
 func TestUp_ASetupCommandWithAFailedLaunchStillDeletesTheTaskFile(t *testing.T) {
@@ -200,5 +277,23 @@ func TestNew_ASetupCommandNeedsACheckoutToCloneFrom(t *testing.T) {
 	_, err := New(clusterName, cfg, nil, nil, nil)
 
 	require.ErrorIs(t, err, ErrConfig)
-	assert.ErrorContains(t, err, "`host.setup_command` needs the clone URL and the base branch of the project")
+	assert.ErrorContains(t, err, "`host.setup_command` needs the project name, the base branch and the clone URL")
+}
+
+func TestNew_ACheckoutWithOneEmptyFieldIsRefusedAndTheMessageNamesTheFix(t *testing.T) {
+	t.Parallel()
+
+	for name, checkout := range map[string][3]string{
+		"project": {"", "main", "https://example.test/o/n.git"},
+		"branch":  {"beehave", "", "https://example.test/o/n.git"},
+		"url":     {"beehave", "main", ""},
+	} {
+		cfg := hostConfig(nil)
+		cfg.SetupCommand = "make setup"
+
+		_, err := New(clusterName, cfg, nil, nil, nil, WithCheckout(checkout[0], checkout[1], checkout[2]))
+
+		require.ErrorIs(t, err, ErrConfig, name)
+		assert.ErrorContains(t, err, "give all three, or remove the key", name)
+	}
 }
