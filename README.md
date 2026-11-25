@@ -1,7 +1,7 @@
 > [!CAUTION]
-> # 🚧 UNDER CONSTRUCTION 🚧
+> # Early release
 >
-> **beehave is not ready for use.** The workflow API, the commands and the file formats change without notice, and there is no release yet. Do not run it on work you cannot lose.
+> **beehave is an early release.** The workflow API, the commands and the file formats can still change. Do not run it on work you cannot lose.
 
 <p align="center">
   <a href="https://github.com/tobocop2/beehave">
@@ -162,19 +162,39 @@ The file is [Starlark](https://github.com/bazelbuild/starlark), the configuratio
 
 ## Quickstart
 
-beehave builds from source today. You need Go 1.27, Make and [Claude Code](https://claude.ai/code).
+You need [Claude Code](https://claude.ai/code), logged in.
 
 ```bash
-git clone https://github.com/tobocop2/beehave && cd beehave && make build
-bin/beehave check workflow examples/local/workflow.star --dry-run     # walk the workflow, no agent calls
+brew install --cask tobocop2/tap/beehave
 
-mkdir -p ~/.config/beehave/projects
-cp examples/local/project.star ~/.config/beehave/projects/myrepo.star   # set source to your repository
-bin/beehave item add myrepo fix-login --title "Fix the login" --body-file task.md
-bin/beehave run fix-login myrepo --workflow examples/local/workflow.star
+cd ~/work/myrepo                  # the top folder of your git repository
+beehave init                      # writes the project file, workflow.star and prompts/
+
+mkdir -p ~/.config/beehave        # one Claude runner, with the login folder of Claude Code
+echo 'runner(name = "claude", agent = "claude", config_dir = "~/.claude")' > ~/.config/beehave/runners.star
+
+beehave check workflow --dry-run  # walk the workflow, no agent calls
+beehave item add myrepo fix-login --title "Fix the login" --body-file task.md
+beehave run fix-login             # no --workflow: run reads workflow.star in this folder
 ```
 
+`beehave init` writes the project file `projects/<name>.star` into the config folder (`$BEEHAVE_CONFIG`, else `~/.config/beehave`). It writes `workflow.star` and `prompts/` into the repository. It never replaces a file: if one of them exists, it names the file and writes nothing. Set the gate to the test command of your repository with `--gate`, or edit the project file. Run `beehave init --help` for the other flags.
+
 The result is a branch named `fix-login` in your repository. If the run stops, run the same command again. `beehave status` lists the runs and the questions that wait for you.
+
+### A round on the remediation example
+
+The remediation example needs a clone of beehave and its own tools. These steps run after the steps above:
+
+1. Clone beehave, and run `make remedy` in the clone.
+2. Edit the project file. Set `base_branch`, `tracker`, `test_command`, `test_report`, `gate`, and in `vars` the `round` keys `base`, `next_base`, `label`, `merge`, `owner`, `lane_cap` and `fix_rounds`. Run `beehave check config` until it exits 0.
+3. Add the host keys: `build_host`, and a `host(...)` block with `provider = "skypilot"`, `disk_floor_gb`, `setup_command` and `skypilot = skypilot(cloud, region, instance_type, disk_size_gb, spot)`.
+4. Add the `credentials` entry with a `writer` that names a keychain entry. The file never holds the token.
+5. Add the label of the round to an issue by its number.
+6. Start the engine with `beehave serve`.
+7. Run the round: `PATH="$PWD/bin:$PATH" beehave run round/<base> --workflow examples/remediation/workflow.star`.
+
+[`examples/remediation`](examples/remediation) holds the details.
 
 ## Examples
 
