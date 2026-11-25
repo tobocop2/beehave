@@ -226,9 +226,10 @@ func (s *script) defaultSlot(plan *commandPlan) {
 // slotCommand runs a command call that names a slot class as a job on the queue of the class, then records its output as the step of the call.
 // DBOS records a child run from the run, never from inside a step, so the queue wait comes first and the step records what it returned.
 // A replay reads the recorded result of the child run and queues nothing again. With failure "return", a job that could not run is the recorded result.
+// A call with slots has no retries, so its one try is the last.
 func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	out, err := s.e.queueSlotCommand(s.ctx, plan.request)
-	if err != nil && !plan.tries.returned(s.ctx, 1, err, func(error) bool { return false }) {
+	if err != nil && !plan.tries.returned(s.ctx, 1, err, s.e.retryable) {
 		return nil, fmt.Errorf("command %q could not run: %w", plan.label, err)
 	}
 
