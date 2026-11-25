@@ -189,20 +189,24 @@ const repoKey = "repo"
 func newAdapters(bd proc.Runner, state func() (string, error), env map[string]string) adapters {
 	roles := &writers{}
 
-	return adapters{
+	table := adapters{
 		trackers: trackerEntries(bd, state, roles),
 		claims:   claimsEntries(bd, state),
 		forges: map[model.ForgeName]forgeAdapter{
 			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) }},
 		},
 		agents:   agentEntries(env),
-		hosts:    hostEntries(),
 		bd:       bd,
 		state:    state,
 		writers:  roles,
 		diskPoll: defaultDiskPoll,
 		fleets:   &hostFleets{hosts: map[string]*host.Fleet{}},
 	}
+
+	// A host that creates its machine clones the project for its set-up, so it asks the forge table for the clone URL.
+	table.hosts = hostEntries(table.forge)
+
+	return table
 }
 
 // trackerEntries returns the tracker entries.
@@ -270,12 +274,12 @@ func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.Claim
 	}
 }
 
-// hostEntries returns the host provider entries.
-func hostEntries() map[model.HostProvider]hostAdapter {
+// hostEntries returns the host provider entries. forges finds the forge of a project, for the clone URL of a set-up.
+func hostEntries(forges func(model.Project) (forge.Forge, error)) map[model.HostProvider]hostAdapter {
 	return map[model.HostProvider]hostAdapter{
 		skypilot.Name: {
 			registration: registration{Entry: config.Entry{Block: blockOf(skypilot.Block()), Idle: true}},
-			build:        newSkyPilotHost,
+			build:        func(project model.Project) (host.Host, error) { return newSkyPilotHost(project, forges) },
 			sentinels:    []error{skypilot.ErrConfig, link.ErrConfig},
 		},
 		ssh.Name: {
@@ -363,10 +367,22 @@ func openLocal(ctx context.Context, state func() (string, error), project model.
 	return local.Open(ctx, dir, project.Name, time.Now)
 }
 
-func newSkyPilotHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+// newSkyPilotHost builds the host of a SkyPilot cluster. A project with a set-up command gets a checkout: the clone source of the project (its source, else the URL of its forge) at its base branch.
+func newSkyPilotHost(project model.Project, forges func(model.Project) (forge.Forge, error)) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
 	sky := proc.ExecRunner{Binary: "sky", Timeout: skyTimeout}
 
-	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""), slurmQueue)
+	var options []skypilot.Option
+
+	if project.Host.SetupCommand != "" {
+		url, err := cloneSource(project, forges)
+		if err != nil {
+			return nil, fmt.Errorf("find the repository of project %s for its set-up command: %w", project.Name, err)
+		}
+
+		options = append(options, skypilot.WithCheckout(project.Name, project.BaseBranch, url))
+	}
+
+	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""), slurmQueue, options...)
 	if err != nil {
 		return nil, err
 	}

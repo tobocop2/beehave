@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -49,12 +50,13 @@ type rawHost struct {
 	Slots         slotTable
 	GateSlots     int
 	Credentials   text
+	SetupCommand  text
 	Blocks        map[string]*model.Block
 }
 
 // hostSpec is the schema of the host constructor: the keys every provider shares, and one optional argument for each provider block that the registry declares.
 func hostSpec(declared []Block) spec {
-	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "gate_slots?", "private_remote?", "lost_after?", "stop_limit?", "credentials?"}
+	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "gate_slots?", "private_remote?", "lost_after?", "stop_limit?", "credentials?", "setup_command?"}
 
 	return spec{hostSpecName, append(args, blockArgs(declared)...)}
 }
@@ -67,7 +69,7 @@ func newHost(declared []Block) func(at syntax.Position, kwargs []starlark.Tuple)
 	return func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
 		raw := &rawHost{At: at, GateSlots: 1, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget, LostJobWait: defaultLostJobWaitText(), LostAfter: minutesText(DefaultLostAfter), StopLimit: minutesText(DefaultStopLimit)}
 		held := holders(declared)
-		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.GateSlots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit, &raw.Credentials}
+		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.GateSlots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit, &raw.Credentials, &raw.SetupCommand}
 
 		err := hostSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
 		raw.Blocks = heldBlocks(declared, held)
@@ -165,7 +167,7 @@ func startHost(raw rawHost, provider model.HostProvider, entry *Entry) model.Hos
 	return host
 }
 
-// checkBlocks refuses a block of another provider, and idle_minutes for a provider that beehave does not delete the machine of.
+// checkBlocks refuses a block of another provider, and idle_minutes and setup_command for a provider that beehave does not create the machine of.
 func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 	for _, name := range slices.Sorted(maps.Keys(raw.Blocks)) {
 		if entry.Block != nil && name == entry.Block.Name {
@@ -179,6 +181,10 @@ func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", provider)
 	}
 
+	if !entry.Idle && raw.SetupCommand.Set {
+		return refuseAt(raw.At, "`host.setup_command` is not allowed for provider %q: beehave does not create the machine. Remove the key.", provider)
+	}
+
 	return nil
 }
 
@@ -187,6 +193,12 @@ func fillKeys(raw rawHost, host *model.HostConfig) error {
 	if raw.PrivateRemote != "" && !model.RemoteHasHost(raw.PrivateRemote) {
 		return refuseAt(raw.At, "`host.private_remote` must name a machine, such as git@host:org/repo.git; a path or a file URL does not count. Fix the value.")
 	}
+
+	if raw.SetupCommand.Set && strings.TrimSpace(raw.SetupCommand.Value) == "" {
+		return refuseAt(raw.At, "`host.setup_command` must not be empty. Give a command, such as \"make setup\", or remove the key.")
+	}
+
+	host.SetupCommand = raw.SetupCommand.Value
 
 	if err := fillCounts(raw, host); err != nil {
 		return err

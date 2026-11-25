@@ -94,7 +94,7 @@ func TestAdapters_CheckRefusesAHostDeclaredNoneWhoseProviderHasNoCredentialCheck
 func TestAdapters_EachHostProviderOfTheTableHasACredentialCheck(t *testing.T) {
 	t.Parallel()
 
-	for name, entry := range hostEntries() {
+	for name, entry := range hostEntries(nil) {
 		project := projectOnTwoClusters(model.HostCredentialsNone)
 		project.Host.Provider, project.Host.IdleMinutes, project.Host.MaxRun = name, 60, time.Hour
 

@@ -34,6 +34,30 @@ func TestUp_AClusterDeclaredCredentialsNoneIsCheckedAfterTheLaunchAndBeforeAnyCa
 	assert.Equal(t, [][]string{{"-G", "-o", "BatchMode=yes", clusterName}}, ssh.Calls, "the check is the only ssh call")
 }
 
+func TestUp_ASetupCommandOfAClusterDeclaredCredentialsNoneRunsInTheLaunchAndTheCheckStillFollowsIt(t *testing.T) {
+	t.Parallel()
+
+	cfg := declaredNone()
+	cfg.SetupCommand = "make setup"
+	sky := &taskReader{Scripted: &proctest.Scripted{}}
+	sky.Plan("", "launch")
+
+	ssh := &proctest.Scripted{}
+	ssh.Plan("forwardagent yes\nforwardx11 no\n", "-G")
+
+	h, err := New(clusterName, cfg, sky, ssh, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} },
+		WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+	require.NoError(t, err)
+
+	err = h.Up(t.Context())
+
+	require.ErrorIs(t, err, link.ErrConfig)
+	require.Len(t, sky.Calls, 1)
+	assert.Equal(t, sky.path, sky.Calls[0][len(sky.Calls[0])-1], "SkyPilot runs the set-up in the launch, so no ssh call of the link carries it")
+	assert.Contains(t, sky.text, "make setup")
+	assert.Equal(t, [][]string{{"-G", "-o", "BatchMode=yes", clusterName}}, ssh.Calls, "the check is the only ssh call after the launch")
+}
+
 func TestUp_AClusterThatFailsToLaunchRunsNoCheck(t *testing.T) {
 	t.Parallel()
 

@@ -7,8 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/host"
@@ -25,6 +29,13 @@ const Name model.HostProvider = "skypilot"
 var ErrConfig = errors.New("invalid SkyPilot host setting")
 
 const runLimitKey = "gcp.managed_instance_group.run_duration="
+
+// The bounds of `host.skypilot.disk_size_gb`, and the mode of the task file: only its owner reads it.
+const (
+	minDiskGB    = 10
+	maxDiskGB    = 65536
+	taskFileMode = 0o600
+)
 
 var wordPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -52,18 +63,32 @@ type QueueBuilder func(l *link.Link, config model.HostConfig, slot Slot) Queue
 
 // Host is a SkyPilot cluster with a job queue on its head node. SkyPilot creates and deletes the cluster; the queue runs the jobs.
 type Host struct {
-	cluster string
-	config  model.HostConfig
-	values  block
-	sizes   sizeTable
-	sky     proc.Runner
-	link    *link.Link
+	cluster  string
+	config   model.HostConfig
+	values   block
+	sizes    sizeTable
+	sky      proc.Runner
+	link     *link.Link
+	checkout checkout
+	// write writes the task file of a launch.
+	write func(path string, data []byte, perm os.FileMode) error
 	Queue
+}
+
+// Option sets a part of a host that the project file does not hold.
+type Option func(*Host)
+
+// checkout is the project that the set-up of a new cluster clones: its name, the branch and the clone URL.
+type checkout struct{ project, branch, url string }
+
+// WithCheckout gives the host the project that `host.setup_command` runs in: a clone of url at branch, in a folder named project.
+func WithCheckout(project, branch, url string) Option {
+	return func(h *Host) { h.checkout = checkout{project: project, branch: branch, url: url} }
 }
 
 // New returns a host for the cluster. sky is the sky command line. ssh is the ssh command line: the first argument of a call is a cluster name, as SkyPilot writes one ssh config entry for each cluster.
 // queue builds the job queue over the link. Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
-func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue QueueBuilder) (*Host, error) {
+func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue QueueBuilder, options ...Option) (*Host, error) {
 	values := decodeBlock(config.Block)
 
 	if err := checkConfig(cluster, config, values); err != nil {
@@ -75,10 +100,28 @@ func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue Qu
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, values: values, sizes: sizes, sky: sky, link: link.New(cluster, ssh).WithCredentials(config.Credentials)}
+	h := &Host{cluster: cluster, config: config, values: values, sizes: sizes, sky: sky, link: link.New(cluster, ssh).WithCredentials(config.Credentials), write: os.WriteFile}
+
+	if err = h.apply(options); err != nil {
+		return nil, err
+	}
+
 	h.Queue = queue(h.link, config, slot{h})
 
 	return h, nil
+}
+
+// apply sets the options. A set-up command needs a checkout to run in.
+func (h *Host) apply(options []Option) error {
+	for _, option := range options {
+		option(h)
+	}
+
+	if h.config.SetupCommand != "" && slices.Contains([]string{h.checkout.project, h.checkout.branch, h.checkout.url}, "") {
+		return fmt.Errorf("%w: `host.setup_command` needs the project name, the base branch and the clone URL: give all three, or remove the key", ErrConfig)
+	}
+
+	return nil
 }
 
 func checkConfig(cluster string, config model.HostConfig, values block) error {
@@ -106,6 +149,8 @@ func checkRequired(cluster string, config model.HostConfig, values block) error 
 		return fmt.Errorf("%w: `host.idle_minutes` must be above zero", ErrConfig)
 	case config.MaxRun < time.Second:
 		return fmt.Errorf("%w: `host.max_run` must be at least one second", ErrConfig)
+	case values.diskSized && (values.diskSizeGB < minDiskGB || values.diskSizeGB > maxDiskGB):
+		return fmt.Errorf("%w: `host.skypilot.disk_size_gb` must be a whole number from %d to %d", ErrConfig, minDiskGB, maxDiskGB)
 	}
 
 	return nil
@@ -113,6 +158,7 @@ func checkRequired(cluster string, config model.HostConfig, values block) error 
 
 // Up creates the cluster. The cluster deletes itself after idle_minutes without a job. The run limit goes in as the SkyPilot setting for the lifetime of an instance.
 // SkyPilot documents that setting for GPU requests only, so a CPU host may ignore it. The approved GCP trial checks that the instance carries the limit.
+// A spot host passes `--use-spot` and no run limit setting. `disk_size_gb` passes `--disk-size`. `host.setup_command` goes to a task file that SkyPilot runs once, when it creates the cluster.
 // Up never passes `--wait-for none`: the default mode counts jobs, and the slot job of Submit relies on it.
 func (h *Host) Up(ctx context.Context) error {
 	return h.UpQueued(ctx, 0)
@@ -125,10 +171,33 @@ func (h *Host) HasSizeTable() bool {
 
 // UpQueued is Up with the size that the size table gives for queued waiting jobs. A cluster that runs keeps its size: the caller starts only an absent host.
 func (h *Host) UpQueued(ctx context.Context, queued int) error {
-	args := []string{
-		"launch", "-y", "-c", h.cluster, "--down",
-		"-i", strconv.Itoa(h.config.IdleMinutes),
-		"--config", runLimitKey + strconv.FormatInt(h.config.RunLimitSeconds(), 10),
+	args := h.launchArgs(queued)
+
+	task, err := h.taskFile()
+	if err != nil {
+		return err
+	}
+
+	if task != "" {
+		defer func() { _ = os.RemoveAll(filepath.Dir(task)) }()
+
+		args = append(args, task)
+	}
+
+	if _, err = link.Run(ctx, h.sky, "sky launch", args); err != nil {
+		return err
+	}
+
+	return h.ready(ctx)
+}
+
+// launchArgs returns the words of the sky launch call, without a task file.
+func (h *Host) launchArgs(queued int) []string {
+	args := []string{"launch", "-y", "-c", h.cluster, "--down", "-i", strconv.Itoa(h.config.IdleMinutes)}
+
+	// SkyPilot refuses a spot instance in the instance group that the run limit makes, so a spot host has no run limit key. The queue still ends each job at the run limit.
+	if !h.values.spot {
+		args = append(args, "--config", runLimitKey+strconv.FormatInt(h.config.RunLimitSeconds(), 10))
 	}
 
 	if infra := h.infra(); infra != "" {
@@ -139,11 +208,61 @@ func (h *Host) UpQueued(ctx context.Context, queued int) error {
 		args = append(args, "-t", size)
 	}
 
-	if _, err := link.Run(ctx, h.sky, "sky launch", args); err != nil {
-		return err
+	return append(args, h.machineArgs()...)
+}
+
+// machineArgs returns the words of the sky launch call for the spot and disk keys.
+func (h *Host) machineArgs() []string {
+	var args []string
+
+	if h.values.spot {
+		args = append(args, "--use-spot")
 	}
 
-	return h.ready(ctx)
+	if h.values.diskSized {
+		args = append(args, "--disk-size", strconv.Itoa(h.values.diskSizeGB))
+	}
+
+	return args
+}
+
+// taskFile writes the task file that carries `host.setup_command` and returns its path, or "" when the project has no set-up.
+// The caller deletes the folder of the file. SkyPilot reads the `setup` field of a task file once, when it creates the cluster.
+func (h *Host) taskFile() (string, error) {
+	if h.config.SetupCommand == "" {
+		return "", nil
+	}
+
+	dir, err := os.MkdirTemp("", "beehave-sky-")
+	if err != nil {
+		return "", fmt.Errorf("write the SkyPilot task file: %w", err)
+	}
+
+	// A Go quoted string is a YAML double-quoted scalar, so the command needs no other YAML quoting.
+	data := "setup: " + strconv.Quote(h.setupScript()) + "\n"
+
+	path := filepath.Join(dir, "setup.yaml")
+	if err = h.write(path, []byte(data), taskFileMode); err != nil {
+		_ = os.RemoveAll(dir)
+
+		return "", fmt.Errorf("write the SkyPilot task file: %w", err)
+	}
+
+	return path, nil
+}
+
+// setupScript clones the project at its base branch into ~/beehave-setup and runs `host.setup_command` there. It stops at the first failed line.
+func (h *Host) setupScript() string {
+	lines := []string{
+		"set -e",
+		`mkdir -p "$HOME/beehave-setup"`,
+		`cd "$HOME/beehave-setup"`,
+		"git clone --branch " + model.ShellQuote(h.checkout.branch) + " " + model.ShellQuote(h.checkout.url) + " " + model.ShellQuote(h.checkout.project),
+		"cd " + model.ShellQuote(h.checkout.project),
+		h.config.SetupCommand,
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // ready checks a cluster that sky launched. The ssh config entry of the cluster exists only now, so a cluster declared credentials = "none" is checked here,
