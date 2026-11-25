@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -438,6 +439,20 @@ func TestOpenSQLite_RefusesAFileNameThatTheSystemCannotRead(t *testing.T) {
 
 	_, err := store.OpenSQLite(t.Context(), t.TempDir(), spec)
 	require.ErrorContains(t, err, "cannot create")
+}
+
+func TestOpenSQLite_RefusesAFileWhoseWalNameTheSystemCannotRead(t *testing.T) {
+	t.Parallel()
+
+	// The name fits the system's limit of 255 bytes, and the name of its -wal file does not.
+	dir := t.TempDir()
+	spec := testSpec()
+	spec.Name = strings.Repeat("a", 252)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, spec.Name), nil, 0o600))
+
+	_, err := store.OpenSQLite(t.Context(), dir, spec)
+	require.ErrorContains(t, err, "cannot create "+spec.Name)
+	require.ErrorIs(t, err, syscall.ENAMETOOLONG)
 }
 
 func TestOpenSQLite_RefusesACancelledContext(t *testing.T) {

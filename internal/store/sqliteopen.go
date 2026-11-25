@@ -158,11 +158,11 @@ func secureEach(root *os.Root, name string) error {
 		switch {
 		case err == nil && info.Mode()&fs.ModeSymlink != 0:
 			return fmt.Errorf("%s is a symbolic link. Remove the link, or point the state folder at a folder that holds the file itself", name+suffix)
-		case err != nil && !errors.Is(err, fs.ErrNotExist):
-			return err
+		case err == nil || errors.Is(err, fs.ErrNotExist):
+			err = secure(root, name+suffix)
 		}
 
-		if err = secure(root, name+suffix); err != nil {
+		if err != nil {
 			return err
 		}
 	}
