@@ -36,8 +36,8 @@ func TestNoCapability_MatchesErrNoCapabilityAndNamesTheAbility(t *testing.T) {
 	err := forge.NoCapability(forge.AbilityStatuses, "the instance has no statuses")
 
 	require.ErrorIs(t, err, forge.ErrNoCapability)
-	assert.ErrorContains(t, err, "commit statuses")
-	assert.ErrorContains(t, err, "the instance has no statuses")
+	require.ErrorContains(t, err, "commit statuses")
+	require.ErrorContains(t, err, "the instance has no statuses")
 	assert.NotErrorIs(t, errors.New("other"), forge.ErrNoCapability)
 }
 

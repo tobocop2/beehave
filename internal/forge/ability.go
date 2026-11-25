@@ -38,7 +38,8 @@ func Abilities() []Ability {
 }
 
 // ErrNoCapability is the cause when a forge cannot do what a caller asks. A caller tests for it with errors.Is.
-var ErrNoCapability = errors.New("the forge cannot do this")
+// It is the value that the merge tests for, which lives in the model.
+var ErrNoCapability = model.ErrNoCapability
 
 // NoCapability returns an error with the cause ErrNoCapability. It names the ability and the reason.
 func NoCapability(a Ability, reason string) error {
@@ -79,40 +80,50 @@ type Prober interface {
 	Probe(ctx context.Context, a Ability) error
 }
 
-// Has reports whether the forge implements the interface of the ability. It makes no call to the forge.
-func Has(f any, a Ability) bool {
-	var ok bool
-
-	switch a {
-	case AbilityStatuses:
-		_, ok = f.(Statuses)
-	case AbilityOpener:
-		_, ok = f.(Opener)
-	case AbilityStacks:
-		_, ok = f.(Stacker)
-	case AbilitySyncer:
-		_, ok = f.(Syncer)
-	case AbilityAssignees:
-		_, ok = f.(AssigneeReads)
-	case AbilityAssociation:
-		_, ok = f.(AssociationReads)
-	case AbilityReadyMarks:
-		_, ok = f.(ReadyReads)
-	case AbilityBoards:
-		_, ok = f.(Boarder)
-	case AbilityQueue:
-		_, ok = f.(Queuer)
-	case AbilityAncestry:
-		_, ok = f.(Ancestry)
-	case AbilityTrees:
-		_, ok = f.(Trees)
-	case AbilityLogs:
-		_, ok = f.(Logs)
-	case AbilityAlerts:
-		_, ok = f.(AlertReads)
-	}
+// implements tells whether f implements the interface T.
+func implements[T any](f any) bool {
+	_, ok := f.(T)
 
 	return ok
+}
+
+// holders gives, for each ability, the test of the interface that the ability names.
+func holders() map[Ability]func(any) bool {
+	return map[Ability]func(any) bool{
+		AbilityStatuses:    implements[Statuses],
+		AbilityOpener:      implements[Opener],
+		AbilityStacks:      implements[Stacker],
+		AbilitySyncer:      implements[Syncer],
+		AbilityAssignees:   implements[AssigneeReads],
+		AbilityAssociation: implements[AssociationReads],
+		AbilityReadyMarks:  implements[ReadyReads],
+		AbilityBoards:      implements[Boarder],
+		AbilityQueue:       implements[Queuer],
+		AbilityAncestry:    implements[Ancestry],
+		AbilityTrees:       implements[Trees],
+		AbilityLogs:        implements[Logs],
+		AbilityAlerts:      implements[AlertReads],
+	}
+}
+
+// Has reports whether the forge implements the interface of the ability. It makes no call to the forge.
+func Has(f any, a Ability) bool {
+	held, known := holders()[a]
+
+	return known && held(f)
+}
+
+// lacks returns the reason that the forge cannot do the ability, or nil. A forge that has the ability is asked by its Probe, when it has one.
+func lacks(ctx context.Context, f any, need Ability) error {
+	if !Has(f, need) {
+		return NoCapability(need, "this forge does not have it")
+	}
+
+	if prober, probes := f.(Prober); probes {
+		return prober.Probe(ctx, need)
+	}
+
+	return nil
 }
 
 // Need checks that the forge has each ability and that its Probe, when it has one, accepts each. The error joins one ErrNoCapability for each ability that is missing.
@@ -120,22 +131,8 @@ func Has(f any, a Ability) bool {
 func Need(ctx context.Context, f any, needs ...Ability) error {
 	var missing []error
 
-	prober, probes := f.(Prober)
-
 	for _, need := range needs {
-		if !Has(f, need) {
-			missing = append(missing, NoCapability(need, "this forge does not have it"))
-
-			continue
-		}
-
-		if !probes {
-			continue
-		}
-
-		if err := prober.Probe(ctx, need); err != nil {
-			missing = append(missing, err)
-		}
+		missing = append(missing, lacks(ctx, f, need))
 	}
 
 	return errors.Join(missing...)

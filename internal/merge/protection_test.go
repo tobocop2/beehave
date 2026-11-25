@@ -2,12 +2,12 @@ package merge_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -144,7 +144,7 @@ func TestRun_AFailedReadOfTheProtectionDefersAProjectWithCredentials(t *testing.
 type noRead struct{ *world }
 
 func (noRead) Protection(context.Context, string) (model.Protection, error) {
-	return model.Protection{}, forge.NoCapability(forge.AbilityStatuses, "the forge cannot read the protection of a branch")
+	return model.Protection{}, fmt.Errorf("%w: the forge cannot read the protection of a branch", model.ErrNoCapability)
 }
 
 func TestRun_AForgeThatCannotReadTheProtectionRefusesAProjectWithCredentialsAndNamesTheForge(t *testing.T) {

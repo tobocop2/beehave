@@ -43,17 +43,8 @@ func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Option
 	w.env = opts.Env
 	w.readOwnerTokens(ctx, cfg)
 
-	found, err := readRoles(ctx, cfg, opts)
-	if err != nil {
+	if err := w.loadWriters(ctx, cfg, opts); err != nil {
 		return err
-	}
-
-	if len(found) > 0 {
-		if err := probe(found, opts.Env); err != nil {
-			return err
-		}
-
-		w.byProject = found
 	}
 
 	if err := w.lockedCI(ctx, cfg); err != nil {
@@ -61,6 +52,22 @@ func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Option
 	}
 
 	return w.abilities(ctx, cfg)
+}
+
+// loadWriters reads the writer credential of each project that declares one and runs the start probe on them. A config with none leaves the writers empty.
+func (w *writers) loadWriters(ctx context.Context, cfg config.Config, opts flow.Options) error {
+	found, err := readRoles(ctx, cfg, opts)
+	if err != nil || len(found) == 0 {
+		return err
+	}
+
+	if err := probe(found, opts.Env); err != nil {
+		return err
+	}
+
+	w.byProject = found
+
+	return nil
 }
 
 // forgeNeeds lists the abilities that the project needs from its forge: commit statuses for a project with a writer, and security alerts when the project sets the key.

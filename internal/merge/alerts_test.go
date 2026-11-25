@@ -3,11 +3,11 @@ package merge_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -87,7 +87,7 @@ func TestMerge_AlertsOnAndTheForgeCannotReadThemRefuses(t *testing.T) {
 	t.Parallel()
 
 	a := alerted(t)
-	a.err = forge.NoCapability(forge.AbilityAlerts, "code scanning is off")
+	a.err = fmt.Errorf("%w: security alerts: code scanning is off", model.ErrNoCapability)
 
 	result := merge.Run(context.Background(), a, withAlerts())
 

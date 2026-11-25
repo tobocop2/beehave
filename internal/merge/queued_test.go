@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -166,7 +165,7 @@ func TestPoll_AMergedPullRequestMustStillLandOnTheBase(t *testing.T) {
 // blind is a queued forge that cannot compare commits: it lists only the methods of Forge and Queuer.
 type blind struct {
 	merge.Forge
-	forge.Queuer
+	merge.Queuer
 }
 
 func TestPoll_AForgeThatCannotCompareCommitsRefusesAMergedPullRequest(t *testing.T) {

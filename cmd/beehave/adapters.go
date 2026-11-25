@@ -205,13 +205,7 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 	table := adapters{
 		trackers: trackerEntries(bd, state, roles),
 		claims:   claimsEntries(bd, state),
-		forges: map[model.ForgeName]forgeAdapter{
-			forgegithub.Name: {
-				registration: githubRegistration(forgegithub.Tool),
-				build:        func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) },
-				ci:           ciPolicy{paths: []string{forgegithub.WorkflowDir}, fix: forgegithub.WorkflowFix},
-			},
-		},
+		forges:   forgeEntries(roles),
 		agents:   agentEntries(env),
 		bd:       bd,
 		state:    state,
@@ -226,6 +220,17 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 	roles.forges = table.forge
 
 	return table
+}
+
+// forgeEntries returns the forge entries, each with the CI files of its forge and the command that gives a token the right to change them.
+func forgeEntries(roles *writers) map[model.ForgeName]forgeAdapter {
+	return map[model.ForgeName]forgeAdapter{
+		forgegithub.Name: {
+			registration: githubRegistration(forgegithub.Tool),
+			build:        func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) },
+			ci:           ciPolicy{paths: []string{forgegithub.WorkflowDir}, fix: forgegithub.WorkflowFix},
+		},
+	}
 }
 
 // trackerEntries returns the tracker entries.

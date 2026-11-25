@@ -1,8 +1,8 @@
 package merge_test
 
 import (
+	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 

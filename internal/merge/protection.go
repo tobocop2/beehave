@@ -7,12 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Protections is what the merge reads to learn what the forge requires of the base. A forge that also implements Protections lets the merge refuse a base
-// that would not require the gate and the review. A forge that cannot read it returns an error with the cause forge.ErrNoCapability.
+// that would not require the gate and the review. A forge that cannot read it returns an error with the cause model.ErrNoCapability.
 type Protections interface {
 	Protection(ctx context.Context, branch string) (model.Protection, error)
 }
@@ -64,7 +63,7 @@ func (a *attempt) unreadable(err error) *refusal {
 		return nil
 	}
 
-	if err != nil && !errors.Is(err, forgepkg.ErrNoCapability) {
+	if err != nil && !errors.Is(err, model.ErrNoCapability) {
 		return transient(fmt.Sprintf("REFUSE: cannot read the protection of the base %s: %v", a.req.Base, err))
 	}
 

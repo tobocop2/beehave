@@ -55,9 +55,11 @@ func (p pulls) openerOf(ctx context.Context, project string) (opened, forge.Open
 		return opened{}, nil, nil, err
 	}
 
-	stacker, _ := built.Forge.(forge.Stacker)
+	if stacker, held := built.Forge.(forge.Stacker); held {
+		return built, opener, stacker, nil
+	}
 
-	return built, opener, stacker, nil
+	return built, opener, nil, nil
 }
 
 // wantedPull returns the number of the open pull request of the parent (0 for none) and the pull request to create for the item.

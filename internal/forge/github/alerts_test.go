@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,8 +18,8 @@ const alertsPath = "repos/owner/name/code-scanning/alerts?state=open&per_page=10
 
 func alertRow(number int, commit, severity, security string) fields {
 	return fields{
-		"number": number, "html_url": "https://example.test/alerts/" + string(rune('0'+number)),
-		"rule":                fields{"id": "go/rule-" + string(rune('0'+number)), "severity": severity, "security_severity_level": security},
+		"number": number, "html_url": "https://example.test/alerts/" + strconv.Itoa(number),
+		"rule":                fields{"id": "go/rule-" + strconv.Itoa(number), "severity": severity, "security_severity_level": security},
 		"most_recent_instance": fields{"commit_sha": commit},
 	}
 }

@@ -3,13 +3,22 @@ package main
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/roundsync"
+)
+
+// The merge owns its own copy of each optional interface, because it may not import the forge. A forge ability must give the merge everything that it reads.
+var (
+	_ merge.Ancestry   = forge.Ancestry(nil)
+	_ merge.Queuer     = forge.Queuer(nil)
+	_ merge.Trees      = forge.Trees(nil)
+	_ merge.Logs       = forge.Logs(nil)
+	_ merge.AlertReads = forge.AlertReads(nil)
 )
 
 func TestOptionalStep_OnAForgeThatLacksTheAbilityMatchesErrNoCapability(t *testing.T) {
@@ -28,8 +37,8 @@ func TestOptionalStep_OnAForgeThatLacksTheAbilityMatchesErrNoCapability(t *testi
 		require.ErrorIs(t, err, forge.ErrNoCapability, name)
 	}
 
-	assert.ErrorContains(t, assignees, string(forge.AbilityAssignees))
-	assert.ErrorContains(t, boards, string(forge.AbilityBoards))
+	require.ErrorContains(t, assignees, string(forge.AbilityAssignees))
+	require.ErrorContains(t, boards, string(forge.AbilityBoards))
 }
 
 // partial has the abilities of a sync and lacks a call that the sync makes but no ability names.
@@ -45,5 +54,5 @@ func TestSideOf_AForgeWithTheAbilitiesAndNotTheCallNamesTheFirstAbility(t *testi
 	_, err := sideOf[roundsync.Forge](t.Context(), partial{}, forge.AbilitySyncer, forge.AbilityOpener)
 
 	require.ErrorIs(t, err, forge.ErrNoCapability)
-	assert.ErrorContains(t, err, string(forge.AbilitySyncer))
+	require.ErrorContains(t, err, string(forge.AbilitySyncer))
 }

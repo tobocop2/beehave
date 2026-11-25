@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // alerts refuses a pull request with an open security alert at the gated head. A project that does not set security_alerts reads none.
@@ -14,20 +14,27 @@ func (a *attempt) alerts() *refusal {
 		return nil
 	}
 
-	reads, ok := a.forge.(forgepkg.AlertReads)
+	unknown := fmt.Sprintf("        The security alerts of #%d cannot be read, so an open one cannot be ruled out.", a.req.PR)
+
+	reads, ok := a.forge.(AlertReads)
 	if !ok {
-		return refuse("REFUSE: " + forgepkg.NoCapability(forgepkg.AbilityAlerts, fmt.Sprintf("the security alerts of #%d cannot be read, so an open one cannot be ruled out.", a.req.PR)).Error())
+		return refuse(fmt.Sprintf("REFUSE: %s: security alerts: this forge cannot read them.", model.ErrNoCapability), unknown)
 	}
 
 	found, err := reads.OpenAlerts(a.ctx, a.req.PR, a.req.Gated)
-	if errors.Is(err, forgepkg.ErrNoCapability) {
-		return refuse("REFUSE: "+err.Error(), fmt.Sprintf("        The security alerts of #%d cannot be read, so an open one cannot be ruled out.", a.req.PR))
+	if errors.Is(err, model.ErrNoCapability) {
+		return refuse("REFUSE: "+err.Error(), unknown)
 	}
 
 	if err != nil {
 		return transient(err.Error(), fmt.Sprintf("REFUSE: the security alerts of #%d could not be read, so an open one cannot be ruled out.", a.req.PR))
 	}
 
+	return a.openAlerts(found)
+}
+
+// openAlerts refuses a pull request that has an open alert, and lists each one.
+func (a *attempt) openAlerts(found []model.Alert) *refusal {
 	if len(found) == 0 {
 		return nil
 	}

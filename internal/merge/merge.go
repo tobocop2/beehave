@@ -7,9 +7,30 @@ import (
 	"regexp"
 	"slices"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
+
+// Ancestry is what the merge reads to prove a landing. A forge that also implements Ancestry lets the merge check, after the merge call,
+// that the merged head is an ancestor of the base. Compare reads the status and both counts of the comparison of commit with the base,
+// and Comparison.Contains is true when commit is the base tip or lies in its history.
+type Ancestry interface {
+	Compare(ctx context.Context, commit, base string) (model.Comparison, error)
+}
+
+// Queuer is what the merge needs to merge a pull request in a native stack. A forge that also implements Queuer lets the merge queue the merge
+// on the forge and read it with Poll. AutoMergePR returns when the forge has accepted the queued merge, not when it has merged.
+// The forge checks the pin (the expected head) when it enables the queued merge, not when it merges, and a push by a user with write access keeps it armed.
+// DisableAutoMergePR turns the queued merge off, and it succeeds when none is armed.
+type Queuer interface {
+	AutoMergePR(ctx context.Context, pr int, sha string) error
+	DisableAutoMergePR(ctx context.Context, pr int) error
+}
+
+// AlertReads is what the merge reads to find the open security alerts of a pull request at a head. A forge that lacks it is refused by a project that sets security_alerts.
+// OpenAlerts returns the open alerts at the commit sha. A failed read is an error, never an empty list.
+type AlertReads interface {
+	OpenAlerts(ctx context.Context, pr int, sha string) ([]model.Alert, error)
+}
 
 // stateOpen is the state of a pull request that is open.
 const stateOpen = "OPEN"
@@ -218,9 +239,9 @@ type attempt struct {
 	// kids are the children to move onto the base right before the merge call. Only a retarget fills it.
 	kids []int
 	// history proves the landing after the merge call. The provable guard sets it before any write.
-	history forgepkg.Ancestry
+	history Ancestry
 	// queue is set by the native stack guard when the merge goes through the queued merge of the forge.
-	queue forgepkg.Queuer
+	queue Queuer
 	lines []string
 }
 
