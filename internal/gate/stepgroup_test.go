@@ -78,15 +78,14 @@ func killSleepers(t *testing.T, arg string) {
 }
 
 // requireCounterSeesASleeper is the positive control: the counter finds a sleeper that the test starts itself.
-func requireCounterSeesASleeper(t *testing.T, arg string) {
+// The test context stops the sleeper when the test ends. Tests that run in parallel start the same sleeper, so the control wants at least one.
+func requireCounterSeesASleeper(t *testing.T) {
 	t.Helper()
 
-	killSleepers(t, arg)
-
-	sleeper := exec.CommandContext(t.Context(), "sleep", arg) //nolint:gosec // arg is a constant of the calling test, and the test context stops the sleeper
+	sleeper := exec.CommandContext(t.Context(), "sleep", "4399.01")
 	require.NoError(t, sleeper.Start())
 
-	require.Eventually(t, func() bool { return len(sleepersOf(t, arg)) == 1 }, 5*time.Second, 50*time.Millisecond, "the counter must see a sleeper that runs")
+	require.Eventually(t, func() bool { return len(sleepersOf(t, "4399.01")) >= 1 }, 5*time.Second, 50*time.Millisecond, "the counter must see a sleeper that runs")
 }
 
 // timedStepProject is a host gate with a step that has a one second timeout, then a step that records that it ran.
@@ -117,7 +116,7 @@ func TestHostCommand_AKilledStepLeavesNoChildAliveWhenTimeoutOnlyKillsTheChild(t
 
 	const arg = "4301.01"
 
-	requireCounterSeesASleeper(t, "4398.01")
+	requireCounterSeesASleeper(t)
 	killSleepers(t, arg)
 
 	code, _, ran, out := runProjectCommandOn(t, timedStepProject("trap '' TERM; sleep "+arg), []string{childOnlyTimeoutDir(t)}, "SHIM_HEAD="+headA)
@@ -133,7 +132,7 @@ func TestHostCommand_AKilledStepLeavesNoGrandchildAliveWhenTimeoutOnlyKillsTheCh
 
 	const grandchild, child = "4302.01", "4303.01"
 
-	requireCounterSeesASleeper(t, "4399.01")
+	requireCounterSeesASleeper(t)
 	killSleepers(t, grandchild)
 	killSleepers(t, child)
 
