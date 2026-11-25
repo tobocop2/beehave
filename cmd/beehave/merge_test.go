@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -210,7 +211,7 @@ func shipping(t *testing.T, over map[string]any) (pulls, *shipForge, flow.MergeS
 	}
 }
 
-// exampleForbidText reads the `forbid_text` patterns of the merge calls of the remediation example.
+// exampleForbidText reads the `forbid_text` patterns of the batch_merge call of the remediation example. The batch library passes them on unchanged.
 func exampleForbidText(t *testing.T) []string {
 	t.Helper()
 
@@ -222,25 +223,29 @@ func exampleForbidText(t *testing.T) []string {
 
 	require.NotEmpty(t, patterns, "the example holds its attribution patterns in ATTRIBUTION")
 
-	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
-		patterns = append(patterns, workflowtest.Literals(ship["forbid_text"])...)
-	})
+	calls, err := workflowtest.CallsTo("workflow.star", text, "batch_merge")
+	require.NoError(t, err)
+	require.Len(t, calls, 1, "the example lands its round with one batch_merge call")
 
-	return patterns
+	return append(patterns, workflowtest.Literals(calls[0].Args["forbid_text"])...)
 }
 
+// walkExampleMerge visits the merge calls that land the round of the example: the batch_merge call of the example,
+// and the merge call of the batch library that lands each gated union under the guards of the merge.
 func walkExampleMerge(t *testing.T, visit func(map[string]syntax.Expr)) {
 	t.Helper()
 
-	text, err := os.ReadFile("../../examples/remediation/workflow.star")
-	require.NoError(t, err)
+	for _, site := range []struct{ path, function string }{
+		{"../../examples/remediation/workflow.star", "batch_merge"},
+		{"../../internal/workflow/lib/batch.star", "merge"},
+	} {
+		text, err := os.ReadFile(site.path)
+		require.NoError(t, err)
 
-	calls, err := workflowtest.Calls("workflow.star", text)
-	require.NoError(t, err)
+		calls, err := workflowtest.CallsTo(filepath.Base(site.path), text, site.function)
+		require.NoError(t, err)
 
-	// The round of the example lands its approved items with one batch merge, which runs the guards of the merge for each item.
-	for _, call := range calls {
-		if call.Builtin == "merge" {
+		for _, call := range calls {
 			visit(call.Args)
 		}
 	}
@@ -631,24 +636,26 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 	var landings, unions int
 
 	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
+		if ship["members"] != nil {
+			// The merge call of the batch library lands one gated union with the base, the repository and the guards that batch_merge was given,
+			// each read from the state of the call under its own name, and it takes no integration pull request.
+			unions++
+
+			for _, name := range []string{"base", "repo", "hold", "own", "forbid_text"} {
+				assert.Equal(t, []string{name}, workflowtest.Literals(ship[name]), "%s of the union merge is the %s that batch_merge was given", name, name)
+			}
+
+			assert.NotNil(t, ship["gate"], "gate is set on the call that lands one union")
+			assert.Nil(t, ship["integration"], "the call that lands one union takes no integration")
+
+			return
+		}
+
 		// The base, the repository, the logins and the address come from the project file, so the example names none of them.
 		assert.NotNil(t, ship["base"], "base is set in the example")
 		assert.NotNil(t, ship["repo"], "repo is set in the example")
 		assert.Empty(t, workflowtest.Literals(ship["base"]), "base is the round base, read from vars.round.base")
 		assert.Empty(t, workflowtest.Literals(ship["repo"]), "repo is the repository of the project")
-
-		if ship["members"] != nil {
-			// A call with `members` lands one gated union under the same guards as the landing call, and it takes no integration pull request.
-			unions++
-
-			for _, name := range []string{"hold", "own", "forbid_text", "gate"} {
-				assert.NotNil(t, ship[name], "%s is set on the call that lands one union", name)
-			}
-
-			assert.Nil(t, ship["integration"], "the call that lands one union takes no integration")
-
-			return
-		}
 
 		landings++
 
@@ -662,6 +669,6 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 			assert.NotContains(t, text, "@", "the file holds no address")
 		}
 	})
-	assert.Equal(t, 1, landings, "the example has one landing merge call")
-	assert.Equal(t, 1, unions, "the example has one merge call of one gated union")
+	assert.Equal(t, 1, landings, "the example has one batch_merge call that lands the round")
+	assert.Equal(t, 1, unions, "the batch library has one merge call of one gated union")
 }

@@ -335,6 +335,7 @@ func TestHandOff_ACallThatTheBuiltinCannotReadFailsBeforeAnyStep(t *testing.T) {
 		"base that is not text": {body: `hand_off(prs = [struct(item = "1", head = "h", closes = [])], base = len("x"), repo = "o/r", name = "h")`, want: "base"},
 		"no name":               {body: `hand_off(prs = [struct(item = "1", head = "h", closes = [])], base = "main", repo = "o/r", name = "")`, want: "needs a `name` that is not empty"},
 		"empty prs":             {body: `hand_off(prs = [] + [], base = "main", repo = "o/r", name = "h")`, want: "`prs` is empty"},
+		"empty base":            {body: `hand_off(prs = [struct(item = "1", head = "h", closes = [])], base = "" + "", repo = "o/r", name = "h")`, want: "base must not be empty"},
 	}
 
 	for name, c := range cases {
