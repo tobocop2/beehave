@@ -278,7 +278,7 @@ func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.Claim
 func hostEntries(forges func(model.Project) (forge.Forge, error)) map[model.HostProvider]hostAdapter {
 	return map[model.HostProvider]hostAdapter{
 		skypilot.Name: {
-			registration: registration{Entry: config.Entry{Block: blockOf(skypilot.Block()), Idle: true}},
+			registration: registration{Entry: config.Entry{Block: blockOf(skypilot.Block()), Idle: true, StartsWithOwnerCredentials: true}},
 			build:        func(project model.Project) (host.Host, error) { return newSkyPilotHost(project, forges) },
 			sentinels:    []error{skypilot.ErrConfig, link.ErrConfig},
 		},
@@ -539,7 +539,7 @@ func checkCredentials(ctx context.Context, project model.Project, built host.Hos
 	// The host contract holds no credential check; each provider of the table adds its own.
 	checker, ok := built.(credentialCheck)
 	if !ok {
-		return fmt.Errorf("project %s: the host provider %q cannot check credentials = \"none\". Remove the key, or use the ssh, slurm or skypilot provider", project.Name, project.Host.Provider)
+		return fmt.Errorf("project %s: the host provider %q cannot check credentials = \"none\". Remove the key, or use the ssh or slurm provider", project.Name, project.Host.Provider)
 	}
 
 	return checker.CheckCredentials(ctx)

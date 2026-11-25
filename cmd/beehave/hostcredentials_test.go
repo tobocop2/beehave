@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/model"
@@ -91,7 +93,7 @@ func TestAdapters_CheckRefusesAHostDeclaredNoneWhoseProviderHasNoCredentialCheck
 	require.NoError(t, table.check(t.Context(), projectOnTwoClusters("")), "a host without the declaration needs no check")
 }
 
-func TestAdapters_EachHostProviderOfTheTableHasACredentialCheck(t *testing.T) {
+func TestAdapters_EachHostProviderOfTheTableHasACredentialCheckOrRefusesTheKeyAtLoad(t *testing.T) {
 	t.Parallel()
 
 	for name, entry := range hostEntries(nil) {
@@ -102,6 +104,24 @@ func TestAdapters_EachHostProviderOfTheTableHasACredentialCheck(t *testing.T) {
 		require.NoError(t, err, name)
 
 		_, ok := built.(credentialCheck)
-		assert.True(t, ok, name)
+		assert.NotEqual(t, entry.StartsWithOwnerCredentials, ok, name)
+	}
+}
+
+func TestHostBlocks_CredentialsNoneLoadsForSSHAndSlurmAndIsRefusedForSkyPilotByTheRealTable(t *testing.T) {
+	t.Parallel()
+
+	for provider, loads := range map[string]bool{"ssh": true, "slurm": true, "skypilot": false} {
+		_, problems := loadHostProject(t, hostProjectTail+fmt.Sprintf(`, host = host(provider = %q, disk_floor_gb = 50, credentials = "none")`, provider))
+
+		if loads {
+			assert.Empty(t, problems, provider)
+
+			continue
+		}
+
+		require.Len(t, problems, 1, provider)
+		require.ErrorIs(t, problems[0], config.ErrRefused, provider)
+		assert.Contains(t, problems[0].Error(), `"none" is not allowed for provider "skypilot"`, provider)
 	}
 }

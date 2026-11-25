@@ -167,7 +167,7 @@ func startHost(raw rawHost, provider model.HostProvider, entry *Entry) model.Hos
 	return host
 }
 
-// checkBlocks refuses a block of another provider, and idle_minutes and setup_command for a provider that beehave does not create the machine of.
+// checkBlocks refuses a block of another provider, idle_minutes and setup_command for a provider that beehave does not create the machine of, and credentials = "none" where the provider cannot keep it.
 func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 	for _, name := range slices.Sorted(maps.Keys(raw.Blocks)) {
 		if entry.Block != nil && name == entry.Block.Name {
@@ -185,7 +185,16 @@ func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 		return refuseAt(raw.At, "`host.setup_command` is not allowed for provider %q: beehave does not create the machine. Remove the key.", provider)
 	}
 
-	return nil
+	return checkCredentialsKey(raw, provider, entry)
+}
+
+// checkCredentialsKey refuses credentials = "none" for a provider whose own start tool can give the machine a credential of the owner. Any other value is refused later, for the value.
+func checkCredentialsKey(raw rawHost, provider model.HostProvider, entry *Entry) error {
+	if !entry.StartsWithOwnerCredentials || raw.Credentials.Value != string(model.HostCredentialsNone) {
+		return nil
+	}
+
+	return refuseAt(raw.At, "`host.credentials` = \"none\" is not allowed for provider %q: the tool that starts the machine can forward your SSH agent and copies your cloud credentials to it, so beehave cannot keep that promise. Remove the key.", provider)
 }
 
 // fillKeys sets the keys of host that are not the provider name.

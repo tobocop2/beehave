@@ -38,7 +38,7 @@ func registry() config.Adapters {
 		Claims:   map[model.ClaimsName]*config.Entry{local.Claims: {}, beads.Claims: beadsEntry()},
 		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: githubEntry()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			skypilot.Name: {Idle: true, Block: hostBlock(skypilot.Block())},
+			skypilot.Name: {Idle: true, StartsWithOwnerCredentials: true, Block: hostBlock(skypilot.Block())},
 			ssh.Name:      {Block: hostBlock(ssh.Block())},
 			slurm.Name:    {Block: hostBlock(slurm.Block())},
 		},
@@ -95,6 +95,26 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 
 	require.Equal(t, 0, code, "a note changes no exit code")
 	require.Equal(t, "note: project far builds on the host gpu, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", stderr)
+}
+
+func TestCheckConfig_ASkyPilotHostDeclaredCredentialsNoneExitsTwoWithTheReasonAndASshHostDoesNot(t *testing.T) {
+	t.Parallel()
+
+	for provider, want := range map[string]int{"skypilot": 2, "ssh": 0} {
+		dir := t.TempDir()
+		project := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+			"build_host = \"gpu\", host = host(provider = \"" + provider + "\", disk_floor_gb = 50, credentials = \"none\"))\n"
+		writeConfig(t, dir, "runners.star", validRunners)
+		writeConfig(t, dir, "projects/far.star", project)
+
+		code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+		require.Equal(t, want, code, provider)
+
+		if want == 2 {
+			require.Contains(t, stderr, "forward your SSH agent and copies your cloud credentials", provider)
+		}
+	}
 }
 
 func TestCheckConfig_ALocalProjectWithTheSandboxOnGetsANoteThatNoSandboxCanEnforceItsGate(t *testing.T) {

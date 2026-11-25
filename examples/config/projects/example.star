@@ -100,7 +100,7 @@ project(
     # host = host(
     #     provider = "ssh",
     #     disk_floor_gb = 50,
-    #     credentials = "none",         # optional, for a host that runs code you do not trust: it gets no SSH agent, key, X display, Kerberos credential or secret variable of yours. check config refuses it when ssh -G shows one, or a jump host
+    #     credentials = "none",         # optional, for a host that runs code you do not trust: it gets no SSH agent, key, X display, Kerberos credential or secret variable of yours. check config refuses it when ssh -G shows one, or a jump host. Only ssh and slurm accept it: skypilot refuses it, because sky launch can forward your agent and copies your cloud credentials to the cluster
 
     #     ssh = ssh(
     #         address = "10.0.0.5",         # the name or IP to connect to; the default is the ssh alias in build_host
