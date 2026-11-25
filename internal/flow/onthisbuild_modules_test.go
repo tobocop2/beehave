@@ -328,7 +328,6 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfTheSingleMergeAnd
 	}{
 		"a scope check and a merge":                          {4, []string{"scope-check:m#1", "merge:m#1"}, moduleRound},
 		"a scope check in the owner wait, under equal lists": {landVersion, []string{"scope-check:m#1", "wait:scope#1"}, moduleRound},
-		"a merge alone":                                      {4, []string{"merge:m#1"}, moduleLand},
 		"a before_review step":                               {gateVersion, []string{"before_review:candidate-before-review#1"}, moduleGate},
 		"the read of the owner merge wait":                   {landVersion, []string{"watch", "DBOS.sleep", "watch"}, moduleCore},
 	}
@@ -351,6 +350,32 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfTheSingleMergeAnd
 			assert.Equal(t, testVersion, buildVersion(row.ApplicationVersion), "a refused run stays where it was")
 		})
 	}
+}
+
+func TestClient_ResumeOnThisBuildMovesARunThatRecordedTheStepsOfAMergeOfMembers(t *testing.T) {
+	t.Parallel()
+
+	harness, other := olderRoundRun(t, testItem, moduleLand, landVersion)
+	recordSteps(t, harness, testItem, "merge:u.plan", "merge:u.intent#1", "merge:u.poll#1", "merge:u.tip")
+
+	require.NoError(t, other.ResumeOnThisBuild(testItem), "this build records the steps of a merge of members")
+
+	row, err := other.row(runID(testItem, 1))
+	require.NoError(t, err)
+	assert.Equal(t, other.version, row.ApplicationVersion, "the run is stored under this build")
+}
+
+func TestClient_ResumeOnThisBuildRefusesARunWithTheSingleMergeOfAnOlderLandModuleByItsVersion(t *testing.T) {
+	t.Parallel()
+
+	// Land module 4 recorded the single merge as merge:<name>#<n>. The kind merge is live again, so the version of the land module refuses the run.
+	harness, other := olderRoundRun(t, testItem, moduleLand, 4)
+	recordSteps(t, harness, testItem, "merge:m#1")
+
+	err := other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("recorded steps of the land module at version 4 and this build has version %d", landVersion))
 }
 
 func TestClient_ResumeOnThisBuildRefusesARunThatRecordedARetiredAssignStepAndNamesItsModule(t *testing.T) {

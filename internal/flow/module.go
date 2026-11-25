@@ -47,7 +47,7 @@ func StepModule() step.Module {
 	return module
 }
 
-// recordsCountedStep is false for the builtins that record no counted step. merge names its steps batch:<name>.<kind>#<item>, and sandbox, struct,
+// recordsCountedStep is false for the builtins that record no counted step. merge names its steps merge:<name>.<step> and hand_off batch:<name>.<step>#<item>, and sandbox, struct,
 // paths_outside, closing_references and keep_issues record no step: the last three match text, so a replay computes the same answer from the same input.
 // patched records the marker DBOS.patch-<name>, a step of DBOS and no counted step of a module.
 func recordsCountedStep(builtin string) bool {
