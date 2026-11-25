@@ -205,6 +205,8 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 
 	// A host that creates its machine clones the project for its set-up, so it asks the forge table for the clone URL.
 	table.hosts = hostEntries(table.forge)
+	// The start check asks the forge of each project with a writer whether its token can change CI.
+	roles.forges = table.forge
 
 	return table
 }

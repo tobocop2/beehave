@@ -191,7 +191,7 @@ func (fileForge) UnresolvedThreads(context.Context, int) ([]model.ReviewThread, 
 
 func (fileForge) StackID(context.Context, int) (string, error) { return "", nil }
 
-func (fileForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (fileForge) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (fileForge) TreeBlobs(context.Context, string) (map[string]string, error) {
 	return map[string]string{}, nil

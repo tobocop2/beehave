@@ -50,7 +50,7 @@ func TestOwnWork_RefusesBeforeAnyWrite(t *testing.T) {
 			assert.Contains(t, result.Lines[len(result.Lines)-1], "owner merges it")
 			assert.Empty(t, w.writes)
 			assert.False(t, w.called("PRChecks"))
-			assert.False(t, w.called("TokenScopes"))
+			assert.False(t, w.called("CanWriteCI"))
 		})
 	}
 }
