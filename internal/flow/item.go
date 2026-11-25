@@ -309,9 +309,14 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 	return errors.Join(treeErr, e.lifecycle(ctx, model.StepRelease, releaseClaim, in.Project, in.Item))
 }
 
-// begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
+// begin reads who wrote the item, then claims it. A foreign item that the run may not hold ends the run before the claim.
+// A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
 // A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
+	if err = e.origin(ctx, in); err != nil {
+		return "", "", time.Time{}, err
+	}
+
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err

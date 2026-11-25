@@ -329,6 +329,18 @@ func (c *Client) requireUsedModulesSame(item string, last run, was, current map[
 			errStranded, last.Status.ID, module, describeModule(module, was), describeModule(module, current), endFailedFirst(last, item), item)
 	}
 
+	return requireSameStartModules(item, last, was, current)
+}
+
+// requireSameStartModules refuses a run when a module changed whose version covers a step that the engine records at the start of the run, so the refusal
+// does not wait for a recorded step: a run of an older build has none. The forge module covers the read of who wrote the item, in every run.
+func requireSameStartModules(item string, last run, was, current map[string]int) error {
+	if _, changed := changedModule([]string{moduleForge}, was, current); changed {
+		return fmt.Errorf("%w: %s was recorded with the forge module at %s, and this build has %s. This build reads who wrote the item in the step %q "+
+			"before the claim, so the run cannot replay here. Finish the run on the build that started it, or start the item again: beehave run %s",
+			errStranded, last.Status.ID, describeModule(moduleForge, was), describeModule(moduleForge, current), originStepName, item)
+	}
+
 	return requireSameRoundModule(item, last, was, current)
 }
 

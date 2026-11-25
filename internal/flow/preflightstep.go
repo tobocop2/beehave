@@ -17,11 +17,18 @@ import (
 // preflighter judges the pull request of an item before an agent works on it. The caller finds the pull request: Request.PR is zero.
 // An item with no pull request yet has nothing that can have changed, so it gives Unchanged.
 // ReadPull finds the pull request of the item the same way and returns its facts. Facts with number 0 mean that the item has no pull request in any state.
+// With author true, the facts and the result of Preflight carry the association of the author of the pull request that they read, from that one lookup.
+// With author false, the reader makes no read of the author, and a caller must not judge one.
 // IssueAssignees returns the logins that hold an issue. An empty repo is the repository of the project. A failed read is an error, never an empty list.
 type preflighter interface {
-	Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error)
-	ReadPull(ctx context.Context, project, item string) (model.PullFacts, error)
+	Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error)
+	ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error)
 	IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error)
+	// IssueAuthor reads who wrote the issue of the item, when the tracker of the project keeps its items as issues on the forge, whatever the forge of the project.
+	// Any other item has none. A failed read and an unknown author are errors.
+	IssueAuthor(ctx context.Context, project, item string) (model.Authored, error)
+	// SameItem reports whether two item ids name one item, as the tracker of the project keys its items.
+	SameItem(project, a, b string) (bool, error)
 }
 
 var errNoPreflight = errors.New("this build cannot read the forge before a step. Use a build that sets a preflight reader")
@@ -41,21 +48,24 @@ func preflightOutputs(result preflight.Result) map[string]any {
 
 // preflight reads the pull request of the item and returns the first stop in the fixed order of the preflight package.
 // A read that fails ends the step with an error, because the call then knows nothing.
+// A read of the item of the run applies the rule of the start again to the pull request that it judged, so a foreign pull request that opened after the start ends
+// a run that may not hold it. A read of another item reads no author.
 func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	req, label, id, err := preflightArgs(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
 
-	if id == "" {
-		id = s.in.Item
+	item, err := s.itemOf(id)
+	if err != nil {
+		return nil, err
 	}
 
 	if s.e.deps.Preflight == nil {
 		return nil, errNoPreflight
 	}
 
-	value, err := s.durable("preflight", label, s.ask(id, req))
+	value, err := s.durable("preflight", label, s.ask(item, req))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}
@@ -81,9 +91,21 @@ func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.T
 // ask is the recorded read of one preflight call, on the pull request of the item with the id.
 func (s *script) ask(id string, req preflight.Request) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
-		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req)
+		own, err := s.owns(id)
+		if err != nil {
+			return stepResult{}, err
+		}
 
-		return stepResult{Outputs: preflightOutputs(result)}, err
+		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req, own)
+		if err != nil {
+			return stepResult{Outputs: preflightOutputs(result)}, err
+		}
+
+		if err := s.admitOwn(ctx, own, result.Pull); err != nil {
+			return stepResult{}, err
+		}
+
+		return stepResult{Outputs: preflightOutputs(result)}, nil
 	}
 }
 

@@ -272,9 +272,9 @@ func TestClaimStop_AStopIsRecordedOnTheResultOfTheRun(t *testing.T) {
 	assert.Equal(t, 9, got.stop.RC)
 	assert.Contains(t, got.stop.Output, "now carries the 'hold' label")
 
-	other := claimRun(t, pullFake(func(f *model.PullFacts) { f.Labels = []string{"hold"} }), `name = "a", hold = "hold", id = "other"`)
+	other := claimRun(t, pullFake(func(f *model.PullFacts) { f.Labels = []string{"hold"} }), `name = "a", hold = "hold", id = "other-item"`)
 
-	assert.Equal(t, noPullLine, other.line, "the item other has no pull request in the fake")
+	assert.Equal(t, noPullLine, other.line, "the item other-item has no pull request in the fake")
 	assert.Nil(t, other.stop)
 
 	clean := claimRun(t, pullFake(nil), `name = "a", hold = "hold", `+ownerLogins)
@@ -287,14 +287,14 @@ func TestClaimStop_AStopOfAnotherItemIsNoStopOfTheRun(t *testing.T) {
 	t.Parallel()
 
 	fake := pullFake(nil)
-	fake.facts["other"] = model.PullFacts{Number: 9, State: "OPEN", Author: "owner", Labels: []string{"hold"}}
+	fake.facts["other-item"] = model.PullFacts{Number: 9, State: "OPEN", Author: "owner", Labels: []string{"hold"}}
 
-	got := claimRun(t, fake, `name = "a", hold = "hold", id = "other"`)
+	got := claimRun(t, fake, `name = "a", hold = "hold", id = "other-item"`)
 
 	require.NoError(t, got.err)
 	assert.Contains(t, got.line, "False|HELD|9|")
 	assert.Nil(t, got.stop, "the merge round reads other items, and their stops are no stop of the run")
-	assert.Equal(t, []string{"pull other"}, got.issues)
+	assert.Equal(t, []string{"pull other-item"}, got.issues)
 }
 
 func TestClaimStop_RefusesAnOwnThatIsNoDictAndAnOwnDraftThatIsNoNumber(t *testing.T) {

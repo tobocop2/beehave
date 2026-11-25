@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These tests call foreign_followup of the example file directly. No entry of the file reaches it while the engine refuses every foreign pull request,
+// These tests call foreign_followup of the example file directly. No entry of the file reaches it yet (#438),
 // so a test adds the entry `followup` to its own copy. The entry passes the value that a foreign review recorded for the pull request 41.
 const followupEntry = `
 

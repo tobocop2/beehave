@@ -114,6 +114,7 @@ func TestRunStep_AResumeAfterTheStoreRefusedTheRecordOfAnyStepEndsAsTheRunWithNo
 		step string
 		look int
 	}{
+		"one_call_origin":         {one, originStepName, 0},
 		"one_call_claim":          {one, "claim", 0},
 		"one_call_item":           {one, "item", 0},
 		"one_call_login":          {one, "login#1", 0},

@@ -29,6 +29,8 @@ const (
 	closingQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){defaultBranchRef{name} pullRequest(" +
 		"number:$p){baseRefName baseRepository{nameWithOwner} body commits(first:100){totalCount nodes{commit{message}}} " +
 		"closingIssuesReferences(first:100){totalCount nodes{number repository{nameWithOwner}}}}}}"
+	associationQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){issueOrPullRequest(" +
+		"number:$p){... on Issue{authorAssociation} ... on PullRequest{authorAssociation}}}}"
 )
 
 type envelope[T any] struct {
@@ -416,4 +418,46 @@ func (f *Forge) StackID(ctx context.Context, pr int) (string, error) {
 	}
 
 	return pull.Stack.ID, nil
+}
+
+// associationAnswer is the answer of associationQuery: the issue or the pull request with the number, or null when the repository has none.
+type associationAnswer struct {
+	Data *struct {
+		Repository *struct {
+			Node *struct {
+				AuthorAssociation string `json:"authorAssociation"`
+			} `json:"issueOrPullRequest"`
+		} `json:"repository"`
+	} `json:"data"`
+}
+
+// Association reads how the author of the issue or pull request with the number stands to the repository. A missing number or an unknown value is a refusal.
+func (f *Forge) Association(ctx context.Context, number int) (model.Association, error) {
+	base := fmt.Sprintf("cannot read who wrote issue or pull request #%d", number)
+
+	done := f.graphql(ctx, number, associationQuery)
+	if done.ExitCode != 0 {
+		return "", forge.Refuse("%s", base)
+	}
+
+	answer, err := model.Decode[associationAnswer](cmdGraphQL, done.Stdout)
+	if err != nil {
+		return "", forge.Refusal(base, err)
+	}
+
+	return answer.association(base)
+}
+
+// association is the value of the answer. An answer with no issue or pull request, and a value that the forge does not list, are refusals that start with base.
+func (a associationAnswer) association(base string) (model.Association, error) {
+	if a.Data == nil || a.Data.Repository == nil || a.Data.Repository.Node == nil {
+		return "", forge.Refuse("%s: no such issue or pull request", base)
+	}
+
+	association, err := model.ParseAssociation(a.Data.Repository.Node.AuthorAssociation)
+	if err != nil {
+		return "", forge.Refuse("%s: %v", base, err)
+	}
+
+	return association, nil
 }

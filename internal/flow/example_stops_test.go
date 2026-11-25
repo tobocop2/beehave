@@ -31,7 +31,7 @@ type turningPreflight struct {
 	pulled []string
 }
 
-func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
+func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
 	p.mu.Lock()
 	p.calls++
 	p.asked = append(p.asked, req)
@@ -43,24 +43,32 @@ func (p *turningPreflight) Preflight(ctx context.Context, project, item string, 
 	p.mu.Unlock()
 
 	if turned && p.gone {
-		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req)
+		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req, author)
 	}
 
-	return preflightOver{p.world}.Preflight(ctx, project, item, req)
+	return preflightOver{p.world}.Preflight(ctx, project, item, req, author)
 }
 
-func (p *turningPreflight) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
+func (p *turningPreflight) ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error) {
 	p.mu.Lock()
 	world := p.world
 	p.pulled = append(p.pulled, project+"/"+item)
 	p.mu.Unlock()
 
-	return preflightOver{world}.ReadPull(ctx, project, item)
+	return preflightOver{world}.ReadPull(ctx, project, item, author)
 }
 
 func (p *turningPreflight) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
 	return preflightOver{p.world}.IssueAssignees(ctx, project, repo, number)
 }
+
+// IssueAuthor finds no issue.
+func (p *turningPreflight) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// SameItem keys items as their text.
+func (p *turningPreflight) SameItem(_, a, b string) (bool, error) { return a == b, nil }
 
 // stopLoopRig is the example rig with a review that asks for changes on every pass and a forge that turns at the call turnAt.
 func stopLoopRig(t *testing.T, turnAt int, over map[string]any, gone bool) (*agentRig, string, *turningPreflight) {

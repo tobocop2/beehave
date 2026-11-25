@@ -22,6 +22,13 @@ type bankingHost interface {
 // On a stop the provider banks the work first and keeps the host up when it cannot.
 type hostStop struct {
 	programs programs
+	// credentials checks that the project declares its build host credentials = "none" and that every cluster passes the credential check.
+	credentials func(ctx context.Context, project string) error
+}
+
+// CheckCredentials returns nil only when the project declares its build host credentials = "none" and every cluster passes the credential check. It connects to no host.
+func (s hostStop) CheckCredentials(ctx context.Context, project string) error {
+	return s.credentials(ctx, project)
 }
 
 // Up launches the host of the project when it is absent, and reports started. A host that is up is left alone (started is false).

@@ -1026,9 +1026,11 @@ const namedListLimit = 50
 type pulls struct {
 	projects map[string]config.Project
 	forge    func(model.Project) (forge.Forge, error)
-	runners  []string
-	trees    worktrees
-	copier   headCopy
+	// issues is the GitHub access of the tracker of a project, for the read of who wrote an issue. It needs no forge key.
+	issues  func(model.Project) (forge.Forge, error)
+	runners []string
+	trees   worktrees
+	copier  headCopy
 	// writers gives the push of a project the writer role of that project. A project with none pushes with the login of the owner.
 	writers *writers
 }
@@ -1297,41 +1299,55 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
 // An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
-func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
-	built, err := p.forgeOf(project)
+// The result names the pull request that it judged and, with author true, who wrote it, read on the number of the one lookup.
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
 	if err != nil {
 		return preflight.Result{}, err
 	}
 
-	number, err := anyState(ctx, built, item)
-	if err != nil {
-		return preflight.Result{}, err
-	}
-
-	if number == 0 {
+	if pull.Number == 0 {
 		return preflight.Result{Stop: preflight.Unchanged, Lines: []string{"OK: the item has no pull request yet."}}, nil
 	}
 
-	req.PR = number
+	req.PR = pull.Number
 
-	return preflight.Check(ctx, built, req)
+	result, err := preflight.Check(ctx, built, req)
+	result.Pull = pull
+
+	return result, err
 }
 
-// ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
-func (p pulls) ReadPull(ctx context.Context, project, item string) (model.PullFacts, error) {
+// authoredPull finds the pull request of the item once and, with author true, reads who wrote it, on that number. With author false it makes no such read
+// and gives the number alone. An item with no pull request in any state gives number 0.
+func (p pulls) authoredPull(ctx context.Context, project, item string, author bool) (opened, model.Authored, error) {
 	built, err := p.forgeOf(project)
 	if err != nil {
-		return model.PullFacts{}, err
+		return opened{}, model.Authored{}, err
 	}
 
 	number, err := anyState(ctx, built, item)
-	if err != nil || number == 0 {
+	if err != nil || number == 0 || !author {
+		return built, model.Authored{Number: number}, err
+	}
+
+	pull, err := authored(ctx, built, number)
+
+	return built, pull, err
+}
+
+// ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
+// With author true, the facts carry who wrote the pull request, read on the number of the one lookup.
+func (p pulls) ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
+	if err != nil || pull.Number == 0 {
 		return model.PullFacts{}, err
 	}
 
-	facts, err := built.PullRead(ctx, number)
+	facts, err := unreadAs(built.PullRead(ctx, pull.Number))
+	facts.Association = pull.Association
 
-	return unreadAs(facts, err)
+	return facts, err
 }
 
 // unreadAs turns the two refusals that only a call with own logins needs into facts that name what they lack: a null assignee list and a body link that is not an int.

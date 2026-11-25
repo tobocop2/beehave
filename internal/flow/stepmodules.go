@@ -102,7 +102,9 @@ const trackerVersion = 4
 // Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step. Version 10 adds the pr_closing step. Version 11 adds the base_tip and issue_state steps.
 // Version 12 adds the landing_proof step, and the error field of the issue_state step: a failed read is recorded with its cause and no state.
 // It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
-const forgeVersion = 12
+// Version 13 adds the step of the engine that reads who wrote the item before the claim of every run (originStepName).
+// No builtin records that step, so a move to this build compares the forge module for every run (requireSameStartModules).
+const forgeVersion = 13
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -290,11 +292,11 @@ func moduleOfStep(name string) (string, bool) {
 // dbosStepPrefix starts the names of the steps that DBOS records for a workflow, such as DBOS.sleep and DBOS.getResult.
 const dbosStepPrefix = "DBOS."
 
-// engineStep reports whether the engine records a step under the name for every run, apart from any module: the read of the item, the claim and its end,
+// engineStep reports whether the engine records a step under the name for every run, apart from any module: the read of the item, who wrote it, the claim and its end,
 // the worktree, the cancel of other runs, the start of a child run, and a step that DBOS records.
 func engineStep(name string) bool {
 	engine := []string{
-		itemName, string(model.StepClaim), string(model.StepReady), string(model.StepRelease), treeStepName, treeMakeStepName, othersStep,
+		itemName, string(model.StepClaim), string(model.StepReady), string(model.StepRelease), treeStepName, treeMakeStepName, othersStep, originStepName,
 		phaseName, exclusiveName, hostJobName,
 	}
 

@@ -24,7 +24,11 @@ case "$1 $2" in
           if [ "$1" = "--jq" ]; then filter=$2; fi
           shift
         done
-        [ -f "@WORK@/gh/open" ] || exit 0
+        # With no open pull request, gh prints the empty list [] for --json. The --jq programs of the scripts print nothing for it.
+        if [ ! -f "@WORK@/gh/open" ]; then
+          if [ "$filter" = . ]; then echo '[]'; fi
+          exit 0
+        fi
         jq -Rn '[inputs | split("\t") | {number: (.[0] | tonumber), headRefName: .[1]}]' "@WORK@/gh/open" | jq -r "$filter"
         ;;
     esac
@@ -45,6 +49,13 @@ case "$1 $2" in
     ;;
   "issue comment")
     cat > /dev/null
+    exit 0
+    ;;
+  "api graphql")
+    # The read of who wrote an issue or a pull request, in the shape of gh: every item of the maintenance scripts is the owner's own.
+    case "$*" in
+      *issueOrPullRequest*) echo '{"data":{"repository":{"issueOrPullRequest":{"authorAssociation":"OWNER"}}}}' ;;
+    esac
     exit 0
     ;;
 esac

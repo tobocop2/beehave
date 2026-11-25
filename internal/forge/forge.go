@@ -54,6 +54,12 @@ type AssigneeReads interface {
 	IssueAssignees(ctx context.Context, repo string, number int) ([]string, error)
 }
 
+// AssociationReads is the optional side of a forge that reads who wrote an issue or a pull request. A forge that lacks it cannot tell an item of the owner from a foreign one.
+// Association returns how the author of the issue or pull request with the number stands to the repository of the forge. A failed read or an unknown value is an error.
+type AssociationReads interface {
+	Association(ctx context.Context, number int) (model.Association, error)
+}
+
 // ReadyReads is the optional side of a forge that reads when a pull request was marked ready for review.
 // ReadyMarks returns the login of each account that marked the pull request ready, in order. A failed read is an error, never an empty list.
 type ReadyReads interface {
