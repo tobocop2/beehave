@@ -47,7 +47,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) {
 	require.Equal(t, config.Pool{"five_hour": 90, "seven_day": 95}, cfg.Pools["claude"])
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(".", "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(".", "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth, Sandbox: model.SandboxOn},
 		cfg.Projects["example"].Project)
 }
 

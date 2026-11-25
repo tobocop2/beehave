@@ -788,9 +788,8 @@ type OpenRun struct {
 	Delayed bool
 }
 
-// OpenRun returns the open run of the item. live is the live default of a project, which a run recorded before the mode existed uses.
-// It reads the store and launches nothing.
-func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, error) {
+// OpenRun returns the open run of the item. It reads the store and launches nothing.
+func (c *Client) OpenRun(item string) (OpenRun, error) {
 	last, found, err := latestRun(c.store(), item)
 	if err != nil || !found || last.terminal() {
 		return OpenRun{}, err
@@ -798,7 +797,7 @@ func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, 
 
 	in, err := last.input()
 
-	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(live), Delayed: last.delayed()}, err
+	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(), Delayed: last.delayed()}, err
 }
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.
