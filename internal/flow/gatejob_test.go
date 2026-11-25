@@ -257,11 +257,48 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	}
 }
 
-// settleCancel waits for the end of the main run that a cancel stopped.
-func settleCancel(t *testing.T, _ *Engine, _ hostGate, ended <-chan error) {
+// settleCancel waits for the end of the main run that a cancel stopped, then for every run of its tree to leave the queue as cancelled and for the wait
+// that the cancel stopped to return, so that nothing of the old run is alive when the test resumes. It prints the state of the engine if the test fails.
+func settleCancel(t *testing.T, engine *Engine, gated hostGate, ended <-chan error) {
 	t.Helper()
 
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("the engine at the end of the failed test:\n%s", within(dumpBound, func() string { return workflowState(engine) }))
+		}
+	})
+
 	require.Error(t, receive(t, ended))
+
+	waitOn(t, waiting[struct{}]{what: "the old runs of the item to end as cancelled and the old wait to return", read: func() (struct{}, bool, error) {
+		return struct{}{}, gated.oldWaitReturned() && noRunOpen(engine), nil
+	}})
+}
+
+// oldWaitReturned reports whether the wait that the cancel stopped has returned. The first call tells the test that it waits for that return.
+func (g hostGate) oldWaitReturned() bool {
+	if g.returned.Load() > 0 {
+		return true
+	}
+
+	select {
+	case g.waiting <- struct{}{}:
+	default:
+	}
+
+	return false
+}
+
+// noRunOpen reports whether every workflow of the engine has ended.
+func noRunOpen(engine *Engine) bool {
+	rows, err := dbos.ListWorkflows(engine.ctx)
+	if err != nil {
+		return false
+	}
+
+	return !slices.ContainsFunc(rows, func(row dbos.WorkflowStatus) bool {
+		return row.Status != dbos.WorkflowStatusCancelled && row.Status != dbos.WorkflowStatusSuccess && row.Status != dbos.WorkflowStatusError
+	})
 }
 
 // The old wait of the job stays open after the cancel, until the resumed run starts its own wait on the same job or the test begins to wait for the old wait to return.
