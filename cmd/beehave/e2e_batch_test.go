@@ -20,7 +20,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
-// The batch scripts run merge in a real beehave process over a real git repository (the folder "tree" of the work folder) and a forge that lives in files.
+// The batch scripts run batch_merge of the workflow library in a real beehave process over a real git repository (the folder "tree" of the work folder) and a forge that lives in files.
 // The pull request of the item mN is number N, on the branch mN. A merge on this forge makes a real merge commit on the branch main of the repository,
 // writes the file forge/merged-N, and adds a line to forge/calls.log. When the file forge/crash-after holds a number, the process exits right after the merge with that count,
 // once: the file forge/crashed stops the second exit. The exit comes before the engine records the merge step, as a power loss does.
@@ -137,6 +137,15 @@ func (f fileForge) PRList(_ context.Context, _ int, args ...string) ([]model.Pul
 	return []model.PullRequest{{Number: pr}}, nil
 }
 
+// OpenPulls lists no pull request: the batch scripts open none that the queue reads.
+func (f fileForge) OpenPulls(context.Context, string) ([]model.OpenPull, error) { return nil, nil }
+
+func (f fileForge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
+	view, err := f.PRView(ctx, pr)
+
+	return pullFactsOf(pr, view, err)
+}
+
 func (f fileForge) PRView(ctx context.Context, pr int, _ ...string) (model.PullRequest, error) {
 	head, err := f.git(ctx, "rev-parse", "refs/heads/m"+strconv.Itoa(pr))
 	if err != nil {
@@ -182,7 +191,7 @@ func (fileForge) UnresolvedThreads(context.Context, int) ([]model.ReviewThread, 
 
 func (fileForge) StackID(context.Context, int) (string, error) { return "", nil }
 
-func (fileForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (fileForge) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (fileForge) TreeBlobs(context.Context, string) (map[string]string, error) {
 	return map[string]string{}, nil
@@ -195,7 +204,7 @@ func (f fileForge) IssueState(context.Context, int) (string, error) {
 }
 
 func (f fileForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main"}, nil
 }
 
 func (f fileForge) BranchRef(ctx context.Context, branch string) (string, bool, error) {
@@ -315,8 +324,10 @@ func (f fileForge) crashAfter() {
 }
 
 // batchStar is the workflow of the batch scripts. The heads are the commits of the branches m1 to m3 of the repository.
-const batchStar = `def main(item):
-    done = merge(
+const batchStar = `load("@beehave//batch.star", "batch_merge")
+
+def main(item):
+    done = batch_merge(
         name = "all",
         base = "main",
         repo = "example/shop",
@@ -331,12 +342,11 @@ const batchStar = `def main(item):
 
 // handStar is the workflow of the hand-off script: the owner lands the pull request of the branch m1, whose head is the one given.
 const handStar = `def main(item):
-    out = merge(
+    out = hand_off(
         name = "ask",
         base = "main",
         repo = "example/shop",
-        hand_off = True,
-        prs = [struct(item = "m1", head = %q)],
+        prs =[struct(item = "m1", head = %q, closes = [])],
     )
     if out.merged != ["m1"] or out.rejected or out.moved:
         fail("the owner did not land m1: merged=%%s rejected=%%s moved=%%s" %% (out.merged, out.rejected, out.moved))
@@ -370,7 +380,7 @@ func cmdBatchSetup(ts *testscript.TestScript, _ bool, _ []string) {
 		run("add", file)
 		run("commit", "-q", "-m", "add "+file)
 		head := run("rev-parse", "HEAD")
-		fmt.Fprintf(&members, "            struct(item = %q, head = %q),\n", name, head)
+		fmt.Fprintf(&members, "            struct(item = %q, head = %q, closes = []),\n", name, head)
 		first = cmp.Or(first, head)
 
 		run("checkout", "-q", "main")

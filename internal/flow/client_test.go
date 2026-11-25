@@ -70,9 +70,9 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), errWrongState)
-	require.ErrorIs(t, client.Cancel(testItem), errWrongState)
-	require.ErrorIs(t, client.Resume(testItem), errWrongState)
+	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), ErrWrongState)
+	require.ErrorIs(t, client.Cancel(testItem), ErrWrongState)
+	require.ErrorIs(t, client.Resume(testItem), ErrWrongState)
 	require.ErrorContains(t, client.Resume(testItem), "only a cancelled or failed run resumes") //nolint:misspell // user-facing state word
 }
 
@@ -159,7 +159,7 @@ func TestLatestRun_SkipsRunsWhoseNameEndsInNoAttemptNumber(t *testing.T) {
 	_, err = handle.GetResult()
 	require.NoError(t, err)
 
-	_, found, err := latestRun(engine.ctx, testItem)
+	_, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 
 	require.NoError(t, err)
 	assert.False(t, found)
@@ -176,6 +176,6 @@ func TestClient_StatusReportsAStoreThatIsGone(t *testing.T) {
 	_, err = client.Status()
 	require.ErrorContains(t, err, "list the runs")
 
-	_, _, err = latestRun(client.flow, testItem)
+	_, _, err = latestRun(client.store(), testItem)
 	require.ErrorContains(t, err, "list the runs of item 12")
 }

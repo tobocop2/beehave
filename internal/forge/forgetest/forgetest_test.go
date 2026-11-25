@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/forge/forgetest"
+	"github.com/tobocop2/beehave/internal/ifacetest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -36,6 +38,24 @@ type memForge struct {
 	dropped   string
 	extra     bool
 	wrongPR   bool
+	// holeAccepted makes the typed read answer a pull request with no head instead of an error.
+	holeAccepted bool
+	// wrongHole makes the typed read of such a pull request fail with an error that does not name the missing field.
+	wrongHole bool
+	// emptyOn names the read that answers an empty value and no error.
+	emptyOn string
+	// ignoresBase makes the list of open pull requests answer every pull request whatever base it is asked for.
+	ignoresBase bool
+	// holeListed makes the list answer a pull request with no head branch instead of an error.
+	holeListed bool
+	// holeDropped makes the list answer the error of a pull request with no head branch and leave the pull request out.
+	holeDropped bool
+	// closingDropsElsewhere makes the closing read of pull request 7 leave out the issue of another repository.
+	closingDropsElsewhere bool
+	// closingNil makes the closing read of a pull request that closes none answer nil lists.
+	closingNil bool
+	// issueAlwaysOpen makes the state read answer OPEN for a closed issue.
+	issueAlwaysOpen bool
 }
 
 func (m memForge) fail() error {
@@ -60,6 +80,51 @@ func (m memForge) PRBody(context.Context, int) (string, error) {
 
 func (m memForge) PRView(context.Context, int, ...string) (model.PullRequest, error) {
 	return model.PullRequest{Title: forgetest.SevenTitle}, m.fail()
+}
+
+func (m memForge) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	if holes := map[int]string{
+		forgetest.NoHeadPull: "head", forgetest.NoStatePull: "state", forgetest.NoBasePull: "base",
+		forgetest.NoDraftPull: "draft", forgetest.NoLabelsPull: "labels", forgetest.NoAssigneesPull: "assignees",
+	}; holes[pr] != "" {
+		if m.holeAccepted {
+			return model.PullFacts{Number: pr}, nil
+		}
+
+		if m.wrongHole {
+			return model.PullFacts{}, errors.New("the read is bad")
+		}
+
+		return model.PullFacts{}, &model.IncompletePull{Facts: model.PullFacts{Number: pr}, Missing: []string{holes[pr]}}
+	}
+
+	return forgetest.SevenFacts(), m.fail()
+}
+
+// OpenPulls serves the open pull requests that the suite describes: pull request 7 on main and another on dev.
+func (m memForge) OpenPulls(_ context.Context, base string) ([]model.OpenPull, error) {
+	if base == forgetest.HoleBase {
+		if m.holeListed {
+			return []model.OpenPull{{Number: forgetest.OtherPull, Base: base}}, m.fail()
+		}
+
+		hole := model.OpenPull{Number: forgetest.OtherPull, Base: base}
+		if m.holeDropped {
+			return nil, hole.Check()
+		}
+
+		return []model.OpenPull{hole}, hole.Check()
+	}
+
+	var kept []model.OpenPull
+
+	for _, pull := range []model.OpenPull{forgetest.SevenOpen(), forgetest.OtherOpen()} {
+		if base == "" || m.ignoresBase || pull.Base == base {
+			kept = append(kept, pull)
+		}
+	}
+
+	return kept, m.fail()
 }
 
 func (m memForge) ItemFields() []string {
@@ -231,12 +296,45 @@ func (m memForge) DefaultBranch(context.Context) (string, error) {
 	return forgetest.DefaultBranch, m.fail()
 }
 
-func (m memForge) IssueState(context.Context, int) (string, error) {
-	return "", errors.New("this forge cannot read the state of an issue")
+func (m memForge) IssueState(_ context.Context, number int) (string, error) {
+	if m.emptyOn == "IssueState" {
+		return "", nil
+	}
+
+	if err := m.fail(); err != nil {
+		return "", err
+	}
+
+	if number == forgetest.ClosedIssue && !m.issueAlwaysOpen {
+		return forgetest.IssueClosed, nil
+	}
+
+	return forgetest.IssueOpen, nil
 }
 
-func (m memForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
+func (m memForge) ClosingRefs(_ context.Context, pr int) (model.ClosingRefs, error) {
+	if m.emptyOn == "ClosingRefs" {
+		return model.ClosingRefs{}, nil
+	}
+
+	if err := m.fail(); err != nil {
+		return model.ClosingRefs{}, err
+	}
+
+	refs := forgetest.NoClosingRefs()
+	if pr == forgetest.Seven {
+		refs = forgetest.SevenClosingRefs()
+	}
+
+	if m.closingDropsElsewhere {
+		refs.Elsewhere = []model.IssueRef{}
+	}
+
+	if m.closingNil && pr == forgetest.NoClosingPull {
+		refs.Issues, refs.Elsewhere = nil, nil
+	}
+
+	return refs, nil
 }
 
 func (m memForge) BranchRef(_ context.Context, branch string) (string, bool, error) {
@@ -269,8 +367,8 @@ func (m memForge) SetBase(context.Context, int, string) error { return m.fail() 
 
 func (m memForge) SetBody(context.Context, int, string) error { return m.fail() }
 
-func (m memForge) TokenScopes(context.Context) ([]string, error) {
-	return []string{forgetest.ScopeRepo, forgetest.ScopeWorkflow}, m.fail()
+func (m memForge) CanWriteCI(context.Context) (model.CIWrite, error) {
+	return model.CIWriteYes, m.fail()
 }
 
 func TestCheckForgeReads_ReportsAMissingBranchThatReadsAsPresent(t *testing.T) {
@@ -297,6 +395,135 @@ func TestCheckForgeReads_FailsAForgeThatReturnsAWrongBody(t *testing.T) {
 	assert.Contains(t, r.failures, "Reviews: unexpected error: down")
 }
 
+func TestCheckForgeReads_FailsAForgeThatAnswersAPullRequestWithNoStateHeadOrBase(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{holeAccepted: true})
+	assert.ElementsMatch(t, []string{
+		"PullRead of a pull request with no head: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no state: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no base: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no draft: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no labels: want an IncompletePull that names it, got <nil>",
+		"PullRead of a pull request with no assignees: want an IncompletePull that names it, got <nil>",
+	}, r.failures)
+}
+
+func TestCheckForgeReads_FailsAForgeThatNamesTheWrongMissingField(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{wrongHole: true})
+	assert.Len(t, r.failures, 6)
+}
+
+func TestPRList_ReturnsTheOpenPullRequestsOfABase(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	pulls, err := memForge{}.OpenPulls(t.Context(), forgetest.OtherBase)
+	require.NoError(t, err)
+	assert.Equal(t, []model.OpenPull{forgetest.OtherOpen()}, pulls)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{ignoresBase: true})
+	assert.Equal(t, []string{
+		"OpenPulls of a base: got [7 11], want [7]",
+		"OpenPulls of another base: got [7 11], want [11]",
+		"OpenPulls of a base with no pull request: got [7 11], want []",
+	}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{holeListed: true})
+	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want an IncompletePull that names it, got <nil>"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{holeDropped: true})
+	assert.Equal(t, []string{"OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got []"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckOpenPulls(r, memForge{down: true})
+	assert.Contains(t, r.failures, "OpenPulls: unexpected error: down")
+}
+
+func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	refs, err := memForge{}.ClosingRefs(t.Context(), forgetest.Seven)
+	require.NoError(t, err)
+	assert.Equal(t, []int{forgetest.SevenClosing}, refs.Issues)
+	assert.Equal(t, []model.IssueRef{forgetest.SevenClosingElsewhere}, refs.Elsewhere)
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{closingDropsElsewhere: true})
+	assert.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes two issues")
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{closingNil: true})
+	assert.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes none")
+
+	r = &recorder{}
+	forgetest.CheckClosingRefs(r, memForge{down: true})
+	assert.Contains(t, r.failures, "ClosingRefs: unexpected error: down")
+}
+
+func TestIssueState_ReturnsOpenOrClosed(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckIssueState(r, memForge{})
+	assert.Empty(t, r.failures)
+
+	state, err := memForge{}.IssueState(t.Context(), forgetest.ClosedIssue)
+	require.NoError(t, err)
+	assert.Equal(t, forgetest.IssueClosed, state)
+
+	r = &recorder{}
+	forgetest.CheckIssueState(r, memForge{issueAlwaysOpen: true})
+	require.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "IssueState of a closed issue")
+
+	r = &recorder{}
+	forgetest.CheckIssueState(r, memForge{down: true})
+	assert.Contains(t, r.failures, "IssueState: unexpected error: down")
+}
+
+func TestCheckForgeReads_RunsTheIssueStateCheckOnEveryAdapter(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{})
+	assert.Empty(t, r.failures, "a forge that answers the state of an issue right passes the whole read suite")
+
+	r = &recorder{}
+	forgetest.CheckForgeReads(r, memForge{issueAlwaysOpen: true})
+	require.Len(t, r.failures, 1, "the read suite fails a forge that reads a closed issue as open")
+	assert.Contains(t, r.failures[0], "IssueState of a closed issue")
+}
+
+func TestCheckForgeReads_RunsTheClosingIssueCheckOnEveryAdapter(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{})
+	assert.Empty(t, r.failures, "a forge that answers the closing issues right passes the whole read suite")
+
+	r = &recorder{}
+	forgetest.CheckForgeReads(r, memForge{closingDropsElsewhere: true})
+	require.Len(t, r.failures, 1, "the read suite fails a forge that drops the closing issue of another repository")
+	assert.Contains(t, r.failures[0], "ClosingRefs of a pull request that closes two issues")
+}
+
 func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {
 	t.Parallel()
 
@@ -307,6 +534,120 @@ func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot
 	r = &recorder{}
 	forgetest.CheckForgeFails(r, memForge{})
 	assert.Contains(t, r.failures, "Overlap: want an error from a failed command, got none")
+}
+
+// TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments reads the method list of forge.Forge and fails when a method has no failed-command case.
+// A new read added to the interface must be added to the suite, or to the two methods that take no call to the forge.
+func TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments(t *testing.T) {
+	t.Parallel()
+
+	noCall := map[string]bool{"ItemFields": true, "CloneURL": true}
+	ran := map[string]bool{}
+
+	for _, name := range forgetest.FailedCommandMethods() {
+		ran[name] = true
+	}
+
+	declared, err := ifacetest.Methods([]string{"../forge.go"}, "Forge", "Syncer", "Statuses", "AssigneeReads", "ReadyReads", "Boarder")
+	require.NoError(t, err)
+
+	for _, name := range declared {
+		if !noCall[name] {
+			assert.True(t, ran[name], "the forge method %s has no failed-command case", name)
+		}
+	}
+
+	for name := range ran {
+		assert.Contains(t, declared, name, "a failed-command case runs %s, which no forge interface has", name)
+	}
+
+	opener, err := ifacetest.Methods([]string{"../forge.go"}, "Opener")
+	require.NoError(t, err)
+
+	for _, name := range opener {
+		assert.False(t, ran[name], "Opener only writes and is left out, but %s has a case", name)
+	}
+}
+
+// TestCheckForgeFails_AMethodThatReadsAnErrorAsAnEmptyAnswerFailsTheCase fails the one read the issue names and checks that the case names it.
+func TestCheckForgeFails_AMethodThatReadsAnErrorAsAnEmptyAnswerFailsTheCase(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"ClosingRefs", "IssueState"} {
+		r := &recorder{}
+		forgetest.CheckForgeFails(r, memForge{down: true, emptyOn: name})
+		assert.Contains(t, r.failures, name+": want an error from a failed command, got none")
+	}
+}
+
+// memOptional serves the assignee read and the ready-mark read. down fails the call.
+type memOptional struct{ down bool }
+
+func (m memOptional) IssueAssignees(context.Context, string, int) ([]string, error) {
+	if m.down {
+		return nil, errDown
+	}
+
+	return nil, nil
+}
+
+func (m memOptional) ReadyMarks(context.Context, int) ([]string, error) {
+	if m.down {
+		return nil, errDown
+	}
+
+	return nil, nil
+}
+
+func TestCheckAssigneeReadsFailAndCheckReadyReadsFail_AcceptAnErrorAndRefuseAnEmptyList(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckAssigneeReadsFail(r, memOptional{down: true})
+	forgetest.CheckReadyReadsFail(r, memOptional{down: true})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckAssigneeReadsFail(r, memOptional{})
+	assert.Equal(t, []string{"IssueAssignees: want an error from a failed command, got none"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckReadyReadsFail(r, memOptional{})
+	assert.Equal(t, []string{"ReadyMarks: want an error from a failed command, got none"}, r.failures)
+}
+
+// memBoarder serves the Boarder reads. down fails the call; otherwise a card status reads as empty with no error.
+type memBoarder struct{ down bool }
+
+func (m memBoarder) PlaceCard(context.Context, model.Card) error {
+	if m.down {
+		return errDown
+	}
+
+	return nil
+}
+
+func (m memBoarder) CardStatus(context.Context, model.Card) (string, error) {
+	if m.down {
+		return "", errDown
+	}
+
+	return "", nil
+}
+
+func TestCheckBoarderFails_AcceptsAnErrorAndRefusesAnEmptyStatus(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckBoarderFails(r, memBoarder{down: true})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckBoarderFails(r, memBoarder{})
+	assert.Equal(t, []string{
+		"PlaceCard: want an error from a failed command, got none",
+		"CardStatus: want an error from a failed command, got none",
+	}, r.failures)
 }
 
 // memSyncer serves the Syncer rules. wrong changes the answers; down fails every call.
@@ -368,6 +709,62 @@ func TestCheckSyncerFails_AcceptsASyncerThatErrorsEverywhereAndFailsOneThatDoesN
 	forgetest.CheckSyncerFails(r, memSyncer{})
 	assert.Contains(t, r.failures, "CommitsAhead: want an error from a failed command, got none")
 	assert.Contains(t, r.failures, "MergeBranch: want an error from a failed command, got none")
+}
+
+// memStatuses serves the Statuses rules. wrong changes the answers; down fails every call.
+type memStatuses struct {
+	wrong bool
+	down  bool
+}
+
+func (m memStatuses) PostStatus(context.Context, model.CommitStatus) error {
+	if m.down {
+		return errDown
+	}
+
+	return nil
+}
+
+func (m memStatuses) Protection(context.Context, string) (model.Protection, error) {
+	if m.down {
+		return model.Protection{}, errDown
+	}
+
+	if m.wrong {
+		return model.Protection{}, nil
+	}
+
+	return model.Protection{PullRequest: true, RequiredStatuses: []string{forgetest.StatusGate, forgetest.StatusReview}}, nil
+}
+
+func TestCheckStatuses_AcceptsRightAnswersAndFailsWrongOnes(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{wrong: true})
+	assert.Contains(t, r.failures, "protection: got {false []}, want {true [beehave/gate beehave/review]}")
+
+	r = &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{down: true})
+	assert.Contains(t, r.failures, "PostStatus: unexpected error: down")
+	assert.Contains(t, r.failures, "Protection: unexpected error: down")
+}
+
+func TestCheckStatusesFails_AcceptsAStatusesThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckStatusesFails(r, memStatuses{down: true})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckStatusesFails(r, memStatuses{})
+	assert.Contains(t, r.failures, "PostStatus: want an error from a failed command, got none")
+	assert.Contains(t, r.failures, "Protection: want an error from a failed command, got none")
 }
 
 func TestTestForge_RunsBothSuitesOnAFactory(t *testing.T) {

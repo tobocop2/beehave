@@ -22,22 +22,32 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 | `max_concurrent` | The global limit on agent processes. | | |
 | `max_review_concurrent` | The same limit for the agent steps with edits = False. | | |
 | `per_login` | The most agent steps that one login runs at once, in each of the two agent queues. The gate and merge queues keep one run for each repository. | Default 1. The least is 1. The most is the lower of `max_concurrent` and `max_review_concurrent`. | `BEEHAVE_AGENTS_PER_LOGIN` |
+| `concurrency` | The mode of the cap of the agents queue: `"static"` or `"adaptive"`. | Default `"static"`: the queue holds `max_concurrent`. Any other value is refused. | `BEEHAVE_AGENTS_CONCURRENCY` |
 | `max_turns` | The cap of turns for one agent run. | 0 means no cap. | |
 | `max_budget_usd` | The cap of dollars for one agent run. | 0 means no cap. | |
+| `context_window_tokens` | The context window of the agent model in tokens. The `max_context_percent` of an `agent` call counts against it. | Default 200000. 0 means the window is unknown, and no context limit fires. A negative value is refused. A model with a larger window needs the key set. | |
 | `max_run_budget_usd` | The cap of dollars for the agent steps of one run in all. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD` |
 | `max_tree_budget_usd` | The cap of dollars for the agent steps of an item tree in all: the root run and every run it spawns. A spawned run uses the cap of its root. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD` |
+| `max_week_budget_usd` | The cap of dollars for the agent steps of all items in any seven days. The sum counts the agent steps that ended in the last seven days, and a step that ended exactly seven days ago counts. | 0 means no cap. A `retention_days` from 1 to 6 is refused with a week cap, because it deletes finished runs before they leave the window. Two steps that start at once can both start under the cap. | `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD` |
+| `trace_parent` | When true, each agent process gets one W3C `TRACEPARENT` that names the run and the step. A `command` step gets none. | Default false. A value that is not true or false is refused. | `BEEHAVE_AGENTS_TRACE_PARENT` |
 | `review_poll_minutes` | The minutes between two review polls. | 0 means no poll. | `BEEHAVE_REVIEW_POLL_MINUTES` |
 | `review_lookback_days` | The days that the review poll looks back for replies. | Default 3. The least is 1. The most is 365. | `BEEHAVE_REVIEW_LOOKBACK_DAYS` |
 | `retention_days` | The age in days at which `beehave run` deletes a finished run. | Default 7. 0 keeps every finished run. The most is 36500. | `BEEHAVE_AGENTS_RETENTION_DAYS` |
 
 ### `pool(...)`
 
-`pool(...)` sets the usage caps of the Claude runners, in percent. Call it once. Both keys are optional. `beehave run` picks the runner that is under both caps.
+`pool(...)` sets the usage caps of the runners, in percent. Call it once. Each key is the name of a usage window that an agent reports, and each key is optional. `beehave run` picks the runner that is under every cap of its agent.
+
+Each agent declares its windows and the default cap of each. A cap applies to every agent that declares its window. A cap on a window that the agent of a runner does not report does not apply to that runner. Two agents that declare one window name declare one default.
+
+A key that no agent declares is refused, and the message lists the names. A key that ends in `_max` after the name of a declared window, such as `five_hour_max`, is refused too, and the message names the form `five_hour = N`.
 
 | Key | Meaning | Default and limits | Override |
 | --- | --- | --- | --- |
-| `five_hour_max` | The cap for the five-hour usage of a runner. | Default 90. Above 0 and up to 100. | `BEEHAVE_POOL_FIVE_HOUR_MAX` |
-| `seven_day_max` | The cap for the seven-day usage of a runner. | Default 95. Above 0 and up to 100. | `BEEHAVE_POOL_SEVEN_DAY_MAX` |
+| `five_hour` | The cap for the five-hour usage of a Claude runner. | Default 90. Above 0 and up to 100. | `BEEHAVE_POOL_FIVE_HOUR_MAX` |
+| `seven_day` | The cap for the seven-day usage of a Claude runner. | Default 95. Above 0 and up to 100. | `BEEHAVE_POOL_SEVEN_DAY_MAX` |
+
+The override of a window is `BEEHAVE_POOL_<NAME>_MAX`, with the name of the window in upper case.
 
 ### `runner(...)`
 
@@ -52,19 +62,25 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 
 ### `project(...)`
 
-The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `test_command`, `test_paths`, `notify`, `pin_file`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `pr_label`, `max_spawn_depth` and `build_host`.
+The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `test_command`, `test_paths`, `notify`, `pin_file`, `gate_program`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `pr_label`, `max_spawn_depth` and `build_host`.
 
 `max_spawn_depth` is the deepest level below the run a user started at which `spawn` may start a run. It defaults to 3, so a research desk can spawn sources and each source can spawn claims. A project that must not fan out further than one level sets 1. A value below 1 is refused. `beehave check workflow --project <name> --dry-run` uses the cap of the named project.
 
-`pr_label` is the label of every item pull request that the `pr_open` step opens. It defaults to `made-by-beehave`, and an empty value is refused. The forge creates the label first when the repository has none. The sync and integration pull requests of the remediation example always use the default label `made-by-beehave`, so a custom `pr_label` reaches only item drafts.
+`pr_label` is the label of every item pull request that the `pr_open` step opens. It defaults to `made-by-beehave`, and an empty value is refused. The forge creates the label first when the repository has none. The sync and integration pull requests of the remediation example carry the same label, because the steps `round_sync` and `integration_pull` read the `pr_label` of the project.
 
 `test_paths` is a list of globs for the test files, for example `["**/*_test.go", "**/testdata/**"]` or `["tests/**"]`. The revert run copies the added and changed test files of a candidate onto the base code, so a new test that needs a changed helper in a test file still builds there. A project with new tests and no `test_paths` gets a refusal from the `before_review` function of `review_fix.star`.
+
+`gate_program` is a list of the repository paths that hold the program of the gate, for example `["Makefile", "GNUmakefile", "makefile", "scripts/"]`. A directory ends in `/`. The default is an empty list, and the gate then runs as before. An entry uses only the characters A-Z, a-z, 0-9, `.`, `_`, `-` and `/`. The config refuses an entry that is empty, absolute, holds `..`, holds a character outside that set (a space, a control character, a non-ASCII character, a glob character, a leading `:`), is `.`, has a component equal to `.git` in any case, or is not a plain path. It refuses a duplicate, an entry whose path components start with the components of another entry (`scripts` and `scripts/x`, or `a` and `a/b`), and an entry that a `test_paths` glob can match. A project with no `source` and no `forge` refuses the key, because the program is read from the base branch. A path that the base branch lacks is legal: it means that the path must stay absent. `beehave check config`, `beehave check workflow` and `beehave run` load the key the same way. A gate on a build host and a local gate use the list (see `gate.md`). The key has no environment variable and no flag.
 
 `notify` is a list of strings: a program and its arguments, for example `["ntfy", "publish", "beehave"]`. A wait for the owner is a `wait`, the wait for the owner after a gate job is lost, or the wait of a `merge` that asks the owner to decide a scope, or the wait of a `merge` with `hand_off` for the owner to merge. When one opens, the engine runs the list once and adds two arguments, the item id and the question. The engine runs the program with no shell, so each argument stays one word, and it stops the program after 30 seconds. A program that fails, does not start or hangs gets a line in the log and never fails the wait. A reminder, a timeout and a dry run send no notice. A lost-job wait that opens again sends one notice for each opening. A `merge` with `hand_off` that is canceled and cannot return a ready pull request to draft sends a notice that names the item. A project with no `notify` sends no notice. A run that waits for the owner resumes cleanly if you add or remove `notify` meanwhile: it sends no late notice and it does not repeat one. The config refuses a `notify` that is not a list of strings, an empty list and a list whose first item is empty.
 
 The project also takes the config block of the adapter that it chooses. The adapter declares the keys of its block, and the config passes the block to the adapter unread. The beads adapter declares the `beads` block with one key: `beads = beads(prefix = "proj")`. A project that chooses the beads tracker or the beads claim store must give the block. The config refuses a block of an adapter that the project does not choose, and the refusal names the adapters that the project does choose.
 
-The `host` call takes the block of the host adapter in the same way. The `skypilot`, `ssh` and `slurm` adapters each declare their own block, for example `host = host(provider = "ssh", disk_floor_gb = 50, ssh = ssh(user = "ci"))`. The `host` call also takes `lost_job_wait`, a duration from `"1m"` to `"24h"` with the default `"60m"`; see `docs/design/hosts.md`. It takes `lost_after` and `stop_limit` too, two durations above zero with the default `"5m"`; see `docs/design/hosts.md`. The config refuses the block of a host adapter that `provider` does not name, and the refusal names the block and the provider. The adapter reads and checks its keys when it builds the host.
+The `host` call takes the block of the host adapter in the same way. The `skypilot`, `ssh` and `slurm` adapters each declare their own block, for example `host = host(provider = "ssh", disk_floor_gb = 50, ssh = ssh(user = "ci"))`. The `host` call also takes `lost_job_wait`, a duration from `"1m"` to `"24h"` with the default `"60m"`; see `docs/design/hosts.md`. It takes `lost_after` and `stop_limit` too, two durations above zero with the default `"5m"`; see `docs/design/hosts.md`. It takes `gate_slots` too, the number of gates that the host builds at once, from 1 with the default 1; see `docs/design/hosts.md`. It takes `credentials` too, whose only value is `"none"`: the host gets no SSH agent, key, X display, Kerberos credential or secret variable of the owner, and `beehave check config` checks the ssh config of the host for it; the `ssh` and `slurm` providers accept it and the `skypilot` provider refuses it; see `docs/design/hosts.md`. It takes `setup_command` too, a command that runs once in a clone of the project when SkyPilot creates the cluster; only the `skypilot` provider accepts it; see `docs/design/hosts.md`. The config refuses the block of a host adapter that `provider` does not name, and the refusal names the block and the provider. The adapter reads and checks its keys when it builds the host.
+
+The project also takes `credentials`, a dict from a role name to a `credential(file = ...)` or `credential(command = [...])` block. The only role is `"writer"`. A `file` lies in `~/.config/beehave/credentials/`, has mode 0600 and the user as owner, in a folder of mode 0700. A project with `credentials` starts only when its `source` is empty or an `https://` address: the token serves https only, so ssh, `host:path`, `git://`, `http://`, `file://` and a local path are refused at start. The loader writes the scheme and the host of a `source` in lower case. A `command` runs once at start with no shell and sees only `PATH`, `HOME` and `USER`. The token is the trimmed output, on one line. The key is optional. See [trust](trust.md#credential-config).
+
+`credential` also takes `ci_locked`, `True` or `False`, default `False`. The owner sets `ci_locked = True` to state that a fine-grained writer token has no Workflows permission, which the engine cannot read. At start, the engine refuses a writer token that the forge shows can change CI, whatever `ci_locked` says. It starts with a token whose permission the forge does not show only when `ci_locked = True`. The config refuses a value that is not `True` or `False`, and the refusal names `ci_locked`. See [trust](trust.md#the-ci-lock).
 
 The project also takes `vars`, a dict of the settings of one workflow. It is optional and is empty when left out. The engine reads no key and no value. The remediation example reads its people, epics, rules, limits, traps, changelog and board from `vars`. The example checks each of these keys once, at the start of a run and before any step: a list or dict of the wrong type or with a blank entry, a `changelog` that is not a relative path to a file (no leading `/` or `./`, no `..`, no trailing `/`), and a `board` with a missing or wrong key. Each refusal names the key.
 
@@ -114,6 +130,22 @@ The example refuses any other key under `round`.
 - A `host(...)` call, or the call of a host adapter block such as `skypilot(...)`, that no argument holds.
 - `print`.
 - An old `.hcl` file. The refusal names the file.
+
+### `beehave init`
+
+`beehave init` runs in the top folder of a git repository. Git decides: a subfolder, a folder with an empty `.git` folder inside a repository, a bare repository and the inside of a `.git` folder are refused. If git is not on PATH, init says so. It writes `projects/<name>.star` into the config folder, and `workflow.star` and `prompts/` (`plan.md`, `implement.md`, `review.md`, `fix.md`) into the repository. The workflow and the prompts are the files of `examples/local`.
+
+The project file holds `source` (the absolute path of the repository), `base_branch`, `sandbox = "on"`, `gate` and `test_report`. The flags set the values:
+
+| Flag | Default |
+|---|---|
+| `--config` | `$BEEHAVE_CONFIG`, then `~/.config/beehave` |
+| `--name` | The folder name of the repository. A name uses letters, digits, `-`, `_` and `.`, with no leading dot. |
+| `--base-branch` | The local branch that `git symbolic-ref HEAD` names, so a branch with no commit yet counts. A detached HEAD, or a HEAD that names a remote ref, needs the flag. |
+| `--gate` | `make check` |
+| `--test-report` | `reports/*.xml` |
+
+`init` checks every target before it writes. If any target exists, it names each one, exits non-zero and writes nothing. It has no flag to replace a file, and a symbolic link at a target counts as a file. A `prompts` folder or a `projects` folder that is a symbolic link is followed, because the user made the link. If a write fails, it names the files that it already wrote and does not remove them. It writes no `runners.star`, makes no commit and stages nothing.
 
 ### `beehave check config`
 

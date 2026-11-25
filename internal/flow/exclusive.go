@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/config"
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
@@ -21,25 +21,21 @@ import (
 const (
 	exclusiveName      = "exclusive"
 	exclusiveQueueName = "exclusive"
-	hostQueueName      = "hosts"
 	// gateTipName is the step that reads the standing of the pull request before a gate is queued. The per-run view names a waiting gate from it.
 	gateTipName = "gate:tip"
 	// gateJobName is the step that records the host job of a gate, or the earlier pass that the gate reuses, before the gate waits.
 	gateJobName = "gate:job"
 	// gateReuseName is the step that reuses an earlier pass before a gate that runs on a build host waits for the host.
 	gateReuseName = "gate:reuse"
-	// batchGateJobName is the step that checks out the union commit of a batch gate and records its tree and its host job before the gate waits.
-	batchGateJobName = "batch_gate:job"
 
-	kindGate      = "gate"
-	kindMerge     = "merge"
-	kindBatchGate = "batch_gate"
+	kindGate  = "gate"
+	kindMerge = "merge"
 	// kindCommand is a command call that names a slot class. It runs as a host job on the queue of its class and never on the exclusive queue.
 	kindCommand = "command"
 )
 
-// ExclusiveInput is one gate or one merge of a repository, or the host job of a command call with a slot class. Kind is "gate", "merge", "batch_gate" or "command".
-// Request belongs to a command call. Request and Head belong to a gate. Head and Settings belong to a merge. Commit and GateRun belong to a batch gate.
+// ExclusiveInput is one gate or one merge of a repository, or the host job of a command call with a slot class. Kind is "gate", "merge" or "command".
+// Request belongs to a command call. Request and Head belong to a gate. Head and Settings belong to a merge.
 // Run is the id of the run that queued the merge or the command, and RunItem is the item whose claim that run holds. A call with no Run is refused.
 type ExclusiveInput struct {
 	Kind    string `json:"kind"`
@@ -47,32 +43,33 @@ type ExclusiveInput struct {
 	RunItem string `json:"run_item,omitempty"`
 	Project string `json:"project"`
 	Item    string `json:"item"`
-	// BuildHost is the build host that the run recorded in host_up, for a batch gate. A gate carries it in Request.
-	BuildHost string `json:"build_host,omitempty"`
-	Head      string `json:"head,omitempty"`
-	// Severity is the severity of the item of a gate, which sets its place in the queue. It is empty for a merge and a batch gate.
+	Head    string `json:"head,omitempty"`
+	// Severity is the severity of the item of a gate, which sets its place in the queue. It is empty for a merge.
 	Severity string `json:"severity,omitempty"`
 	// Tip is the head of the pull request that a gate judges, set when the gate is queued. A gate of a newer head stops a gate whose Tip is another head.
 	Tip string `json:"tip,omitempty"`
-	// Priority is the place of the gate in the queue, set when the gate is queued. The build job of the gate takes the same place on the host queue.
+	// Priority is the place of the gate in the queue, set when the gate is queued. The build job of the gate takes the same place on the slot queue of the class gate.
 	Priority uint `json:"priority,omitempty"`
-	// HostKey is the partition of the host queue that holds the build job of the gate. It is set when the gate is queued, so a replay uses the host that the first
+	// HostKey is the partition of the slot queue that holds the build job of the gate. It is set when the gate is queued, so a replay uses the host that the first
 	// run chose even when the project file changed since. It is empty for a gate that runs on this machine. A reopened job goes back to the same partition.
 	HostKey string `json:"host_key,omitempty"`
-	// PinBase is the base of the merge call, for a batch gate: the pin file is read at that branch. A gate carries it in Request.
-	PinBase  string         `json:"pin_base,omitempty"`
-	Commit   string         `json:"commit,omitempty"`
-	GateRun  []string       `json:"gate_run,omitempty"`
+	// Hosts are the declared build hosts that the gate may go to, set when the gate is queued for a project with more than one host and a run that recorded none.
+	// The step gate:place picks one when the gate leaves the exclusive queue, and the gate then holds it in HostKey. It is empty for every other call.
+	Hosts []string `json:"hosts,omitempty"`
+	// SlotCount is the count of the slot class of a command call or a gate, set when the job is queued. A gate reads it to name its queue, and the rewind of a reopened job reads it too.
+	// A command replay asks Deps.Slots again, so a changed host block gives the replay the new count.
+	SlotCount int `json:"slot_count,omitempty"`
+	// Call is the key of the gate call, such as gate:check, which a dry run reads to script the gate. It is empty in a real run and for a merge, so the record of a real run has no such field.
+	Call     string         `json:"call,omitempty"`
 	Request  CommandRequest `json:"request"`
 	Settings MergeSettings  `json:"settings"`
 }
 
 // ExclusiveOutput is what a gate or a merge returned. Outputs is the record of a gate. Merge is the result of a merge.
-// Batch is the outcome of a batch gate. Failure is set when the call failed: the run itself ends with no error, see Failure.
+// Failure is set when the call failed: the run itself ends with no error, see Failure.
 type ExclusiveOutput struct {
-	Outputs map[string]any    `json:"outputs,omitempty"`
-	Merge   merge.Result      `json:"merge"`
-	Batch   batch.GateOutcome `json:"batch"`
+	Outputs map[string]any `json:"outputs,omitempty"`
+	Merge   merge.Result   `json:"merge"`
 	// Command is the output of a command call with a slot class.
 	Command CommandOutput `json:"command"`
 	Failure *Failure      `json:"failure,omitempty"`
@@ -80,8 +77,10 @@ type ExclusiveOutput struct {
 	Key string `json:"key,omitempty"`
 	// Project is the project of a run that holds a Key; the lookup reads a pass only from a run of the same project.
 	Project string `json:"project,omitempty"`
-	// Lost is the host job of a gate or a batch gate whose wait ended as lost, after the wait for its proof. It is nil for every other run.
+	// Lost is the host job of a gate whose wait ended as lost, after the wait for its proof. It is nil for every other run.
 	Lost *LostJob `json:"lost,omitempty"`
+	// HostStarted is the cluster that this gate started because host_up had left it for the first gate. It is empty for every other run.
+	HostStarted string `json:"host_started,omitempty"`
 }
 
 // exclusive runs one gate or one merge. The exclusive queue holds one run for each repository at a time,
@@ -107,11 +106,11 @@ func (e *Engine) endCall(out *ExclusiveOutput, err error) (ExclusiveOutput, erro
 	return *out, nil
 }
 
-// trackGate lists a running gate or batch gate with the runs that the tick cancels. DBOS does not interrupt a step that runs, so a gate that a newer head
+// trackGate lists a running gate with the runs that the tick cancels. DBOS does not interrupt a step that runs, so a gate that a newer head
 // or a person canceled stops when the tick cancels its context, and a wait for the proof of a lost job reads the proof once more (lostStopped).
 // The returned function ends the gate: it cancels the context and marks the run as ended. A run of another kind is not listed.
 func (e *Engine) trackGate(parent dbos.Context, in ExclusiveInput) (dbos.Context, func()) { //nolint:ireturn // the context of a run is the interface of the workflow library
-	if in.Kind != kindGate && in.Kind != kindBatchGate {
+	if in.Kind != kindGate {
 		return parent, func() {}
 	}
 
@@ -130,7 +129,7 @@ func (e *Engine) trackGate(parent dbos.Context, in ExclusiveInput) (dbos.Context
 	}
 }
 
-// exclusiveCall runs the call of one kind and stores its result in out. A gate that runs on a build host runs as a job on the host queue,
+// exclusiveCall runs the call of one kind and stores its result in out. A gate that runs on a build host runs as a job on the slot queue of the class gate,
 // unless an earlier pass stands in for it: that check comes first, so a gate that needs no build never waits for a host.
 func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) error {
 	if in.HostKey == "" {
@@ -190,8 +189,11 @@ func (e *Engine) claimedMerge(ctx context.Context, in ExclusiveInput) (result me
 
 // claimedCommand runs the program of a command job under the claim of the run that queued it.
 func (e *Engine) claimedCommand(ctx context.Context, in ExclusiveInput) (out CommandOutput, err error) {
+	request := in.Request
+	request.SlotCount = in.SlotCount
+
 	err = claimedCall(ctx, e.queuedClaim(in), func(c context.Context) error {
-		out, err = e.deps.Commands.Run(c, in.Request)
+		out, err = e.deps.Commands.Run(c, request)
 
 		return err
 	})
@@ -206,8 +208,6 @@ func (e *Engine) runCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutp
 		out.Outputs, err = e.gateCall(ctx, in, out)
 	case kindMerge:
 		out.Merge, err = runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) { return e.claimedMerge(c, in) })
-	case kindBatchGate:
-		out.Batch, err = e.batchGateCall(ctx, in, out)
 	case kindCommand:
 		out.Command, err = runStep(e, ctx, kindCommand, func(c context.Context) (CommandOutput, error) { return e.claimedCommand(c, in) })
 	default:
@@ -232,7 +232,7 @@ func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOut
 				}
 			}
 
-			return e.programGateOutputs(c, in.Request, in.Head)
+			return e.programGateOutputs(c, in.Request, in.gateSlot())
 		})
 	}
 
@@ -273,7 +273,7 @@ func (e *Engine) projectGateCall(ctx dbos.Context, in ExclusiveInput, out *Exclu
 // gateJobStep is the first step of a project gate (gate:job): it reuses an earlier pass and stores its key in out, or submits the host job.
 func (e *Engine) gateJobStep(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (gateStart, error) {
 	return runStep(e, ctx, gateJobName, func(c context.Context) (gateStart, error) {
-		started, err := e.startProjectGate(c, in.Request)
+		started, err := e.startProjectGate(c, in.Request, in.gateSlot())
 		if started.Reused != nil {
 			out.setKey(started.Key.ID, in.Request.Project)
 		}
@@ -285,7 +285,7 @@ func (e *Engine) gateJobStep(ctx dbos.Context, in ExclusiveInput, out *Exclusive
 // hostJobName is the child workflow that runs the build job of a gate on a build host.
 const hostJobName = "host_job"
 
-// hostKeyPrefix starts the partition key of the host queue.
+// hostKeyPrefix starts the partition key of a host on a slot queue.
 const hostKeyPrefix = "host:"
 
 // gateHost is the build host that the gate of in runs on, or empty when the gate runs on this machine or the run is not a gate.
@@ -308,22 +308,29 @@ func (e *Engine) gateHost(in ExclusiveInput) string {
 	return host
 }
 
+// gateSlot is the limit that the build job of a gate takes on its host: the class gate with the count that the gate recorded when it was queued.
+// A gate that runs on this machine recorded none, and has no limit.
+func (in ExclusiveInput) gateSlot() model.Slot {
+	if in.SlotCount < 1 {
+		return model.Slot{}
+	}
+
+	return model.Slot{Class: model.GateClass, Count: in.SlotCount}
+}
+
 // recordedHost is the host that the run recorded in host_up, and whether the call runs on a build host at all.
 func (in ExclusiveInput) recordedHost() (string, bool) {
-	switch {
-	case in.Kind == kindGate && (len(in.Request.Run) == 0 || in.Request.Host != ""):
+	if in.Kind == kindGate && (len(in.Request.Run) == 0 || in.Request.Host != "") {
 		return in.Request.BuildHost, true
-	case in.Kind == kindBatchGate && len(in.GateRun) == 0:
-		return in.BuildHost, true
 	}
 
 	return "", false
 }
 
-// hostJob runs the build job of a gate or a batch gate on the host queue, keyed by the host.
+// hostJob runs the build job of a gate on the slot queue of the class gate, keyed by the host.
 // The exclusive queue keeps one gate or merge for each project, so a merge never starts while a gate of its project runs.
-// The host queue keeps one build job for each host, so the gates of all projects on one host take turns.
-// The two queues cannot deadlock: a gate holds its slot in the exclusive queue while it waits for its job, and no job on the host queue waits for a slot
+// The slot queue keeps as many build jobs for each host as host.gate_slots says, so the gates of all projects on one host share those slots.
+// The two queues cannot deadlock: a gate holds its slot in the exclusive queue while it waits for its job, and no job on the slot queue waits for a slot
 // of the exclusive queue, because a job queues nothing.
 func (e *Engine) hostJob(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput, error) {
 	var out ExclusiveOutput
@@ -334,24 +341,80 @@ func (e *Engine) hostJob(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput, 
 	return e.endCall(&out, e.runCall(run, in, &out))
 }
 
-// onHost runs the call of a gate as a job on the host queue, under the HostKey of the gate, and waits for it. The job is a child run of the gate,
+// onHost runs the call of a gate as a job on the slot queue of the class gate, under the HostKey of the gate, and waits for it. The job is a child run of the gate,
 // so every cancel of the gate reaches it: WithCancelChildren of DBOS cancels each level before it lists the children of that level, so a job that starts
 // during the cancel is listed and canceled, or refused by the owner check of its start. A queued job never starts, and a running one stops at the next tick. The wait itself never cancels the job: a cancel by id from a wait that stopped could land after a resume
 // reopened the job, and fail the replay of the gate. A stop of the engine leaves the job for the next start.
 func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) error {
-	return e.runJob(ctx, in, e.hostQueue, out)
+	handle, started, err := e.placedJob(ctx, in)
+	out.HostStarted = started
+
+	if err != nil {
+		return err
+	}
+
+	err = e.awaitJob(ctx, handle, slotQueueName(model.GateClass, cmp.Or(in.SlotCount, 1)), out)
+	out.HostStarted = started
+
+	return err
+}
+
+// placedJob places the gate of in when it has hosts to choose from, and queues its host job. The placement lock is held from the read of the free slots
+// until the job is queued. One engine owns one state folder, so the lock covers every gate that can read the same host slots.
+func (e *Engine) placedJob(ctx dbos.Context, in ExclusiveInput) (handle dbos.WorkflowHandle[ExclusiveOutput], started string, err error) {
+	held := len(in.Hosts) > 0
+	if held {
+		e.placement.Lock()
+		defer e.placement.Unlock()
+	}
+
+	in, err = e.place(ctx, in)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if started, err = e.startSizedHost(ctx, in, held); err != nil {
+		return nil, "", err
+	}
+
+	handle, err = e.slottedJob(ctx, in)
+
+	return handle, started, err
+}
+
+// slottedJob queues the host job of a gate in the slot queue of its host.
+func (e *Engine) slottedJob(ctx dbos.Context, in ExclusiveInput) (dbos.WorkflowHandle[ExclusiveOutput], error) {
+	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
+	if err != nil {
+		return nil, err
+	}
+
+	return e.queueJob(ctx, in, queue)
 }
 
 // runJob queues the host job of in on queue, under the HostKey of in, and waits for it. The error and the stop of the wait are those of onHost.
 func (e *Engine) runJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue, out *ExclusiveOutput) error {
-	host := strings.TrimPrefix(in.HostKey, hostKeyPrefix)
-
-	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(in.Priority))
+	handle, err := e.queueJob(ctx, in, queue)
 	if err != nil {
-		return fmt.Errorf("queue the build job of item %s on host %s: %w", in.Item, host, err)
+		return err
 	}
 
-	done, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
+	return e.awaitJob(ctx, handle, queue.GetName(), out)
+}
+
+// queueJob queues the host job of in on queue, under the HostKey of in.
+func (e *Engine) queueJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue) (dbos.WorkflowHandle[ExclusiveOutput], error) {
+	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(e.currentPlace(ctx, in.Priority)))
+	if err != nil {
+		return nil, fmt.Errorf("queue the build job of item %s on host %s: %w", in.Item, strings.TrimPrefix(in.HostKey, hostKeyPrefix), err)
+	}
+
+	return handle, nil
+}
+
+// awaitJob waits for the host job of handle, which runs on queue, and stores its output in out. A job that a person holds is reopened when the gate starts again (see awaitHeld).
+func (e *Engine) awaitJob(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], queue string, out *ExclusiveOutput) error {
+	done, err := e.awaitHeld(ctx, handle, queue)
 	if err != nil {
 		return err
 	}
@@ -396,8 +459,8 @@ func (e *Engine) enqueueExclusive(run dbos.Context, in ExclusiveInput) (dbos.Wor
 
 	in.Tip, in.Priority = plan.Tip, plan.Priority
 
-	if host := e.gateHost(in); host != "" {
-		in.HostKey = hostKeyPrefix + host
+	if in, err = e.placeOnHost(in); err != nil {
+		return nil, in, err
 	}
 
 	handle, err := dbos.RunWorkflow(run, e.exclusive, in, dbos.WithQueue(e.exclusiveQueue), dbos.WithQueuePartitionKey(in.Project), dbos.WithPriority(plan.Priority))
@@ -406,6 +469,38 @@ func (e *Engine) enqueueExclusive(run dbos.Context, in ExclusiveInput) (dbos.Wor
 	}
 
 	return handle, in, e.stopOlderGates(run, in)
+}
+
+// placeOnHost records the host and the gate slot count in a gate that runs on a build host. A gate on this machine, and a merge, stay as they are.
+func (e *Engine) placeOnHost(in ExclusiveInput) (ExclusiveInput, error) {
+	host := e.gateHost(in)
+	if host == "" {
+		return in, nil
+	}
+
+	count, err := e.gateSlots(in.Project, host)
+	if err != nil {
+		return in, fmt.Errorf("queue the %s of item %s: %w", in.Kind, in.Item, err)
+	}
+
+	recorded, _ := in.recordedHost()
+	in.HostKey, in.SlotCount, in.Hosts = hostKeyPrefix+host, count, e.placeCandidates(in, recorded)
+
+	return in, nil
+}
+
+// gateSlots asks the build how many gates host builds at once for project. A build with no Slots gives one, the default of `host.gate_slots`.
+func (e *Engine) gateSlots(project, host string) (int, error) {
+	if e.deps.Slots == nil {
+		return 1, nil
+	}
+
+	grant, err := e.deps.Slots(project, host, model.GateClass)
+	if err != nil {
+		return 0, err
+	}
+
+	return grant.Count, nil
 }
 
 // awaitExclusive waits for the queued run. The error of a gate that was canceled names the head that replaced it.
@@ -445,7 +540,7 @@ type queuePlan struct {
 	Priority uint   `json:"priority"`
 }
 
-// planOf reads the pull request of a gate in a recorded step. A merge or a batch gate reads nothing and has the last place (6).
+// planOf reads the pull request of a gate in a recorded step. A merge reads nothing and has the last place (6).
 func (e *Engine) planOf(run dbos.Context, in ExclusiveInput) (queuePlan, error) {
 	if in.Kind != kindGate {
 		return queuePlan{Priority: priorityNormal}, nil
@@ -507,13 +602,13 @@ func (e *Engine) stopSuperseded(ctx context.Context, in ExclusiveInput) []string
 // olderGates lists the ids of the gates of the pull request of in that judge another head than the tip of in: the queued and running ones,
 // and a canceled one whose build job is still queued or running.
 func (e *Engine) olderGates(in ExclusiveInput) ([]string, error) {
-	ctx := dbos.WithoutCancel(e.ctx)
+	view := viewOf(dbos.WithoutCancel(e.ctx), e.dir)
 
-	rows, err := dbos.ListWorkflows(ctx, dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusPending))
+	rows, err := view.Open("", dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true))
 	if err == nil {
 		var stranded []dbos.WorkflowStatus
 
-		stranded, err = canceledGatesWithAJob(ctx)
+		stranded, err = canceledGatesWithAJob(view)
 		rows = append(rows, stranded...)
 	}
 
@@ -525,15 +620,15 @@ func (e *Engine) olderGates(in ExclusiveInput) ([]string, error) {
 }
 
 // canceledGatesWithAJob lists the canceled gates whose build job is still queued or running.
-func canceledGatesWithAJob(ctx dbos.Context) ([]dbos.WorkflowStatus, error) {
-	jobs, err := dbos.ListWorkflows(ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusPending))
+func canceledGatesWithAJob(view storeView) ([]dbos.WorkflowStatus, error) {
+	jobs, err := view.Open("", dbos.WithFilterName(hostJobName))
 
 	parents := parentsOf(jobs)
 	if err != nil || len(parents) == 0 {
 		return nil, err //nolint:wrapcheck // stopSuperseded logs the error with its context
 	}
 
-	return dbos.ListWorkflows(ctx, dbos.WithFilterWorkflowIDs(parents...), dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), //nolint:wrapcheck // stopSuperseded logs the error with its context
+	return view.List(dbos.WithFilterWorkflowIDs(parents...), dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), //nolint:wrapcheck // stopSuperseded logs the error with its context
 		dbos.WithFilterStatus(dbos.WorkflowStatusCancelled))
 }
 
@@ -616,7 +711,7 @@ func severityOfItem(fields map[string]string) model.Severity {
 	return severity
 }
 
-// priorityOf gives a gate its place from the severity of its item and the standing of its pull request. The merges and the batch gates keep the normal place.
+// priorityOf gives a gate its place from the severity of its item and the standing of its pull request. The merges keep the normal place.
 // The standing is the read that the lifecycle makes already. A pull request that cannot be read counts as one that nobody waits on, and a line says so.
 // A P0 with nobody waiting comes before a person who waits.
 func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {
@@ -654,23 +749,6 @@ func personWaits(standing review.Standing) bool {
 }
 
 var errNotRunContext = errors.New("a gate or a merge runs only with the context of a workflow run")
-
-// registerHostQueue adds the queue of the build jobs: one job for each build host, no limit across hosts. A cap above 1 for one host is not built.
-func (e *Engine) registerHostQueue() error {
-	options := []dbos.QueueOption{dbos.WithPartitionConcurrency(partitionLimit)}
-	if poll := e.deps.Clock.Poll; poll > 0 {
-		options = append(options, dbos.WithQueueBasePollingInterval(poll))
-	}
-
-	queue, err := dbos.RegisterQueue(e.ctx, hostQueueName, options...)
-	if err != nil {
-		return fmt.Errorf("register the host queue: %w", err)
-	}
-
-	e.hostQueue = queue
-
-	return nil
-}
 
 // registerExclusiveQueue adds the queue of the gates and the merges: one run for each repository, no limit across repositories.
 func (e *Engine) registerExclusiveQueue() error {

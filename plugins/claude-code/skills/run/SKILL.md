@@ -1,7 +1,7 @@
 ---
 description: Start an beehave run for an item, or continue its open run
 argument-hint: <item> [project] [--workflow <file>]
-allowed-tools: Bash(beehave run:*), Bash(beehave resume:*)
+allowed-tools: Bash(beehave run:*), Bash(beehave resume:*), Bash(beehave fork:*)
 disable-model-invocation: true
 ---
 
@@ -27,6 +27,17 @@ beehave resume <item>
 beehave run <item>
 ```
 
+To start again from a later step, or with other vars, fork the run. The fork keeps the finished steps before the step it names:
+
+```sh
+beehave fork <run id> --from <step> [--vars <file>]
+beehave run <item>
+```
+
 If the resume refuses the run, tell the user to run `/beehave:cancel <item>`, then `beehave run <item>`: the cancel ends the failed run, and the run after it starts a new attempt.
+
+If the user wants a new run in place of the open one, run `beehave run <item> --on-open replace`. It cancels the open run with its children and starts the next attempt. It does not replace a failed run.
+
+If the user starts the same item many times in a short time, run `beehave run <item> --debounce 30s`. The start waits for the window, a later start in the window takes its place, and one run starts with the last start.
 
 8. If the run pauses with a question, run `/beehave:status` to show it. The user answers with `/beehave:answer`.

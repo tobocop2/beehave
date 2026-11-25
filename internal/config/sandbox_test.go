@@ -8,6 +8,17 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+func TestProject_AProjectWithNoSandboxKeyHasTheSandboxOn(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Equal(t, model.SandboxOn, project.Sandbox)
+	require.True(t, project.SandboxByDefault())
+	require.Equal(t, model.SandboxOn, project.RunSandboxMode(), "a run of the project stores the mode on")
+	require.True(t, project.SandboxUnset, "the project records that its file sets no sandbox key")
+}
+
 func TestLoadFolder_TheSandboxKeyIsReadAndAnUnknownOrEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -15,14 +26,13 @@ func TestLoadFolder_TheSandboxKeyIsReadAndAnUnknownOrEmptyOneIsRefused(t *testin
 	require.Empty(t, problems)
 	require.Equal(t, model.SandboxOn, project.Sandbox)
 	require.True(t, project.SandboxByDefault())
+	require.False(t, project.SandboxUnset)
 
 	project, problems = loadProjectText(t, call(goodProject+`, sandbox = "off"`))
 	require.Empty(t, problems)
 	require.False(t, project.SandboxByDefault())
-
-	project, problems = loadProjectText(t, call(goodProject))
-	require.Empty(t, problems)
-	require.Empty(t, project.Sandbox)
+	require.Equal(t, model.SandboxOff, project.RunSandboxMode())
+	require.False(t, project.SandboxUnset)
 
 	_, problems = loadProjectText(t, call(goodProject+`, sandbox = ""`))
 	require.Len(t, problems, 1)

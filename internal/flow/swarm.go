@@ -42,22 +42,24 @@ const (
 	// gatherKind is the step kind of the gather builtin.
 	gatherKind = "gather"
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
-	nameKeyword     = "name"
-	runKeyword      = "run"
-	hostKeyword     = "host"
-	headKeyword     = "head"
-	baseKeyword     = "base"
-	pinBaseKeyword  = "pin_base"
-	bodyKeyword     = "body"
-	titleKeyword    = "title"
-	severityField   = "severity"
-	numberField     = "number"
-	holdKeyword     = "hold"
-	ownKeyword      = "own"
-	ownDraftKeyword = "own_draft"
-	reasonKey       = "reason"
-	timeoutKeyword  = "timeout"
-	statusKeyword   = "status"
+	nameKeyword    = "name"
+	runKeyword     = "run"
+	hostKeyword    = "host"
+	headKeyword    = "head"
+	baseKeyword    = "base"
+	pinBaseKeyword = "pin_base"
+	bodyKeyword    = "body"
+	titleKeyword   = "title"
+	severityField  = "severity"
+	numberField    = "number"
+	holdKeyword    = "hold"
+	authorField    = "author"
+	stepField      = "step"
+	codeField      = "code"
+	ownKeyword     = "own"
+	reasonKey      = "reason"
+	timeoutKeyword = "timeout"
+	statusKeyword  = "status"
 	// maxNewProcessesKeyword is the keyword of a command call that caps the new processes of the program.
 	maxNewProcessesKeyword = "max_new_processes"
 	// slotsKeyword is the keyword of a command call that names the slot class of its host job.
@@ -120,7 +122,7 @@ func (s *script) spawn(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	call := spawnCall{entry: defaultEntry}
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"items": &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries,
+		workflow.ItemsKeyword: &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries, workflow.OnOpenKeyword: &call.onOpen,
 	}); err != nil {
 		return nil, err
 	}
@@ -175,6 +177,8 @@ type spawnCall struct {
 	base         string
 	entry, label string
 	retries      int
+	// onOpen is the on_open word of the call, as the call wrote it.
+	onOpen string
 }
 
 // checkBase refuses a spawn whose base is not the base of the round item that calls it. The children are cut at the base of the round item, so another base would cut them at one branch and merge them into another.
@@ -197,6 +201,11 @@ func (s *script) childBase(base string) string {
 
 // planRuns checks the arguments of a spawn call, then records the plan of the runs as one step.
 func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
+	policy, err := workflow.OpenPolicy(call.onOpen)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
 	ids, err := s.spawnIDs(call.items)
 	if err != nil {
 		return nil, err
@@ -210,7 +219,7 @@ func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
 		return nil, fmt.Errorf("entry %q is not a function of the workflow file. Add def %s(item)", call.entry, call.entry)
 	}
 
-	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids) })
+	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids, policy) })
 }
 
 // itemsQueueOf is the name of the items queue of the runs at a depth. A run that a user started is at depth 0 and has the queue roots, so no parent shares a queue with its children.
@@ -227,7 +236,7 @@ func itemsQueueOf(depth int) string {
 
 // spawnIDs reads the items argument.
 func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
-	ids, err := workflow.Words("items", list)
+	ids, err := workflow.Words(workflow.ItemsKeyword, list)
 	if err != nil {
 		return nil, err
 	}
@@ -247,9 +256,11 @@ func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
 
 // checkItem refuses an item id that is not an item, the parent itself and an item that was listed before.
 func (s *script) checkItem(id string, seen map[string]bool) error {
+	if err := checkItemID(id); err != nil {
+		return err
+	}
+
 	switch {
-	case model.ItemKind(id) == "":
-		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, id)
 	case id == s.in.Item:
 		return fmt.Errorf("item %s cannot spawn itself. Leave it out of items", id)
 	case seen[id]:
@@ -259,14 +270,15 @@ func (s *script) checkItem(id string, seen map[string]bool) error {
 	return nil
 }
 
-// planSpawn decides, for each item, which run gather waits for. It is one recorded step, so a replay reads the plan and picks no login again.
-func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]spawnedRun, error) {
+// planSpawn decides, for each item, which run gather waits for. It is one recorded step, so a replay reads the plan, cancels nothing again and picks no login again.
+// With the policy replace, the open run of an item is canceled first, so planOne finds a canceled run and plans the next attempt.
+func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string, policy workflow.OnOpen) ([]spawnedRun, error) {
 	plan := make([]spawnedRun, 0, len(ids))
 
 	var taken []string
 
 	for _, id := range ids {
-		one, err := e.planOne(ctx, in, id, taken)
+		one, err := e.planReplacing(ctx, in, id, taken, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -290,7 +302,7 @@ func (e *Engine) spawnCap(project string) int {
 // A failed last attempt is refused until beehave resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
 // taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
 func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []string) (spawnedRun, error) {
-	last, found, err := latestRun(e.ctx, id)
+	last, found, err := latestRun(e.store(), id)
 
 	switch {
 	case err != nil:
@@ -337,13 +349,8 @@ func (e *Engine) itemsPlace(ctx context.Context, project, id string) (uint, erro
 
 // openRunError tells why spawn does not start an item that has an open run, and how to end that run.
 func openRunError(open run, item, project string) error {
-	held, err := open.project()
-	if err != nil {
+	if err := startProject(open, item, project); err != nil {
 		return err
-	}
-
-	if held != project {
-		return conflictError(item, held, project)
 	}
 
 	return fmt.Errorf("item %s has an open run, %s. Run beehave status to see it, or beehave cancel %s to end it, then start this item again", item, open.Status.ID, item)
@@ -362,7 +369,7 @@ func (s *script) startRuns(plan []spawnedRun, entry, base string) error {
 			continue
 		}
 
-		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent}
+		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent, Sandbox: s.runMode()}
 
 		if err := s.startRun(one, in); err != nil {
 			return err
@@ -536,7 +543,7 @@ func stoppedValue(stopped *Stopped) starlark.Value { //nolint:ireturn // the val
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-		"step": starlark.String(stopped.Step), "rc": starlark.MakeInt(stopped.RC), "output": starlark.String(stopped.Output),
+		stepField: starlark.String(stopped.Step), "rc": starlark.MakeInt(stopped.RC), "output": starlark.String(stopped.Output),
 	})
 }
 
@@ -718,7 +725,7 @@ func (e *Engine) priced(parent string, used []look, fired raiseResult) (gathered
 	priced := slices.Clone(used)
 
 	for i := range priced {
-		spent, err := runAndBelowSpend(e.ctx, priced[i].ref.Run)
+		spent, err := runAndBelowSpend(e.store(), priced[i].ref.Run)
 		if err != nil {
 			return gathered{}, fmt.Errorf("read the spend of run %s: %w", priced[i].ref.Run, err)
 		}
@@ -796,7 +803,7 @@ func (e *Engine) rowsOf(refs []spawnedRun) (map[string]dbos.WorkflowStatus, erro
 		ids[i] = ref.Run
 	}
 
-	rows, err := dbos.ListWorkflows(dbos.WithoutCancel(e.ctx), dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
+	rows, err := viewOf(dbos.WithoutCancel(e.ctx), e.dir).List(dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("read the runs of the spawned items: %w", err)
 	}

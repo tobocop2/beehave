@@ -171,15 +171,49 @@ func (g *graph) keywords(call *syntax.CallExpr, builtin string, allowed []string
 			continue
 		}
 
-		switch {
-		case builtin == sandboxName && key.Name == skillsField:
-			g.report(placeOf(key.NamePos), "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}.")
-		case len(allowed) == 0:
-			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, key.Name))
-		default:
-			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, key.Name, strings.Join(allowed, ", ")))
-		}
+		g.report(placeOf(key.NamePos), unknownKeyword(builtin, key.Name, allowed))
 	}
+}
+
+// unknownKeyword is the sentence for a keyword that the builtin does not take. A keyword that is an option of another command says where it belongs.
+func unknownKeyword(builtin, keyword string, allowed []string) string {
+	switch {
+	case builtin == sandboxName && keyword == skillsField:
+		return "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}."
+	case builtin == spawnName && keyword == DebounceKeyword:
+		return "spawn takes no argument debounce. debounce is an option of beehave run."
+	case movedArgument(builtin, keyword) != "":
+		return movedArgument(builtin, keyword)
+	case len(allowed) == 0:
+		return fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, keyword)
+	}
+
+	return fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, keyword, strings.Join(allowed, ", "))
+}
+
+// movedArgument is the sentence for an argument that moved out of the builtin: the claim of preflight, the batch of merge and the removed arguments of a pull request.
+// It is empty for any other keyword.
+func movedArgument(builtin, keyword string) string {
+	switch {
+	case builtin == preflightName && slices.Contains(ClaimKeywords(), keyword):
+		return PreflightClaimRefusal(keyword)
+	case builtin == mergeName && slices.Contains(BatchKeywords(), keyword):
+		return MergeBatchRefusal(keyword)
+	}
+
+	return removedPRArgument(builtin, keyword)
+}
+
+// removedPRArgument is the sentence for an argument that pr_open or pr_comment no longer takes. It is empty for any other keyword.
+func removedPRArgument(builtin, keyword string) string {
+	switch {
+	case (builtin == prOpenName || builtin == prCommentName) && keyword == integrationKeyword:
+		return builtin + " takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue."
+	case builtin == prOpenName && keyword == "issue":
+		return "pr_open takes no argument issue. Write the closing line in body, such as Closes #12."
+	}
+
+	return ""
 }
 
 // argument returns the expression of a keyword or of the positional argument at index. It is nil when the call leaves the argument out.

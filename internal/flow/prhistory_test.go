@@ -26,7 +26,7 @@ func TestPRHistory_ReadsThePullRequestsOfTheItemInEveryState(t *testing.T) {
 	}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, prHistoryFlow))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, prHistoryFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -38,12 +38,26 @@ func TestPRHistory_ReadsThePullRequestsOfTheItemInEveryState(t *testing.T) {
 	assert.Contains(t, stepNames(t, engine), "pr_history:history#1")
 }
 
+func TestPRHistory_TheKeywordItemReadsThePullRequestsOfThatItem(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.forge.history = []model.PriorPull{{Number: 3, Title: "parent", State: "OPEN", Branch: "bb-4", Base: "main"}}
+	flow := "def main(item):\n    h = pr_history(name = \"parent-history\", item = \"bb-4\")\n    command(name = \"seen\", run = [\"seen\"] + [p[\"title\"] for p in h.pulls])\n"
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testProject + "|bb-4"}, h.forge.historyAsked, "the read names the item of the keyword, not the item of the run")
+	assert.Equal(t, []string{"parent"}, seenBy(t, h))
+}
+
 func TestPRHistory_AnItemWithNoPullRequestGetsAnEmptyList(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prHistoryFlow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prHistoryFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Empty(t, seenBy(t, h))
@@ -55,7 +69,7 @@ func TestPRHistory_AFailedReadStopsTheStep(t *testing.T) {
 	h := newHarness(t)
 	h.forge.historyErr = errFake
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prHistoryFlow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prHistoryFlow), modeOff())
 
 	require.ErrorIs(t, err, errFake)
 	require.ErrorContains(t, err, "read the pull requests of item "+testItem)
@@ -67,7 +81,7 @@ func TestPRHistory_ANameThatIsNotTextIsRefusedBeforeAnyRead(t *testing.T) {
 
 	h := newHarness(t)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    label = 41\n    pr_history(name = label)\n"))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    label = 41\n    pr_history(name = label)\n"), modeOff())
 
 	require.ErrorContains(t, err, `pr_history: for parameter "name": got int, want string`)
 	assert.Empty(t, h.forge.historyAsked, "a refused call reads nothing")

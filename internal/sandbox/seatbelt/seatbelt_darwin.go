@@ -115,7 +115,7 @@ func (e Enforcer) Run(ctx context.Context, plan sandbox.Plan, proxyPort int, cmd
 		return notFound, nil
 	}
 
-	if err := refuseShim(program); err != nil {
+	if err := refuseShim(program, plan); err != nil {
 		return 0, err
 	}
 
@@ -133,9 +133,7 @@ const (
 	shimExample = "/usr/bin/git"
 )
 
-// isShim reports whether program is one of the Apple developer-tools shims in /usr/bin (git, make, clang and others). A shim asks xcrun for the real tool,
-// and xcrun reads the developer folder and writes its cache to the per-user system temporary folder, which no plan opens. The real tool runs when the
-// shim is not in the way, so the refusal is an early and clear message instead of an error from xcrun.
+// isShim reports whether program is one of the Apple developer-tools shims in /usr/bin (git, make, clang and others). A shim asks xcrun for the real tool.
 func isShim(program string) bool {
 	if !strings.HasPrefix(program, shimFolder) {
 		return false
@@ -147,14 +145,14 @@ func isShim(program string) bool {
 	return errA == nil && errB == nil && os.SameFile(a, b)
 }
 
-// refuseShim returns an error that tells the user what to do when program is a shim, and nil otherwise.
-func refuseShim(program string) error {
-	if !isShim(program) {
+// refuseShim returns an error that tells the user what to do when program is a shim and the plan holds no developer folder, and nil otherwise.
+func refuseShim(program string, plan sandbox.Plan) error {
+	if plan.Developer != "" || !isShim(program) {
 		return nil
 	}
 
-	return fmt.Errorf("%s is an Apple developer-tools shim. It needs the Xcode or Command Line Tools folder and a cache file in a system folder that no plan "+
-		"can open, so it cannot run under the sandbox. Use the same tool from another folder, such as the one that Homebrew installs, "+
+	return fmt.Errorf("%s is an Apple developer-tools shim. It needs the Xcode or Command Line Tools folder, and this plan has none, "+
+		"so it cannot run under the sandbox. Run xcode-select --install, or use the same tool from another folder, such as the one that Homebrew installs, "+
 		"and add the folder of its libraries to sandbox_read if the tool needs one", program)
 }
 

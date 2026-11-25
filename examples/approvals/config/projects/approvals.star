@@ -4,5 +4,6 @@ project(
     source = "~/approvals",
     base_branch = "main",
     gate = "true",
+    sandbox = "on",  # the brief step reads the diff that the workflow passes and reaches no host
     test_report = "reports/*.xml",
 )

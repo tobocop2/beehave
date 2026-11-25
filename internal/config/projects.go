@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
@@ -20,6 +22,8 @@ type Project struct {
 	model.Project
 
 	Path string
+	// SandboxUnset is true when the file sets no sandbox key, so the project has the sandbox on by default.
+	SandboxUnset bool
 }
 
 // rawProject is a project block as written. At is the position of its call; every refusal after the call points there.
@@ -44,8 +48,10 @@ type rawProject struct {
 	// TestPaths are the globs of the test files that the revert run copies from the head onto the base, for a new test that needs a changed helper.
 	TestPaths paths
 	// Notify is the program and its arguments that the engine runs when a wait for the owner opens.
-	Notify      command
-	PinFile     text
+	Notify  command
+	PinFile text
+	// GateProgram lists the repository paths that hold the program of the gate. A directory ends in a slash.
+	GateProgram paths
 	Visibility  text
 	Sandbox     text
 	SandboxRead paths
@@ -58,6 +64,9 @@ type rawProject struct {
 	PRLabel         text
 	// MaxSpawnDepth is the deepest level below the run a user started at which spawn may start a run.
 	MaxSpawnDepth int
+
+	// Credentials are the credential blocks of the project, by role.
+	Credentials credentials
 
 	// Vars are the free settings of the workflow. The engine reads no key and no value.
 	Vars vars
@@ -79,12 +88,12 @@ func loadProject(path string, registry Adapters) (Project, error) {
 		return Project{}, err
 	}
 
-	return Project{Project: profile, Path: path}, nil
+	return Project{Project: profile, Path: path, SandboxUnset: !raw.Sandbox.Set}, nil
 }
 
 // projectSpec is the schema of the project call. The arguments after the fixed ones are the adapter blocks that the registry declares, each optional and named as its block.
 func projectSpec(declared []Block) spec {
-	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "max_spawn_depth?", "vars?"}
+	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "gate_program?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "max_spawn_depth?", "credentials?", "vars?"}
 
 	for _, block := range declared {
 		args = append(args, block.Name+"?")
@@ -94,7 +103,7 @@ func projectSpec(declared []Block) spec {
 }
 
 func projectSpecs(declared, hostDeclared []Block) []spec {
-	specs := []spec{projectSpec(declared), hostSpec(hostDeclared)}
+	specs := []spec{projectSpec(declared), hostSpec(hostDeclared), credentialSpec()}
 
 	for _, block := range append(slices.Clone(declared), hostDeclared...) {
 		specs = append(specs, block.spec())
@@ -129,6 +138,7 @@ func evalProject(path string, registry Adapters) (*rawProject, error) {
 func nestedBuiltins(file *loader, declared, hostDeclared []Block) []*starlark.Builtin {
 	builtins := []*starlark.Builtin{
 		blocks(file, hostSpec(hostDeclared), true, newHost(hostDeclared)),
+		credentialBuiltin(file),
 	}
 
 	for _, block := range append(slices.Clone(declared), hostDeclared...) {
@@ -150,8 +160,8 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple, declared []Block) (
 
 	host, held := nested[rawHost]{want: hostSpecName}, holders(declared)
 	dests := []any{
-		&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.TestCommand, &raw.TestPaths, &raw.Notify, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer, &raw.PRLabel,
-		&raw.MaxSpawnDepth, &raw.Vars,
+		&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.TestCommand, &raw.TestPaths, &raw.Notify, &raw.PinFile, &raw.GateProgram, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer, &raw.PRLabel,
+		&raw.MaxSpawnDepth, &raw.Credentials, &raw.Vars,
 	}
 
 	err := projectSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
@@ -181,7 +191,7 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, Blocks: blocksOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value, TestCommand: raw.TestCommand.Value,
-		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Vars: raw.Vars,
+		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, GateProgram: slices.Clone(raw.GateProgram), PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Credentials: maps.Clone(raw.Credentials), Vars: raw.Vars,
 	}, nil
 }
 
@@ -205,7 +215,7 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return host, source, noRepositoryKeys(raw)
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), testCommand(raw), testPaths(raw), pinFile(raw), prLabel(raw))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), testCommand(raw), testPaths(raw), pinFile(raw), gateProgram(raw), prLabel(raw))
 }
 
 // testPaths refuses an empty glob in test_paths: git reads it as every path, so the revert run would copy the code of the head too.
@@ -251,6 +261,10 @@ func spawnDepth(raw rawProject) error {
 func noRepositoryKeys(raw rawProject) error {
 	if raw.PinFile.Set {
 		return refuseAt(raw.At, "`pin_file` is set, and the project has no `source` and no `forge`. The pin file is read from the base commit. Set `source` or `forge`, or remove `pin_file`.")
+	}
+
+	if len(raw.GateProgram) > 0 {
+		return refuseAt(raw.At, "`gate_program` is set, and the project has no `source` and no `forge`. The gate program is read from the base branch. Set `source` or `forge`, or remove `gate_program`.")
 	}
 
 	if raw.Gate != "" || len(raw.GateSteps) > 0 {
@@ -308,7 +322,7 @@ func absolutePaths(raw rawProject) error {
 	return nil
 }
 
-// sandboxOf reads sandbox. An unset key gives the empty mode, which runs the steps with no sandbox. A set key that is empty or unknown is refused.
+// sandboxOf reads sandbox. An unset key gives on, which runs the steps in the sandbox. A set key that is empty or unknown is refused.
 // The sandbox_read and sandbox_deny paths must be absolute, or start with ~/, so that a path never depends on the folder of a step.
 func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 	if err := sandboxKeys(raw); err != nil {
@@ -316,7 +330,7 @@ func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 	}
 
 	if !raw.Sandbox.Set {
-		return "", nil
+		return model.SandboxOn, nil
 	}
 
 	return parseKey(raw.At, "sandbox", raw.Sandbox.Value, model.ParseSandboxMode)
@@ -371,6 +385,133 @@ func pinFile(raw rawProject) error {
 	}
 
 	return nil
+}
+
+// gateProgramGlobMeta are the characters that make a gate_program entry a glob. An entry names one path.
+const gateProgramGlobMeta = `*?[]{}\`
+
+// gateProgram refuses a gate_program with an entry that is not a plain repository path, a duplicate, an entry inside another, or an overlap with test_paths.
+// An empty list is the default. A path that the base branch lacks is legal: it means the path must stay absent.
+func gateProgram(raw rawProject) error {
+	for _, entry := range raw.GateProgram {
+		if err := gateProgramEntry(raw.At, entry); err != nil {
+			return err
+		}
+	}
+
+	for i, entry := range raw.GateProgram {
+		if err := gateProgramAgainst(raw, entry, raw.GateProgram[i+1:]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// gateProgramAgainst refuses an entry that repeats or contains one of the later entries, or that a test_paths glob can match.
+func gateProgramAgainst(raw rawProject, entry string, later []string) error {
+	for _, other := range later {
+		if err := gateProgramPair(raw.At, entry, other); err != nil {
+			return err
+		}
+	}
+
+	for _, glob := range raw.TestPaths {
+		if gateProgramOverlaps(entry, glob) {
+			return refuseAt(raw.At, "`gate_program` entry %q overlaps `test_paths` entry %q. A new test file would count as a change of the gate program. Narrow the glob or the entry.", entry, glob)
+		}
+	}
+
+	return nil
+}
+
+// gateProgramEntry refuses one entry that is empty, a pathspec magic, a glob, absolute, outside the work tree, the root, the git folder or not in plain form.
+func gateProgramEntry(at syntax.Position, entry string) error {
+	switch {
+	case strings.TrimSpace(entry) == "":
+		return refuseAt(at, "`gate_program` holds an empty entry. Name a path of the repository, for example `\"Makefile\"` or `\"scripts/\"`.")
+	case strings.HasPrefix(entry, ":"):
+		return refuseAt(at, "`gate_program` entry %q starts with a colon, which git reads as a pathspec magic. Name the path itself.", entry)
+	case strings.ContainsAny(entry, gateProgramGlobMeta):
+		return refuseAt(at, "`gate_program` entry %q holds a glob character. Name the path itself, and end a directory with `/`.", entry)
+	case strings.IndexFunc(entry, notPortablePathRune) >= 0:
+		return refuseAt(at, "`gate_program` entry %q holds a character outside A-Z, a-z, 0-9, `.`, `_`, `-` and `/` (a space, a control character or a non-ASCII character). Use only those characters.", entry)
+	}
+
+	return gateProgramLocation(at, entry)
+}
+
+// notPortablePathRune reports whether a rune is outside the portable path set: A-Z, a-z, 0-9, ".", "_", "-" and "/".
+func notPortablePathRune(r rune) bool {
+	letter := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+	digit := r >= '0' && r <= '9'
+
+	return !letter && !digit && r != '.' && r != '_' && r != '-' && r != '/'
+}
+
+// gateProgramLocation refuses an entry that is absolute, outside the work tree, the root, in the git folder or not in plain form.
+func gateProgramLocation(at syntax.Position, entry string) error {
+	name := strings.TrimSuffix(entry, "/")
+	parts := strings.Split(name, "/")
+
+	switch {
+	case strings.HasPrefix(entry, "/") || slices.Contains(parts, ".."):
+		return refuseAt(at, "`gate_program` entry %q is absolute or leaves the work tree. Use a relative path with no `..`.", entry)
+	case name == ".":
+		return refuseAt(at, "`gate_program` entry %q names the whole repository. List the files and the directories of the gate program.", entry)
+	case slices.ContainsFunc(parts, func(part string) bool { return strings.EqualFold(part, ".git") }):
+		return refuseAt(at, "`gate_program` entry %q has a `.git` component, in any case, which is the git folder. Name a path of the work tree.", entry)
+	case path.Clean(name) != name:
+		return refuseAt(at, "`gate_program` entry %q is not a plain path. Write it with no `.` segment, no double slash and one trailing slash at most.", entry)
+	}
+
+	return nil
+}
+
+// gateProgramPair refuses two entries that name the same path, or one whose path components start with the components of the other.
+func gateProgramPair(at syntax.Position, first, second string) error {
+	one, two := strings.TrimSuffix(first, "/"), strings.TrimSuffix(second, "/")
+
+	switch {
+	case one == two:
+		return refuseAt(at, "`gate_program` names %q twice, as %q and %q. Keep one entry.", one, first, second)
+	case strings.HasPrefix(two, one+"/"):
+		return refuseAt(at, "`gate_program` entry %q is inside entry %q. Remove the inner entry.", second, first)
+	case strings.HasPrefix(one, two+"/"):
+		return refuseAt(at, "`gate_program` entry %q is inside entry %q. Remove the inner entry.", first, second)
+	}
+
+	return nil
+}
+
+// gateProgramOverlaps reports whether a test_paths glob can match a path of the entry. A file entry is matched by the glob.
+// A directory entry overlaps when the literal leading directories of the glob lie in it, contain it, or are empty.
+func gateProgramOverlaps(entry, glob string) bool {
+	if !strings.HasSuffix(entry, "/") {
+		match, err := doublestar.Match(glob, entry)
+
+		return err == nil && match
+	}
+
+	dir := strings.TrimSuffix(entry, "/")
+	literal := globLiteralPrefix(glob)
+
+	return literal == "" || literal == dir || strings.HasPrefix(literal, dir+"/") || strings.HasPrefix(dir, literal+"/")
+}
+
+// globLiteralPrefix is the leading directories of a glob that hold no glob character, joined by a slash.
+func globLiteralPrefix(glob string) string {
+	var literal []string
+
+	for _, segment := range strings.Split(glob, "/") {
+		if strings.ContainsAny(segment, gateProgramGlobMeta) {
+			break
+		}
+
+		literal = append(literal, segment)
+	}
+
+	return strings.Join(literal, "/")
 }
 
 // testReport refuses an unset test_report, and one that is set and empty. A gate with no test count would pass when it exits 0 with no test,
@@ -653,10 +794,30 @@ func sourceOf(raw rawProject, host string) (string, error) {
 	}
 
 	if urlSource.MatchString(raw.Source.Value) {
-		return raw.Source.Value, nil
+		return lowerAuthority(raw.Source.Value), nil
 	}
 
 	return sourcePath(raw, host)
+}
+
+// lowerAuthority writes the scheme and the host of a scheme://host/path address in lower case, and keeps the rest. Git hands a credential helper the host as
+// written, and the helper of a writer role compares it with the lower case host that the start check reads, so the address is made the same once, here.
+func lowerAuthority(address string) string {
+	scheme, rest, found := strings.Cut(address, "://")
+	if !found {
+		return address
+	}
+
+	authority, path := rest, ""
+	if end := strings.IndexAny(rest, "/?#"); end >= 0 {
+		authority, path = rest[:end], rest[end:]
+	}
+
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		return strings.ToLower(scheme) + "://" + authority[:at+1] + strings.ToLower(authority[at+1:]) + path
+	}
+
+	return strings.ToLower(scheme) + "://" + strings.ToLower(authority) + path
 }
 
 func sourcePath(raw rawProject, host string) (string, error) {
@@ -677,7 +838,7 @@ func sourcePath(raw rawProject, host string) (string, error) {
 }
 
 // GateRefused is true when a gate runs on this machine only under a sandbox enforcer: the project has its sandbox on. The gate is refused when no enforcer can run here.
-// A program gate (a gate call with run, or the gate_run of a merge) always runs here. The project gate runs here when the project builds here.
+// A program gate (a gate call with run) always runs here. The project gate runs here when the project builds here.
 func GateRefused(project model.Project, program bool) bool {
 	return project.SandboxByDefault() && (program || project.BuildHost == LocalHost)
 }

@@ -27,7 +27,7 @@ func TestLoadFolder_SSHAndSlurmHostsKeepTheirBlockUnread(t *testing.T) {
 
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall("")))
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: "ssh", StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, LostJobWait: time.Hour, LostAfter: 5 * time.Minute, StopLimit: 5 * time.Minute, DiskFloorGB: 50}, project.Host, "a host with no block holds none")
+	require.Equal(t, &model.HostConfig{Provider: "ssh", StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, LostJobWait: time.Hour, LostAfter: 5 * time.Minute, StopLimit: 5 * time.Minute, DiskFloorGB: 50, GateSlots: 1}, project.Host, "a host with no block holds none")
 
 	project, problems = loadProjectText(t, call(clusterProject+", host = "+sshCall(`, ssh = ssh(user = "ci")`)))
 	require.Empty(t, problems)
@@ -49,7 +49,7 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall("")))
 
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: "skypilot", IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, LostJobWait: time.Hour, LostAfter: 5 * time.Minute, StopLimit: 5 * time.Minute, DiskFloorGB: 50}, project.Host)
+	require.Equal(t, &model.HostConfig{Provider: "skypilot", IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, LostJobWait: time.Hour, LostAfter: 5 * time.Minute, StopLimit: 5 * time.Minute, DiskFloorGB: 50, GateSlots: 1}, project.Host)
 
 	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, stale_minutes = 5, max_run = "12h", bank_budget = "45s", lost_job_wait = "2h", lost_after = "3m", stop_limit = "4m", disk_floor_gb = 20, disk_wait_minutes = 15,
   private_remote = "git@example.com:org/repo.git",
@@ -57,7 +57,7 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{
-		Provider: "skypilot", IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, LostJobWait: 2 * time.Hour, LostAfter: 3 * time.Minute, StopLimit: 4 * time.Minute, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
+		Provider: "skypilot", IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, LostJobWait: 2 * time.Hour, LostAfter: 3 * time.Minute, StopLimit: 4 * time.Minute, DiskFloorGB: 20, GateSlots: 1, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
 		Block: project.Host.Block,
 	}, project.Host)
 	require.Equal(t, `{cloud="gcp" instance_type="n2-standard-8" region="us-central1"}`, project.Host.Block.String())
@@ -102,6 +102,10 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 		{"ssh_block_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, ssh = ssh())`), "the `host` block holds the `ssh` block, and `host.provider` \"slurm\" does not take it"},
 		{"slurm_block_on_ssh", call(clusterProject + ", host = " + sshCall(`, slurm = slurm()`)), "the `host` block holds the `slurm` block, and `host.provider` \"ssh\" does not take it"},
 		{"idle_on_ssh", call(clusterProject + ", host = " + sshCall(", idle_minutes = 30")), "`host.idle_minutes` is not allowed for provider \"ssh\""},
+		{"setup_command_on_ssh", call(clusterProject + ", host = " + sshCall(`, setup_command = "make setup"`)), "`host.setup_command` is not allowed for provider \"ssh\": beehave does not create the machine"},
+		{"setup_command_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, setup_command = "make setup")`), "`host.setup_command` is not allowed for provider \"slurm\": beehave does not create the machine"},
+		{"setup_command_empty", call(clusterProject + ", host = " + hostCall(`, setup_command = "  "`)), "`host.setup_command` must not be empty"},
+		{"setup_command_of_the_wrong_type", call(clusterProject + ", host = " + hostCall(", setup_command = 3")), `for parameter "setup_command": got int, want string`},
 		{"idle_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, idle_minutes = 30)`), "`host.idle_minutes` is not allowed for provider \"slurm\""},
 		{"ssh_port_of_the_wrong_type", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(port = "22")`)), `ssh: for parameter "port": got string, want a whole number`},
 		{"unknown_ssh_argument", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(zone = "a")`)), `ssh: unexpected keyword argument "zone"`},
@@ -194,6 +198,59 @@ func TestHostConfig_TheLostAndStopLimitsDefaultToFiveMinutesAndAreDistinctFromLo
 	require.Equal(t, 5*time.Minute, project.Host.LostAfter, "lost_after keeps its default when only stop_limit is written")
 }
 
+func TestHostConfig_CredentialsNoneLoadsForSSHAndSlurmAndAnUnsetKeyStaysEmptyForEveryProvider(t *testing.T) {
+	t.Parallel()
+
+	for name, text := range map[string]string{"ssh": sshCall(`, credentials = "none"`), "slurm": `host(provider = "slurm", disk_floor_gb = 50, credentials = "none")`} {
+		project, problems := loadProjectText(t, call(clusterProject+", host = "+text))
+		require.Empty(t, problems, name)
+		require.Equal(t, model.HostCredentialsNone, project.Host.Credentials, name)
+	}
+
+	for name, text := range map[string]string{"skypilot": hostCall(""), "ssh": sshCall("")} {
+		project, problems := loadProjectText(t, call(clusterProject+", host = "+text))
+		require.Empty(t, problems, name)
+		require.Empty(t, project.Host.Credentials, name)
+	}
+}
+
+func TestHostConfig_CredentialsNoneOnAProviderThatStartsItsMachineWithCredentialsOfTheOwnerIsRefusedWithTheReasonAndTheFix(t *testing.T) {
+	t.Parallel()
+
+	for name, extra := range map[string]string{
+		"alone":         "",
+		"with a set-up": `, setup_command = "make setup"`,
+		"with a block":  `, skypilot = skypilot(cloud = "gcp")`,
+	} {
+		_, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, credentials = "none"`+extra)))
+
+		require.Len(t, problems, 1, name)
+		require.ErrorIs(t, problems[0], config.ErrRefused, name)
+		require.ErrorContains(t, problems[0], `"none" is not allowed for provider "skypilot"`, name)
+		require.ErrorContains(t, problems[0], "forward your SSH agent and copies your cloud credentials", name)
+		require.ErrorContains(t, problems[0], "Remove the key.", name)
+	}
+
+	_, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, credentials = "some"`)))
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], `the only value is "none"`, "a value that is not none is refused for its value first")
+}
+
+func TestHostConfig_ACredentialsValueOtherThanNoneIsRefusedAndNamesNone(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{"some", "None", ""} {
+		_, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall(`, credentials = "`+text+`"`)))
+
+		require.Len(t, problems, 1, text)
+		require.ErrorIs(t, problems[0], config.ErrRefused, text)
+		require.ErrorContains(t, problems[0], "`host.credentials`", text)
+	}
+
+	_, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall(`, credentials = "some"`)))
+	require.ErrorContains(t, problems[0], `the only value is "none"`)
+}
+
 func TestHostConfig_ALostAfterOrStopLimitThatIsNegativeOrNotADurationIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -239,4 +296,18 @@ func TestLoadFolder_ABlockValueIsAnOpaqueValue(t *testing.T) {
 		"def f():\n  h = host(provider = \"skypilot\", disk_floor_gb = 1)\n  _ = [bool(h), str(h), type(h)]\n  return h\n"+call(clusterProject+", host = f()"))
 	require.Empty(t, problems)
 	require.NotNil(t, project.Host)
+}
+
+func TestLoadFolder_AHostSetupCommandOfAProviderThatBeehaveCreatesReachesTheHostConfigAndAnOmittedOneStaysEmpty(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, setup_command = "make setup"`)))
+
+	require.Empty(t, problems)
+	require.Equal(t, "make setup", project.Host.SetupCommand)
+
+	project, problems = loadProjectText(t, call(clusterProject+", host = "+hostCall("")))
+
+	require.Empty(t, problems)
+	require.Empty(t, project.Host.SetupCommand)
 }

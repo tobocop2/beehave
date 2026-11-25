@@ -131,3 +131,11 @@ func TestRun_ALaunchAgentAndAScriptingBridgeLeaveNoFileOutsideThePlan(t *testing
 	require.NoError(t, err)
 	assert.Empty(t, entries, "no file appeared outside the plan")
 }
+
+func TestRefuseShim_AShimRunsWhenThePlanHoldsADeveloperFolder(t *testing.T) {
+	t.Parallel()
+
+	require.Error(t, refuseShim("/usr/bin/git", sandbox.Plan{}))
+	assert.NoError(t, refuseShim("/usr/bin/git", sandbox.Plan{Developer: "/d"}))
+	assert.NoError(t, refuseShim("/bin/sh", sandbox.Plan{}), "a program that is not a shim is never refused")
+}

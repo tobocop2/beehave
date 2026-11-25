@@ -5,9 +5,11 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,19 +22,28 @@ const (
 	envMaxConcurrent       = "BEEHAVE_AGENTS_MAX_CONCURRENT"
 	envMaxReviewConcurrent = "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT"
 	envPerLogin            = "BEEHAVE_AGENTS_PER_LOGIN"
+	envConcurrency         = "BEEHAVE_AGENTS_CONCURRENCY"
 	envMaxTurns            = "BEEHAVE_AGENTS_MAX_TURNS"
 	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
 	envMaxTreeBudget       = "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD"
+	envMaxWeekBudget       = "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD"
+	envTraceParent         = "BEEHAVE_AGENTS_TRACE_PARENT"
 	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
 	envReviewLookback      = "BEEHAVE_REVIEW_LOOKBACK_DAYS"
-	envFiveHourMax         = "BEEHAVE_POOL_FIVE_HOUR_MAX"
-	envSevenDayMax         = "BEEHAVE_POOL_SEVEN_DAY_MAX"
 )
+
+// envPoolMax returns the name of the variable that sets the cap of a usage window: BEEHAVE_POOL_<NAME>_MAX.
+func envPoolMax(window string) string {
+	return "BEEHAVE_POOL_" + strings.ToUpper(window) + "_MAX"
+}
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
 const maxReviewPollMinutes = 10080
+
+// DefaultContextWindowTokens is the default of agents.context_window_tokens: the context window of the agent model, in tokens. A model with a larger window needs the key set.
+const DefaultContextWindowTokens = 200000
 
 // DefaultReviewLookbackDays is the default of agents.review_lookback_days: the days that the review poll looks back for replies. The engine uses it when its options give none.
 // maxReviewLookbackDays is one year.
@@ -56,11 +67,11 @@ const DefaultPerLogin = 1
 // floatBits is the bit size of a percent that the BEEHAVE_* variables give.
 const floatBits = 64
 
-// Config is the config folder: the agent limit, the pool caps, the runners and the projects.
+// Config is the config folder: the agent limit, the pool caps of each agent, the runners and the projects.
 type Config struct {
 	Dir      string
 	Agents   agents
-	Pool     Pool
+	Pools    map[model.Agent]Pool
 	Runners  []model.Runner
 	Projects map[string]Project
 }
@@ -80,8 +91,8 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays},
-		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
+		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, Concurrency: ConcurrencyStatic, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays, ContextWindowTokens: DefaultContextWindowTokens},
+		Pools:    map[model.Agent]Pool{},
 		Projects: map[string]Project{},
 	}
 }
@@ -97,6 +108,9 @@ func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, P
 	}
 
 	problems := cfg.loadFiles(adapters)
+
+	overlayConcurrency(env, &cfg.Agents.Concurrency)
+
 	if err := cfg.applyEnv(env); err != nil {
 		problems = append(problems, err)
 	}
@@ -108,17 +122,25 @@ func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, P
 	return cfg, problems
 }
 
+// loadFiles reads the runners file and the project files. Two agents that declare one usage window with two defaults refuse the registry, and no file is read.
 func (c *Config) loadFiles(adapters Adapters) Problems {
+	windows, err := declaredWindows(adapters)
+	if err != nil {
+		return Problems{err}
+	}
+
+	c.Pools = defaultPools(adapters)
+
 	var problems Problems
 
-	if err := c.loadRunners(adapters); err != nil {
+	if err := c.loadRunners(adapters, windows); err != nil {
 		problems = append(problems, err)
 	}
 
 	return append(problems, c.loadProjects(adapters)...)
 }
 
-func (c *Config) loadRunners(adapters Adapters) error {
+func (c *Config) loadRunners(adapters Adapters, windows []model.WindowSpec) error {
 	if old := filepath.Join(c.Dir, oldRunnersFileName); isFile(old) {
 		return refuseOld(old, runnersFileName)
 	}
@@ -129,7 +151,7 @@ func (c *Config) loadRunners(adapters Adapters) error {
 	}
 
 	var err error
-	c.Agents, c.Pool, c.Runners, err = loadRunnersFile(path, adapters)
+	c.Agents, c.Pools, c.Runners, err = loadRunnersFile(path, adapters, windows, c.Pools)
 
 	return err
 }
@@ -189,6 +211,28 @@ func overlayWhole(env map[string]string, name, hint string, into *int) error {
 	return nil
 }
 
+// overlayBool reads the text true or false from the environment. An empty variable leaves the value. Any other text is refused.
+func overlayBool(env map[string]string, name string, into *bool) error {
+	switch value := env[name]; value {
+	case "":
+	case "true":
+		*into = true
+	case "false":
+		*into = false
+	default:
+		return refuse("%s=%s is not true or false. Write true or false.", name, value)
+	}
+
+	return nil
+}
+
+// overlayConcurrency sets the concurrency mode from the variable. An empty variable leaves the value; the check of the value is in Validate.
+func overlayConcurrency(env map[string]string, into *Concurrency) {
+	if value := env[envConcurrency]; value != "" {
+		*into = Concurrency(value)
+	}
+}
+
 func (c *Config) applyEnv(env map[string]string) error {
 	err := errors.Join(
 		overlayWhole(env, envMaxConcurrent, "for example 2.", &c.Agents.MaxConcurrent),
@@ -198,17 +242,57 @@ func (c *Config) applyEnv(env map[string]string) error {
 		overlayWhole(env, envReviewPoll, "for example 60, or 0 for no poll.", &c.Agents.ReviewPollMinutes),
 		overlayWhole(env, envReviewLookback, "for example 3.", &c.Agents.ReviewLookbackDays),
 		overlayWhole(env, envRetentionDays, "for example 30, or 0 to keep every finished run.", &c.Agents.RetentionDays),
-		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
-		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
-		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
+		c.overlayBudgets(env),
 	)
 	if err != nil {
 		return err
 	}
 
 	return errors.Join(
-		overlayPercent(env, envFiveHourMax, &c.Pool.FiveHourMax),
-		overlayPercent(env, envSevenDayMax, &c.Pool.SevenDayMax),
+		c.overlayPools(env),
+		overlayBool(env, envTraceParent, &c.Agents.TraceParent),
+	)
+}
+
+// windowCaps returns the cap of each usage window that the pools hold. Agents that share a window name share its cap.
+func (c Config) windowCaps() map[string]float64 {
+	caps := map[string]float64{}
+
+	for _, pool := range c.Pools {
+		maps.Copy(caps, pool)
+	}
+
+	return caps
+}
+
+// overlayPools reads the cap of each usage window from its variable. The cap applies to every agent that declares the window.
+func (c *Config) overlayPools(env map[string]string) error {
+	var problems []error
+
+	caps := c.windowCaps()
+
+	for _, name := range slices.Sorted(maps.Keys(caps)) {
+		percent := caps[name]
+
+		if err := overlayPercent(env, envPoolMax(name), &percent); err != nil {
+			problems = append(problems, err)
+
+			continue
+		}
+
+		capWindow(c.Pools, name, percent)
+	}
+
+	return errors.Join(problems...)
+}
+
+// overlayBudgets reads the caps in dollars from the environment.
+func (c *Config) overlayBudgets(env map[string]string) error {
+	return errors.Join(
+		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
+		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
+		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
+		overlayDollars(env, envMaxWeekBudget, "300", &c.Agents.MaxWeekBudgetUSD),
 	)
 }
 
@@ -245,9 +329,9 @@ func overlayPercent(env map[string]string, name string, target *float64) error {
 	return nil
 }
 
-// limitProblems checks the two limits on agent processes.
+// limitProblems checks the two limits on agent processes and the mode of the cap of the agents queue.
 func (c Config) limitProblems(runnersPath string) Problems {
-	var problems Problems
+	problems := c.concurrencyProblems(runnersPath)
 
 	if c.Agents.MaxConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
@@ -255,6 +339,10 @@ func (c Config) limitProblems(runnersPath string) Problems {
 
 	if c.Agents.MaxReviewConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_review_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxReviewConcurrent))
+	}
+
+	if c.Agents.ContextWindowTokens < 0 {
+		problems = append(problems, refuse("agents.context_window_tokens must be 0 (unknown, so no context limit fires) or more. Set it in %s.", runnersPath))
 	}
 
 	return problems
@@ -272,6 +360,15 @@ func (c Config) perLoginProblems(runnersPath string) Problems {
 	}
 
 	return nil
+}
+
+// concurrencyProblems refuses a concurrency mode other than the two that the engine knows.
+func (c Config) concurrencyProblems(runnersPath string) Problems {
+	if c.Agents.Concurrency.Known() {
+		return nil
+	}
+
+	return Problems{refuse("agents.concurrency is %q: set it to %q or %q. Set it in %s or in %s.", string(c.Agents.Concurrency), ConcurrencyStatic, ConcurrencyAdaptive, runnersPath, envConcurrency)}
 }
 
 // Validate checks the values that no single file owns: the agent limit and the pool caps.
@@ -292,6 +389,7 @@ func (c Config) Validate() Problems {
 	problems = append(problems, c.pollProblems(runnersPath)...)
 	problems = append(problems, c.lookbackProblems(runnersPath)...)
 	problems = append(problems, c.retentionProblems(runnersPath)...)
+	problems = append(problems, c.weekRetentionProblems(runnersPath)...)
 	problems = append(problems, c.slotProblems()...)
 
 	return append(problems, c.poolProblems(runnersPath)...)
@@ -308,6 +406,7 @@ func (c Config) budgetProblems(runnersPath string) Problems {
 		{"agents.max_budget_usd", envMaxBudget, c.Agents.MaxBudgetUSD},
 		{"agents.max_run_budget_usd", envMaxRunBudget, c.Agents.MaxRunBudgetUSD},
 		{"agents.max_tree_budget_usd", envMaxTreeBudget, c.Agents.MaxTreeBudgetUSD},
+		{"agents.max_week_budget_usd", envMaxWeekBudget, c.Agents.MaxWeekBudgetUSD},
 	} {
 		if !(limit.dollars >= 0) || math.IsInf(limit.dollars, 0) {
 			problems = append(problems, refuse("%s must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", limit.name, runnersPath, limit.env))
@@ -350,20 +449,26 @@ func (c Config) retentionProblems(runnersPath string) Problems {
 	return nil
 }
 
+// weekRetentionProblems refuses a week cap with a retention of 1 to 6 days. The retention deletes a finished run before its cost leaves the seven day window, so the sum would be lower than the spend.
+func (c Config) weekRetentionProblems(runnersPath string) Problems {
+	if c.Agents.MaxWeekBudgetUSD > 0 && c.Agents.RetentionDays > 0 && c.Agents.RetentionDays < defaultRetentionDays {
+		return Problems{refuse("agents.retention_days is %d, and agents.max_week_budget_usd is set: the cap counts the last 7 days, and a finished run is deleted after %d. Set agents.retention_days to 7 or more, or to 0, or set agents.max_week_budget_usd to 0. Set them in %s or in %s and %s.",
+			c.Agents.RetentionDays, c.Agents.RetentionDays, runnersPath, envRetentionDays, envMaxWeekBudget)}
+	}
+
+	return nil
+}
+
 func (c Config) poolProblems(runnersPath string) Problems {
 	var problems Problems
 
-	for _, limit := range []struct {
-		key, variable string
-		percent       float64
-	}{
-		{"five_hour_max", envFiveHourMax, c.Pool.FiveHourMax},
-		{"seven_day_max", envSevenDayMax, c.Pool.SevenDayMax},
-	} {
+	caps := c.windowCaps()
+
+	for _, name := range slices.Sorted(maps.Keys(caps)) {
 		// The negated form also refuses NaN, which fails every comparison.
-		if !(limit.percent > 0 && limit.percent <= maxPercent) {
+		if !(caps[name] > 0 && caps[name] <= maxPercent) {
 			problems = append(problems, refuse("`%s` in the pool block must be a number above 0 and up to 100. Set it in %s or in %s.",
-				limit.key, runnersPath, limit.variable))
+				name, runnersPath, envPoolMax(name)))
 		}
 	}
 

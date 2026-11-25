@@ -83,14 +83,14 @@ func runRefusedFlow(t *testing.T, f refusedFlow, refuse func(*sql.DB)) refusedOu
 	if file == "" {
 		_, out.first = engine.Run(testItem, testProject)
 	} else {
-		_, out.first = engine.RunFile(testItem, testProject, file)
+		_, out.first = engine.RunFile(testItem, testProject, file, modeOff())
 	}
 
 	liftRefusal(t, h)
 
 	_, out.resumed = resumeAndJoin(t, engine, h.client(t, testVersion))
 
-	spend, err := runAndBelowSpend(engine.ctx, testRun)
+	spend, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 
 	out.agents, out.cost = len(h.agents.seen()), spend.Cost
@@ -114,6 +114,7 @@ func TestRunStep_AResumeAfterTheStoreRefusedTheRecordOfAnyStepEndsAsTheRunWithNo
 		step string
 		look int
 	}{
+		"one_call_origin":         {one, originStepName, 0},
 		"one_call_claim":          {one, "claim", 0},
 		"one_call_item":           {one, "item", 0},
 		"one_call_login":          {one, "login#1", 0},

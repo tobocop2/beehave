@@ -18,7 +18,7 @@ An `agent` step starts one AI coding CLI through an adapter, feeds it the prompt
 
 The keys `timeout` and `idle_timeout` of the `agent` call take a duration text, such as `"90s"` or `"10m"`. `beehave check workflow` refuses any other text.
 
-- `timeout` limits the whole run.
+- `timeout` limits the whole run. The Go module download before a sandboxed step does not count against it (see [sandbox.md](sandbox.md#the-go-module-cache)).
 - `idle_timeout` limits the time with no output. Each write of the CLI to its standard output or its standard error starts the time again.
 - A key that is left out, an empty text, or a duration of 0 or less sets no limit of that kind. OpenCode is the one exception: with no `timeout`, its total limit is one hour.
 - A run that a limit ends has the outcome `timed-out` or `idle`. The step fails with an error that names the outcome and the item, and the item stops.
@@ -31,8 +31,9 @@ A step author must know these limits:
 
 - **Supported versions.** The adapter supports OpenCode from 1.19.5 up to but not including 3.0.0. The tests hold a recording of 1.19.5 and one of 2.2.5. The runner reads `opencode --version` before every run. A version outside the range, or one that it cannot read, stops the step before it starts, and the note names the range.
 - **OpenCode 2.x runs with a private server.** From 2.0.0 the runner adds `--standalone`. Without it, OpenCode 2.x sends the run to a shared background service, and a service that another process holds on its port makes the run fail. The 2.x line names the shell tool `shell`.
-- **No `forbid_commands` on OpenCode 2.x.** In a real step on 2.2.5 the guard plugin did not refuse a command that the check forbids: the command ran and wrote its file. A step with `forbid_commands` does not start on 2.0.0 or later, and the note says so. Remove `forbid_commands` from the step, or use OpenCode 1.x.
-- **No sandbox.** A step with a sandbox does not start. Set `sandbox = None` on the step.
+- **A resumed OpenCode 2.x step names its earlier session.** A step with `resume =` runs with `--standalone --session <id>`. On 2.2.5, `opencode session list --standalone` and `opencode session export <id> --standalone` returned a session that an earlier run had stored, so the private server reads the stored sessions. No resumed model run was made, so it is not proven that a resumed step sees the earlier messages. The help text of 2.2.5 says that `--session` creates the session when it does not exist, so a wrong id starts a new session with no error.
+- **`forbid_commands` works on OpenCode 1.x and 2.x.** The two lines load a plugin through different functions and name the shell tool differently, so the guard plugin has one function for each line. A run of 2.2.5 refuses a forbidden command, and the call ends with the refusal text.
+- **No sandbox.** A step with a sandbox does not start. Set `sandbox = "off"` in the project to run it with no sandbox.
 - **No skill proof.** OpenCode reports no skill calls, so the result field `skills` of its steps is an empty list. The fact `runners.<name>.loads_skills` of `facts()` is false for such a runner, because OpenCode has no skill-load line. A step with the `skill` keyword does not start on it.
 - **A lost run starts again.** OpenCode keeps all sessions in one database and has no file for one session. The transcript path in the step output names a path that no file holds. The check before a resume finds no file, so a lost OpenCode step starts again from its note and never resumes.
 - **Subagent sessions are not counted.** The calls and the cost of a subagent session of OpenCode do not reach the output stream of the parent run, so the turn cap and the cost cap do not count them. This is from a read of the source of OpenCode 1.19.5.
@@ -45,16 +46,23 @@ A step author must know these limits:
 
 ### The process of the CLI
 
-The prompt goes on stdin, so it never shows in a process list.
+The launch of an adapter says how the prompt reaches the CLI. The default is stdin, so the prompt never shows in a process list. Both adapters use it.
+
+- `argument` puts the prompt in one argument, the last one, after every other argument. It shows in the process list of the machine. The argument limit of the operating system bounds it: a prompt over the limit fails to start, so use `file` for a long prompt. A flag that names the prompt goes last in the arguments of the launch.
+- `file` writes the prompt to `beehave-prompt.txt` in the run folder and puts the path in the last argument. The file has mode 0600, the folder has mode 0700, and the runner removes the folder when the run ends.
+
+The launch can also set a prefix: a list of words that the runner puts before the CLI. The first word is a program found on PATH, and each other word is one argument. No shell reads the command line. With a prefix, the runner does not look up the CLI on PATH: the program of the prefix finds it by name. The probe of the version of the CLI runs the prefix, then the CLI, then `--version`. A run with no prefix looks up the CLI on PATH as before.
 
 The CLI gets an allowlisted environment:
 
 - the path, home, locale, proxy and certificate variables;
-- `SSH_AUTH_SOCK`;
 - the login folder variables of its runner;
-- the token, if one is passed.
+- the token, if one is passed;
+- one `TRACEPARENT`, only when `agents.trace_parent` is true.
 
-No other variable of the caller reaches it. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
+The `TRACEPARENT` names the run and the step. The trace id is the first 16 bytes of the SHA-256 of `beehave-trace:` and the run id. The parent span id is the first 8 bytes of the SHA-256 of `beehave-span:`, the run id, `/` and the call name. The flags are `01`. A replay builds the same value. A sandboxed run gets it too. The engine value replaces any `TRACEPARENT` of the caller. `TRACESTATE`, `OTEL_*` and the telemetry switches of the caller never reach the CLI, and beehave exports no span: the CLI exports its own. A child run has its own run id and so its own trace id. The `command` step gets no trace variable.
+
+No other variable of the caller reaches it. `SSH_AUTH_SOCK` is not on the list, for any step, sandboxed or not, and the usage reader and the `command` step use the same list. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
 
 The CLI runs in its own process group through `proc`. A total timeout, an idle timeout or a cancel of the context kills the group. Each write on stdout or stderr resets the idle timeout. When the CLI exits, the group is killed again, so no child outlives the step.
 
@@ -96,7 +104,7 @@ The tap gives each new session id to the request at the line that holds it, so t
 
 The entries that the adapter reads go to the durable stream `agent` of the phase, redacted. The workflow builtin `stream` reads that stream for a child run, with the reader of `beehave status --follow` (see [`stream`](workflow-files.md#stream)).
 
-The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules and the job check](#shell-rules-and-the-job-check)).
+The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules](#shell-rules)).
 
 ### How the adapter reads a provider limit
 
@@ -129,18 +137,18 @@ The setting `forbid_commands` of an `agent` step is a list of finding kinds. A s
 
 | Kind | Refuses |
 |---|---|
-| `bulk-staging` | Bulk staging. See [Shell rules](#shell-rules-and-the-job-check). |
+| `bulk-staging` | Bulk staging. See [Shell rules](#shell-rules). |
 | `config-read` | The print of a file that holds a key. |
-| `delete-text` | Delete text in `echo`, `printf` or a heredoc. See [Shell rules](#shell-rules-and-the-job-check). |
+| `delete-text` | Delete text in `echo`, `printf` or a heredoc. See [Shell rules](#shell-rules). |
 | `env-override` | A change of the search path or of a shell start file. |
 | `git-author` | A commit author. |
 | `git-bypass` | A skipped git safeguard: no-verify, stash, a config write, a force-push, a delete of a remote branch. |
 | `git-write` | Each git command that changes a repository. See below. Opt-in. |
 | `laptop-copy` | A copy from this machine to another machine for a repository that is not private. See below. |
-| `local-delete` | A delete whose path is not a literal absolute path. See [Shell rules](#shell-rules-and-the-job-check). |
-| `opaque-command` | A command word the scan cannot read. See [Shell rules](#shell-rules-and-the-job-check). |
+| `local-delete` | A delete whose path is not a literal absolute path. See [Shell rules](#shell-rules). |
+| `opaque-command` | A command word the scan cannot read. See [Shell rules](#shell-rules). |
 | `protected-path` | A write inside a protected directory. See below. Needs `protect_paths`. |
-| `remote-delete` | Any delete inside an `ssh`, `gcloud compute ssh` or wrapper command. See [Shell rules](#shell-rules-and-the-job-check). |
+| `remote-delete` | Any delete inside an `ssh`, `gcloud compute ssh` or wrapper command. See [Shell rules](#shell-rules). |
 | `unparsed` | A line of a command that does not parse as shell. |
 | `zsh-expansion` | The zsh-only forms `${(flags)x}`, `${=x}`, `${~x}` and `${^x}` outside single quotes. |
 
@@ -172,7 +180,7 @@ Setup rules:
 - `beehave check workflow` refuses the same two cases, and an empty path, when both settings are list literals of text literals. A setting that is not a literal is left to the run.
 - A relative path starts at the folder of the step.
 - The hook gets the directories as `--protect` (absolute, comma-separated or repeated). `--protect` is required when `--forbid` lists the kind. The default `--forbid` list leaves the kind out, as it leaves out `git-write`.
-- The hook gets the directory of the command from the `cwd` of the event.
+- The hook gets the directory of the command from the event: the `cwd` of Claude Code, or the `directory` that the OpenCode plugin forwards.
 - The step passes `protect_paths` in its recorded phase only when the list is not empty, so a replay of a step without it reads the same record as before.
 
 Path compare:
@@ -206,7 +214,7 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 `worktree add` and `worktree list` pass. A reviewer builds its own copy of the tree with `worktree add`, not with `apply`.
 
-`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehave check command` holds every kind except `git-write`, so a bare hook does not refuse every commit.
+`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehave check command --agent <agent>` holds every kind except `git-write`, so a bare hook does not refuse every commit.
 
 #### Check of the workflow
 
@@ -216,7 +224,11 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 The Claude adapter passes `--settings` with inline JSON. The JSON adds a `PreToolUse` hook with matcher `Bash` for that run (https://code.claude.com/docs/en/hooks). The adapter never edits a settings file of the user.
 
-The hook runs `beehave check command --forbid <kinds>`. It reads the event on stdin. When the command breaks a listed rule, it exits 2 with the reason on stderr, and Claude Code blocks the call. The command exits 2 for every failure: a bad flag, a bad kind, an event it cannot read.
+The hook runs `beehave check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 0 only for a shell call that has a command and breaks no rule. It exits 2 for every other input: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read, an event longer than 1 MiB, an event of another tool, an event in the format of another agent, and a shell call with no command. The hook of each agent runs for the shell tool only, so a call of another tool never reaches the command, and an event that is not a shell call is a fault, not a call to allow.
+
+An agent session that keeps running across an upgrade of beehave carries the old hook, which has no `--agent`. The command refuses every call of that session until the session restarts. Each new run builds the hook again, so only a session that started before the upgrade is affected.
+
+The shell rules are the same for each agent. Each adapter supplies only the reader of its hook format: `agent/claude` reads the `PreToolUse` event of Claude Code, and `agent/opencode` reads the call that its plugin forwards (`directory`, `tool` and `args`). A new agent CLI needs a reader and a name in the table of `--agent`, and no copy of the rules.
 
 The hook also sets `"onFailure": "block"`. With it, a hook that cannot start (for example, the program of beehave moved during the run), exits with another code or times out blocks the call too. Without the key, those failures let the call go ahead. The hooks page says of the key: "Requires Claude Code v2.1.295 or later." An older Claude Code ignores the key and fails open on those failures.
 
@@ -286,7 +298,7 @@ The setting `allow_paths` of an `agent` step is a list of globs, for a lane that
 At the start, the step records in the recorded `/start` step:
 
 - the commit at its start;
-- a snapshot of the untracked and ignored entries already in the folder. An untracked file carries its size and modification time. An ignored directory is one entry.
+- a snapshot of the untracked and ignored files already in the folder. Each file carries its size and modification time. A folder of a known build cache (the names are in `isBuildCache` in `internal/flow/pathscope.go`) is one entry, so a step may write in it.
 
 A resume keeps the snapshot of the first start.
 
@@ -294,9 +306,9 @@ After the run, the step names each path that the item folder changed since then:
 
 - committed changes;
 - uncommitted changes of tracked files;
-- every new untracked or ignored entry;
-- every untracked or ignored entry that is gone;
-- every untracked file whose size or time changed.
+- every new untracked or ignored file;
+- every untracked or ignored file that is gone;
+- every untracked or ignored file whose size or time changed.
 
 A file that was already there and is unchanged does not fail the step. The diff runs with no rename detection, so a rename lists the old path as well as the new path. Every path is relative to the root of the repository, also when the item folder is a subdirectory.
 
@@ -308,7 +320,9 @@ A step with no `allow_paths` records no extra step, so no module version moves.
 
 Not seen:
 
-- a write inside a directory that was already ignored at the start;
+- a write inside a known build cache folder that was already there at the start;
+- a rewrite of a file that restores its size and its modification time;
+- a write outside the repository, such as a sibling checkout; the sandbox is the layer for that (see the sandbox design);
 - an untracked file inside a submodule;
 - a write outside the tree through a symbolic link inside the globs; git cannot see that write.
 
@@ -323,7 +337,7 @@ The setting `data` of an `agent` step is a dict of values that the agent reads f
 
 The prompt tells the agent to read the file with the shell and to refuse when the file is missing. The sandbox reads this one file: see [the sandbox](sandbox.md#the-data-file).
 
-## Shell rules and the job check
+## Shell rules
 
 ### check/shell
 
@@ -352,20 +366,6 @@ An unreadable variable stays `$name` text. If it is the command word, or the fir
 
 A value that depends on a variable being read is kept for the current lookup only. The number of values worked out for one use does not grow with the number of uses. The time for a script still grows with its size.
 
-### The job check
-
-`job.Script`, in `examples/remediation/tools/job`, reads a job through the scan of `check/shell`. It:
-
-- applies the bulk staging rule;
-- refuses a test command with no `timeout` in front of it. A test command is `cargo test`, `cargo nextest`, `pytest`, `py.test`, `bats` or `make test*`.
-
-The check reads a string that a shell, `ssh`, `eval`, a container runner or `uv run` runs. It reads a heredoc that a shell reads or that a later command runs as a file.
-
-`job.Script` also refuses two kinds of text:
-
-- A line that does not parse as shell. The lines that do parse are still judged, and so is a line that only ends in an operator, such as `git add -A &&`.
-- A command the check cannot read: `env -S`, `find -exec sh -c`, and a command word that holds a variable or a substitution when the words after it would be a staging or a delete if the word were `git` or `rm`, such as `$g add -A` and `$x -rf "$d"`. When the variable is the `rm` itself, a delete needs a recursive or force option to count. A command word that hides no rule, such as `$ROOT/bin/run.sh`, passes.
-
 ## Lane papers
 
 ### Where the checks live
@@ -374,18 +374,15 @@ The engine has one check package: `check/shell`, for the shell scan. The other c
 
 | Check | Run by |
 |---|---|
-| The gate list derive | `remedy gatelist` |
-| The job check | `remedy job` |
+| The gate list derive | `beehave check gate-list` |
 | The report check | `remedy report` |
-| The papers check | `remedy papers` |
 | The handoff check | `remedy handoff` |
 | The author check | `remedy authors` |
 | The spend tables | `remedy spend` |
 
-They live in `examples/remediation/tools/gate`, `examples/remediation/tools/job`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. See [Remediation tools](merge.md#remediation-tools).
+They live in `examples/remediation/tools/gate`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. See [Remediation tools](merge.md#remediation-tools).
 
 - Each keeps its own copy of the small text helpers it uses. They share only the `Refusal` type of `examples/remediation/tools/check`.
-- The packages `gate` and `job` read shell text through `check/shell` (`ParseUnits`, `Scan` and a `Reader` of command words).
 - The package `papers` reads the context of a lane through `transcript.LaneContext` of the tools.
 - Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped.
 - `Report` and `Authors` cannot refuse. `Authors` returns the exit code, because its two refusals (2 and 3) differ.
@@ -409,19 +406,15 @@ The burn record reads the transcript of the orchestrator. It counts the main thr
 - A transcript line whose `message` or `usage` is not an object is skipped, and so is a line with `NaN` or `Infinity`.
 - A transcript key matches by exact case.
 
-### The papers check
+### The glob dialect
 
-The papers check lists the source paths that a revision range changes. A lane of proof and papers changes none. A range that starts with `-` is refused, so git never reads it as an option.
-
-The globs use the same `github.com/bmatcuk/doublestar/v4` dialect as [`allow_paths`](#the-setting-allow_paths). A pattern has three forms that `fnmatch` does not have:
+The globs of [`allow_paths`](#the-setting-allow_paths) use the `github.com/bmatcuk/doublestar/v4` dialect. A pattern has three forms that `fnmatch` does not have:
 
 - `[!x]` and `[^x]` negate a set.
 - `{a,b}` chooses between patterns, so a literal brace is `\{` or `\}`.
 - `\` escapes the next character, so a literal backslash is `\\` and `\*` is a literal star.
 
 A pattern that does not parse is a refusal that names the pattern. Examples are an unclosed `[` or `{`, a lone `[!` and a trailing `\`.
-
-The package `papers` declares its own `runner` interface for git, so it does not import `forge`.
 
 ### The author check
 
@@ -431,7 +424,7 @@ The author check compares the address of a commit with the address of the accoun
 
 The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step.
 
-`remedy gatelist [--steps <name>]... [--map <json>] <workflow-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
+`beehave check gate-list [--steps <name>]... [--map <json>] <ci-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
 
 #### The guard is the gate, not the label
 
@@ -466,40 +459,3 @@ The command of a derived step is its whole record: the run text, then each part 
 
 A `--map` with no `--steps` is exit code 2, and the message names `gate_steps`. The round refuses a project with `gate_files` and no `gate_steps` before it runs the command. A refused step needs no key, because it never runs. Add a refused step, such as the lint action, to `gate_steps` by hand.
 
-#### The job check
-
-When a step passes:
-
-- A row with the command `see <file>` is an unstated step. The job passes when it prints `name=<step>`.
-- Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts.
-
-A command here is one of:
-
-- a simple command with its redirects;
-- a pipeline or list (`&&`, `||`, `;`, `|`);
-- a subshell;
-- a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`), with its keyword;
-- one line of a here-document.
-
-A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job.
-
-Other rules:
-
-- A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip.
-- Words join on blank and tab only, so a no-break space does not join them.
-- A comment at the end of a line is not a command.
-- The skip reason and the fixed-status message print the text of the command, not of its whole line.
-- The rows and sections are read as text with `splitRow`. The job is read with the parser of `shell.ParseUnits`. The `let` rule parses its arithmetic text with the same parser.
-
-A `GATE-SKIP <step>: <reason>` line declares a skip. It needs:
-
-- a reason;
-- a step of the list;
-- a `command -v` check when the reason names a missing tool;
-- a final marker with `gate=partial`.
-
-### The exit marker rule
-
-The exit marker rule finds a print command that prints `rc=` followed by a literal number. A print command is `echo`, `printf`, a here-document or a here-string, also inside a shell string argument.
-
-A variable counts as a literal when one assignment sets it, to a number, and nothing else can change it: no arithmetic, `read`, `for`, `printf -v`, `eval` or sourced file. The caller passes the function that reads sourced files. A file that cannot be read, or a path that only the shell can resolve, makes every variable unknown.

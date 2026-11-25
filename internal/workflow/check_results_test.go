@@ -14,16 +14,24 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 
 	cases := []struct{ name, call, want string }{
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, commit_subject, commit_body."},
-		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
+		{"merge", `merge(name = "n", members = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, rest, moved, reason, tip."},
+		{"hand_off", `hand_off(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of hand_off. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc, attempts, error."},
-		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses."},
+		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses, step."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
 		{"item_comment", `item_comment("1", "t", "k")`, "3:11 haed is not a field of the result of item_comment. It has: id."},
 		{"item_create", `item_create("t", "k")`, "3:11 haed is not a field of the result of item_create. It has: id, created."},
 		{"item_status", `item_status("1", "open")`, "3:11 haed is not a field of the result of item_status. It has: id, status."},
 		{"pr_open", `pr_open(title = "t", base = "b")`, "3:11 haed is not a field of the result of pr_open. It has: number, created, stack."},
 		{"preflight", `preflight()`, "3:11 haed is not a field of the result of preflight. It has: ok, stop, code, reason."},
-		{"queue", `queue()`, "3:11 haed is not a field of the result of queue. It has: rows, free, pulls."},
+		{"item_list", `item_list()`, "3:11 haed is not a field of the result of item_list. It has: items."},
+		{"pr_list", `pr_list()`, "3:11 haed is not a field of the result of pr_list. It has: pulls."},
+		{"run_read", `run_read(items = ["1"])`, "3:11 haed is not a field of the result of run_read. It has: runs, free."},
+		{"pr_closing", `pr_closing()`, "3:11 haed is not a field of the result of pr_closing. It has: found, issues, forge, error."},
+		{"base_tip", `base_tip(base = "main")`, "3:11 haed is not a field of the result of base_tip. It has: commit, tree."},
+		{"landing_proof", `landing_proof(base = "main", start = struct(commit = "c", tree = "t"), end = struct(commit = "c", tree = "t"), landed = [])`, "3:11 haed is not a field of the result of landing_proof. It has: unproven."},
+		{"issue_state", `issue_state(number = 7)`, "3:11 haed is not a field of the result of issue_state. It has: state, found, error."},
+		{"earlier_reads", `earlier_reads(kind = "wait", name = "n")`, "3:11 haed is not a field of the result of earlier_reads. It has: reads."},
 		{"pr_history", `pr_history()`, "3:11 haed is not a field of the result of pr_history. It has: pulls."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
 		{"wait", `wait()`, "3:11 haed is not a field of the result of wait. It has: answer, answers, timed_out."},
@@ -54,14 +62,14 @@ func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
 
 	got := checkText(t, `def main(item):
     a = agent("p", "m", outputs = ["verdict", "findings"])
-    b = merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")
+    b = merge(name = "n", members = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")
     c = command(["a"])
     g = gate()
     h = gather([])
     i = item_create("t", "k")
     s = spawn(["1"])
     w = wait()
-    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, a.stop, a.cost_usd, a.rewrote, b.merged, b.tip, b.tree, b.gates, c.stdout, c.rc])
+    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, a.stop, a.cost_usd, a.rewrote, b.merged, b.tip, b.rest, b.moved, b.reason, c.stdout, c.rc])
     command(["x", g.passed, g.head, g.tree, g.report, h.results, i.id, i.created, s.runs, w.answer, b.rejected, b.deferred])
 `)
 
@@ -195,7 +203,7 @@ func TestCheck_AFieldOfACallThatIsNotTheBuiltinIsLeftToTheRun(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "cancel", "command", "earlier_calls", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "recv", "send", "sleep", "spawn", "stream", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "base_tip", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "facts", "first_of", "gate", "gather", "hand_off", "host_teardown", "host_up", "integration_pull", "issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "landing_proof", "merge", "pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

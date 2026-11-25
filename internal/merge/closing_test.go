@@ -9,10 +9,9 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// audited is a request that names the given issues and turns the audit of the closing references on.
+// audited is a request that names the given issues as the issues that the pull request must close.
 func audited(names ...int) merge.Request {
 	req := request()
-	req.AuditClosing = true
 	req.Names = names
 
 	return req
@@ -43,7 +42,7 @@ func TestClosing_AnExtraIssueRefusesAndNamesBothLists(t *testing.T) {
 
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Equal(t, merge.Plain, result.Reason)
-	assert.Contains(t, last(result), "#5 closes #12 #99 and the item names #12")
+	assert.Equal(t, "REFUSE: #5 closes #12 #99 and the closes list of the member holds #12. The owner decides: fix the closing keywords or the closes list.", last(result))
 	assert.Empty(t, merges(w))
 }
 
@@ -54,14 +53,75 @@ func TestClosing_AMissingIssueRefusesAndNamesBothLists(t *testing.T) {
 	result := w.run(audited(12))
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Contains(t, last(result), "#5 closes no issue and the item names #12")
+	assert.Equal(t, "REFUSE: #5 closes no issue and the closes list of the member holds #12. The owner decides: fix the closing keywords or the closes list.", last(result))
 	assert.Empty(t, merges(w))
+}
+
+// pinned is a request that names the given issues as the issues that the pull request must close, and pins the set that a check read.
+func pinned(names []int, set ...model.IssueRef) merge.Request {
+	req := audited(names...)
+	req.Pinned = append([]model.IssueRef{}, set...)
+
+	return req
+}
+
+func TestClosing_AMemberThatPinsTheSetThatTheForgeListsNowMergesWhateverTheOrderOfThePin(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12, 13)
+	w.closingRefs.Elsewhere = []model.IssueRef{"other-org/other-repo#5"}
+	result := w.run(pinned([]int{12, 13}, "other-org/other-repo#5", "#13", "#12", "#12"))
+
+	assert.Equal(t, merge.Done, result.Stop)
+}
+
+func TestClosing_AMemberThatPinsASetRefusesWhenAnIssueOfThisRepositoryWasAddedAfterTheCheck(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12, 13)
+	result := w.run(pinned([]int{12, 13}, "#12"))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 #13 now, and closed #12 when the scope check read it. The owner decides: run the scope check again.", last(result))
+	assert.Empty(t, merges(w))
+}
+
+func TestClosing_AMemberThatPinsASetRefusesWhenAnIssueOfAnotherRepositoryWasAddedAfterTheCheck(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	w.closingRefs.Elsewhere = []model.IssueRef{"other-org/other-repo#5"}
+	result := w.run(pinned([]int{12}, "#12"))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 other-org/other-repo#5 now, and closed #12 when the scope check read it. The owner decides: run the scope check again.", last(result))
+}
+
+func TestClosing_AMemberThatPinsNoIssueRefusesWhenThePullRequestClosesOneNow(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	result := w.run(pinned([]int{12}))
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 now, and closed no issue when the scope check read it. The owner decides: run the scope check again.", last(result))
+}
+
+func TestClosing_AMemberThatPinsNoSetIsNotHeldToOne(t *testing.T) {
+	t.Parallel()
+
+	w := listing(newWorld(t), 12)
+	req := audited(12)
+
+	assert.Nil(t, req.Pinned)
+	assert.Equal(t, merge.Done, w.run(req).Stop, "a member with no check pins nothing, and the issues it names are the audit")
 }
 
 func TestClosing_AForgeThatCannotReadClosingReferencesRefusesAndNeverPasses(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t)
+	w.closingRefs = nil
 	result := w.run(audited(12))
 
 	assert.Equal(t, merge.Refused, result.Stop)
@@ -87,38 +147,38 @@ func TestClosing_ABranchNameThatTheForgeLeavesEmptyRefuses(t *testing.T) {
 	}
 }
 
-func TestClosing_ABaseThatIsNotTheDefaultBranchSkipsTheAuditAndSaysWhichBase(t *testing.T) {
+func TestClosing_ABaseThatIsNotTheDefaultBranchIsAuditedAgainstTheIssuesTheForgeGives(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t)
-	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main"}
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12}}
+
+	assert.Equal(t, merge.Done, w.run(audited(12)).Stop)
+
+	w = newWorld(t)
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12, 99}}
 	result := w.run(audited(12))
 
-	assert.Equal(t, merge.Done, result.Stop)
-	assert.Contains(t, result.Lines, "closing references: #5 targets integration/r7, not the default branch main, so GitHub lists none and the audit is skipped.")
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, last(result), "#5 closes #12 #99 and the closes list of the member holds #12")
+	assert.Empty(t, merges(w))
 }
 
-func TestClosing_WithTheAuditOffTheForgeIsNotAsked(t *testing.T) {
+func TestClosing_ARequestThatNamesNoIssueIsAuditedAgainstNone(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t)
 	result := w.run(request())
 
 	assert.Equal(t, merge.Done, result.Stop)
-	assert.NotContains(t, w.calls, "ClosingRefs")
-}
+	assert.Contains(t, w.calls, "ClosingRefs")
 
-func TestClosing_WithTheAuditOffTheMergeSaysWhyNoAuditRan(t *testing.T) {
-	t.Parallel()
+	w = listing(newWorld(t), 12)
+	result = w.run(request())
 
-	w := newWorld(t)
-	req := request()
-	req.Unaudited = "closing references: the tracker local has no issue numbers, so no audit ran."
-	result := w.run(req)
-
-	assert.Equal(t, merge.Done, result.Stop)
-	assert.Contains(t, result.Lines, "closing references: the tracker local has no issue numbers, so no audit ran.")
-	assert.NotContains(t, w.calls, "ClosingRefs")
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #5 closes #12 and the closes list of the member holds no issue. The owner decides: fix the closing keywords or the closes list.", last(result), "an empty closes list is named as the closes list")
+	assert.Empty(t, merges(w))
 }
 
 // worded is a forge that lists issue 12 for a pull request into the default branch, with one commit of the given message.
@@ -215,10 +275,26 @@ func TestCommitKeywords_AnIssueTheOwnerKeptPasses(t *testing.T) {
 	t.Parallel()
 
 	req := audited(12)
-	req.Kept = []int{99}
+	req.Kept = []model.IssueRef{"#99"}
 	result := worded(t, "Tidy", "Fixes #99").run(req)
 
 	assert.Equal(t, merge.Done, result.Stop)
+}
+
+func TestCommitKeywords_AnIssueOfAnotherRepositoryPassesOnlyWhenTheOwnerKeptItAsAFullReference(t *testing.T) {
+	t.Parallel()
+
+	req := audited(12)
+	req.Kept = []model.IssueRef{"#7", "other/place#7"}
+	kept := worded(t, "Tidy", "Fixes Other/Place#7").run(req)
+
+	assert.Equal(t, merge.Done, kept.Stop)
+
+	req.Kept = []model.IssueRef{"#7"}
+	refused := worded(t, "Tidy", "Fixes other/place#7").run(req)
+
+	assert.Equal(t, merge.Refused, refused.Stop, "the own issue #7 is not the issue 7 of another repository")
+	assert.Contains(t, refused.Lines, "  commit bbbbbbbbb closes other/place#7")
 }
 
 func TestCommitKeywords_ANumberTooLargeForAnIssueRefuses(t *testing.T) {
@@ -246,7 +322,7 @@ func TestCommitKeywords_ABaseThatIsNotTheDefaultBranchIsAuditedToo(t *testing.T)
 	t.Parallel()
 
 	w := newWorld(t)
-	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main"}
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "integration/r7", DefaultBranch: "main", Issues: []int{12}}
 	w.set(t, map[string]any{"commits": []any{commitJSON(dev+"@x", dev, "Tidy", "Closes #99")}})
 	result := w.run(audited(12))
 
@@ -254,12 +330,15 @@ func TestCommitKeywords_ABaseThatIsNotTheDefaultBranchIsAuditedToo(t *testing.T)
 	assert.Contains(t, result.Lines, "  commit bbbbbbbbb closes #99")
 }
 
-func TestCommitKeywords_WithTheAuditOffNoMessageIsRead(t *testing.T) {
+func TestCommitKeywords_ARequestThatNamesNoIssueRefusesAKeywordInACommit(t *testing.T) {
 	t.Parallel()
 
-	result := worded(t, "Tidy", "Fixes #99").run(request())
+	w := worded(t, "Tidy", "Fixes #99")
+	w.closingRefs = &model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{}}
+	result := w.run(request())
 
-	assert.Equal(t, merge.Done, result.Stop)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, result.Lines, "  commit bbbbbbbbb closes #99")
 }
 
 func TestCommitKeywords_ACutReadOfTheCommitsRefusesAndNeverPasses(t *testing.T) {

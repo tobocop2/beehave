@@ -19,6 +19,8 @@ import (
 
 // lossyGate gives a void result with no host cause for its first `void` runs, loses the host job of the next `lose` runs, and passes every later run, on the head that it is given.
 type lossyGate struct {
+	cleanTree
+
 	head string
 	void int32
 	lose int32
@@ -30,7 +32,7 @@ func (*lossyGate) Key(context.Context, string, string, string, string, string) (
 	return GateKey{}, nil
 }
 
-func (g *lossyGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (g *lossyGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{ID: "job-" + strconv.Itoa(int(g.jobs.Add(1))), Head: g.head}, nil
 }
 
@@ -92,7 +94,7 @@ func lossyLoopWith(t *testing.T, void, lose int32, extra string) (loopValue, []s
 	rig.h.gate.via = &lossyGate{head: rig.head, void: void, lose: lose}
 	rig.h.gate.checks = cleanChecks()
 	rig.baseAt(t, "main")
-	rig.reply(`{"verdict":"approve"}`, exited)
+	rig.reply(`{"verdict":"approve","findings":"[]"}`, exited)
 
 	file := writeFlow(t, strings.Replace(loopFlow, "rounds = 2", "rounds = 2"+extra, 1))
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))

@@ -129,6 +129,15 @@ func OutputTries(n int) error {
 	return nil
 }
 
+// ContextPercent refuses a context limit that is not a whole number of percent from 0 to 100. 0 means no limit.
+func ContextPercent(n int) error {
+	if n < 0 || n > 100 {
+		return errors.New("max_context_percent must be a whole number from 0 (no limit) to 100")
+	}
+
+	return nil
+}
+
 // StopCodes reads the stop_on_rc list. Each code must be a whole number from 1 to 255.
 func StopCodes(v starlark.Value) ([]int, error) {
 	return ListOfEach(v, func(item starlark.Value) (int, error) {
@@ -164,7 +173,48 @@ func ProcessCap(v starlark.Value, host string) (int, error) {
 	return int(limit), nil
 }
 
-// OwnDraft reads the own_draft keyword of preflight: the number of a pull request, 1 or more, or zero for a call that leaves it out.
+// SandboxWith refuses the settings of a sandboxed command call that the sandbox cannot apply: a host job takes a command line only, and the sandbox gives
+// the program no stdin and no process cap. Each setting is its zero value for a call that leaves it out.
+func SandboxWith(host, stdin string, processes int) error {
+	switch {
+	case host != "":
+		return errors.New("sandbox cannot be used together with host. A host job takes a command line only. Remove sandbox or host")
+	case stdin != "":
+		return errors.New("sandbox cannot be used together with stdin. The sandbox gives the program no input. Remove sandbox or stdin")
+	case processes != 0:
+		return errors.New("sandbox cannot be used together with max_new_processes. The sandbox sets no process cap. Remove sandbox or max_new_processes")
+	}
+
+	return nil
+}
+
+// holdKeyword is the keyword and the status name `hold`.
+const holdKeyword = "hold"
+
+// ClaimKeywords are the keywords that claim_stop in the workflow library takes and that preflight refuses.
+func ClaimKeywords() []string { return []string{holdKeyword, "own", "own_draft"} }
+
+// PreflightClaimRefusal is the sentence for a preflight call that passes a claim keyword. It names the library function that takes the keyword.
+func PreflightClaimRefusal(keyword string) string {
+	stop := "The claim stops"
+	if keyword == "own_draft" {
+		stop = "The draft stop"
+	}
+
+	return fmt.Sprintf("preflight takes no argument %s. %s moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass %s to it.",
+		keyword, stop, keyword)
+}
+
+// BatchKeywords are the keywords that batch_merge in the workflow library takes and that merge refuses.
+func BatchKeywords() []string { return []string{"prs", "gate_run", integrationKeyword} }
+
+// MergeBatchRefusal is the sentence for a merge call that passes a keyword of the batch. It names the library function that takes the keyword.
+func MergeBatchRefusal(keyword string) string {
+	return fmt.Sprintf("merge takes no argument %s. The batch with its own gate moved to the library function batch_merge: load(\"@beehave//batch.star\", \"batch_merge\") and pass %s to it.",
+		keyword, keyword)
+}
+
+// OwnDraft reads the own_draft field of a member of prs: the number of a pull request, 1 or more, or zero for a member that leaves it out.
 func OwnDraft(v starlark.Value) (int, error) {
 	if v == nil {
 		return 0, nil

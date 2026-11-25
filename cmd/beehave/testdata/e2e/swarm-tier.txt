@@ -14,6 +14,10 @@ exec git --git-dir=remote.git show main:a.txt
 stdout 'swarm-3'
 ! stdout 'swarm-2'
 
+# Each agent call started in the sandbox with the forge domains of the example: the fake claude logs a call with no sandbox as open.
+grep '^sandboxed domains="github.com","api.github.com"$' sandbox.log
+! grep '^open' sandbox.log
+
 -- backlog.txt --
 P2	late	a.txt
 P0	first	a.txt

@@ -30,7 +30,7 @@ const syncRoundBase = "integration"
 // syncBranch is the sync branch that the fake tool names.
 const syncBranch = "sync/integration/abcd1234"
 
-// syncScript is the fake `remedy sync` of a round: each check call takes the next line, and the last line repeats. land is the line and the exit code of `remedy sync land`.
+// syncScript is the fake of the engine steps round_sync and round_land: each check call takes the next line, and the last line repeats. land is the line and the exit code of the landing.
 type syncScript struct {
 	lines  []string
 	land   CommandOutput
@@ -51,11 +51,14 @@ func (s *syncScript) syncedLine() string {
 
 // isSync reports whether the request is a call of the sync tool, and whether it is the landing.
 func isSync(request CommandRequest) (bool, bool) {
-	if len(request.Run) < 2 || request.Run[0] != "remedy" || request.Run[1] != "sync" {
+	switch request.Run[0] {
+	case syncProgram:
+		return true, false
+	case landProgram:
+		return true, true
+	default:
 		return false, false
 	}
-
-	return true, len(request.Run) > 2 && request.Run[2] == "land"
 }
 
 // syncGate is the gate of the round rig that records the base of each gate of the round itself and can make that gate red.
@@ -68,7 +71,7 @@ type syncGate struct {
 	red      bool
 }
 
-func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBase string) (GateJob, error) {
+func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error) {
 	if item == testItem {
 		g.mu.Lock()
 		g.bases = append(g.bases, base)
@@ -76,7 +79,7 @@ func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBas
 		g.mu.Unlock()
 	}
 
-	return g.gate.Submit(ctx, project, item, host, base, pinBase)
+	return g.gate.Submit(ctx, project, item, host, base, pinBase, baseSHA, slot)
 }
 
 // roundPinBases returns the pin base of each gate of the round itself, in order.
@@ -217,17 +220,9 @@ func at(names []string, prefix string) int {
 	return slices.IndexFunc(names, func(name string) bool { return strings.HasPrefix(name, prefix) })
 }
 
-// syncLands returns the landing calls of the sync tool, words joined by a space.
+// syncLands returns the landing calls of the round, words joined by a space.
 func syncLands(rig *roundRig) []string {
-	var lands []string
-
-	for _, line := range commandsNamed(rig, "remedy") {
-		if strings.HasPrefix(line, "remedy sync land") {
-			lands = append(lands, line)
-		}
-	}
-
-	return lands
+	return commandsNamed(rig, landProgram)
 }
 
 func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMergedHeadBeforeTheNextItemStarts(t *testing.T) {
@@ -241,15 +236,15 @@ func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMe
 	require.NoError(t, err)
 
 	names := stepNames(t, rig.last)
-	order := []string{"command:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "command:round-integration-sync-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
+	order := []string{"round_sync:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "round_land:sync-land-1#", "integration_pull:round-integration-sync-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
 
 	for i := 1; i < len(order); i++ {
 		require.GreaterOrEqual(t, at(names, order[i-1]), 0, "the step %s ran: %v", order[i-1], names)
 		assert.Less(t, at(names, order[i-1]), at(names, order[i]), "%s comes before %s", order[i-1], order[i])
 	}
 
-	assert.Equal(t, []string{"remedy sync --base integration --trunk main"}, commandsNamed(rig, "remedy sync --base")[:1], "the round base, then the trunk")
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_sync --base integration --trunk main"}, commandsNamed(rig, syncProgram)[:1], "the round base, then the trunk")
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 	require.NotEmpty(t, recorder.roundBases())
 	assert.Empty(t, recorder.roundBases()[0], "the gate of the sync head runs the gate command only, with no base")
 }
@@ -280,7 +275,7 @@ func TestRoundSync_ASyncedLineLandsWhateverTheOrderOfItsFieldsAndKeepsAnEqualSig
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"git fetch origin sync/a=b"}, commandsNamed(rig, "git fetch origin"))
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 }
 
 func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWithTheReason(t *testing.T) {
@@ -293,7 +288,7 @@ func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWi
 
 	engine := waitOverEngine(t, rig)
 
-	in, err := pinnedInput(testItem, testProject, rig.file)
+	in, err := pinnedInput(testItem, testProject, rig.file, modeOff())
 	require.NoError(t, err)
 
 	in.Entry = "round"
@@ -313,10 +308,10 @@ func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWi
 
 	joined := strings.Join(stepNames(t, engine), " ")
 	assert.Contains(t, joined, "agent:sync-resolve-1#", "one agent step resolves the conflict")
-	assert.Contains(t, joined, "command:sync-again-1#", "the round calls the tool again after the agent")
+	assert.Contains(t, joined, "round_sync:sync-again-1#", "the round checks the trunk again after the agent")
 	assert.Contains(t, joined, "wait:round-wait#")
 	assert.NotContains(t, joined, "agent:queue-audit-1#", "no item builds on the stale base")
-	assert.NotContains(t, joined, "queue:round-queue-1#")
+	assert.NotContains(t, joined, "item_list:round-queue-1-items#")
 	assert.NotContains(t, joined, "gate:")
 
 	resolve := slices.IndexFunc(rig.h.agents.requests, func(request AgentRequest) bool { return strings.Contains(request.Prompt, syncResolveMarker) })
@@ -359,7 +354,7 @@ func TestRoundSync_ARefusedSyncWaitsWithTheReasonAndAfterTheOwnerLandsItTheRound
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.NotContains(t, joined, "agent:queue-audit-1#", "the refused pass builds nothing")
-	assert.Contains(t, joined, "command:sync-2#", "the next pass checks the trunk again")
+	assert.Contains(t, joined, "round_sync:sync-2#", "the next pass checks the trunk again")
 	assert.Contains(t, joined, "agent:queue-audit-2#", "the trunk is current, so the round goes on")
 	assert.Empty(t, syncLands(rig))
 }
@@ -418,7 +413,7 @@ func TestRoundSync_ALandingOnAMovedBaseGoesOnAndTheNextPassSyncsAgain(t *testing
 
 			joined := strings.Join(stepNames(t, rig.last), " ")
 			assert.Contains(t, joined, "agent:queue-audit-1#", "the pass goes on")
-			assert.Contains(t, joined, "command:sync-land-2#", "the next pass syncs and lands again")
+			assert.Contains(t, joined, "round_land:sync-land-2#", "the next pass syncs and lands again")
 		})
 	}
 }
@@ -431,11 +426,8 @@ func TestRoundSync_ALineOrAnExitCodeTheRoundDoesNotKnowStopsTheRun(t *testing.T)
 		want   string
 	}{
 		"unknown_state":         {&syncScript{lines: []string{"state=odd"}}, "the state \"odd\", which the round does not know"},
-		"landing_with_no_state": {&syncScript{lines: []string{"synced"}, land: CommandOutput{RC: 2, Stdout: "REFUSE: the forge refused the merge\n"}}, "the landing of the sync pull request 7"},
-		"synced_with_no_head":   {&syncScript{lines: []string{"state=synced branch=" + syncBranch + " pr=7"}}, "the synced line of sync-1 has no head, base_tip"},
-		"conflict_no_source":    {&syncScript{lines: []string{"state=conflict branch=" + syncBranch}}, "the conflict line of sync-1 has no source"},
-		"check_exit_one_empty":  {&syncScript{lines: []string{""}, rc: 1}, "the check sync-1 ended with the exit code 1"},
-		"check_not_found":       {&syncScript{lines: []string{""}, rc: 127}, "the check sync-1 ended with the exit code 127"},
+		"synced_with_no_head":   {&syncScript{lines: []string{"state=synced branch=" + syncBranch + " pr=7"}}, "the synced result of sync-1 has no head, base_tip"},
+		"conflict_no_source":    {&syncScript{lines: []string{"state=conflict branch=" + syncBranch}}, "the conflict result of sync-1 has no source"},
 		"head_not_in_the_clone": {&syncScript{lines: []string{"state=synced branch=" + syncBranch + " pr=7 head=0123456789abcdef0123456789abcdef01234567 base_tip=abc"}}, "the step sync-checkout-1 could not put the folder"},
 	}
 
@@ -456,7 +448,137 @@ func TestRoundSync_ALineOrAnExitCodeTheRoundDoesNotKnowStopsTheRun(t *testing.T)
 	}
 }
 
-func TestRoundSync_AnExitTwoOfTheCheckStopsTheRoundWithTheLineOfTheTool(t *testing.T) {
+func TestRoundSync_AConflictWhoseBranchesTheRoundCannotFetchStopsTheRunBeforeTheAgent(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "")
+	withSync(t, rig, &syncScript{lines: []string{"state=conflict branch=" + syncBranch + " source=main base_tip=abc"}})
+
+	fetched := rig.h.commands.reply
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if strings.Join(request.Run, " ") == "git fetch origin "+syncBranch+" main" {
+			return CommandOutput{RC: 1, Stderr: "no remote"}, nil
+		}
+
+		return fetched(request)
+	}
+
+	_, _, err := runSync(t, rig, false)
+
+	require.ErrorContains(t, err, "the step sync-resolve-fetch-1 could not fetch "+syncBranch+" and main")
+	assert.NotContains(t, strings.Join(stepNames(t, rig.last), " "), "agent:sync-resolve-1#", "no agent starts on a folder without both branches")
+}
+
+// An open round that recorded the start of the resolve agent under the file before the fetch step existed replays after adoption of the file with no fetch
+// and no unexpected step. The old file is the current one with the patched call false, which is the step order of that file.
+func TestRoundSync_AnOpenRoundStoppedInTheResolveAgentOfTheOldFileReplaysWithNoFetch(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "")
+	withSync(t, rig, &syncScript{lines: []string{"state=conflict branch=" + syncBranch + " source=main base_tip=abc", "synced", "state=current"}})
+
+	current, err := os.ReadFile(rig.file)
+	require.NoError(t, err)
+
+	old := strings.Replace(string(current), "if patched(fetch) and command(", "if False and command(", 1)
+	require.NotEqual(t, string(current), old, "the example holds the patched fetch")
+	require.NoError(t, os.WriteFile(rig.file, []byte(old), 0o600)) //nolint:gosec // the example copy of this test
+
+	rig.h.agents.hangAt = 1 // the resolve agent is the first agent of the round, and it holds, so the round is open after it recorded the start of that agent
+
+	// The stop ends the first start of the resolve agent before it commits; only the start after the resume makes the merge commit.
+	resolved := rig.h.agents.result
+	starts := 0
+	rig.h.agents.result = func(request AgentRequest) agent.Result {
+		if strings.Contains(request.Prompt, syncResolveMarker) {
+			starts++
+			if starts == 1 {
+				return agent.Result{Outcome: agent.OutcomeExited}
+			}
+		}
+
+		return resolved(request)
+	}
+
+	deps := rig.deps()
+	deps.Gate = itemGate{treeGate: rig.gate, kids: rig.kids}
+
+	if rig.forge != nil {
+		deps.Merge = rig.forge
+	}
+
+	stopCtx, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopCtx, rig.h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	go func() { _, _ = first.RunFile(testItem, testProject, rig.file, modeOff()) }() //nolint:errcheck // the stop of the engine ends the run, and the test reads the store
+
+	waitOn(t, conditionOf(runOfEngine(t, first), func() bool { return len(rig.h.agents.seen()) >= 1 }))
+	stop()
+	require.NoError(t, first.Shutdown())
+	expireLease(rig.h)
+
+	require.NoError(t, os.WriteFile(rig.file, current, 0o600)) //nolint:gosec // the example copy of this test
+	rig.h.agents.hangAt = 0
+	require.NoError(t, rig.h.client(t, testVersion).ResumeOnThisFile(testItem))
+
+	engine := rig.engine(t)
+
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool {
+		last, found, readErr := latestRun(engine.store(), testItem)
+
+		return readErr == nil && found && (last.terminal() || slices.ContainsFunc(stepNamesOf(t, engine, testRun), func(name string) bool {
+			return strings.HasPrefix(name, "round_sync:sync-again-1#")
+		}))
+	}))
+
+	last, found, err := latestRun(engine.store(), testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	if last.Status.Error != nil {
+		assert.NotContains(t, last.Status.Error.Error(), "UnexpectedStep", "the replay of the recorded steps meets no other step")
+	}
+
+	names := strings.Join(stepNamesOf(t, engine, testRun), " ")
+	assert.NotContains(t, names, "command:sync-resolve-fetch-1#", "a run that recorded the old resolve runs no fetch")
+	assert.NotContains(t, names, "DBOS.patch-sync-resolve-fetch-1", "a run that passed the call records no marker")
+	assert.Contains(t, names, "round_sync:sync-again-1#", "the round went on past the resolve")
+}
+
+// A write of the sync that the forge refuses ends the item with the error of the forge as its lines. The run does not fail.
+func TestRoundSync_AWriteThatTheForgeRefusesEndsTheItemWithTheError(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		script *syncScript
+		want   string
+	}{
+		"landing_with_no_state": {&syncScript{lines: []string{"synced"}, land: CommandOutput{RC: 2, Stdout: "REFUSE: the forge refused the merge\n"}}, "REFUSE: the forge refused the merge"},
+		"check_exit_one_empty":  {&syncScript{lines: []string{""}, rc: 1}, "the sync ended with the exit code 1"},
+		"check_not_found":       {&syncScript{lines: []string{""}, rc: 127}, "the sync ended with the exit code 127"},
+	}
+
+	for name, c := range cases {
+		script, want := c.script, c.want
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRoundRig(t, "")
+			withSync(t, rig, script)
+
+			result, _, err := runSync(t, rig, false)
+
+			require.NoError(t, err)
+			require.NotNil(t, result.Stopped)
+			assert.Contains(t, result.Stopped.Output, want)
+			assert.Empty(t, rig.questions, "the item ends before any wait")
+		})
+	}
+}
+
+func TestRoundSync_AForgeFailureOfTheCheckEndsTheItemWithTheLineOfTheTool(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t, "")
@@ -473,13 +595,12 @@ func TestRoundSync_AnExitTwoOfTheCheckStopsTheRoundWithTheLineOfTheTool(t *testi
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Stopped)
-	assert.Equal(t, 2, result.Stopped.RC)
 	assert.Contains(t, result.Stopped.Output, "502")
 }
 
 // itemTerminal reports whether the latest run of the item has ended, or cannot be read.
 func itemTerminal(engine *Engine, item string) bool {
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 
 	return err != nil || (found && last.terminal())
 }
@@ -536,7 +657,7 @@ func TestRoundSync_AConflictThatTheAgentResolvesIsGatedReviewedAndLandedInTheSam
 	require.NoError(t, err)
 
 	names := stepNames(t, rig.last)
-	order := []string{"command:sync-1#", "agent:sync-resolve-1#", "push:push-sync-1#", "command:sync-again-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "agent:queue-audit-1#"}
+	order := []string{"round_sync:sync-1#", "command:sync-resolve-fetch-1#", "agent:sync-resolve-1#", "push:push-sync-1#", "round_sync:sync-again-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "round_land:sync-land-1#", "agent:queue-audit-1#"}
 
 	for i := 1; i < len(order); i++ {
 		require.GreaterOrEqual(t, at(names, order[i]), 0, "the step %s ran: %v", order[i], names)
@@ -547,7 +668,7 @@ func TestRoundSync_AConflictThatTheAgentResolvesIsGatedReviewedAndLandedInTheSam
 	assert.Contains(t, rig.h.forge.pushed[0], "|"+syncBranch+"|", "the push goes to the sync branch that the line names")
 	assert.True(t, strings.HasSuffix(rig.h.forge.pushed[0], "|"), "the first push of the sync branch leases the head that the clone saw")
 
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 	assert.Equal(t, []string{""}, recorder.roundBases())
 	require.Len(t, rig.questions, 1)
 	assert.NotContains(t, rig.questions[0], "sync-")
@@ -620,10 +741,10 @@ func TestRoundSync_AHeldRoundGathersItsOpenRunAndCallsNoSyncInALaterPass(t *test
 	require.NoError(t, err)
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
-	assert.Contains(t, joined, "command:sync-2#", "the second pass checks the trunk and is held")
+	assert.Contains(t, joined, "round_sync:sync-2#", "the second pass checks the trunk and is held")
 	assert.NotContains(t, joined, "agent:queue-audit-2#", "the held pass starts no item")
 	assert.Contains(t, joined, "first_of:round-gather-2#", "the held pass still waits for the open run")
-	assert.NotContains(t, joined, "command:sync-3#", "a later pass of a held round calls no sync")
+	assert.NotContains(t, joined, "round_sync:sync-3#", "a later pass of a held round calls no sync")
 	assert.ElementsMatch(t, []string{"1", "2"}, rig.kids.started())
 	require.Len(t, rig.questions, 1)
 	assert.Contains(t, rig.questions[0], "sync-refused", "the round waits with the reason once no run is open")

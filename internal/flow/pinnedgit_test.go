@@ -29,7 +29,7 @@ func TestAgentStep_EngineReadsStartNoProgramInTheItemTree(t *testing.T) {
 		return exited
 	}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, agentFlow(`allow_paths = ["papers/**"], `), "x"))
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, agentFlow(`allow_paths = ["papers/**"], `), "x"), modeOff())
 
 	require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow")
 	assert.NoFileExists(t, ran, "a read of the engine in the item tree ran the program that the tree config names")

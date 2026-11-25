@@ -14,34 +14,56 @@ import (
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.
 const (
 	commandName = "command"
+	envName     = "env"
 	factsName   = "facts"
 	gateName    = "gate"
 
 	earlierCallsName = "earlier_calls"
+	earlierReadsName = "earlier_reads"
+	patchedName      = "patched"
 	writeName        = "write"
 
-	hostTeardownName = "host_teardown"
-	hostUpName       = "host_up"
-	reasonField      = "reason"
-	stateField       = "state"
-	waitName         = "wait"
-	sleepName        = "sleep"
-	mergeName        = "merge"
-	preflightName    = "preflight"
-	queueName        = "queue"
-	itemCommentName  = "item_comment"
-	itemCreateName   = "item_create"
-	itemReadName     = "item_read"
-	itemStatusName   = "item_status"
-	prCommentName    = "pr_comment"
-	prOpenName       = "pr_open"
-	prStateName      = "pr_state"
-	pushName         = "push"
-	prHistoryName    = "pr_history"
-	revertField      = "revert"
-	numberField      = "number"
-	statusField      = "status"
-	attemptsField    = "attempts"
+	hostTeardownName     = "host_teardown"
+	hostUpName           = "host_up"
+	reasonField          = "reason"
+	stateField           = "state"
+	headField            = "head"
+	waitName             = "wait"
+	sleepName            = "sleep"
+	mergeName            = "merge"
+	handOffName          = "hand_off"
+	preflightName        = "preflight"
+	itemListName         = "item_list"
+	prListName           = "pr_list"
+	runReadName          = "run_read"
+	itemCommentName      = "item_comment"
+	itemCreateName       = "item_create"
+	itemReadName         = "item_read"
+	itemStatusName       = "item_status"
+	baseTipName          = "base_tip"
+	landingProofName     = "landing_proof"
+	issueStateName       = "issue_state"
+	prClosingName        = "pr_closing"
+	prCommentName        = "pr_comment"
+	prOpenName           = "pr_open"
+	prStateName          = "pr_state"
+	pushName             = "push"
+	prHistoryName        = "pr_history"
+	prReadName           = "pr_read"
+	issueAssigneesName   = "issue_assignees"
+	itemStopName         = "item_stop"
+	prTakeName           = "pr_take"
+	boardCardName        = "board_card"
+	roundSyncName        = "round_sync"
+	roundLandName        = "round_land"
+	roundCutName         = "round_cut"
+	roundIntegrationName = "integration_pull"
+	revertField          = "revert"
+	numberField          = "number"
+	statusField          = "status"
+	attemptsField        = "attempts"
+	foundField           = "found"
+	errorField           = "error"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -52,33 +74,51 @@ const (
 func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills", "commit_subject", "commit_body"},
-		mergeName:        {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"},
-		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
+		commandName:      {"stdout", "stderr", "rc", attemptsField, errorField},
 		earlierCallsName: {"count"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
 		preflightName:    {"ok", "stop", "code", reasonField},
-		queueName:        {"rows", "free", "pulls"},
+		itemListName:     {ItemsKeyword},
+		prListName:       {"pulls"},
+		runReadName:      {runsResult, "free"},
 		sleepName:        {"slept"},
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
-	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields()} {
+	for _, group := range []map[string][]string{swarmResultFields(), earlierResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields(), roundResultFields()} {
 		maps.Copy(fields, group)
 	}
 
 	return fields
 }
 
+// runsResult is the result field that lists runs.
+const runsResult = "runs"
+
 // swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
 func swarmResultFields() map[string][]string {
-	return map[string][]string{spawnName: {"runs"}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
+	return map[string][]string{
+		spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"},
+		mergeName: mergeFields(), handOffName: handOffFields(),
+	}
+}
+
+// mergeFields are the fields of the result of merge: the members that landed, were refused or were deferred, the members after a refusal,
+// whether the fold was not the gated union and why, and the base tip after the call.
+func mergeFields() []string {
+	return []string{"merged", "rejected", "deferred", "rest", "moved", reasonField, "tip"}
+}
+
+// earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
+func earlierResultFields() map[string][]string {
+	return map[string][]string{earlierReadsName: {"reads"}}
 }
 
 // gateResultFields holds the fields of the gate builtin.
 func gateResultFields() map[string][]string {
 	return map[string][]string{
-		gateName: {"passed", "head", treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses"},
+		gateName: {"passed", headField, treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses", "step"},
 	}
 }
 
@@ -90,15 +130,37 @@ func factsResultFields() map[string][]string {
 // trackerResultFields holds the fields of the builtins that write the tracker, the pull request or its branch, and of pr_state and pr_history, which read pull requests.
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
-		itemCommentName: {"id"},
-		itemCreateName:  {"id", "created"},
-		itemReadName:    {"found", "id", "fields", "comments", "parent"},
-		itemStatusName:  {"id", statusField},
-		prCommentName:   {numberField},
-		prOpenName:      {numberField, "created", "stack"},
-		prStateName:     {stateField},
-		pushName:        {"head"},
-		prHistoryName:   {"pulls"},
+		baseTipName:        {"commit", treeKeyword},
+		landingProofName:   {"unproven"},
+		issueStateName:     {stateField, foundField, errorField},
+		itemCommentName:    {"id"},
+		itemCreateName:     {"id", "created"},
+		itemReadName:       {foundField, "id", "fields", "comments", "parent"},
+		itemStatusName:     {"id", statusField},
+		prClosingName:      {foundField, "issues", "forge", errorField},
+		prCommentName:      {numberField},
+		prOpenName:         {numberField, "created", "stack"},
+		prStateName:        {stateField},
+		pushName:           {headField},
+		prHistoryName:      {"pulls"},
+		prReadName:         {foundField, numberField, stateField, "draft", "labels", "author", "assignees", "reviewers", "links", "unread"},
+		itemStopName:       {"recorded"},
+		issueAssigneesName: {"assignees"},
+	}
+}
+
+// roundResultFields holds the fields of the builtins that write the forge for a round: the sync of the trunk, the landing of a sync, the cut of the next round,
+// the integration pull request, a project card and the take of a pull request.
+func roundResultFields() map[string][]string {
+	sync := []string{stateField, "branch", "source", numberField, headField, "base_tip", reasonField}
+
+	return map[string][]string{
+		roundSyncName:        sync,
+		roundLandName:        sync,
+		roundCutName:         {"lines"},
+		roundIntegrationName: {numberField, stateField},
+		boardCardName:        {statusField},
+		prTakeName:           {"code", "lines"},
 	}
 }
 
@@ -385,4 +447,9 @@ func texts(items []syntax.Expr) ([]string, bool) {
 	}
 
 	return names, true
+}
+
+// handOffFields are the fields of the result of a list of pull requests: the result of hand_off and of merge with `prs`. A merge with `member` returns merged as a bool, with status, reason, tree and commit.
+func handOffFields() []string {
+	return []string{"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"}
 }

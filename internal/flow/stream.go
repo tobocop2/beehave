@@ -110,7 +110,7 @@ func streamLimits(after, timeout string) (workflow.StreamCursor, time.Duration, 
 
 // streamWait reads the entries after the cursor until some exist, the child has ended, or the deadline passes. At the deadline it returns no entry and the cursor it got.
 func (e *Engine) streamWait(ctx context.Context, run string, from workflow.StreamCursor, until time.Time) (streamRead, error) {
-	client := dbos.WithoutCancel(e.ctx)
+	client := viewOf(dbos.WithoutCancel(e.ctx), e.dir)
 
 	for {
 		got, err := streamAfter(client, run, from)
@@ -127,7 +127,7 @@ func (e *Engine) streamWait(ctx context.Context, run string, from workflow.Strea
 // streamAfter reads one page of the entries of the agent streams of a run after the cursor, with the one reader that status --follow uses.
 // The state of the run is read before its phases, so a run that ended before the read has no entry that this call misses. A cursor in a phase that the run does not have
 // starts the run at its first entry, as for a run that gather started again after a failure.
-func streamAfter(c dbos.Client, run string, from workflow.StreamCursor) (streamRead, error) {
+func streamAfter(c storeView, run string, from workflow.StreamCursor) (streamRead, error) {
 	over, phases, err := lookAt(c, run)
 	if err != nil {
 		return streamRead{}, err
@@ -147,7 +147,7 @@ func streamAfter(c dbos.Client, run string, from workflow.StreamCursor) (streamR
 }
 
 // fillPage adds to the page the entries of the phases that follow the cursor, until the page is full. It reports whether an entry is left that the page does not hold.
-func fillPage(c dbos.Client, page *streamRead, phases []string, from workflow.StreamCursor) (bool, error) {
+func fillPage(c storeView, page *streamRead, phases []string, from workflow.StreamCursor) (bool, error) {
 	size := 0
 
 	for _, phase := range phases {

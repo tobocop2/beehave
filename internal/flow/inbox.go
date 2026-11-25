@@ -122,10 +122,19 @@ func (s *script) receive(topic, label string, wait time.Duration) (envelope, boo
 
 	got, timedOut := envelope{}, false
 	if err == nil {
-		got, timedOut, err = s.await(topic, window.Until)
+		got, timedOut, err = s.arrive(topic, label, window.Until)
 	}
 
 	return got, timedOut, err
+}
+
+// arrive takes the next message of the topic. A build with Waits asks it for the message of the call and waits for none.
+func (s *script) arrive(topic, label string, deadline time.Time) (envelope, bool, error) {
+	if s.e.deps.Waits != nil {
+		return s.e.deps.Waits.Recv(label)
+	}
+
+	return s.await(topic, deadline)
 }
 
 // held takes the oldest message of the topic from the buffer of the run, and reports whether there was one.
@@ -293,7 +302,7 @@ func (e *noOpenRunError) Error() string {
 
 // openRunInProject finds the open run of an item and refuses a run of another project. A dry run has no other item, so it ends clean where the run is absent.
 func (e *Engine) openRunInProject(item, project string) (sendTarget, error) {
-	open, err := openRunOf(e.ctx, e.version, item)
+	open, err := openRunOf(e.store(), e.version, item)
 
 	var none *noOpenRunError
 	if project == dryProject && errors.As(err, &none) {
@@ -372,7 +381,7 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 		return "", err
 	}
 
-	last, err := openRunOf(c.flow, c.version, item)
+	last, err := openRunOf(c.store(), c.version, item)
 	if err != nil {
 		return "", err
 	}
@@ -384,7 +393,7 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 }
 
 // openRunOf returns the open run of an item that a build of this version can finish. beehave send and the to keyword of send share it.
-func openRunOf(client dbos.Client, version, item string) (run, error) {
+func openRunOf(client storeView, version, item string) (run, error) {
 	last, err := latestOf(client, version, item)
 	if errors.Is(err, errNoRun) || err == nil && last.terminal() {
 		return run{}, &noOpenRunError{item: item}

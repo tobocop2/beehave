@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/config"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
@@ -51,6 +52,9 @@ const (
 )
 
 var errFake = errors.New("fake failure")
+
+// modeOff is the run option of a test run that does not care about the sandbox: the mode of a project with the key unset.
+func modeOff() RunOption { return RunSandbox(model.SandboxOff) }
 
 // fakeAgents records each request and counts the agents in flight, in all and for each login.
 type fakeAgents struct {
@@ -226,6 +230,10 @@ type fakeGate struct {
 	// pinBases and keyPinBases are the pin bases that Submit and Key were given, in order.
 	pinBases    []string
 	keyPinBases []string
+	// baseSHAs are the base commits that Submit was given, in order.
+	baseSHAs []string
+	// slots are the host limits that Submit was given, in order.
+	slots []model.Slot
 	// checks is the check record that Run gives a passed result with none, or nil for no record.
 	checks *GateChecks
 }
@@ -236,6 +244,22 @@ func (g *fakeGate) gatedOn() []string {
 	defer g.mu.Unlock()
 
 	return slices.Clone(g.hosts)
+}
+
+// cleanTree is the worktree reader of a fake gate: a clean worktree with no head and no tree, which never changes.
+type cleanTree struct{}
+
+func (cleanTree) State(context.Context, string, string) (string, gatepkg.State, error) {
+	return "", gatepkg.State{Clean: true}, nil
+}
+
+// State reads the worktree through via when it is set, and else reads a clean worktree.
+func (g *fakeGate) State(ctx context.Context, project, item string) (string, gatepkg.State, error) {
+	if g.via != nil {
+		return g.via.State(ctx, project, item)
+	}
+
+	return cleanTree{}.State(ctx, project, item)
 }
 
 // Key answers from keys in order, the last repeating. With no keys it gives an empty key, so no gate reuses a pass.
@@ -284,8 +308,10 @@ func (slowGate) Key(context.Context, string, string, string, string, string) (Ga
 }
 
 // Submit counts the host jobs that it started and gives each one an id.
-func (g *fakeGate) Submit(_ context.Context, _, _, host, base, pinBase string) (GateJob, error) {
+func (g *fakeGate) Submit(_ context.Context, _, _, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error) {
 	g.mu.Lock()
+	g.slots = append(g.slots, slot)
+	g.baseSHAs = append(g.baseSHAs, baseSHA)
 	g.hosts = append(g.hosts, host)
 	g.bases = append(g.bases, base)
 	g.pinBases = append(g.pinBases, pinBase)
@@ -356,7 +382,11 @@ type fakeLogins struct {
 	reset    time.Time
 	resetErr error
 	asked    *[]string
+	// room is what the usage read says about the headroom of every login.
+	room bool
 }
+
+func (l fakeLogins) Headroom(context.Context) bool { return l.room }
 
 func (l fakeLogins) Reset(_ context.Context, _, login string) (time.Time, bool, error) {
 	if l.asked != nil {
@@ -380,6 +410,9 @@ type noReset struct{}
 func (noReset) Reset(context.Context, string, string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
+
+// Headroom is false: a fake pool that embeds noReset reads no room for another agent.
+func (noReset) Headroom(context.Context) bool { return false }
 
 // loginPick is one answer of loginSequence.
 type loginPick struct {
@@ -425,6 +458,8 @@ type fakeLifecycle struct {
 	failErr error
 	// onClaim, when set, runs at the start of each Claim: a test uses it to move the clock during the take.
 	onClaim func()
+	// onRelease, when set, runs at the start of each Release: a test uses it to act at the end of a cancel.
+	onRelease func()
 	// hang makes Release wait for its context to end, and expired counts the releases that the context ended.
 	hang    bool
 	expired int
@@ -493,6 +528,10 @@ func (l *fakeLifecycle) Claim(_ context.Context, project, item string) (string, 
 }
 
 func (l *fakeLifecycle) Release(ctx context.Context, project, item, owner string) error {
+	if l.onRelease != nil {
+		l.onRelease()
+	}
+
 	l.mu.Lock()
 	l.released = append(l.released, owner)
 	l.mu.Unlock()
@@ -533,6 +572,8 @@ type fakeBeats struct {
 	err     error
 	onBeat  func()
 	renewed time.Time
+	// onRenewed runs in each read of the last renewal.
+	onRenewed func()
 
 	renewedErr error
 }
@@ -558,9 +599,25 @@ func (b *fakeBeats) Beat(_ context.Context, project, owner string) (string, erro
 // Renewed answers with the time that setRenewed set, or the time of the last Beat when one came after: the last renewal of the claim lease of any item.
 func (b *fakeBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
 	b.mu.Lock()
+	hook := b.onRenewed
+	b.mu.Unlock()
+
+	if hook != nil {
+		hook()
+	}
+
+	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	return b.renewed, b.renewedErr
+}
+
+// hookRenewed sets the function that runs in each read of the last renewal, before it answers: a test uses it to change the run after a move has read it.
+func (b *fakeBeats) hookRenewed(f func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.onRenewed = f
 }
 
 // failRenewed makes every later read of the last renewal fail with err.
@@ -619,19 +676,20 @@ type harness struct {
 	merge     *fakeMerge
 	batch     batchHost   // nil unless a test sets it
 	preflight preflighter // nil unless a test sets it
+	rounds    rounds      // replaces the round writer that answers through the fake commands when set
 	forge     *fakeForge
-	trees     *fakeTrees
-	beats     *fakeBeats
-	commands  *fakeCommands
-	items     *fakeItems
-	writer    writer      // nil unless a test sets it
-	reader    reader      // nil unless a test sets it
-	hosts     hostKeeper  // nil unless a test sets it
-	queue     queueReader // nil unless a test sets it
-	poll      pollReader  // nil unless a test sets it
-	others    *fakeOthers // nil unless a test sets it
-	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
-	sandboxDefault func(project string) bool
+	// noForge leaves Deps.Forge nil, as a build with no forge reader has it.
+	noForge  bool
+	trees    *fakeTrees
+	beats    *fakeBeats
+	commands *fakeCommands
+	items    *fakeItems
+	writer   writer      // nil unless a test sets it
+	reader   reader      // nil unless a test sets it
+	hosts    hostKeeper  // nil unless a test sets it
+	queue    queueReader // nil unless a test sets it
+	poll     pollReader  // nil unless a test sets it
+	others   *fakeOthers // nil unless a test sets it
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
 	repository func(project string) bool
 	// facts is the project of a run as the config holds it. It is nil, and so every project has no facts, unless a test sets it.
@@ -649,6 +707,8 @@ type harness struct {
 	// slots resolves the slot class of a command call. It is nil, and so the build has no slot classes, unless a test sets it.
 	slots func(project, cluster, class string) (SlotGrant, error)
 	ticks chan time.Time
+	// adapt feeds the controller of an adaptive agents queue: each value sent runs one step at that time. It is nil unless a test makes it, and the controller then waits for its real tick.
+	adapt chan time.Time
 	sleep time.Duration
 	// draft is the limit of each draft of a hand-off that ends. A test sets it to shorten the limit.
 	draft time.Duration
@@ -661,6 +721,8 @@ type harness struct {
 	overload time.Duration
 	// lostPoll is the sleep between two looks for the proof of a lost gate job. It is a millisecond unless a test sets it.
 	lostPoll time.Duration
+	// jobStop is the longest wait for the end of an earlier run of a held build job. It is the real limit unless a test sets it.
+	jobStop time.Duration
 	// window is the longest that one turn of first_of waits. It is the default of the engine unless a test sets it.
 	window time.Duration
 	opts   Options
@@ -684,7 +746,7 @@ func (h *harness) flowIs(t *testing.T, text string) {
 
 // Run walks the default workflow file of the harness. It is a helper of the tests: the production engine runs only a file named by the caller.
 func (e *Engine) Run(item, project string) (ItemResult, error) {
-	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName))
+	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName), modeOff())
 }
 
 func newHarness(t *testing.T) *harness {
@@ -725,10 +787,18 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer, Reader: h.reader,
+		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats, Commands: h.commands, Rounds: fakeRounds{commands: h.commands}, Items: h.items, Writer: h.writer, Reader: h.reader,
 		Kept:  []error{errFake},
-		Clock: clock{Tick: h.ticks, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond), Window: h.window},
+		Clock: clock{Tick: h.ticks, Adapt: h.adapt, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond), JobStop: h.jobStop, Window: h.window},
 	}
+	if h.rounds != nil {
+		deps.Rounds = h.rounds
+	}
+
+	if h.noForge {
+		deps.Forge = nil
+	}
+
 	if h.merge != nil {
 		deps.Merge = h.merge
 	}
@@ -746,7 +816,6 @@ func (h *harness) deps() Deps {
 		deps.Others = h.others
 	}
 
-	deps.SandboxDefault = h.sandboxDefault
 	deps.Repository = h.repository
 	deps.Facts = h.factsWithMutation()
 	deps.RefuseGate = h.refuseGate
@@ -880,6 +949,10 @@ type runRef struct {
 	ctx  context.Context
 	flow dbos.Client
 	id   string
+	// version is the build of the watcher. An open run of another build waits for a move to this build, not for a message.
+	version string
+	// dir is the state folder, which holds probe.lock.
+	dir string
 	// database is the file of the workflow store, which holds the messages that were sent to the run.
 	database string
 }
@@ -888,14 +961,14 @@ type runRef struct {
 func runOfEngine(t *testing.T, engine *Engine) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, database: filepath.Join(engine.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, version: engine.version, dir: engine.dir, database: filepath.Join(engine.dir, databaseFile)}
 }
 
 // runOfClient is the test run as a client reads it.
 func runOfClient(t *testing.T, client *Client) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, database: filepath.Join(client.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, version: client.version, dir: client.dir, database: filepath.Join(client.dir, databaseFile)}
 }
 
 // messagePending says whether a message on the inbox topic of the run waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
@@ -914,8 +987,29 @@ func (r *runRef) messagePending() (bool, error) {
 	return pending, err
 }
 
-// stalled says why the run can no longer bring the awaited fact, or returns "". The run has ended, or it parks in a receive or a sleep that wakes after the bound of the wait.
+// stalled says why the run can no longer bring the awaited fact, or returns "". The run has ended, or it parks in a receive or a sleep that wakes after the bound of the wait. It reads under probe.lock and returns "" while another holder has it: a move holds it from its cancel to its rewind.
 func (r *runRef) stalled(bound time.Time) string {
+	probe := lockFile(r.dir, probeLockName)
+
+	taken, err := probe.TryLock()
+	if err != nil {
+		return fmt.Sprintf("the probe lock of the run %s cannot be taken: %v", r.id, err)
+	}
+
+	if !taken {
+		return ""
+	}
+
+	why := r.stalledHeld(bound)
+	if err := probe.Unlock(); err != nil {
+		return fmt.Sprintf("the probe lock of the run %s cannot be freed: %v", r.id, err)
+	}
+
+	return why
+}
+
+// stalledHeld is stalled while the caller holds probe.lock. An open run of another build is not parked: it takes no message until a move puts it on this build.
+func (r *runRef) stalledHeld(bound time.Time) string {
 	rows, err := dbos.ListWorkflows(r.flow, dbos.WithFilterWorkflowIDs(r.id))
 	if err != nil {
 		return fmt.Sprintf("the status of the run %s cannot be read: %v", r.id, err)
@@ -927,6 +1021,10 @@ func (r *runRef) stalled(bound time.Time) string {
 
 	if slices.Contains(endedStatuses, rows[0].Status) {
 		return fmt.Sprintf("the run %s ended with status %s", r.id, rows[0].Status)
+	}
+
+	if rows[0].ApplicationVersion != r.version {
+		return ""
 	}
 
 	return r.parked(bound)
@@ -1253,6 +1351,11 @@ type fakeForge struct {
 	// closing is the closing issues that each read of ClosingIssues gives, in order; the last repeats. closingReads counts the reads.
 	closing      [][]int
 	closingReads int
+	// closingFar adds, to each read of closing, the issues of other repositories (full references) at the same position; the last repeats. A read past the end of closingFar adds none.
+	closingFar [][]model.IssueRef
+	// closingOf, for an item that is in it, gives the closing issues of the item at each read of that item, in order; the last repeats. It wins over closing.
+	closingOf    map[string][][]int
+	closingItems map[string]int
 	closingErr   error // fails every read after the first closingOK reads
 	closingOK    int
 	noPullAfter  int
@@ -1268,6 +1371,7 @@ type fakeForge struct {
 	pushErr error
 	// history is what History answers; historyErr fails it. historyAsked holds each History call as project|item.
 	history      []model.PriorPull
+	historyOf    map[string][]model.PriorPull // the answer for an item that it names. Any other item gets history.
 	historyErr   error
 	historyAsked []string
 }
@@ -1289,6 +1393,10 @@ func (f *fakeForge) History(_ context.Context, project, item string) ([]model.Pr
 
 	f.historyAsked = append(f.historyAsked, project+"|"+item)
 
+	if pulls, named := f.historyOf[item]; named {
+		return pulls, f.historyErr
+	}
+
 	return f.history, f.historyErr
 }
 
@@ -1308,7 +1416,7 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
+	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, req.Base, req.Parent}, "|"))
 
 	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
 
@@ -1345,11 +1453,21 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 }
 
 // ClosingIssues answers with the next of closing and then repeats the last. A set of nil is the empty set. noPull makes it report no pull request. closingErr fails every read.
-func (f *fakeForge) ClosingIssues(_ context.Context, _, _ string) ([]int, bool, error) {
+func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]model.IssueRef, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.closingReads++
+
+	if own, has := f.closingOf[item]; has {
+		if f.closingItems == nil {
+			f.closingItems = map[string]int{}
+		}
+
+		f.closingItems[item]++
+
+		return ownRefs(own[min(f.closingItems[item], len(own))-1]), true, nil
+	}
 
 	if f.closingErr != nil && f.closingReads > f.closingOK {
 		return nil, false, f.closingErr
@@ -1361,7 +1479,22 @@ func (f *fakeForge) ClosingIssues(_ context.Context, _, _ string) ([]int, bool, 
 		return nil, !gone, nil
 	}
 
-	return f.closing[min(f.closingReads, len(f.closing))-1], true, nil
+	read := ownRefs(f.closing[min(f.closingReads, len(f.closing))-1])
+	if len(f.closingFar) > 0 {
+		read = append(read, f.closingFar[min(f.closingReads, len(f.closingFar))-1]...)
+	}
+
+	return read, true, nil
+}
+
+// ownRefs turns numbers into references of the own repository. A nil list stays nil.
+func ownRefs(numbers []int) []model.IssueRef {
+	var refs []model.IssueRef
+	for _, number := range numbers {
+		refs = append(refs, model.OwnIssue(number))
+	}
+
+	return refs
 }
 
 // fakeTrees answers every lookup with dir, or fails with err. A fakeTrees with late set has no folder until Ensure makes it.

@@ -80,10 +80,27 @@ func TestMatchBuiltins_RecordNoStep(t *testing.T) {
 
 	h := newHarness(t)
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("paths_outside(allow = [\"a\"], paths = [\"b\"])\nclosing_references(text = \"fixes #1\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("paths_outside(allow = [\"a\"], paths = [\"b\"])\nclosing_references(text = \"fixes #1\")\nkeep_issues(text = \"keep #1\")\n")), modeOff())
 
 	require.NoError(t, err)
 	assert.False(t, slices.ContainsFunc(stepNames(t, engine), func(name string) bool {
-		return strings.HasPrefix(name, "paths_outside") || strings.HasPrefix(name, "closing_references")
+		return strings.HasPrefix(name, "paths_outside") || strings.HasPrefix(name, "closing_references") || strings.HasPrefix(name, keepIssuesKey)
 	}), "a matcher judges text and a replay computes the same answer")
+}
+
+func TestMatchBuiltins_KeepIssuesGivesTheIssuesOfAnOwnerLineInTheFormThatTheMergeReads(t *testing.T) {
+	t.Parallel()
+
+	shown, err := matched(t, `command(run = ["show", ",".join(keep_issues(text = "Keep #13, Other-Org/Repo#5")) + ";" + ",".join(keep_issues(text = "keep 13"))])`)
+
+	require.NoError(t, err)
+	assert.Equal(t, "#13,other-org/repo#5;", shown, "an owner line keeps its issues, and a text in another form keeps none")
+
+	_, err = matched(t, `keep_issues()`)
+
+	require.ErrorContains(t, err, "keep_issues needs the `text` keyword")
+
+	_, err = matched(t, `keep_issues(**{})`)
+
+	require.ErrorContains(t, err, "keep_issues: missing argument for text")
 }

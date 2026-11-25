@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -34,7 +35,25 @@ type ItemInput struct {
 	Parent string `json:"parent,omitempty"`
 	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. A run that a user started takes the base of the last run of the same item. It is empty when the item has no earlier run, and the item is cut at the base branch of the project.
 	Base string `json:"base,omitempty"`
+	// Sandbox is the sandbox mode the run started with, on or off. The start of a run refuses an empty mode, so only a run recorded before the field existed has none, and it runs with the mode off.
+	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
+	// OnOpen is what this start does with an open run of the item. It is an instruction of the start, not state of the run, so the store never holds it: a resume and a replay read it empty.
+	OnOpen workflow.OnOpen `json:"-"`
+	// Debounce is the window that holds this start back. A later start of the item in the window takes the place of this one. It is an instruction of the start, so the store never holds it. Zero starts at once.
+	Debounce time.Duration `json:"-"`
 }
+
+// RunOption is a choice for a run that a caller makes when it starts the run.
+type RunOption func(*ItemInput)
+
+// RunOnOpen sets what the start does with an open run of its item: join it, or replace it. An empty policy joins.
+func RunOnOpen(policy workflow.OnOpen) RunOption { return func(in *ItemInput) { in.OnOpen = policy } }
+
+// RunDebounce holds the start back for the window, and lets a later start of the item in the window take its place. Zero starts at once.
+func RunDebounce(window time.Duration) RunOption { return func(in *ItemInput) { in.Debounce = window } }
+
+// RunSandbox records the sandbox mode of the run in its input. The caller resolves the mode from its own config, never from the engine that serves the run.
+func RunSandbox(mode model.SandboxMode) RunOption { return func(in *ItemInput) { in.Sandbox = mode } }
 
 // ItemResult is what a finished item workflow reports.
 // SentBack holds the reason when the watch returned the pull request to draft. The run is finished, and the next run of the item starts a new attempt.
@@ -75,17 +94,29 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 
 		result, workErr := e.workHolding(ctx, a, login, claimTake{owner: owner, took: took})
 
-		// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
-		// A run that lost its claim has nothing to release.
-		if ctx.Err() != nil {
-			return result, workErr
-		}
-
-		released := e.finish(ctx, a)
-		e.tellParent(ctx, in)
-
-		return result, errors.Join(workErr, released)
+		return result, e.endItem(ctx, a, in, workErr)
 	})
+}
+
+// endItem releases the item of a run whose work ended with workErr, and returns the error of the run.
+// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
+// A run that lost its claim has nothing to release.
+// A replay over a changed file records no step: a step recorded at a later id would stand in the way of the replay that follows the author's fix.
+// The claim and the worktree go back as a cancel gives them back, with no step, and the parent reads the end of the run at its next look.
+func (e *Engine) endItem(ctx dbos.Context, a *attempt, in ItemInput, workErr error) error {
+	switch {
+	case ctx.Err() != nil:
+		return workErr
+	case replayMismatch(workErr):
+		e.giveBack(ctx, a)
+
+		return workErr
+	}
+
+	released := e.finish(ctx, a)
+	e.tellParent(ctx, in)
+
+	return errors.Join(workErr, released)
 }
 
 // tellParent sends the end notice of a run that spawn started to the run that spawned it, after the file and the release ended, as a recorded send.
@@ -112,7 +143,7 @@ func (e *Engine) workHolding(ctx dbos.Context, a *attempt, login string, taken c
 	forget := e.holds.hold(a, a.in.Project, taken.owner)
 	defer forget()
 
-	if err := e.firstTrust(ctx, a, taken); err != nil {
+	if err := e.trustClaim(ctx, a, taken); err != nil {
 		return ItemResult{}, err
 	}
 
@@ -128,6 +159,37 @@ func (e *Engine) workHolding(ctx dbos.Context, a *attempt, login string, taken c
 	}
 
 	return result, err
+}
+
+// reachedRelease reports whether a replayed run already began its release in an earlier process. The run did all its work then, and the release can have freed the claim before the stop of that process cut the step off, so no renewal of the claim can work.
+func (e *Engine) reachedRelease(a *attempt, taken claimTake) (bool, error) {
+	if !taken.took.IsZero() || a.id == "" {
+		return false, nil
+	}
+
+	steps, err := dbos.GetWorkflowSteps(e.ctx, a.id)
+	if err != nil {
+		return false, fmt.Errorf("read the steps of %s: %w", a.id, err)
+	}
+
+	return slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return step.StepName == treeStepName }), nil
+}
+
+// trustClaim starts the trust in the claim of a run. A run that reached its release replays its recorded steps and renews nothing: the tick skips its claim, and the trust lasts for the replay.
+func (e *Engine) trustClaim(ctx context.Context, a *attempt, taken claimTake) error {
+	released, err := e.reachedRelease(a, taken)
+	if err != nil {
+		return err
+	}
+
+	if !released {
+		return e.firstTrust(ctx, a, taken)
+	}
+
+	e.holds.freed(a)
+	e.trust(a, e.deps.Clock.now())
+
+	return nil
 }
 
 // firstTrust starts the trust in a claim. A take that this run made is trusted from the start of the take. A take of unknown age
@@ -247,20 +309,29 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 	return errors.Join(treeErr, e.lifecycle(ctx, model.StepRelease, releaseClaim, in.Project, in.Item))
 }
 
-// begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
+// begin reads who wrote the item, then claims it. A foreign item that the run may not hold ends the run before the claim.
+// A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
 // A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
+	if err = e.origin(ctx, in); err != nil {
+		return "", "", time.Time{}, err
+	}
+
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err
 }
 
-// claim takes the claim of an item and returns its owner token and the time the take began. A resumed run replays this step with the token of the old claim,
-// so the token that beehave resume saved for the run wins. A replayed step makes no take, so its time is zero.
+// claim takes the claim of an item and returns its owner token and the time the take began. A resumed or forked run replays this step, makes no take and waits for nothing, so its time is zero.
+// The take waits for the release of an earlier attempt of the item first, as a replace starts the next attempt before the engine released the one it canceled.
 func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error) {
 	var took time.Time
 
 	recorded, err := runStep(e, ctx, string(model.StepClaim), func(c context.Context) (string, error) {
+		if err := e.awaitRelease(c, in.Item, workflowID(ctx)); err != nil {
+			return "", err
+		}
+
 		took = e.deps.Clock.now()
 
 		return e.deps.Lifecycle.Claim(c, in.Project, in.Item)
@@ -269,14 +340,21 @@ func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error
 		return "", time.Time{}, fmt.Errorf("%s of item %s: %w", model.StepClaim, in.Item, err)
 	}
 
+	owner, err := e.ownerOf(ctx, in, recorded)
+
+	return owner, took, err
+}
+
+// ownerOf returns the token of the claim of the run: the token that beehave resume or beehave fork saved for it, or else the recorded one. It then shows the other orchestrators of the project.
+func (e *Engine) ownerOf(ctx dbos.Context, in ItemInput, recorded string) (string, error) {
 	saved, err := savedOwner(e.dir, workflowID(ctx))
 	if err != nil {
-		return "", time.Time{}, err
+		return "", err
 	}
 
 	owner := cmp.Or(saved, recorded)
 
-	return owner, took, e.listOthers(ctx, in, owner)
+	return owner, e.listOthers(ctx, in, owner)
 }
 
 // listOthers reads the other orchestrators that hold items in the project and shows them, so status names them. The read is a recorded step.

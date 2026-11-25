@@ -40,6 +40,8 @@ type Project struct {
 	// Notify is the program and its arguments that the engine runs when a wait for the owner opens. Empty means no notice.
 	Notify  []string
 	PinFile string
+	// GateProgram lists the repository paths that hold the program of the gate: files, and directories that end in a slash. Empty means the gate runs as it always did.
+	GateProgram []string
 	// PRLabel is the label that every pull request opened by the engine carries. The config fills it, so it is never empty for a loaded project.
 	PRLabel   string
 	BuildHost string
@@ -60,6 +62,8 @@ type Project struct {
 	SandboxEnforcer string
 	// MaxSpawnDepth is the deepest level of spawn below the run a user started. The config fills it, so it is 1 or more for a loaded project.
 	MaxSpawnDepth int
+	// Credentials says where the engine reads the token of each role. A project with none runs its forge calls with the login of the owner.
+	Credentials map[Role]Credential
 
 	// Vars are the free settings of the workflow of the project, as the file wrote them. The engine reads no key and no value. The values are JSON values:
 	// nil, bool, string, json.Number, []any and map[string]any. A project that sets none has nil.
@@ -69,7 +73,7 @@ type Project struct {
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.
-// A project with no repository runs its items in plain folders, and it cannot call gate, merge or preflight.
+// A project with no repository runs its items in plain folders, and it cannot call gate, merge, preflight, pr_read or issue_assignees.
 func (p Project) HasRepository() bool { return p.Source != "" || p.Forge != "" }
 
 // ToolGit is the program that every project needs on the path. The tools of an adapter arrive with its registration.

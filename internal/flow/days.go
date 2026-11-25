@@ -144,7 +144,7 @@ func (c *Client) windowRows(since time.Time) (map[string]dbos.WorkflowStatus, er
 	rows := map[string]dbos.WorkflowStatus{}
 
 	for _, window := range []dbos.ListWorkflowsOption{dbos.WithFilterCreatedAfter(since), dbos.WithFilterCompletedAfter(since)} {
-		found, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName), window)
+		found, err := c.store().List(dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName), window)
 		if err != nil {
 			return nil, fmt.Errorf("list the runs of the window: %w", err)
 		}

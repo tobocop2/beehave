@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -46,6 +47,9 @@ const (
 // so a command that exits 124 on its own is a failure, and a command that the limit killed is unresolved.
 const ExitTimedOut = -2
 
+// stepTimedOut is the code that the gate gives a step that its own timeout killed. It is never a code of the shell.
+const stepTimedOut = -3
+
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
 var ErrTreeChanged = errors.New("the tree is not the commit the gate judges")
 
@@ -58,6 +62,9 @@ var ErrNoHead = errors.New("the resumed gate job has no head")
 
 // ErrNoCloneURL is the cause when a host gate has no URL to clone the repository from.
 var ErrNoCloneURL = errors.New("the host gate has no clone URL")
+
+// ErrNoBase is the cause when a host gate of a candidate head has no base commit, so the job could not name the base it judges the head against.
+var ErrNoBase = errors.New("the host gate has no base commit")
 
 // ErrCloneOutsideRoot is the cause when the clone folder of a host gate would not be directly below the work root of the host.
 var ErrCloneOutsideRoot = errors.New("the clone folder is not below the work root of the host")
@@ -119,6 +126,13 @@ type Request struct {
 	// PinBase is the branch that the pin file is read from, for a sync head or a landing gate. It turns on no candidate check.
 	// When both are set, PinBase wins over Base for the pin file, and Base still turns on the checks.
 	PinBase string
+	// BaseSHA is the commit that the base branch named when the engine read it for this gate. Every read of the base in the gate uses it, never the branch name.
+	// A project with no repository has none. A Run that has a Plan takes it from the Plan.
+	BaseSHA string
+	// Slot is the limit that the host job takes on the build host, shared with every engine that uses it. The zero Slot means no limit.
+	Slot model.Slot
+	// JobKey names the call that submits the host job. The same key finds the job that an earlier Submit started on the host. Empty means a new job at each Submit.
+	JobKey string
 
 	// pins are the pinned tools that the probe in front of each gate command checks. Run and Submit read them from the pin file at the base commit.
 	pins []Pin
@@ -127,11 +141,43 @@ type Request struct {
 // pinBase is the branch that the pin file is read from: the PinBase of the request, the base of a candidate head, or the base branch of the project.
 func (r Request) pinBase() string { return cmp.Or(r.PinBase, r.Base, r.Project.BaseBranch) }
 
+// anchor is the base commit of the gate: the SHA of the request, else the one that the Plan recorded.
+func (r Request) anchor() string { return cmp.Or(r.BaseSHA, r.Plan.BaseSHA) }
+
+// needBase refuses a candidate head that has no base commit: its job could not name the base that it judges the head against.
+func (r Request) needBase() error {
+	if (r.Base != "" || len(r.Project.GateProgram) > 0) && r.anchor() == "" {
+		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, cmp.Or(r.Base, r.Project.BaseBranch), r.Project.Name)
+	}
+
+	return nil
+}
+
 // Gate runs gates.
 type Gate struct {
-	shell Shell
-	tree  Tree
-	hosts Hosts
+	shell    Shell
+	tree     Tree
+	hosts    Hosts
+	program  ProgramShell
+	jobTools Tools
+}
+
+// WithTools returns the gate whose local job of a gate_program uses the tools that the engine resolved at its start (see ResolveTools).
+func (g Gate) WithTools(tools Tools) Gate {
+	g.jobTools = tools
+
+	return g
+}
+
+// ProgramShell runs the job of a local gate that has a gate_program. The job clones the repository at from into the folder root that the gate made,
+// and a caller that limits what the job reads or writes needs both paths. A Gate with no ProgramShell runs the job with its Shell in root.
+type ProgramShell func(ctx context.Context, from, root, command string) (string, int)
+
+// WithProgramShell returns the gate that runs the job of a gate_program with shell.
+func (g Gate) WithProgramShell(shell ProgramShell) Gate {
+	g.program = shell
+
+	return g
 }
 
 // New returns a gate that runs a local command with shell, reads trees with tree and finds the build host with hosts.
@@ -210,18 +256,24 @@ func (g Gate) planned(ctx context.Context, request Request) (Request, Plan) {
 	request.pins = check.Tools
 
 	plan := PlanOf(request.Project)
-	plan.Pins, plan.Base = &check, request.Base
+	plan.Pins, plan.Base, plan.BaseSHA = &check, request.Base, request.anchor()
 
 	return request, plan
 }
 
 // withPins returns the request with the pinned tools of the Plan, and the reason why the pin file cannot be used, or empty.
 // A Plan that has no pin check (no Submit made it) reads the pin file now, from the project of the request.
+// A Plan that holds a pin check of a project with a pin file but no base commit was stored by an earlier build, which read the base by its name:
+// it is void, and never a match, because no commit says which pin file it read.
 func (g Gate) withPins(ctx context.Context, request Request) (Request, string) {
 	check := request.Plan.Pins
 	if check == nil {
 		read := g.pinsOf(ctx, request)
 		check = &read
+	}
+
+	if request.Plan.Pins != nil && check.Void == "" && request.Project.PinFile != "" && request.Plan.BaseSHA == "" {
+		return request, "the plan of this gate has no base commit for the pin file " + request.Project.PinFile + ". An earlier build made it. Run the gate again"
 	}
 
 	request.pins = check.Tools
@@ -231,11 +283,29 @@ func (g Gate) withPins(ctx context.Context, request Request) (Request, string) {
 
 func (g Gate) unchanged(ctx context.Context, dir string, before State) error {
 	after, err := g.read(ctx, dir)
-	if err == nil && after != before {
-		return fmt.Errorf("%w: %s changed while the gate ran. Run the gate again", ErrTreeChanged, dir)
+	if err != nil {
+		return err
 	}
 
-	return err
+	return RequireSame(dir, before, after)
+}
+
+// RequireClean refuses the state of the tree in dir when it has changes that are not committed: a gate must judge a commit.
+func RequireClean(dir string, state State) error {
+	if state.Clean {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s has changes that are not committed. Commit or discard them, then run the gate again", ErrTreeChanged, dir)
+}
+
+// RequireSame refuses the state of the tree in dir after a gate when it is not the state before the gate.
+func RequireSame(dir string, before, after State) error {
+	if after == before {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s changed while the gate ran. Run the gate again", ErrTreeChanged, dir)
 }
 
 func (g Gate) read(ctx context.Context, dir string) (State, error) {
@@ -249,11 +319,15 @@ func (g Gate) read(ctx context.Context, dir string) (State, error) {
 
 func (g Gate) clean(ctx context.Context, dir string) (State, error) {
 	state, err := g.read(ctx, dir)
-	if err == nil && !state.Clean {
-		return State{}, fmt.Errorf("%w: %s has changes that are not committed. Commit or discard them, then run the gate again", ErrTreeChanged, dir)
+	if err != nil {
+		return State{}, err
 	}
 
-	return state, err
+	if err := RequireClean(dir, state); err != nil {
+		return State{}, err
+	}
+
+	return state, nil
 }
 
 func (g Gate) execute(ctx context.Context, request Request, head string) (Result, error) {
@@ -270,6 +344,10 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 }
 
 func (g Gate) local(ctx context.Context, request Request, head string) (Result, error) {
+	if len(request.Project.GateProgram) > 0 {
+		return g.localProgram(ctx, request, head)
+	}
+
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	ran, abort := g.runSpecs(ctx, request)
 
@@ -321,7 +399,7 @@ func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
 	ran := specRun{steps: make([]Step, 0, len(specs)+1)}
 
 	for _, spec := range specs {
-		out, code := g.shell(ctx, request.Dir, probed(request.pins, spec.Command))
+		out, code := g.runSpec(ctx, request, spec)
 
 		if ran.add(spec, len(specs), out, code) {
 			return ran, code
@@ -329,6 +407,39 @@ func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
 	}
 
 	return ran, 0
+}
+
+// runSpec runs one step under its own limit. A step that its own limit killed while the gate still runs gives stepTimedOut and the reason in its output,
+// so the gate goes on with the next step. A kill by the limit of the whole gate keeps ExitTimedOut and stops the gate.
+func (g Gate) runSpec(ctx context.Context, request Request, spec model.GateSpec) (string, int) {
+	stepCtx, cancel := ctx, context.CancelFunc(func() {})
+	if spec.Timeout > 0 {
+		stepCtx, cancel = context.WithTimeout(ctx, spec.Timeout)
+	}
+
+	defer cancel()
+
+	out, code := g.shell(stepCtx, request.Dir, probed(request.pins, spec.Command))
+
+	if code == ExitTimedOut && ctx.Err() == nil && errors.Is(stepCtx.Err(), context.DeadlineExceeded) {
+		return out + "\n" + timeoutNote(spec) + "\n", stepTimedOut
+	}
+
+	return out, code
+}
+
+// timeoutNote is the reason that a step that its own limit killed gives.
+func timeoutNote(spec model.GateSpec) string {
+	return "the step " + spec.Name + " ran past its timeout of " + spec.Timeout.String() + " and was killed. Its result is unknown (timeout)."
+}
+
+// stepStatus is the result of a step from its code: a step that its own timeout killed is unknown, any other code is read as an exit code.
+func stepStatus(code int) Status {
+	if code == stepTimedOut {
+		return StatusUnknown
+	}
+
+	return exitStatus(code)
 }
 
 // add keeps the result of one step. It is true when the step stopped the gate: a probe that found a tool at another version, a signal, or the time limit.
@@ -347,7 +458,7 @@ func (r *specRun) add(spec model.GateSpec, count int, out string, code int) bool
 		r.first = code
 	}
 
-	r.steps = append(r.steps, Step{Name: spec.Name, Status: exitStatus(code)})
+	r.steps = append(r.steps, Step{Name: spec.Name, Status: stepStatus(code)})
 
 	return false
 }
@@ -526,6 +637,7 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 
 	if len(project.GateSteps) > 0 {
 		result.Steps = stepMarkerResults(log, project)
+		result.Report += timedOutReport(log, project)
 	}
 
 	return result
@@ -533,6 +645,10 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 
 // markedResult is the result that the first marker line in the log gives, and whether the log holds one.
 func markedResult(log string, project model.Project) (Result, bool) {
+	if refused, found := programResult(log, project); found {
+		return refused, true
+	}
+
 	if reason := voidReason(log); reason != "" {
 		return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version on " + project.BuildHost + ", then run the gate again.\n"), Steps: unknownSteps(project)}, true
 	}
@@ -578,6 +694,10 @@ func job(ctx context.Context, host Remote, request Request, head string) (model.
 			return "", "", fmt.Errorf("%w: project %s has no repository URL to clone on %s", ErrNoCloneURL, request.Project.Name, request.Project.BuildHost)
 		}
 
+		if err := request.needBase(); err != nil {
+			return "", "", err
+		}
+
 		id, err := submit(ctx, host, request, head)
 
 		return id, head, err
@@ -598,7 +718,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base)})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone, Slot: request.Slot, Key: request.JobKey})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}
@@ -647,38 +767,105 @@ func plainWord(word string) bool {
 // When the project has a host block, the gate command runs under `timeout` with the run limit of the host (`host.max_run`), so a hung step
 // ends the job with exit status 124 and the trap still writes the marker and deletes the clone. The config load refuses a limit that the wrap
 // cannot write.
+// A project with a gate_program also gets the words of the gate program: git resolved first, then after the checkout a snapshot of the listed paths at baseSHA,
+// the refusal of a changed path and the overlay, and last the final compare (see program.go).
+// A host job first removes the clone folders of dead jobs (see sweepWord) and locks its own folder, so a job that SIGKILL ended leaves no clone for long.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
-func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base string) string {
-	words := cloneWords(cloneURL, head, clone)
+func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
+	return jobCommand(project, pins, jobSource{from: cloneURL, cloneURL: cloneURL}, head, clone, base, baseSHA)
+}
+
+// jobSource says where a job reads the head. from is the repository that the job clones, and the fallback fetch of the base commit reads cloneURL.
+// A local job (tools set) uses the tools that the engine resolved and copies the objects of the clone, so the copy shares no file with from and keeps no address of it.
+type jobSource struct {
+	from, cloneURL string
+	tools          Tools
+	local          bool
+}
+
+// jobCommand is hostCommand for a job that reads the head from the repository of src.
+func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, base, baseSHA string) string {
+	words := cloneWords(src, head, clone, len(project.GateProgram) > 0)
+
+	var check []string
+
+	if len(project.GateProgram) > 0 {
+		words = slices.Concat([]string{programFirst(src.tools), programGit(src.local)}, words, programBefore(project, src.cloneURL, clone, baseSHA))
+		check = []string{programCheck}
+	}
 
 	// A candidate head runs its steps apart (see candidateWord). A sync head and a landing gate keep the gate command only.
 	if base != "" {
-		return strings.Join(append(words, candidateWord(project, pins, base, clone)), " && ")
+		return strings.Join(append(words, candidateWord(project, pins, base, baseSHA, clone)), " && ")
 	}
 
-	before, after := reportChecks(project.TestReport)
+	before, after := reportChecks(project.TestReport, len(project.GateProgram) > 0)
 
 	words = append(words, before...)
 	words = append(words, gateWords(project, pins)...)
 
-	return strings.Join(append(words, after...), " && ")
+	return strings.Join(slices.Concat(words, after, check), " && ")
 }
 
 // cloneWords are the words that make the clone folder and check out head in it.
-func cloneWords(cloneURL, head, clone string) []string {
-	path := model.ShellQuote(clone)
+// A job with a gate program makes the empty folder of gpgit, clones with gpsrc and the empty folder as its template, so no hook or other file of a
+// template folder reaches the copy, and runs every other git call with gitWord (see programGit).
+// A local job copies the objects (--no-local) and drops the address of the clone, so head code finds no path of the repository that it was cloned from.
+func cloneWords(src jobSource, head, clone string, program bool) []string {
+	words := cloneFolder(clone, !src.local)
+	from := "git clone "
 
-	return []string{
-		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
-		"trap 'exit 143' HUP INT TERM",
-		"rm -rf " + path,
-		"mkdir " + path,
-		"cd " + path,
-		"git clone -- " + model.ShellQuote(cloneURL) + " tree",
-		"cd tree",
-		"git checkout --detach " + model.ShellQuote(head),
-		`[ "$(git rev-parse HEAD)" = ` + model.ShellQuote(head) + ` ]`,
+	if program {
+		from = `gpsrc clone --template="$gpempty" `
+		words = append(words, `mkdir gpempty && gpempty="$PWD/gpempty"`)
 	}
+
+	words = append(words, from+src.copyFlag()+"-- "+model.ShellQuote(src.from)+" tree", "cd tree")
+
+	if src.local {
+		words = append(words, gitWord(program, "remote remove origin"))
+	}
+
+	return append(words, gitWord(program, "checkout --detach "+model.ShellQuote(head)), `[ "$(`+gitWord(program, "rev-parse HEAD")+`)" = `+model.ShellQuote(head)+` ]`)
+}
+
+// jobMarker is the file that a host job writes in its clone folder after it holds the lock of the folder.
+const jobMarker = ".beehave-job"
+
+// sweepWord removes the clone folders of dead jobs below the work root. A job holds flock(1) on its clone folder, on file descriptor 8, for as long as it
+// lives, and the kernel frees the lock when the job dies, even by SIGKILL. A folder whose lock the sweep takes and that holds the job marker belongs to a gone job.
+// A folder with no marker (a job that has not locked it yet, or an unknown folder), a link, or a folder that cannot be opened stays. The word never fails the job.
+// The arguments are the quoted work root and the clone prefix.
+const sweepWord = `( for bh_d in %s/%s*/; do bh_d=${bh_d%%/}; [ -d "$bh_d" ] && [ ! -L "$bh_d" ] && [ -f "$bh_d/` + jobMarker + `" ] || continue; ` +
+	`( flock -n 8 && rm -rf -- "$bh_d" ) 8<"$bh_d"; done; : )`
+
+// cloneFolder are the words that make the clone folder, enter it, and delete it on exit with the marker line.
+// A host job first sweeps the folders of dead jobs, and takes the lock of its own folder before it writes the job marker.
+func cloneFolder(clone string, host bool) []string {
+	quoted := model.ShellQuote(clone)
+
+	words := []string{
+		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+quoted) + " EXIT",
+		"trap 'exit 143' HUP INT TERM",
+		"rm -rf " + quoted,
+		"mkdir " + quoted,
+	}
+
+	if host {
+		words = append([]string{fmt.Sprintf(sweepWord, model.ShellQuote(path.Dir(clone)), clonePrefix)}, words...)
+		words = append(words, "exec 8<"+quoted+" && flock -n 8 && : > "+quoted+"/"+jobMarker)
+	}
+
+	return append(words, "cd "+quoted)
+}
+
+// copyFlag is the flag that makes git copy the objects of a local source instead of linking them. A source that is a URL needs none.
+func (s jobSource) copyFlag() string {
+	if s.local {
+		return "--no-local "
+	}
+
+	return ""
 }
 
 // gateWords are the words that run the gate command. A project with a gate string has one word. A gate list has one word for each step:
@@ -692,7 +879,7 @@ func gateWords(project model.Project, pins []Pin) []string {
 	var words []string
 
 	for _, spec := range project.GateSteps {
-		words = append(words, "{ "+limited(project, "sh -c "+model.ShellQuote(probed(pins, spec.Command)))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
+		words = append(words, "{ "+limited(project, stepLimited(spec, "sh -c "+model.ShellQuote(probed(pins, spec.Command))))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
 	}
 
 	return append(words, `[ -z "$bad" ]`)
@@ -701,17 +888,57 @@ func gateWords(project model.Project, pins []Pin) []string {
 // stepMarkerResults reads the marker lines of a gate list from the log of a job. A step with no marker is unknown, and a code other than 0 is a failure.
 // A step that the log marks twice is unknown: a later line, which any step can print, then cannot turn the real code into another one.
 // The marker is a line in the log that the step commands write to as well, so it is a reading and not proof.
+// A step with a timeout that the marker gives as code 124 ran past that timeout: it is unknown, as on a local gate.
 func stepMarkerResults(log string, project model.Project) []Step {
 	codes := markerCodes(log)
 	steps := hostSteps(project, StatusUnknown, StatusUnknown)
 
-	for i := range steps {
-		if got := codes[steps[i].Name]; len(got) == 1 {
+	for i, spec := range Specs(project) {
+		if got := codes[spec.Name]; len(got) == 1 && !hostStepTimedOut(spec, got[0]) {
 			steps[i].Status = exitStatus(atoiOr(got[0], 1))
 		}
 	}
 
 	return steps
+}
+
+// stepKillGrace is the seconds that `timeout` waits after its TERM before it sends KILL, so a step that ignores TERM still ends.
+const stepKillGrace = "3"
+
+// stepLimited puts command under `timeout` with the timeout of the step, when the step sets one. The wrap writes whole seconds, rounded up,
+// and `--kill-after` makes a step that traps TERM end after the grace.
+func stepLimited(spec model.GateSpec, command string) string {
+	if spec.Timeout <= 0 {
+		return command
+	}
+
+	return "timeout --kill-after=" + stepKillGrace + " " + strconv.FormatInt(spec.TimeoutSeconds(), 10) + " " + command
+}
+
+// The exit statuses that `timeout` gives for a step that it killed: 124 after TERM, and 137 (128 plus KILL) when it had to send KILL.
+const (
+	hostTimeoutCode = "124"
+	hostKilledCode  = "137"
+)
+
+// hostStepTimedOut is true for a step with a timeout whose marker line gives a code of `timeout`.
+func hostStepTimedOut(spec model.GateSpec, code string) bool {
+	return spec.Timeout > 0 && (code == hostTimeoutCode || code == hostKilledCode)
+}
+
+// timedOutReport names each step of a host gate that ran past its timeout, one line for each, or is empty when none did.
+func timedOutReport(log string, project model.Project) string {
+	var report strings.Builder
+
+	codes := markerCodes(log)
+
+	for _, spec := range project.GateSteps {
+		if got := codes[spec.Name]; len(got) == 1 && hostStepTimedOut(spec, got[0]) {
+			report.WriteString("\n" + timeoutNote(spec) + "\n")
+		}
+	}
+
+	return report.String()
 }
 
 // markerCodes lists the codes that the marker lines of the log give for each step name, in log order.
@@ -742,12 +969,13 @@ func atoiOr(text string, fallback int) int {
 // reportChecks returns the words of the report checks: the word before the gate refuses a report file that the repository tracks, as such a file
 // would satisfy the count with no test run, and the word after the gate fails when the files that the glob matches hold no test case.
 // Each word writes a marker line first, so the log tells the failed check from a failed gate command. A project with no glob has no check.
-func reportChecks(glob string) (before, after []string) {
+// program says that the job has a gate program, so its git call goes through gpgit (see gitWord).
+func reportChecks(glob string, program bool) (before, after []string) {
 	if glob == "" {
 		return nil, nil
 	}
 
-	tracked := "git ls-files -- " + model.ShellQuote(glob) + " | head -n 1"
+	tracked := gitWord(program, "ls-files -- "+model.ShellQuote(glob)) + " | head -n 1"
 
 	before = []string{`{ [ -z "$(` + tracked + `)" ] || { echo "` + trackedMarker + ` $(` + tracked + `)"; false; }; }`}
 	after = []string{`{ [ "$(cat ` + globWord(glob) + ` 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo ` + noTestsMarker + `; false; }; }`}
@@ -782,7 +1010,7 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 	cluster := project.BuildHost
 
 	// A stopped run ends the wait in one of these states too. That is the end of the run, not a gate that gave no result.
-	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut}, state) {
+	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull}, state) {
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 
@@ -791,7 +1019,7 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 		return Result{Passed: true, Steps: hostSteps(project, StatusPass, StatusPass)}, nil
 	case model.JobFailed:
 		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: failedSteps(project)}, nil
-	case model.JobDied, model.JobStale, model.JobTimedOut:
+	case model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull:
 		return aborted(project, head, abortNote(cluster, state)), nil
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
@@ -813,6 +1041,10 @@ func failedSteps(project model.Project) []Step {
 func abortNote(cluster string, state model.JobState) string {
 	if state == model.JobStale {
 		return "the job on " + cluster + " was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again.\n"
+	}
+
+	if state == model.JobDiskFull {
+		return "the gate on " + cluster + " was stopped because the host ran under its free-space floor `host.disk_floor_gb`. This is a problem of the host, not a failed gate. Free disk space on the host, then run the gate again.\n"
 	}
 
 	if state == model.JobTimedOut {

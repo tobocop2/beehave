@@ -95,7 +95,7 @@ func TestSleep_AResumeSleepsOnlyTheTimeLeft(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, file)
+		_, runErr := first.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -114,7 +114,7 @@ func TestSleep_AResumeSleepsOnlyTheTimeLeft(t *testing.T) {
 
 	next := h.engine(t)
 	resumed := time.Now()
-	_, runErr := next.RunFile(testItem, testProject, file)
+	_, runErr := next.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, runErr, "WOKE")
 	assert.Less(t, time.Since(resumed), length-gone/2, "the resumed run slept the rest, not the full duration")

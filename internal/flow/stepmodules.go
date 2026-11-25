@@ -27,8 +27,7 @@ const (
 // Step kinds that no other file names as a constant.
 const (
 	kindPreflight = "preflight"
-	kindQueue     = "queue"
-	// kindBatch starts the names of the steps of merge, which has no counted step of its own.
+	// kindBatch starts the names of the steps of hand_off, which has no counted step of its own.
 	kindBatch = "batch"
 	// kindUndo starts the name of the step that runs the undo of a write: undo:<the name of the write step>.
 	kindUndo = "undo"
@@ -52,7 +51,9 @@ const (
 // Version 16 records the topic of a recv call with its deadline, in the deadline step.
 // Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
-const coreVersion = 18
+// Version 19 runs the host job of a command call with a host and no slot class in the default class, so the call queues a child run before its command step.
+// Version 20 adds the earlier_reads step.
+const coreVersion = 20
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -67,7 +68,8 @@ const coreVersion = 18
 // Version 13 puts the data file in a folder of its own and removes the data_file field of the phase input: the phase derives the path.
 // Version 14 adds the skills output of the render step and the skills field of the phase input, and removes the skills list from the recorded sandbox: the prompt declares the skills.
 // Version 15 adds the start mark step of an editing call, and the commit step after its read step, in a project with a repository.
-const agentVersion = 15
+// Version 16 removes the event that carried the cost of a failed run to the queuing run: the cost is read from the record of the failed phase.
+const agentVersion = 16
 
 // landVersion is the version of the land module. Version 2 added the approved field to each member in the recorded input of the batch steps.
 // Version 3 added the refusal field to the result of a merge, which the reason of a batch member reads.
@@ -78,14 +80,31 @@ const agentVersion = 15
 // Version 7 adds the moved field to the result of merge, and the hand-off steps batch:<call>.ready#<item> and batch:<call>.watch#<item>@<round>.
 // Version 8 removed the foreign, pr, head and author fields from the record of the preflight step.
 // Version 9 adds the run and run_item fields to the input of the merge of a member.
-const landVersion = 9
+// Version 10 adds the step batch:<call>.kept#<item> after an owner line that keeps issues, and the kept field to the record of the scope check.
+// Version 11 records each issue of the scope as text: "#N" for the repository of the pull request and "owner/repo#N" for another repository. A record of version 10 holds numbers and still reads.
+// Version 12 adds the scope step at the first review read (preflight) and at the first merge call of a run that no gate fixed a scope for, and the no_forge field to the record of the scope step.
+// Version 13 records the closes field of each member in the input of the batch steps, and the merge audits its closing references against it.
+// Version 14 adds the call of merge with `member`: it records the step batch:<call>.tip after the merge, and the moved field of the intent step, when the tip has another tree than expect_tree.
+// Version 15 adds the kept and closing fields of each member to the input of the batch steps. The merge no longer records the steps batch:<call>.scope#<item> and batch:<call>.kept#<item>: the scope check is the library scope.star.
+// Version 16 replaces the call of merge with `member` by the call with `members`: it records merge:<call>.plan, the fold of the member heads, then
+// merge:<call>.intent#<item> and merge:<call>.poll#<item> for each member, and merge:<call>.tip after the call. The intent step no longer reads the tree that the merge makes.
+// It also removes the call of merge with `prs`, its batch:<call>.* steps and the batch_gate run: the library function batch_merge gates and splits the batch.
+// The kind merge is live again, so a run with the single merge of land 4 or older is refused by the version of the module.
+const landVersion = 16
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
-const trackerVersion = 2
+// Version 3 adds the item_stop step. Version 4 adds the item_list step.
+const trackerVersion = 4
 
 // forgeVersion is the version of the forge module. Version 2 added the pr_state step. Version 3 retires the kind pr_assign, which version 2 recorded.
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
-const forgeVersion = 6
+// Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
+// Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step. Version 10 adds the pr_closing step. Version 11 adds the base_tip and issue_state steps.
+// Version 12 adds the landing_proof step, and the error field of the issue_state step: a failed read is recorded with its cause and no state.
+// It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
+// Version 13 adds the step of the engine that reads who wrote the item before the claim of every run (originStepName).
+// No builtin records that step, so a move to this build compares the forge module for every run (requireSameStartModules).
+const forgeVersion = 13
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -93,14 +112,18 @@ const forgeVersion = 6
 // Version 4 records a lost job that has a proof in the item run (<call>/host-loss), and the gate step records host_losses, the count of the host losses of the item tree.
 // Version 5 added the revert field to the results of gate, and the revert run to the checks of a candidate gate.
 // Version 6 retires the kind before_review, which version 5 recorded. The function before_review of the library judges a head with command steps.
-const gateVersion = 6
+// Version 7 adds the step field to the result of gate: the name of the step that recorded it.
+// Version 8 records, for a gate with a program, the head and the tree of the worktree of the item that the program ran on, in place of the head keyword and an empty tree.
+const gateVersion = 8
 
 // roundVersion is the version of the round module. Version 2 added the step of the engine that makes the worktree at the start of every round item.
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).
 // Version 3 adds the pulls field to the result of queue and the labels field to each of its rows.
 // Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
 // Version 5 adds the field value to each row: the value that the last run of a done row returned.
-const roundVersion = 5
+// Version 6 retires the kind queue, which version 5 recorded. The function queue of the library reads with the steps item_list, pr_list, run_read and pr_state.
+// Version 7 retires the kind scope, which version 6 recorded. The library scope.star fixes and checks the scope with the steps pr_closing, earlier_reads and wait.
+const roundVersion = 7
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.
@@ -121,18 +144,18 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", streamKind, "wait", "write"},
+			kinds:   []string{cancelKind, "command", "earlier_calls", earlierReadsKind, envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", streamKind, "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},
 		},
 		{name: moduleAgent, version: agentVersion, kinds: []string{agentStepName, loginStepName}},
-		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", "item_read", "item_status"}, retired: []string{"item_assign"}},
-		{name: moduleForge, version: forgeVersion, kinds: []string{"pr_comment", prHistoryKind, "pr_open", prStateKind, pushKind}, retired: []string{"board_sync", "pr_assign"}},
-		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
+		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", itemListKind, "item_read", "item_status", itemStopKind}, retired: []string{"item_assign"}},
+		{name: moduleForge, version: forgeVersion, kinds: []string{baseTipKind, boardCardKind, issueAssigneesKind, issueStateKind, landingProofKind, prClosingKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
+		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindMerge, kindPreflight}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},
-		{name: moduleRound, version: roundVersion, kinds: []string{kindQueue, scopeStep}, engine: []string{kindHold}, retired: []string{"scope-check"}},
+		{name: moduleRound, version: roundVersion, kinds: []string{runReadKind}, engine: []string{kindHold}, retired: []string{"queue", "scope", "scope-check"}},
 	}
 }
 
@@ -269,11 +292,11 @@ func moduleOfStep(name string) (string, bool) {
 // dbosStepPrefix starts the names of the steps that DBOS records for a workflow, such as DBOS.sleep and DBOS.getResult.
 const dbosStepPrefix = "DBOS."
 
-// engineStep reports whether the engine records a step under the name for every run, apart from any module: the read of the item, the claim and its end,
+// engineStep reports whether the engine records a step under the name for every run, apart from any module: the read of the item, who wrote it, the claim and its end,
 // the worktree, the cancel of other runs, the start of a child run, and a step that DBOS records.
 func engineStep(name string) bool {
 	engine := []string{
-		itemName, string(model.StepClaim), string(model.StepReady), string(model.StepRelease), treeStepName, treeMakeStepName, othersStep,
+		itemName, string(model.StepClaim), string(model.StepReady), string(model.StepRelease), treeStepName, treeMakeStepName, othersStep, originStepName,
 		phaseName, exclusiveName, hostJobName,
 	}
 

@@ -36,9 +36,8 @@ func (s scope) allows(name string) bool {
 	return workflow.AllowsPath(s.globs, name)
 }
 
-// startMark is what an agent call with a scope records when it starts: the commit, and the untracked and ignored entries that were already
-// in the folder. An untracked file carries its size and modification time. An ignored entry carries an empty value, and an ignored
-// directory is one entry that ends with a slash, so a write inside a directory that was already ignored at the start is not seen.
+// startMark is what an agent call with a scope records when it starts: the commit, and the untracked and ignored files that were already in the
+// folder. Each file carries its size and modification time. A folder of a known build cache is one entry that ends with a slash and has an empty value.
 //
 // For a call that the engine commits, the mark also holds the state of each tracked file that differs from the commit: the hash of its content and its mode.
 // The engine commits such a file only when its state is not the state at the start.
@@ -46,6 +45,16 @@ type startMark struct {
 	Head  string            `json:"head"`
 	Seen  map[string]string `json:"seen"`
 	Dirty map[string]string `json:"dirty"`
+}
+
+// isBuildCache says whether a folder name is one that tools fill by themselves: a write inside one is not a change of the step, so each one is a single entry.
+func isBuildCache(name string) bool {
+	switch name {
+	case ".cache", ".gradle", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__", "node_modules":
+		return true
+	}
+
+	return false
 }
 
 // markStart records the start mark of an agent call with a scope or with a commit by the engine, in a step, so a replay keeps the first one.
@@ -106,13 +115,18 @@ func takeMark(ctx context.Context, tree proc.Runner) (startMark, error) {
 	return startMark{Head: head, Seen: seen, Dirty: dirty}, err
 }
 
-// others maps each untracked or ignored entry of the folder to its stamp. The keys are relative to the root of the repository.
+// others maps each untracked file, and each ignored file or build cache folder, of the folder to its stamp. The keys are relative to the root of the repository.
 func others(ctx context.Context, tree proc.Runner) (map[string]string, error) {
-	root, err := git(ctx, tree, "rev-parse", "--show-toplevel")
+	out, err := git(ctx, tree, revParse, "--show-toplevel")
 	if err != nil {
 		return nil, fmt.Errorf("find the root of the item folder: %w", err)
 	}
 
+	return stamps(ctx, tree, strings.TrimSpace(out))
+}
+
+// stamps maps each untracked file, and each ignored file or build cache folder, of the repository at root to its stamp.
+func stamps(ctx context.Context, tree proc.Runner, root string) (map[string]string, error) {
 	seen := map[string]string{}
 
 	for _, ignored := range []bool{false, true} {
@@ -122,17 +136,33 @@ func others(ctx context.Context, tree proc.Runner) (map[string]string, error) {
 		}
 
 		for _, name := range names {
-			seen[name] = stamp(strings.TrimSpace(root), name, ignored)
+			if ignored {
+				name = collapse(name)
+			}
+
+			seen[name] = stamp(root, name)
 		}
 	}
 
 	return seen, nil
 }
 
-// stamp is the size and the modification time of an untracked file. A file that git lists and that is gone has the stamp `gone`.
-// An ignored entry has an empty stamp.
-func stamp(root, name string, ignored bool) string {
-	if ignored {
+// collapse turns a file inside a folder of a known build cache into the entry of that folder, which ends with a slash.
+func collapse(name string) string {
+	parts := strings.Split(name, "/")
+	for i, part := range parts[:len(parts)-1] {
+		if isBuildCache(part) {
+			return strings.Join(parts[:i+1], "/") + "/"
+		}
+	}
+
+	return name
+}
+
+// stamp is the size and the modification time of a file. A file that git lists and that is gone has the stamp `gone`.
+// A build cache folder, which ends with a slash, has an empty stamp.
+func stamp(root, name string) string {
+	if strings.HasSuffix(name, "/") {
 		return ""
 	}
 
@@ -144,12 +174,12 @@ func stamp(root, name string, ignored bool) string {
 	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
 }
 
-// listOthers lists the untracked files, or the ignored entries with each ignored directory collapsed to one entry.
+// listOthers lists the untracked files, or the ignored files.
 // The paths end with a NUL byte, so a name with a space or a non-ASCII letter stays whole.
 func listOthers(ctx context.Context, tree proc.Runner, ignored bool) ([]string, error) {
 	query := []string{"ls-files", "--others", "--exclude-standard", "--full-name", "-z"}
 	if ignored {
-		query = append(query, "--ignored", "--directory")
+		query = append(query, "--ignored")
 	}
 
 	out, err := git(ctx, tree, append(query, "--", ":/")...)
@@ -161,8 +191,7 @@ func listOthers(ctx context.Context, tree proc.Runner, ignored bool) ([]string, 
 }
 
 // changed lists the paths that the folder changed since the mark: every tracked change, committed or not, and every untracked or ignored
-// entry that is new, gone or, for an untracked file, has another size or time. The diff runs with no rename detection, so a rename lists the old
-// path as well as the new one. Every path is relative to the root of the repository.
+// file that is new, gone or has another size or time. The diff runs with no rename detection, so a rename lists the old path as well as the new one. Every path is relative to the root of the repository.
 func changed(ctx context.Context, tree proc.Runner, mark startMark) ([]string, error) {
 	now, err := others(ctx, tree)
 	if err != nil {

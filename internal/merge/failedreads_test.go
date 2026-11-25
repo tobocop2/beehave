@@ -21,10 +21,11 @@ func TestRun_AReadThatFailsRefusesTheMerge(t *testing.T) {
 		says string
 	}{
 		"the state and head of the pull request": {fail: "PRView", req: request(), says: "for its state"},
+		"the typed read of state, head and base": {fail: "PullRead", req: request(), says: "for its state"},
 		"the forge count of commits and files":   {fail: "PullCounts", req: request(), says: "cannot be counted"},
 		"the committers of the commits":          {fail: "Committers", req: request(), says: "committers of"},
 		"the checks":                             {fail: "PRChecks", req: request(), says: "cannot read the checks"},
-		"the token scopes for a workflow change": {fail: "TokenScopes", req: request(), says: "cannot read the token scopes", set: func(t *testing.T, w *world) *world { t.Helper(); return w.set(t, workflow) }},
+		"the CI answer for a workflow change":    {fail: "CanWriteCI", req: request(), says: "cannot read whether the token can change workflow files", set: func(t *testing.T, w *world) *world { t.Helper(); return w.set(t, workflow) }},
 		"the standing change requests":           {fail: "OpenChangeRequests", req: request(), says: "standing change request cannot be ruled out"},
 		"the unresolved review threads":          {fail: "UnresolvedThreads", req: request(), says: "review threads"},
 		"the reviews and the commits they saw":   {fail: "Reviews", req: request(), says: "reviews of"},
@@ -32,7 +33,7 @@ func TestRun_AReadThatFailsRefusesTheMerge(t *testing.T) {
 		"the open children of the branch":        {fail: "PRList", req: request(), says: "open pull requests"},
 		"the head again before the merge call":   {fail: "PRView later", req: request(), says: "again"},
 		"the tip of the base":                    {fail: "BranchRef", req: request(), says: "cannot read the tip of"},
-		"the closing references":                 {fail: "", req: audited(12), says: "issues that"},
+		"the closing references":                 {fail: "", req: audited(12), says: "issues that", set: func(_ *testing.T, w *world) *world { w.closingRefs = nil; return w }},
 	}
 
 	for label, one := range cases {

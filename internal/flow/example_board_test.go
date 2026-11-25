@@ -31,12 +31,12 @@ func roundBoard(rig *roundRig, owner string) {
 	rig.project.Vars["board"] = boardVars(owner)
 }
 
-// boardRuns returns the runs of `remedy board` among the commands that the example ran, words joined by a space.
+// boardRuns returns the runs of the engine step board_card among the commands that the example ran, words joined by a space.
 func boardRuns(ran []string) []string {
 	var runs []string
 
 	for _, run := range ran {
-		if strings.HasPrefix(run, "remedy board ") {
+		if strings.HasPrefix(run, boardProgram+" ") {
 			runs = append(runs, run)
 		}
 	}
@@ -53,7 +53,7 @@ func TestExampleBoard_AProjectWithABoardRunsTheBoardCommandForThePullRequestAtTh
 	_, err := runPipeline(rig.h.engine(t), file)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"remedy board --board 3 --status In Progress --owner acme --pr 7"}, boardRuns(rig.h.commands.ran()), "the merged column is the round's: the child never merges")
+	assert.Equal(t, []string{"board_card --board 3 --status In Progress --owner acme --pr 7"}, boardRuns(rig.h.commands.ran()), "the merged column is the round's: the child never merges")
 }
 
 func TestExampleBoard_AProjectWithABoardThatHasNoOwnerLeavesTheOwnFlagOut(t *testing.T) {
@@ -65,7 +65,7 @@ func TestExampleBoard_AProjectWithABoardThatHasNoOwnerLeavesTheOwnFlagOut(t *tes
 	_, err := runPipeline(rig.h.engine(t), file)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"remedy board --board 3 --status In Progress --pr 7"}, boardRuns(rig.h.commands.ran()))
+	assert.Equal(t, []string{"board_card --board 3 --status In Progress --pr 7"}, boardRuns(rig.h.commands.ran()))
 }
 
 func TestExampleBoard_ABoardCommandThatExitsWithTwoStopsTheRunAtTheLaneStart(t *testing.T) {
@@ -76,8 +76,8 @@ func TestExampleBoard_ABoardCommandThatExitsWithTwoStopsTheRunAtTheLaneStart(t *
 
 	previous := rig.h.commands.reply
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 1 && request.Run[0] == "remedy" && request.Run[1] == "board" {
-			return CommandOutput{RC: 2, Stderr: `remedy board: the board 3 shows "Todo" for the card after the write; wanted "In Progress"`}, nil
+		if len(request.Run) > 0 && request.Run[0] == boardProgram {
+			return CommandOutput{RC: 2, Stderr: `board_card: the board 3 shows "Todo" for the card after the write; wanted "In Progress"`}, nil
 		}
 
 		if previous == nil {
@@ -90,8 +90,8 @@ func TestExampleBoard_ABoardCommandThatExitsWithTwoStopsTheRunAtTheLaneStart(t *
 	result, err := runPipeline(rig.h.engine(t), file)
 
 	require.NoError(t, err)
-	require.NotNil(t, result.Stopped, "a stop_on_rc code ends the item")
-	assert.Equal(t, "command:board-started#1", result.Stopped.Step)
+	require.NotNil(t, result.Stopped, "a card that shows another column ends the item")
+	assert.Equal(t, "board_card:board-started#1", result.Stopped.Step)
 	assert.Equal(t, 2, result.Stopped.RC)
 	assert.Len(t, rig.h.agents.requests, 3, "only the plan, the implement and the sweep agents ran: the run stops before the review loop")
 }
@@ -120,8 +120,8 @@ func TestExampleBoard_ALandRunWithABoardRunsTheBoardCommandForEachMergedIssue(t 
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"remedy board --board 3 --status Done --owner acme --issue 1",
-		"remedy board --board 3 --status Done --owner acme --issue 3",
+		"board_card --board 3 --status Done --owner acme --issue 1",
+		"board_card --board 3 --status Done --owner acme --issue 3",
 	}, doneMoves(rig))
 }
 
@@ -149,7 +149,7 @@ func TestExampleBoard_ALandRunMovesTheCardOfTheMergedItemAndNotTheCardOfARejecte
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{testProject + "|1|hold"}, heldOf(rig.writer), "item 1 is rejected and held")
-	assert.Equal(t, []string{"remedy board --board 3 --status Done --owner acme --issue 3"}, doneMoves(rig), "only the merged item 3 moves")
+	assert.Equal(t, []string{"board_card --board 3 --status Done --owner acme --issue 3"}, doneMoves(rig), "only the merged item 3 moves")
 }
 
 func TestExampleBoard_ALandRunWithNoBoardMovesNoCard(t *testing.T) {

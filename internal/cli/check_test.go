@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +39,7 @@ func registry() config.Adapters {
 		Claims:   map[model.ClaimsName]*config.Entry{local.Claims: {}, beads.Claims: beadsEntry()},
 		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: githubEntry()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			skypilot.Name: {Idle: true, Block: hostBlock(skypilot.Block())},
+			skypilot.Name: {Idle: true, StartsWithOwnerCredentials: true, Block: hostBlock(skypilot.Block())},
 			ssh.Name:      {Block: hostBlock(ssh.Block())},
 			slurm.Name:    {Block: hostBlock(slurm.Block())},
 		},
@@ -67,18 +68,82 @@ func runCheckConfig(t *testing.T, env map[string]string, args ...string) (int, s
 	return code, stdout.String(), stderr.String()
 }
 
+// offProject is a valid project with the sandbox off, which gets no note from check config.
+const offProject = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", sandbox = \"off\")\n"
+
 func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.star", validRunners)
-	writeConfig(t, dir, "projects/p.star", validProject)
+	writeConfig(t, dir, "projects/p.star", offProject)
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 0, code)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+}
+
+func TestCheckConfig_AProjectWithNoSandboxKeyGetsOneNoteThatItsStepsRunInTheSandbox(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+	writeConfig(t, dir, "projects/off.star", offProject)
+	writeConfig(t, dir, "projects/on.star", strings.Replace(offProject, `sandbox = "off"`, `sandbox = "on"`, 1))
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Equal(t, 1, strings.Count(stderr, "sets no sandbox key"), stderr)
+	require.Contains(t, stderr, "note: project unset sets no sandbox key, so its agent steps run in the sandbox. To run them with no sandbox, write sandbox = \"off\" in "+filepath.Join(dir, "projects", "unset.star")+".\n")
+}
+
+// runCheckConfigWhereTheGateRuns runs check config on a machine where the given refusal decides whether a gate runs here.
+func runCheckConfigWhereTheGateRuns(t *testing.T, refusal cli.GateRefusal, dir string) (int, string) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+
+	code := cli.Execute(t.Context(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Registry: registry(), Version: "x", GateRefusal: refusal}, map[string]string{}, &stdout, &stderr)
+
+	return code, stderr.String()
+}
+
+const gateHomeNote = "its gate runs in the sandbox on this machine"
+
+func TestCheckConfig_AProjectWithNoSandboxKeyWhoseGateRunsHereGetsOneNoteThatTheGateCannotReadTheHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+	writeConfig(t, dir, "projects/on.star", strings.NewReplacer(`sandbox = "off"`, `sandbox = "on"`, `"o/n"`, `"o/on"`).Replace(offProject))
+	writeConfig(t, dir, "projects/off.star", strings.Replace(offProject, `"o/n"`, `"o/off"`, 1))
+
+	code, stderr := runCheckConfigWhereTheGateRuns(t, func(config.Project, bool) string { return "" }, dir)
+
+	require.Equal(t, 0, code, stderr)
+	require.Equal(t, 1, strings.Count(stderr, gateHomeNote), "one note, for the project with no key: "+stderr)
+	require.Contains(t, stderr, "note: project unset sets no sandbox key, so "+gateHomeNote+". The gate cannot read the home folder there, "+
+		"so a gate tool under it, such as a mise or asdf shim or ~/go/bin, fails. Add the folders of those tools to sandbox_read, or write sandbox = \"off\" in "+
+		filepath.Join(dir, "projects", "unset.star")+".\n")
+}
+
+func TestCheckConfig_AProjectWithNoSandboxKeyWhoseGateIsRefusedGetsTheRefusalNoteOnly(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+
+	code, stderr := runCheckConfigWhereTheGateRuns(t, func(config.Project, bool) string { return "no enforcer" }, dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Contains(t, stderr, "note: project unset has the sandbox on, but no enforcer\n")
+	require.NotContains(t, stderr, gateHomeNote, "a gate that does not run here gets no note about what it reads")
 }
 
 func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t *testing.T) {
@@ -89,12 +154,32 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 		"sandbox = \"on\", build_host = \"gpu\", host = host(provider = \"skypilot\", disk_floor_gb = 50))\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/far.star", remote)
-	writeConfig(t, dir, "projects/near.star", validProject)
+	writeConfig(t, dir, "projects/near.star", offProject)
 
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 0, code, "a note changes no exit code")
 	require.Equal(t, "note: project far builds on the host gpu, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", stderr)
+}
+
+func TestCheckConfig_ASkyPilotHostDeclaredCredentialsNoneExitsTwoWithTheReasonAndASshHostDoesNot(t *testing.T) {
+	t.Parallel()
+
+	for provider, want := range map[string]int{"skypilot": 2, "ssh": 0} {
+		dir := t.TempDir()
+		project := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+			"build_host = \"gpu\", host = host(provider = \"" + provider + "\", disk_floor_gb = 50, credentials = \"none\"))\n"
+		writeConfig(t, dir, "runners.star", validRunners)
+		writeConfig(t, dir, "projects/far.star", project)
+
+		code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+		require.Equal(t, want, code, provider)
+
+		if want == 2 {
+			require.Contains(t, stderr, "forward your SSH agent and copies your cloud credentials", provider)
+		}
+	}
 }
 
 func TestCheckConfig_ALocalProjectWithTheSandboxOnGetsANoteThatNoSandboxCanEnforceItsGate(t *testing.T) {

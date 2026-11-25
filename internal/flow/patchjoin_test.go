@@ -20,7 +20,7 @@ func otherBuildRun(t *testing.T) (*harness, string) {
 
 	h.opts.Modules = probeModules(oldProbe, seen)
 	file := writeFlow(t, probeFlow)
-	interrupted(t, h, file)
+	interruptedParked(t, h, file)
 	expireLease(h)
 
 	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
@@ -64,7 +64,7 @@ func TestJoin_ARunWhoseWorkflowFileChangedIsRefusedUnderServeAndIsNotCanceled(t 
 
 	client := h.client(t, otherBuild)
 
-	_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+	_, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "changed since the run started")
 	assert.Equal(t, testVersion, buildVersion(notCanceled(t, client).Status.ApplicationVersion), "the run stays on the old build")
@@ -147,7 +147,7 @@ func TestJoin_ARunThatEndedBeforeTheMoveIsNotReopened(t *testing.T) {
 
 	err := client.moveIfOtherBuild(t.Context(), plan, testItem)
 
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "ended before it could move")
 
 	last, newestErr := client.newest(testItem)

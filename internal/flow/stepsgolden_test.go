@@ -44,28 +44,45 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: commit_body,commit_subject,committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
+		"base_tip: commit,tree",
+		"board_card: status",
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
+		"earlier_reads: reads",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
 		"first_of: kind,message,outcome,run,runs",
-		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
+		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,step,steps,tree",
 		"gather: results",
+		"hand_off: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
 		"host_teardown: down,reason",
 		"host_up: host,started",
+		"integration_pull: number,state",
+		"issue_assignees: assignees",
+		"issue_state: error,found,state",
 		"item_comment: id",
 		"item_create: created,id",
+		"item_list: items",
 		"item_read: comments,fields,found,id,parent",
 		"item_status: id,status",
-		"merge: deferred,findings,gates,host_loss,host_losses,merged,moved,note,rejected,tip,tree,unproven",
+		"item_stop: recorded",
+		"landing_proof: unproven",
+		"merge: deferred,merged,moved,reason,rejected,rest,tip",
+		"pr_closing: error,forge,found,issues",
 		"pr_comment: number",
 		"pr_history: pulls",
+		"pr_list: pulls",
 		"pr_open: created,number,stack",
+		"pr_read: assignees,author,draft,found,labels,links,number,reviewers,state,unread",
 		"pr_state: state",
+		"pr_take: code,lines",
 		"preflight: code,ok,reason,stop",
 		"push: head",
-		"queue: free,pulls,rows",
 		"recv: id,sender,timed_out,value",
+		"round_cut: lines",
+		"round_land: base_tip,branch,head,number,reason,source,state",
+		"round_sync: base_tip,branch,head,number,reason,source,state",
+		"run_read: free,runs",
 		"send: id",
 		"sleep: slept",
 		"spawn: runs",
@@ -88,9 +105,9 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up",
-		"item_comment", "item_create", "item_read", "item_status", "login", "now",
-		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
+		"agent", "base_tip", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
+		"issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "landing_proof", "login", "now",
+		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 
@@ -107,8 +124,8 @@ func TestStepsVersion_EveryBuiltinWithResultFieldsRecordsUnderAKindOfTheTable(t 
 	t.Parallel()
 
 	for _, name := range workflow.Results() {
-		if name == "merge" {
-			continue // its steps are named batch:<name>.<kind> and the golden list of its steps holds them
+		if name == "merge" || name == handOffKeyword {
+			continue // the steps of both are named batch:<name>.<kind> and the golden list of the steps of merge holds them
 		}
 
 		assert.Contains(t, moduleRegistry(t).Kinds(), name, "the builtin %s has result fields and no step kind", name)
@@ -150,64 +167,6 @@ func TestStepsVersion_EveryPathThatRecordsAStepRefusesAKindOutsideTheTable(t *te
 	require.ErrorIs(t, err, errUnknownStepKind)
 
 	assert.Empty(t, s.counts, "a refused kind counts no call")
-}
-
-// goldenBatchSteps are the step names of one merge of items 1 and 3 under the steps version.
-var goldenBatchSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.scope#1", "batch:b.intent#1",
-	"batch:b.tip#3", "batch:b.scope#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
-}
-
-func TestStepsVersion_TheStepNamesOfABatchMergeMatchTheGoldenListOfTheStepsVersion(t *testing.T) {
-	t.Parallel()
-
-	rig := newBatchRig(t)
-	engine := rig.engine(t)
-
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
-	require.NoError(t, err)
-
-	var batch []string
-
-	for _, name := range stepNamesOf(t, engine, testRun) {
-		if strings.HasPrefix(name, "batch:") {
-			batch = append(batch, name)
-		}
-	}
-
-	assert.False(t, unpatchedChange(goldenBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
-	assert.False(t, unpatchedChange(goldenBatchGateSteps, batchGateSteps(t, engine)), "the steps of the batch gate changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
-}
-
-// goldenBatchGateSteps are the steps of the run of the project gate of a batch. The step batch_gate:job holds the checkout and the host job,
-// and a replay that finds it waits on that job.
-var goldenBatchGateSteps = []string{"batch_gate:job", "batch_gate"}
-
-// goldenLostBatchSteps are the steps of merge in the item run when the first gate of the union loses its job and the rerun passes:
-// the record of the loss comes after the first gate and before the members merge.
-var goldenLostBatchSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.gate#1/host-loss", "batch:b.tip#2", "batch:b.scope#1", "batch:b.intent#1",
-	"batch:b.tip#3", "batch:b.scope#3", "batch:b.intent#3", "batch:b.tip#4", "batch:b.prove", "batch:b.issues",
-}
-
-func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGoldenList(t *testing.T) {
-	t.Parallel()
-
-	rig, _ := lostBatchRig(t, 1)
-	engine := rig.engine(t)
-
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", ""))))
-	require.NoError(t, err)
-
-	var batch []string
-
-	for _, name := range stepNamesOf(t, engine, testRun) {
-		if strings.HasPrefix(name, "batch:") {
-			batch = append(batch, name)
-		}
-	}
-
-	assert.False(t, unpatchedChange(goldenLostBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
 }
 
 // goldenRunnerFacts holds the fields of each entry of the runners field of the facts result. The shape above lists top-level fields only, so a nested field of a recorded result is pinned here.

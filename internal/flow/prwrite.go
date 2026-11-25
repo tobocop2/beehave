@@ -24,37 +24,31 @@ func (s *script) prComment(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	})
 }
 
-// commentArguments unpacks the arguments of a pr_comment call and refuses a text that is empty, matches forbid_text or has a closing keyword outside the integration pull request.
+// commentArguments unpacks the arguments of a pr_comment call and refuses a text that is empty or matches forbid_text.
 func commentArguments(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (text, key, label string, err error) {
-	var integration bool
-
 	rules, err := unpackPosting(b, args, kwargs, map[string]any{
-		textKeyword: &text, keyKeyword: &key, integrationKeyword: &integration, nameKeyword: &label,
+		textKeyword: &text, keyKeyword: &key, nameKeyword: &label,
 	})
 	if err != nil {
 		return "", "", "", err
 	}
 
-	posted := postedText{textKeyword, text}
-	err = errors.Join(workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key), rules.refuse(posted), refuseClosing(integration, posted))
+	err = errors.Join(workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key), rules.refuse(postedText{textKeyword, text}))
 
 	return text, key, label, err
 }
 
 // prOpen opens the draft pull request of the item once, sets its body and links it into the native stack of its parent. The forge finds an open pull request
-// on the branch of the item first, so a resume after a lost record opens no second one. The body is the text plus a closing line that the forge picks from the base.
+// on the branch of the item first, so a resume after a lost record opens no second one. The body is written as given, and a pull request that is open is not written.
 func (s *script) prOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var req OpenRequest
 
-	var integration bool
-
-	label, rules, err := unpackOpen(b, args, kwargs, &req, &integration)
+	label, rules, err := unpackOpen(b, args, kwargs, &req)
 	if err != nil {
 		return nil, err
 	}
 
-	posted := []postedText{{"title", req.Title}, {"body", req.Body}}
-	if err = errors.Join(req.check(), rules.refuse(posted...), refuseClosing(integration, posted...)); err != nil {
+	if err = errors.Join(req.check(), rules.refuse(postedText{"title", req.Title}, postedText{"body", req.Body})); err != nil {
 		return nil, err
 	}
 
@@ -65,20 +59,16 @@ func (s *script) prOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	})
 }
 
-// unpackOpen unpacks the arguments of a pr_open call into req and integration. It returns the label of the call and the forbid_text patterns.
-func unpackOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple, req *OpenRequest, integration *bool) (label string, rules textRules, err error) {
+// unpackOpen unpacks the arguments of a pr_open call into req. It returns the label of the call and the forbid_text patterns.
+func unpackOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple, req *OpenRequest) (label string, rules textRules, err error) {
 	rules, err = unpackPosting(b, args, kwargs, map[string]any{
-		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, "issue": &req.Issue, parentKeyword: &req.Parent, integrationKeyword: integration, nameKeyword: &label,
+		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, parentKeyword: &req.Parent, nameKeyword: &label,
 	})
 
 	return label, rules, err
 }
 
-// check refuses a request with no title, no base or a negative issue number.
+// check refuses a request with no title or no base.
 func (r OpenRequest) check() error {
-	if r.Issue < 0 {
-		return errors.New("issue must be an issue number, or 0 for none")
-	}
-
 	return errors.Join(workflow.NotEmpty("title", r.Title), workflow.NotEmpty(baseKeyword, r.Base))
 }

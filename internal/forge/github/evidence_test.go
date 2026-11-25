@@ -91,12 +91,31 @@ func TestTreeBlobs_ListsEveryFileOfATreeAndSkipsFolders(t *testing.T) {
 	t.Parallel()
 
 	f, run := fixed(t, `{"sha":"`+tree+`","truncated":false,"tree":[`+
-		`{"path":"a.go","type":"blob","sha":"b1"},{"path":"dir","type":"tree","sha":"t1"},{"path":"dir/b.go","type":"blob","sha":"b2"},{"path":"sub","type":"commit","sha":"c1"}]}`)
+		`{"path":"a.go","mode":"100644","type":"blob","sha":"b1"},{"path":"dir","mode":"040000","type":"tree","sha":"t1"},{"path":"dir/b.go","mode":"100644","type":"blob","sha":"b2"},{"path":"sub","mode":"160000","type":"commit","sha":"c1"}]}`)
 
 	got, err := f.TreeBlobs(context.Background(), tree)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"a.go": "b1", "dir/b.go": "b2", "sub": "c1"}, got)
+	assert.Equal(t, map[string]string{"a.go": "100644 b1", "dir/b.go": "100644 b2", "sub": "160000 c1"}, got)
 	assert.Equal(t, [][]string{{"api", "repos/owner/name/git/trees/" + tree + "?recursive=1"}}, run.Calls)
+}
+
+func TestTreeBlobs_TellsAFileFromTheSameFileMadeExecutableAndFromALinkWithTheSameContent(t *testing.T) {
+	t.Parallel()
+
+	entry := func(mode string) string {
+		return `{"truncated":false,"tree":[{"path":"deploy.sh","mode":"` + mode + `","type":"blob","sha":"b1"}]}`
+	}
+	read := func(mode string) string {
+		f, _ := fixed(t, entry(mode))
+		got, err := f.TreeBlobs(context.Background(), tree)
+		require.NoError(t, err)
+
+		return got["deploy.sh"]
+	}
+
+	plain := read("100644")
+	assert.NotEqual(t, plain, read("100755"), "the executable bit alone changes the entry")
+	assert.NotEqual(t, plain, read("120000"), "a link with the same content id changes the entry")
 }
 
 func TestTreeBlobs_RefusesATruncatedListAFailedReadABadAnswerAndANameThatIsNotAnId(t *testing.T) {

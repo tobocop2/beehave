@@ -9,12 +9,13 @@ import (
 
 const gateWorkflow = "def main(item):\n    gate(name = \"check\")\n"
 
+// The projects of the gate tests set sandbox = "off": the test build has no sandbox enforcer, which refuses the local gate of a sandboxed project.
 func TestCheckWorkflow_AGateCallIsRefusedForAProjectWithNoRepository(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "workflow.star", gateWorkflow)
-	writeConfig(t, dir, "projects/desk.star", "project()\n")
+	writeConfig(t, dir, "projects/desk.star", "project(sandbox = \"off\")\n")
 
 	code, _, stderr := runCheckWorkflow(t, "--config", dir, "--project", "desk", filepath.Join(dir, "workflow.star"))
 
@@ -28,7 +29,7 @@ func TestCheckWorkflow_AGateCallPassesForAProjectWithASource(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "workflow.star", gateWorkflow)
-	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", sandbox = \"off\")\n")
 
 	code, _, stderr := runCheckWorkflow(t, "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star"))
 
@@ -72,4 +73,33 @@ func TestCheckWorkflow_ANamedProjectThatTheConfigLacksIsAnError(t *testing.T) {
 
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, `no project "nope"`)
+}
+
+const noneSandboxWorkflow = "def main(item):\n    agent(prompt = \"p\", model = \"m\", sandbox = None)\n"
+
+func TestCheckWorkflow_ASandboxNoneStepIsAProblemForAProjectWithTheSandboxOnAndANoteForOff(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		key  string
+		code int
+	}{"on": {`sandbox = "on"`, 1}, "off": {`sandbox = "off"`, 0}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, "workflow.star", noneSandboxWorkflow)
+			writeConfig(t, dir, "projects/desk.star", "project("+test.key+")\n")
+
+			code, _, stderr := runCheckWorkflow(t, "--config", dir, "--project", "desk", filepath.Join(dir, "workflow.star"))
+
+			require.Equal(t, test.code, code, stderr)
+
+			if test.code == 0 {
+				require.Contains(t, stderr, "note: ")
+			} else {
+				require.Contains(t, stderr, "workflow.star:2:48: sandbox is None, and project desk has the sandbox on")
+			}
+		})
+	}
 }

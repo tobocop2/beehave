@@ -21,6 +21,7 @@ import (
 	"github.com/gofrs/flock"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/ledger"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/step"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -68,6 +69,8 @@ type Options struct {
 	MaxRunBudget float64
 	// MaxTreeBudget is agents.max_tree_budget_usd: the dollars that the agent steps of the root run and every run it spawns may spend in all. 0 means no cap.
 	MaxTreeBudget float64
+	// MaxWeekBudget is agents.max_week_budget_usd: the dollars that the agent steps of all items may spend in any seven days. 0 means no cap.
+	MaxWeekBudget float64
 	// MaxSpawnDepth is the depth of the deepest items queue: the highest max_spawn_depth of the projects. 0 means config.DefaultMaxSpawnDepth.
 	MaxSpawnDepth int
 	// ReviewPoll is the time between two review polls. 0 means no poll.
@@ -76,12 +79,18 @@ type Options struct {
 	ReviewLookbackDays int
 	// PerLogin is agents.per_login, the agent steps that one login runs at once in each agent queue. 0 means config.DefaultPerLogin.
 	PerLogin int
+	// Concurrency is agents.concurrency, the mode of the cap of the agents queue. Empty means config.ConcurrencyStatic.
+	Concurrency config.Concurrency
 	// Retention is the age at which Launch deletes a finished run: agents.retention_days. 0 means config.DefaultRetention.
 	Retention time.Duration
 	// KeepRuns turns the deletion off, so every finished run stays: agents.retention_days set to 0.
 	KeepRuns bool
 	// OverCap lets the first agent step of a run take a runner that is over its usage cap when no runner has room. The step records that it did.
 	OverCap bool
+	// OnOpen is what the start of the command line does with an open run of its item. The command reads it for its own start and takes the policy of its first start only: a takeover continues the run that the first start made.
+	OnOpen workflow.OnOpen
+	// Debounce is the window that holds the start of the command line back. The command reads it for its own start and takes the window of its first start only, as it does OnOpen.
+	Debounce time.Duration
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends.
 	// A client writes there the runs that a cancel of a canceled run stopped. A nil Progress prints nothing.
 	Progress io.Writer
@@ -108,11 +117,20 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: agents.max_review_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxReviewConcurrent)
 	}
 
-	if err := o.validateReviewPoll(); err != nil {
+	if err := errors.Join(o.validateReviewPoll(), o.validateConcurrency()); err != nil {
 		return err
 	}
 
 	return o.validatePerLogin()
+}
+
+// validateConcurrency refuses a concurrency mode that is neither empty nor one of the two that the engine knows.
+func (o Options) validateConcurrency() error {
+	if o.Concurrency == "" || o.Concurrency.Known() {
+		return nil
+	}
+
+	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q. Set it in runners.star or in BEEHAVE_AGENTS_CONCURRENCY", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
 }
 
 // validateReviewPoll refuses a negative poll interval and a negative look-back.
@@ -180,6 +198,8 @@ type Engine struct {
 	ctx dbos.Context
 	// registry holds the builtins, the step kinds and the tables of signatures and results of the modules that this engine runs.
 	registry step.Registry
+	// ledger is the open ledger.db of the state folder. The retention of the runs never touches it.
+	ledger *ledger.Ledger
 	// queue is the agents queue: the steps of the kind implement.
 	queue dbos.Queue
 	// reviewQueue is the queue of the steps of the kind review.
@@ -188,10 +208,10 @@ type Engine struct {
 	itemQueues []dbos.Queue
 	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
 	exclusiveQueue dbos.Queue
-	// hostQueue is the queue of the build jobs of the gates: one job for each build host, whatever the project.
-	hostQueue dbos.Queue
+	// placement is held by a gate from the read of the free gate slots of its hosts until its job is queued.
+	placement sync.Mutex
 	deps      Deps
-	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
+	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The run_read builtin subtracts the open runs from it.
 	maxConcurrent int
 	// perLogin is the agent steps that one login runs at once in each agent queue: Options.PerLogin, or the default of the config.
 	perLogin int
@@ -199,6 +219,8 @@ type Engine struct {
 	maxRunBudget float64
 	// maxTreeBudget is Options.MaxTreeBudget.
 	maxTreeBudget float64
+	// maxWeekBudget is Options.MaxWeekBudget.
+	maxWeekBudget float64
 	// reviewPoll is the time between two review polls. 0 means no poll.
 	reviewPoll time.Duration
 	// reviewLookbackDays is the days that the review poll looks back for replies: Options.ReviewLookbackDays, or the default of the config.
@@ -206,11 +228,19 @@ type Engine struct {
 	// retention and keepRuns are Options.Retention and Options.KeepRuns.
 	retention time.Duration
 	keepRuns  bool
+	// concurrency is Options.Concurrency: the mode of the cap of the agents queue.
+	concurrency config.Concurrency
+	// limited carries each phase that ends at a provider limit to the controller of an adaptive engine. A static engine has no controller to read it, so the channel keeps the first signals and drops the rest.
+	limited chan limitSignal
 	// overCap is Options.OverCap.
 	overCap bool
+	// serving is true for the engine of beehave serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
+	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
-	version     string
+	// jobStopped runs in a gate run between the recorded stop of its build job and the resume of the job, when set. A test sets it to cancel the gate there.
+	jobStopped func(dbos.Context)
+	version    string
 
 	dir     string
 	log     io.Closer
@@ -230,6 +260,8 @@ type Engine struct {
 	// starts orders the start of a run against the shutdown: a start holds it for reading, and the shutdown takes it to set stopped.
 	starts  sync.RWMutex
 	stopped bool
+	// callers counts the calls of run in flight. A call reads the store after the library stops, so the shutdown waits for each one before it returns.
+	callers sync.WaitGroup
 	down    sync.Once
 	downErr error
 }
@@ -251,7 +283,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	engine := newEngine(opts, deps, state, held, registry)
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), removeEngineFiles(state.dir), held.Unlock(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the state folder: %w", err), removeEngineFiles(state.dir), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts))
@@ -318,7 +350,7 @@ func newEngine(opts Options, deps Deps, state store, held *flock.Flock, registry
 	}
 
 	engine := &Engine{
-		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
+		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, maxWeekBudget: opts.MaxWeekBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, concurrency: opts.Concurrency, limited: make(chan limitSignal, limitSignals), overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
 		procs: &groups{path: groupsFile(state.dir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress, redact: redact},
 	}
 	warnShortSecrets(engine.logger, opts.Env)
@@ -353,12 +385,22 @@ func (e *Engine) registered(err error) (*Engine, error) {
 	return nil, errors.Join(err, e.Shutdown())
 }
 
-// open opens the workflow store. The engine does not take the cancel of ctx.
+// open opens the ledger and the workflow store. The engine does not take the cancel of ctx.
+// A failure leaves nothing open.
 func (e *Engine) open(ctx context.Context, opts Options, state store) error {
-	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
-	e.ctx = flowCtx
+	held, err := ledger.Open(ctx, state.dir)
+	if err != nil {
+		return err
+	}
 
-	return err
+	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
+	if err != nil {
+		return errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Close())
+	}
+
+	e.ctx, e.ledger = flowCtx, held
+
+	return nil
 }
 
 // engineConfig is the setup of the workflow engine for one state folder.
@@ -426,9 +468,15 @@ func (e *Engine) register(opts Options) error {
 	dbos.RegisterWorkflow(e.ctx, e.hostJob, dbos.WithWorkflowName(hostJobName))
 	dbos.RegisterWorkflow(e.ctx, e.poll, dbos.WithWorkflowName(pollName))
 
+	// An adaptive engine registers the agents queue at the floor, so no burst runs before the controller writes the floor at Launch.
+	agentsLimit := maxConcurrent
+	if e.adaptive() {
+		agentsLimit = e.perLogin
+	}
+
 	return errors.Join(
-		e.registerQueue(queueName, maxConcurrent, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
-		e.registerItemQueues(maxConcurrent, cmp.Or(opts.MaxSpawnDepth, config.DefaultMaxSpawnDepth)), e.registerExclusiveQueue(), e.registerHostQueue(),
+		e.registerQueue(queueName, agentsLimit, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
+		e.registerItemQueues(maxConcurrent, cmp.Or(opts.MaxSpawnDepth, config.DefaultMaxSpawnDepth)), e.registerExclusiveQueue(),
 	)
 }
 
@@ -438,7 +486,7 @@ func (e *Engine) deepestKept() (int, error) {
 	// The depth comes from the input: a canceled row has lost its queue name.
 	states := dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusError)
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterName(itemName), states, dbos.WithFilterLoadInput(true))
+	rows, err := e.store().List(dbos.WithFilterName(itemName), states, dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return 0, fmt.Errorf("read the item runs that can run again: %w", err)
 	}
@@ -512,17 +560,46 @@ func (e *Engine) Launch() error {
 
 	e.launched = time.Now()
 
+	if err := e.sayResumedOff(); err != nil {
+		return err
+	}
+
 	if err := e.launchAndSchedule(); err != nil {
 		return err
 	}
 
 	e.tidy()
 
+	return e.startController()
+}
+
+// sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,
+// before it launches and resumes these runs. A run with no stored mode uses the mode off.
+func (e *Engine) sayResumedOff() error {
+	if !e.serving {
+		return nil
+	}
+
+	open, err := e.store().Open("", dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
+	if err != nil {
+		return fmt.Errorf("list the open runs: %w", err)
+	}
+
+	for _, row := range open {
+		if in, err := (run{Status: row}).input(); err == nil && in.UsedSandbox() == model.SandboxOff {
+			e.progress.say("run %s: %s", row.ID, model.SandboxOffLine)
+		}
+	}
+
 	return nil
 }
 
 // launchAndSchedule launches the workflow engine, then sets the schedule of the review poll. A schedule that fails does not fail the launch.
 func (e *Engine) launchAndSchedule() error {
+	if err := e.refreshPlaces(); err != nil {
+		return err
+	}
+
 	if err := dbos.Launch(e.ctx); err != nil {
 		return fmt.Errorf("start the workflow engine: %w", err)
 	}
@@ -592,7 +669,7 @@ func (e *Engine) forgetDeleted(ids []string, deleteErr error) error {
 func (e *Engine) oldRuns() ([]string, error) {
 	cutoff := e.deps.Clock.wall().Add(-cmp.Or(e.deps.Clock.Retain, e.retention, config.DefaultRetention))
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusSuccess), dbos.WithFilterWorkflowIDPrefix(runPrefix),
+	rows, err := e.store().List(dbos.WithFilterStatus(dbos.WorkflowStatusSuccess), dbos.WithFilterWorkflowIDPrefix(runPrefix),
 		dbos.WithFilterName(itemName), dbos.WithFilterCompletedBefore(cutoff))
 	if err != nil {
 		return nil, fmt.Errorf("list the finished runs: %w", err)
@@ -609,13 +686,13 @@ func (e *Engine) oldRuns() ([]string, error) {
 // RunFile takes one item to the end of its workflow file and returns the result. It joins the run of the item when one is still open.
 // The item belongs to the project from this call on; an open run under another project is refused.
 // The run pins the SHA-256 of the file, and a replay refuses a changed file.
-func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
-	return e.runEntry(item, project, file, "")
+func (e *Engine) RunFile(item, project, file string, options ...RunOption) (ItemResult, error) {
+	return e.runEntry(item, project, file, "", options...)
 }
 
 // runEntry runs the pinned file for the item at the named entry. An empty entry runs main.
-func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error) {
-	in, err := pinnedInput(item, project, file)
+func (e *Engine) runEntry(item, project, file, entry string, options ...RunOption) (ItemResult, error) {
+	in, err := pinnedInput(item, project, file, options...)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -625,8 +702,8 @@ func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error)
 	return e.run(in)
 }
 
-// pinnedInput reads the workflow file once and returns the input of a run that executes only those bytes.
-func pinnedInput(item, project, file string) (ItemInput, error) {
+// pinnedInput reads the workflow file once and returns the input of a run that executes only those bytes, with the options applied.
+func pinnedInput(item, project, file string, options ...RunOption) (ItemInput, error) {
 	abs, absErr := filepath.Abs(file)
 
 	pinned, pinErr := workflow.Pin(abs)
@@ -634,17 +711,34 @@ func pinnedInput(item, project, file string) (ItemInput, error) {
 		return ItemInput{}, err
 	}
 
-	return ItemInput{Item: item, Project: project, File: abs, Files: pinned}, nil
+	in := ItemInput{Item: item, Project: project, File: abs, Files: pinned}
+	for _, option := range options {
+		option(&in)
+	}
+
+	return in, nil
 }
 
-// check refuses an item that is not an item id, and a missing project.
+// check refuses an item that is not an item id, a missing project, a run with no sandbox mode, and an on_open word that is neither join nor replace.
 func (in ItemInput) check() error {
-	if model.ItemKind(in.Item) == "" {
-		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
+	if _, err := workflow.OpenPolicy(string(in.OnOpen)); err != nil {
+		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
+	if err := workflow.CheckDebounce(in.Debounce); err != nil {
+		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
+	if err := checkItemID(in.Item); err != nil {
+		return err
 	}
 
 	if in.Project == "" {
 		return fmt.Errorf("%w %s: name the project", errNoProject, in.Item)
+	}
+
+	if in.Sandbox == "" {
+		return fmt.Errorf("%w: item %s was not started. The run must store sandbox on or off", errNoSandboxMode, in.Item)
 	}
 
 	return nil
@@ -655,6 +749,12 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 		return ItemResult{}, err
 	}
 
+	if err := e.enter(in.Item); err != nil {
+		return ItemResult{}, err
+	}
+
+	defer e.callers.Done()
+
 	handle, err := e.joinOrStart(in)
 	if err != nil {
 		return ItemResult{}, err
@@ -663,13 +763,32 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 	return e.result(handle, in.Item)
 }
 
+// enter counts a call of run until it returns, so the shutdown waits for its last read of the store. After the shutdown began, it counts nothing and fails.
+func (e *Engine) enter(item string) error {
+	e.starts.RLock()
+	defer e.starts.RUnlock()
+
+	if e.stopped {
+		return refusedAfterStop(item)
+	}
+
+	e.callers.Add(1)
+
+	return nil
+}
+
+// refusedAfterStop is the refusal of a run that asks for its item after the shutdown began.
+func refusedAfterStop(item string) error {
+	return fmt.Errorf("%w: item %s was not started: run beehave run %s again", errEngineShutDown, item, item)
+}
+
 // joinOrStart joins or starts the run of the item while it holds off the shutdown. After the shutdown began, it starts nothing.
 func (e *Engine) joinOrStart(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	e.starts.RLock()
 	defer e.starts.RUnlock()
 
 	if e.stopped {
-		return nil, fmt.Errorf("%w: item %s was not started: run beehave run %s again", errEngineShutDown, in.Item, in.Item)
+		return nil, refusedAfterStop(in.Item)
 	}
 
 	return e.handleFor(in)
@@ -693,9 +812,7 @@ func (e *Engine) result(handle dbos.WorkflowHandle[ItemResult], item string) (It
 // finishedResult reads the result of the latest run of the item once from the store. ok is false when the run did not end with success.
 // The read ignores the stop of the engine: the store is still open while the stopped runs drain.
 func (e *Engine) finishedResult(item string) (ItemResult, bool) {
-	ctx := dbos.WithoutCancel(e.ctx)
-
-	last, found, err := latestRun(ctx, item)
+	last, found, err := latestRun(viewOf(dbos.WithoutCancel(e.ctx), e.dir), item)
 	if err != nil || !found || last.Status.Status != dbos.WorkflowStatusSuccess {
 		return ItemResult{}, false
 	}
@@ -712,7 +829,22 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(e.ctx, in.Item)
+	var handle dbos.WorkflowHandle[ItemResult]
+
+	err := e.asClient().underReplace(in, func() error {
+		var err error
+
+		handle, err = e.planAndStart(in)
+
+		return err
+	})
+
+	return handle, err
+}
+
+// planAndStart reads the newest run of the item, decides what the call does with it, and starts or joins the run.
+func (e *Engine) planAndStart(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	last, found, err := latestRun(e.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}
@@ -727,17 +859,21 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 
 // startOrJoin does what the plan says: it moves the run of another build to this build and joins it, joins the open run, or starts the next attempt.
 func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found bool) (dbos.WorkflowHandle[ItemResult], error) {
-	if err := e.asClient().moveIfOtherBuild(e.ctx, plan, in.Item); err != nil {
+	if err := e.asClient().moveInStart(e.ctx, plan, in); err != nil {
 		return nil, err
 	}
 
 	if plan.Join != "" {
-		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
+		return retrieve[ItemResult](e.store(), plan.Join)
 	}
 
 	in, err := in.withBaseOf(last, found)
 	if err != nil {
 		return nil, err
+	}
+
+	if in.Debounce > 0 {
+		return e.asClient().debounce(in, plan.Attempt)
 	}
 
 	return e.start(in, plan.Attempt)
@@ -787,7 +923,7 @@ func (e *Engine) pickLogin(ctx context.Context, in ItemInput, overCap bool, take
 // because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `beehave run` started holds none, so the loop parent needs no login of its own.
 // The engine registers only the run and the phase, so one listing of the open workflows, filtered to those two names, reads both.
 func (e *Engine) busyLogins(taken []string) ([]string, error) {
-	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))
+	open, err := e.store().Open("", dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return nil, fmt.Errorf("list the open workflows: %w", err)
 	}
@@ -898,9 +1034,10 @@ func (e *Engine) shutdown() error {
 
 	killed, waited := e.procs.killAll(), <-stopped
 
+	e.callers.Wait()
 	e.holds.clear()
 
-	return errors.Join(killed, waited, e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
+	return errors.Join(killed, waited, e.ledger.Close(), e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
 }
 
 // refuseStarts waits for each start in flight to hand its run to the library, and makes every later start fail.

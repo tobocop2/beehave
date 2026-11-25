@@ -2,7 +2,7 @@
 
 Part of the [beehave architecture](../architecture.md).
 
-This part covers the lane ledger, the pick of a runner, the machine check (`beehave doctor`), the pull request check before an action, the review poll and the scope check. The ledger and the scope check are tools of the remediation example. The others are part of the engine.
+This part covers the lane ledger, the pick of a runner, the machine check (`beehave doctor`), the pull request check before an action, the review poll and the closing issues of a first review. The ledger is a tool of the remediation example. The others are part of the engine.
 
 ## Ledger
 
@@ -43,7 +43,7 @@ A fix lane is a fix, a rework or a relay.
 
 ### The state folder
 
-The state folder is a flag. Every `remedy ledger` verb and `remedy scope` take `--state <folder>`. `remedy admit` takes the same flag. The ledger file is `lane-ledger.db` in that folder. A writer waits in turn on an operating system lock on `lane-ledger.lock` in the same folder, with no time limit, and a reader never takes that lock.
+The state folder is a flag. Every `remedy ledger` verb takes `--state <folder>`. `remedy admit` takes the same flag. The ledger file is `lane-ledger.db` in that folder. A writer waits in turn on an operating system lock on `lane-ledger.lock` in the same folder, with no time limit, and a reader never takes that lock.
 
 The tool does not guess the folder from the working folder, and it reads no environment variable for it. The workflow passes the folder that it keeps for the run.
 
@@ -53,7 +53,7 @@ The tool does not guess the folder from the working folder, and it reads no envi
 
 - A fix lane takes `--mechanism`, `--model` and `--round`.
 - An `owner-add` row takes the issue number as the lane, and `--words`.
-- The first review of a key needs the issues that the pull request closes. `--body-file <path>` takes the closing keywords of a file. `--pr <number>` reads them through the forge of the `origin` remote with the read of `remedy scope`, and only when the ledger asks for it.
+- The first review of a key needs the issues that the pull request closes. `--body-file <path>` takes the closing keywords of a file. `--pr <number>` reads them through the forge of the `origin` remote with the read of the section Closing issues, and only when the ledger asks for it.
 - The time of the row is the time of the run.
 - The verb prints the issues that a first review recorded.
 
@@ -67,11 +67,15 @@ A refusal of the ledger and a failed read are exit code 2.
 
 ### The pick
 
-A runner has room when both windows are under their caps from `config.Pool`. The pick order is:
+A runner has room when each window of its usage is under the cap of that window in the pool of its agent (`config.Pool`). A window with no cap does not limit the runner, and a cap on a window that the usage lacks does nothing. The adaptive limit of the queue `agents` (`agents.concurrency = "adaptive"`) adds one phase only when every runner of the agent kind has room. A runner that reads unknown has no room.
+
+An agent lists its windows from the shortest to the longest. The pick compares the last window first. For Claude the pick order is:
 
 1. the lowest seven-day use,
 2. then the lowest five-hour use,
 3. then the first runner in config order.
+
+The refusal lists the caps of the agent in the sorted order of the window names.
 
 A runner whose usage is unknown is never picked.
 
@@ -108,7 +112,7 @@ A provider limit that stops a run after the pick is not a new pick. The step wai
 
 `pool` reads no usage. It takes a `Reader` function value and reads all runners at the same time, so the whole read takes one timeout. A reader that panics gives an unknown reading and leaves the others.
 
-The window types `Window`, `Usage` and `Reading` live in `model`, because the reader is a layer 1 package and layer 1 cannot import `pool`. A `Reading` holds usage or a reason. Its zero value is unknown.
+A `Usage` holds a list of named windows, each with the percent used and the reset time. The profile of the adapter declares the names and the default caps (`Windows`), and the usage of a reading holds those windows only, in that order. The window types `Window`, `Usage` and `Reading` live in `model`, because the reader is a layer 1 package and layer 1 cannot import `pool`. A `Reading` holds usage or a reason. Its zero value is unknown.
 
 ### The Claude reader
 
@@ -182,10 +186,10 @@ Both are required. The command refuses a `Doctor` with a nil value and runs no c
 | 5 | head moved |
 | 6 | base changed |
 | 7 | branch gone |
-| 8 | draft |
-| 9 | held |
 
-`Check` tests them in this order: merged, closed, branch gone, hold, draft, head, base. A merged pull request still shows a head that looks fine, so the state comes first. A hold outranks a draft.
+`Check` tests them in this order: merged, closed, branch gone, head, base. A merged pull request still shows a head that looks fine, so the state comes first.
+
+The claim stops are not in the package. They are the codes 8 (draft), 9 (held), 10 (claimed) and 11 (assigned) of the library function `claim_stop`, which reads the pull request with `pr_read`.
 
 Each stop carries lines that name the problem and the recovery.
 
@@ -193,7 +197,7 @@ Each stop carries lines that name the problem and the recovery.
 
 - The expected head must be a full 40-character SHA. Any other length is refused and never compared.
 - A failed read is a `ReadError`.
-- A pull request with no state, draft flag, head branch or label list is a `ReadError`, because a null would pass as an open and ready pull request.
+- A pull request with no state or head branch is a `ReadError`, because a null would pass as an open pull request.
 
 Only a missing branch counts as branch gone. That is when the ref read answers HTTP 404 and a second read of the repository succeeds, because a missing repository gives the same 404. Any other failed read of the branch is a `ReadError`.
 
@@ -255,16 +259,9 @@ The sweep and the `OWN` rows read the forge once, through `OwnPulls`. A pull req
 
 A failed read stops the poll with an `UnreadError` that names the read and its cause. A page of unknown rows would hide the cause.
 
-## Scope
+## Closing issues
 
-`scope` is a tool of the remediation example, in `examples/remediation/tools/scope`. It refuses a pull request that started to close a new issue after its first review.
-
-### Command
-
-The command is `remedy scope <pr> --state <folder> [--key <key>]`. It reads the issues that the pull request closes and the ledger in the state folder. `--key` names the ledger key when it is not the pull request number.
-
-- A pass is exit code 0.
-- A refusal, a bad argument and a failed read are exit code 2.
+The library `scope.star`, which a workflow calls before `batch_merge` of `lib/batch.star`, keeps the scope of the first review of an item. The remediation example has no tool for it. The first review row of the ledger records the issues that its pull request closes, as `remedy ledger add --pr` reads them.
 
 ### How the closed issues are read
 
@@ -285,18 +282,8 @@ For a pull request into the default branch, one GraphQL read gives the list, the
 
 For the closing keywords of the body, a keyword must start at an ASCII word boundary, a rule of this tool. So `unfixed #3` closes nothing. Two spellings of one number, such as `12` and `012`, name one issue.
 
-### The check
-
-The first review of a key records the issues that the pull request closes. `Check` reads the issues now and compares the two lists.
-
-`Check` reads the forge only when the ledger holds a first review for the key. With no first review, it fixes the scope under the key and passes.
-
-`Check` imports `ledger`. It reads the ledger and the forge through the small `Records` and `Reader` interfaces, and returns a `Result` with an exit code and the lines to show.
-
 ### Owner-added issues
 
-A new issue passes only when the ledger holds an `owner-add` row for the key and the issue. The lane column of that row is the issue number. The words column is the reason of the owner.
-
-The refusal names the command that adds the row: `remedy ledger add <key> <issue> owner-add --state <folder> --words <words>`.
+The lane column of an `owner-add` row is the issue number. The words column is the reason of the owner. The command that adds the row is `remedy ledger add <key> <issue> owner-add --state <folder> --words <words>`.
 
 An `owner-add` row never fixes a lane, so `Count`, `Prior`, `Rounds` and `Since` do not see it.

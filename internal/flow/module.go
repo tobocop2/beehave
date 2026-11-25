@@ -30,7 +30,7 @@ type builtinDef struct {
 // StepModule is the module of the builtins that live in this package. The composition root passes it to the engine in Options.Modules.
 func StepModule() step.Module {
 	defs := stepDefs()
-	module := step.Module{Name: moduleName, Kinds: []string{loginStepName, scopeStep}}
+	module := step.Module{Name: moduleName, Kinds: []string{loginStepName}}
 
 	for _, def := range defs {
 		params, _ := workflow.Signature(def.name)
@@ -47,26 +47,34 @@ func StepModule() step.Module {
 	return module
 }
 
-// recordsCountedStep is false for the builtins that record no counted step. merge names its steps batch:<name>.<kind>#<item>, and sandbox, struct,
-// paths_outside and closing_references record no step: the last two match text, so a replay computes the same answer from the same input.
+// recordsCountedStep is false for the builtins that record no counted step. merge names its steps merge:<name>.<step> and hand_off batch:<name>.<step>#<item>, and sandbox, struct,
+// paths_outside, closing_references and keep_issues record no step: the last three match text, so a replay computes the same answer from the same input.
+// patched records the marker DBOS.patch-<name>, a step of DBOS and no counted step of a module.
 func recordsCountedStep(builtin string) bool {
-	return !slices.Contains([]string{mergeKey, recordedSandbox, "struct", "paths_outside", "closing_references"}, builtin)
+	return !slices.Contains([]string{mergeKey, handOffKeyword, recordedSandbox, "struct", "paths_outside", "closing_references", keepIssuesKey, "patched"}, builtin)
 }
 
 // stepDefs lists the builtins of this package. The names are the builtins of workflow.Builtins less json, which is the module of the Starlark library.
 func stepDefs() []builtinDef {
-	return slices.Concat(repositoryDefs(), itemDefs(), eventDefs(), runDefs(), inboxDefs(), swarmDefs())
+	return slices.Concat(repositoryDefs(), itemDefs(), eventDefs(), runDefs(), inboxDefs(), swarmDefs(), roundDefs(), listDefs())
 }
 
 // repositoryDefs lists the builtins that read git or a forge. The engine refuses a call of one of them in a project with no repository.
 func repositoryDefs() []builtinDef {
 	return []builtinDef{
 		{name: "gate", call: (*script).gate, repository: true, exempt: "run"},
-		{name: "merge", call: (*script).batchMerge, repository: true},
+		{name: "merge", call: (*script).mergeCall, repository: true},
+		{name: handOffKeyword, call: (*script).handOffCall, repository: true},
 		{name: "pr_comment", call: (*script).prComment, repository: true},
 		{name: prHistoryKind, call: (*script).prHistory, repository: true},
 		{name: "pr_open", call: (*script).prOpen, repository: true},
+		{name: prReadKind, call: (*script).prRead, repository: true},
 		{name: prStateKind, call: (*script).prState, repository: true},
+		{name: issueAssigneesKind, call: (*script).issueAssignees, repository: true},
+		{name: issueStateKind, call: (*script).issueState, repository: true},
+		{name: baseTipKind, call: (*script).baseTip, repository: true},
+		{name: landingProofKind, call: (*script).landingProof, repository: true},
+		{name: prClosingKind, call: (*script).prClosing, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},
 	}
@@ -79,6 +87,7 @@ func itemDefs() []builtinDef {
 		{name: "item_create", call: (*script).itemCreate},
 		{name: "item_read", call: (*script).itemRead},
 		{name: "item_status", call: (*script).itemStatus},
+		{name: itemStopKind, call: (*script).itemStop},
 	}
 }
 
@@ -96,15 +105,17 @@ func runDefs() []builtinDef {
 	return []builtinDef{
 		{name: "agent", call: (*script).agent},
 		{name: "closing_references", call: closingReferences},
+		{name: keepIssuesKey, call: keepIssues},
 		{name: "command", call: (*script).command},
 		{name: "earlier_calls", call: (*script).earlierCalls},
+		{name: earlierReadsKind, call: (*script).earlierReads},
 		{name: "env", call: (*script).env},
 		{name: "facts", call: (*script).facts},
 		{name: "host_teardown", call: (*script).hostTeardown},
 		{name: "host_up", call: (*script).hostUp},
 		{name: "now", call: (*script).now},
 		{name: "paths_outside", call: pathsOutside},
-		{name: "queue", call: (*script).queue},
+		{name: "patched", call: (*script).patched},
 		{name: "sandbox", call: (*script).sandbox},
 		{name: "sleep", call: (*script).sleep},
 		{name: "struct", call: structCall},

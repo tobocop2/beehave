@@ -24,6 +24,13 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"command env is not a dict", `command(run = ["x"], env = "A=b" + "")`, "env must be a dict of strings"},
 		{"command env value is not text", `command(run = ["x"], env = {"A": 1})`, "env must hold strings only"},
 		{"command env name is reserved", `command(run = ["x"], env = {"BEEHAVE_STATE_DIR": "b"})`, "env cannot set `BEEHAVE_STATE_DIR`"},
+		{"command env hands back the SSH agent", `command(run = ["x"], env = {"SSH_AUTH_SOCK": "/tmp/agent.sock"})`, "env cannot set `SSH_AUTH_SOCK`"},
+		{"command env computed key hands back the SSH agent", `command(run = ["x"], env = {"SSH_" + "AUTH_SOCK": "x"})`, "env cannot set `SSH_AUTH_SOCK`"},
+		{"command env dict in a variable hands back the SSH agent", `e = {"SSH_AUTH_SOCK": "x"}` + "\n" + `command(run = ["x"], env = e)`, "env cannot set `SSH_AUTH_SOCK`"},
+		{"command env spread hands back the SSH agent", `command(run = ["x"], **{"env": {"SSH_AUTH_SOCK": "x"}})`, "env cannot set `SSH_AUTH_SOCK`"},
+		{"write env spread hands back the SSH agent", `write(run = ["x"], **{"env": {"SSH_AUTH_SOCK": "x"}})`, "env cannot set `SSH_AUTH_SOCK`"},
+		{"env reads the SSH agent by a computed name", `env("SSH_" + "AUTH_SOCK")`, "env cannot read `SSH_AUTH_SOCK`"},
+		{"env reads the SSH agent for another name", `command(run = ["x"], env = {"GIT_SSH_COMMAND": "ssh -o IdentityAgent=" + env("SSH_AUTH_SOCK", "")})`, "env cannot read `SSH_AUTH_SOCK`"},
 		{"command host with env", `command(run = ["x"], host = "h", env = {"A": "b"})`, "stdin and env cannot be used together with host"},
 		{"command stop code is not a number", `command(run = ["x"], stop_on_rc = ["a"])`, "stop_on_rc must hold whole numbers"},
 		{"command stop codes are not a list", `command(run = ["x"], stop_on_rc = 3)`, "stop_on_rc must be a list"},
@@ -94,7 +101,7 @@ func TestMerge_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 			t.Parallel()
 
 			rig := newBatchRig(t)
-			_, err := rig.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", c.extra))))
+			_, err := rig.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", c.extra))), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 			assert.Contains(t, err.Error(), "workflow.star:")
@@ -271,28 +278,28 @@ func TestRunStar_AnErrorInANestedFunctionNamesTheCallInThatFunction(t *testing.T
 	require.ErrorContains(t, err, "workflow.star:2:12")
 }
 
-func TestPinnedFile_ReadsTheFileOfTheOpenRunOnly(t *testing.T) {
+func TestOpenRun_ReadsTheFileOfTheOpenRunOnly(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	client := h.client(t, testVersion)
 
-	file, err := client.PinnedFile(testItem)
+	open, err := client.OpenRun(testItem)
 	require.NoError(t, err)
-	assert.Empty(t, file, "an item with no run has no file")
+	assert.Empty(t, open.File, "an item with no run has no file")
 
 	path := writeFlow(t, crashFlow)
 	interrupted(t, h, path)
 
-	file, err = client.PinnedFile(testItem)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
-	assert.Equal(t, path, file)
+	assert.Equal(t, path, open.File)
 
 	require.NoError(t, client.Cancel(testItem))
 
-	file, err = client.PinnedFile(testItem)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
-	assert.Empty(t, file, "a run that ended has no file")
+	assert.Empty(t, open.File, "a run that ended has no file")
 }
 
 func TestStarValues_RoundTripEveryTypeAFileCanHold(t *testing.T) {

@@ -176,7 +176,7 @@ func TestStream_AnUnreadablePhaseStreamIsAnError(t *testing.T) {
 	t.Parallel()
 
 	page := streamRead{Entries: []AgentEntry{}}
-	partial, err := fillPage(nil, &page, []string{"item-21-r1-phase"}, workflow.StreamCursor{})
+	partial, err := fillPage(storeView{}, &page, []string{"item-21-r1-phase"}, workflow.StreamCursor{})
 
 	require.Error(t, err)
 	assert.False(t, partial)

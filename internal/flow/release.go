@@ -44,6 +44,12 @@ type treeMaker interface {
 	Ensure(ctx context.Context, project, item, start, base string) (string, error)
 }
 
+// placer puts the worktree of an item at the commit head before a fork runs. A round item gets a detached worktree. Any other item gets branch, cut at head,
+// and its own branch stays as it is. A clone that does not hold head, and a worktree with changes or with commits that no remote branch holds, are refused.
+type placer interface {
+	Place(ctx context.Context, project, item, head, branch string) error
+}
+
 // read is one git call that only reads, with the words that name it in a reason to keep the tree.
 type read struct {
 	doing string
@@ -64,6 +70,8 @@ type ReleaseDeps struct {
 	// Beats reads the claim lease of a run, so a move to this build refuses a run whose holder is alive. A nil value reads none.
 	Beats beats
 	Trees trees
+	// Place cuts the worktree of an item at the head of a fork. A nil value cuts none, as in a build with no repository.
+	Place placer
 	Clock clock
 	// Repository says whether a project has a git repository, as Deps.Repository does. A nil value means every project has one.
 	// beehave keeps the plain item folder of a project with no repository: it has no remote branch to show that its work is safe.
@@ -100,17 +108,17 @@ func (d ReleaseDeps) limit(ctx context.Context) (context.Context, context.Cancel
 	return context.WithTimeout(ctx, cmp.Or(d.Clock.Release, releaseTimeout))
 }
 
-// giveBack ends an item with no workflow step: first the worktree, then the claim.
-// A worktree that stays is not a failure; the log says why.
-func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project, item, owner string) error {
-	kept, treeErr := d.removeTree(ctx, project, item)
-	if kept != "" {
-		logger.InfoContext(ctx, "kept the worktree", "item", item, "reason", kept)
-	}
+// newerRunExists reports whether a newer run of the item than the attempt exists. The worktree is the folder of the item, so it belongs to that newer run.
+func newerRunExists(view storeView, a *attempt) (bool, error) {
+	last, found, err := latestRun(view, a.in.Item)
 
-	if treeErr != nil {
-		treeErr = fmt.Errorf("%s of item %s: %w", treeStepName, item, treeErr)
-	}
+	return found && last.Status.ID != a.id, err
+}
+
+// giveBack ends an item with no workflow step: first the worktree, then the claim.
+// A worktree that stays is not a failure; the log says why. With newer true a newer run of the item uses the worktree, so the give-back keeps it and releases the claim only.
+func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project, item, owner string, newer bool) error {
+	treeErr := d.giveTree(ctx, logger, project, item, newer)
 
 	bounded, cancel := d.limit(ctx)
 	defer cancel()
@@ -120,6 +128,24 @@ func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project,
 	}
 
 	return treeErr
+}
+
+// giveTree removes the worktree of the item, unless newer says that a newer run uses it. A worktree that stays is logged with the reason.
+func (d ReleaseDeps) giveTree(ctx context.Context, logger *slog.Logger, project, item string, newer bool) error {
+	kept, err := "a newer run of the item uses the worktree", error(nil)
+	if !newer {
+		kept, err = d.removeTree(ctx, project, item)
+	}
+
+	if kept != "" {
+		logger.InfoContext(ctx, "kept the worktree", "item", item, "reason", kept)
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s of item %s: %w", treeStepName, item, err)
+	}
+
+	return nil
 }
 
 // tryRemove removes the worktree from the clone that owns it, or returns the reason it stays. heads reads the branches of the remote.
@@ -157,12 +183,15 @@ func keepReason(ctx context.Context, tree proc.Runner, heads func(context.Contex
 	return common, ""
 }
 
+// revParse is the git command that reads the id of a commit, a tree or a folder of the repository.
+const revParse = "rev-parse"
+
 // cleanHead returns the commit at HEAD and the repository that owns a tree with no changes that are not committed. A dirty tree is a reason to keep it.
 func cleanHead(ctx context.Context, tree proc.Runner) (head, common, reason string) {
 	local, reason := readAll(ctx, tree,
 		read{"read the state of the worktree", []string{"status", "--porcelain"}},
-		read{"read HEAD", []string{"rev-parse", "HEAD"}},
-		read{"read the repository of the worktree", []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}})
+		read{"read HEAD", []string{revParse, "HEAD"}},
+		read{"read the repository of the worktree", []string{revParse, "--path-format=absolute", "--git-common-dir"}})
 	if reason != "" {
 		return "", "", reason
 	}

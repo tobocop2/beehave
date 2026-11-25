@@ -36,6 +36,8 @@ type attemptPlan struct {
 // A finished or canceled run, or no run, starts the next attempt.
 func planOf(last run, found bool, in ItemInput, version string, resumed bool) (attemptPlan, error) {
 	switch {
+	case found && in.Debounce > 0 && last.delayed():
+		return bouncePlan(last, in, version)
 	case found && !last.terminal():
 		return joinPlan(last, in, version)
 	case found && resumed:
@@ -47,18 +49,42 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 	return attemptPlan{Attempt: last.Attempt + 1}, nil
 }
 
-// joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
-func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
-	held, err := open.project()
-	if err != nil {
+// bouncePlan names the delayed run that a debounced start takes over: the start pushes the delay of that run back and replaces its input, and the run keeps its attempt and its id.
+// A delayed run has not started, so it is never moved to another build: a start from a build other than the one that stored the run is refused, and the run keeps its input and its version.
+// It also refuses a run of another project.
+func bouncePlan(delayed run, in ItemInput, version string) (attemptPlan, error) {
+	if err := startProject(delayed, in.Item, in.Project); err != nil {
 		return attemptPlan{}, err
 	}
 
-	if held != in.Project {
-		return attemptPlan{}, conflictError(in.Item, held, in.Project)
+	if delayed.Status.ApplicationVersion != version {
+		return attemptPlan{}, namedVersions(fmt.Errorf("%w: %s waits for its debounce window under the build that stored it. Run beehave cancel %s to end it, then start again", errStranded, delayed.Status.ID, in.Item), delayed, version)
+	}
+
+	return attemptPlan{Attempt: delayed.Attempt}, nil
+}
+
+// joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
+func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
+	if err := startProject(open, in.Item, in.Project); err != nil {
+		return attemptPlan{}, err
 	}
 
 	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+}
+
+// startProject refuses a start for a project other than the one that the open run of the item uses.
+func startProject(open run, item, project string) error {
+	held, err := open.project()
+	if err != nil {
+		return err
+	}
+
+	if held != project {
+		return conflictError(item, held, project)
+	}
+
+	return nil
 }
 
 // moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
@@ -80,7 +106,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	if last.terminal() {
-		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", errWrongState, last.Status.ID, item)
+		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", ErrWrongState, last.Status.ID, item)
 	}
 
 	if err := c.requireMovable(ctx, item, last); err != nil {
@@ -88,15 +114,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
-	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return err
-	}
-
-	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return canceledNotMoved(item, last, err)
-	}
-
-	return nil
+	return c.cancelAndReopenHeld(item, last, nil) //nolint:contextcheck // see the comment above
 }
 
 // namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
@@ -124,8 +142,8 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
 // The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
-func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemResult, error) {
-	in, err := pinnedInput(item, project, file)
+func (c *Client) JoinRun(ctx context.Context, item, project, file string, options ...RunOption) (ItemResult, error) {
+	in, err := pinnedInput(item, project, file, options...)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -148,7 +166,22 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
 func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(c.flow, in.Item)
+	var handle dbos.WorkflowHandle[ItemResult]
+
+	err := c.underReplace(in, func() error { //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
+		var err error
+
+		handle, err = c.planHandle(ctx, in)
+
+		return err
+	})
+
+	return handle, err
+}
+
+// planHandle reads the newest run of the item, decides what the call does with it, and returns the run to wait for.
+func (c *Client) planHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	last, found, err := latestRun(c.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +191,7 @@ func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.Workflow
 		return nil, err
 	}
 
-	if err := c.moveIfOtherBuild(ctx, plan, in.Item); err != nil {
+	if err := c.moveInStart(ctx, plan, in); err != nil {
 		return nil, err
 	}
 
@@ -207,7 +240,11 @@ func (c *Client) liveVersion() (string, error) {
 // handleOf retrieves the run to join, or enqueues the next attempt for the version of this build.
 func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	if plan.Join != "" {
-		return dbos.RetrieveWorkflow[ItemResult](c.flow, plan.Join)
+		return retrieve[ItemResult](c.store(), plan.Join)
+	}
+
+	if in.Debounce > 0 {
+		return c.debounce(in, plan.Attempt)
 	}
 
 	handle, err := dbos.Enqueue[ItemResult](c.flow, rootsQueueName, itemName, in,
@@ -223,7 +260,7 @@ func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[I
 // The loop runs in the caller, so it ends with ctx and leaves no poller behind.
 func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResult], item string) (ItemResult, error) {
 	poll := cmp.Or(c.give.Clock.Poll, joinPoll)
-	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
+	watch := engineWatch{dir: c.dir, view: c.store(), grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
 	ticker := time.NewTicker(poll)
 
 	defer ticker.Stop()
@@ -244,7 +281,7 @@ func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResul
 
 // poll reads the run once. It returns done with the result when the run ended, and an error when the status cannot be read or no engine holds the state folder for the grace time.
 func (w *engineWatch) poll(handle dbos.WorkflowHandle[ItemResult]) (ItemResult, bool, error) {
-	status, err := handle.GetStatus()
+	status, err := settledStatus(w.view, handle)
 	if err != nil {
 		return ItemResult{}, false, fmt.Errorf("item %s: read the status of the run: %w", w.item, err)
 	}
@@ -277,6 +314,7 @@ func (o outcome) unwrap(item string) (ItemResult, error) {
 // engineWatch counts how long no engine holds the state folder. While an engine holds it, the watch asks build whether that engine runs this build.
 type engineWatch struct {
 	dir   string
+	view  storeView
 	item  string
 	grace time.Duration
 	since time.Time

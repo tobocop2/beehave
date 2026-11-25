@@ -2,6 +2,11 @@
 # The stand-in for gh. It logs every call to gh.log in the work folder. The state of the forge is in the folder gh of the work folder:
 # gh/open holds one pull request number for each line (the open bump pull requests), gh/created holds one line for each pull request that was created,
 # gh/state-<number> holds OPEN or MERGED for the pull request of that number.
+# The owner login of the engine: beehave reads this token for an https remote. It is not a call of the forge, so it is not logged.
+if [ "$1 $2" = "auth token" ]; then
+  echo fake-gh-token
+  exit 0
+fi
 echo "gh $*" >> "@WORK@/gh.log"
 mkdir -p "@WORK@/gh"
 case "$1 $2" in
@@ -19,7 +24,11 @@ case "$1 $2" in
           if [ "$1" = "--jq" ]; then filter=$2; fi
           shift
         done
-        [ -f "@WORK@/gh/open" ] || exit 0
+        # With no open pull request, gh prints the empty list [] for --json. The --jq programs of the scripts print nothing for it.
+        if [ ! -f "@WORK@/gh/open" ]; then
+          if [ "$filter" = . ]; then echo '[]'; fi
+          exit 0
+        fi
         jq -Rn '[inputs | split("\t") | {number: (.[0] | tonumber), headRefName: .[1]}]' "@WORK@/gh/open" | jq -r "$filter"
         ;;
     esac
@@ -40,6 +49,13 @@ case "$1 $2" in
     ;;
   "issue comment")
     cat > /dev/null
+    exit 0
+    ;;
+  "api graphql")
+    # The read of who wrote an issue or a pull request, in the shape of gh: every item of the maintenance scripts is the owner's own.
+    case "$*" in
+      *issueOrPullRequest*) echo '{"data":{"repository":{"issueOrPullRequest":{"authorAssociation":"OWNER"}}}}' ;;
+    esac
     exit 0
     ;;
 esac

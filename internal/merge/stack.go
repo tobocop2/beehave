@@ -82,7 +82,7 @@ func (a *attempt) retarget() *refusal {
 
 // mergeWord says whether the pull request is merged when the children move: they move after a queued merge, and before a direct one.
 func (a *attempt) mergeWord() string {
-	if model.Deref(a.view.State) == stateMerged {
+	if a.facts.State == stateMerged {
 		return "merged"
 	}
 

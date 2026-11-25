@@ -2,10 +2,11 @@
 
 The round merges the trunk into the round branch `{{ .base }}` through the sync branch `{{ .branch }}`. The merge of `{{ .source }}` into the sync branch conflicts, so the forge wrote nothing. You resolve that one merge.
 
-1. In your folder, run `git fetch origin {{ .branch }} {{ .source }}`.
-2. Run `git checkout --detach origin/{{ .branch }}`.
-3. Run `git merge --no-ff origin/{{ .source }}`.
-4. Resolve each conflict so that both sides keep their intent. Keep every test of both sides. Commit the merge commit with `git commit --no-edit`.
+The round fetched both branches into your folder before this step, and your shell reaches no host.
+
+1. Run `git checkout --detach origin/{{ .branch }}`.
+2. Run `git merge --no-ff origin/{{ .source }}`.
+3. Resolve each conflict so that both sides keep their intent. Keep every test of both sides. Commit the merge commit with `git commit --no-edit`.
 
 Do not push: the engine pushes the merge commit to `{{ .branch }}` after this step. Make one merge commit with the two parents (the sync branch tip, then `origin/{{ .source }}`). Do not rebase, amend or squash. Do not change a line that the conflict does not need. Do not open a pull request: the round opens it after the push.
 

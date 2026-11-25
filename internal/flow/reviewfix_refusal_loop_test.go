@@ -21,6 +21,8 @@ import (
 
 // headGate passes every run on the head of the item folder as it is when the run starts, so a commit of a fix agent is the head of the next candidate.
 type headGate struct {
+	cleanTree
+
 	t    *testing.T
 	dir  string
 	jobs atomic.Int32
@@ -31,7 +33,7 @@ func (*headGate) Key(context.Context, string, string, string, string, string) (G
 	return GateKey{}, nil
 }
 
-func (g *headGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (g *headGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{ID: "job-" + strconv.Itoa(int(g.jobs.Add(1)))}, nil
 }
 
@@ -131,9 +133,10 @@ func tryLoop(t *testing.T, rig *agentRig, extra string, fix func()) (refusalRun,
 		case strings.HasPrefix(request.Prompt, "FIX"):
 			run.fixes = append(run.fixes, request.Prompt)
 			fix()
+			rig.put(request.OutputFile, `{"commit_subject":"fix","commit_body":"fix","resolved":"[]","wontfix":"[]"}`)
 		case strings.HasPrefix(request.Prompt, "REVIEW"):
 			run.reviews = append(run.reviews, gitIn(t, rig.dir, "rev-parse", "HEAD"))
-			rig.put(outputPath(request.Prompt), `{"verdict":"approve"}`)
+			rig.put(outputPath(request.Prompt), `{"verdict":"approve","findings":"[]"}`)
 		}
 
 		return exited

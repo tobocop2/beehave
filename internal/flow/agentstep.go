@@ -45,11 +45,13 @@ type agentArgs struct {
 	idleTimeout time.Duration
 	// maxBudget is the max_budget_usd of the step: the most dollars that the agent may spend. 0 means the step sets no cap.
 	maxBudget float64
-	pin       string
-	forbid    []model.FindingKind
-	protect   []string
-	scope     scope
-	start     startMark
+	// maxContext is the max_context_percent of the step: the share of the context window, in percent, at which the step stops with the stop reason context. 0 means no limit.
+	maxContext int
+	pin        string
+	forbid     []model.FindingKind
+	protect    []string
+	scope      scope
+	start      startMark
 	// plain is true when the project has no repository: the item folder is a plain folder, and no step reads git there.
 	plain bool
 	// startHead is the commit of the item folder when the render step ran, which is before the agent starts. It is the baseline of the whole call, not of one try. It is empty for a record made before the render step kept it.
@@ -84,7 +86,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "skill": &a.skill, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"edits": &a.edits, workflow.LabelKeyword: &a.label, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "sandbox": &raw.sandbox, nameKeyword: &raw.name,
+		"edits": &a.edits, workflow.LabelKeyword: &a.label, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "max_context_percent": &a.maxContext, string(sandboxKeyword): &raw.sandbox, nameKeyword: &raw.name,
 		"data": &raw.data,
 	})
 	if err == nil && a.model == "" {
@@ -261,6 +263,8 @@ func (s *script) ready(a *agentArgs, label string) (name, login, prompt string, 
 		return "", "", "", err
 	}
 
+	a.box = a.sandbox.effective(s.runMode())
+
 	if login, err = s.loginFor(*a); err != nil {
 		return "", "", "", err
 	}
@@ -358,12 +362,12 @@ func (s *script) renderStep(a agentArgs, login string) func(context.Context) (st
 
 		a.skills = skills
 
-		return stepResult{Note: prompt, Outputs: a.recordOutputs(head, login, s.sandboxDefault())}, nil
+		return stepResult{Note: prompt, Outputs: a.recordOutputs(head, login)}, nil
 	}
 }
 
 // recordOutputs is the record of the render step: the output file, the start commit, the login, the label and model when set, the sandbox, the skills of the prompt, and the data and its file.
-func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[string]any {
+func (a agentArgs) recordOutputs(head, login string) map[string]any {
 	outputs := map[string]any{recordedOutputFile: a.file, recordedStartHead: head, recordedLogin: login}
 	if a.label != "" {
 		outputs[recordedLabel] = a.label
@@ -373,7 +377,7 @@ func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[st
 		outputs[recordedModel] = a.model
 	}
 
-	maps.Copy(outputs, recordSandbox(a.sandbox.effective(sandboxDefault)))
+	maps.Copy(outputs, recordSandbox(a.box))
 	maps.Copy(outputs, recordSkills(a.skills))
 	maps.Copy(outputs, recordData(promptData{File: a.dataFile, Text: a.record}))
 
@@ -433,7 +437,7 @@ func (a agentArgs) refusePlain(project string) error {
 func (a agentArgs) phase(in ItemInput, login, prompt, treeStart string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
-		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
+		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget, MaxContextPercent: a.maxContext,
 		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.wanted(), Sandbox: a.box, Skills: a.skills, StartHead: a.startHead, TreeStart: treeStart, Base: in.Base,
 		Data: a.record,
 	}
@@ -720,6 +724,10 @@ func capOf(outcome agent.Outcome) string {
 		return string(agent.StopBudget)
 	}
 
+	if outcome == agent.OutcomeContextCap {
+		return string(agent.StopContext)
+	}
+
 	return ""
 }
 
@@ -1000,7 +1008,7 @@ func rewroteHistory(ctx context.Context, tree proc.Runner, start, head string) (
 
 // folderHead returns the commit at HEAD of the item folder.
 func folderHead(ctx context.Context, tree proc.Runner) (string, error) {
-	out, err := git(ctx, tree, "rev-parse", "HEAD")
+	out, err := git(ctx, tree, revParse, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("read HEAD of the item folder: %w", err)
 	}

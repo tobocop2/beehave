@@ -20,6 +20,8 @@ import (
 // hostGate is a gate with a host job. It counts its submits and keeps the job of each wait. Its first wait blocks until the run is canceled,
 // as a wait on a host job does when the run stops after the submit, and every later wait passes.
 type hostGate struct {
+	cleanTree
+
 	submits *atomic.Int32
 	started chan struct{}
 	mu      *sync.Mutex
@@ -47,7 +49,7 @@ func (hostGate) Key(context.Context, string, string, string, string, string) (Ga
 	return GateKey{}, nil
 }
 
-func (g hostGate) Submit(_ context.Context, _, _, host, _, _ string) (GateJob, error) {
+func (g hostGate) Submit(_ context.Context, _, _, host, _, _, _ string, _ model.Slot) (GateJob, error) {
 	g.mu.Lock()
 	*g.hosts = append(*g.hosts, host)
 	g.mu.Unlock()
@@ -96,7 +98,7 @@ func TestGateJob_ACrashAfterTheSubmitAndBeforeTheWaitIsRecordedSubmitsOnceAndThe
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -146,7 +148,7 @@ func TestGateJob_ARestartAfterAConfigEditFinishesTheGateWithTheListOfTheJobAndNo
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -186,7 +188,7 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -233,7 +235,7 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -290,7 +292,7 @@ func TestGateJob_AGateWorkflowReplayedPastItsFinishedStepsSubmitsAndWaitsOnNothi
 	h.forge.state = review.Standing{Number: testPull, Head: gatedHead}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 	require.NoError(t, err)
 
 	id, names := gateChildSteps(t, engine)

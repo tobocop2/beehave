@@ -68,6 +68,12 @@ type script struct {
 	// batches holds the names of the merge calls of this run, so that a name is never used twice.
 	batches map[string]bool
 
+	// gates holds the gate calls that this run recorded, by step name. A merge with `member` trusts a gate only when it finds it here.
+	gates map[string]gateRecord
+
+	// patches holds the names of the patched calls of this run, so that a name is never used twice.
+	patches map[string]bool
+
 	// undos are the finished writes of this run that name an undo, in the order of the writes. A failed run runs them in reverse.
 	undos []undoStep
 
@@ -94,14 +100,11 @@ type script struct {
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 
+	// gateStarted is the cluster that a gate of this run started when host_up had left it for the first gate. It counts as a start of this run for host_teardown.
+	gateStarted string
+
 	// hostChosen is the cluster that host_up recorded. host_teardown stops that cluster when the call names none.
 	hostChosen string
-
-	// fixed is true once the first gate has recorded scope, the closing issues of the pull request at the first review.
-	// owned holds the issues that the owner kept by an answer, for each item.
-	fixed bool
-	scope []int
-	owned map[string][]int
 }
 
 // name returns the name of the DBOS step of one call: `<builtin>:<label>#<n>`, or `<builtin>#<n>` for a call with no label.
@@ -140,13 +143,16 @@ func (s *script) countedName(builtin, label string) string {
 
 // nextName is the name that the next call of builtin with label records, `<builtin>:<label>#<n>`. It counts nothing.
 func (s *script) nextName(builtin, label string) string {
-	n := strconv.Itoa(s.counts[builtin] + 1)
+	return stepPrefix(builtin, label) + strconv.Itoa(s.counts[builtin]+1)
+}
 
+// stepPrefix starts the name of every step of a call of builtin with label: `<builtin>:<label>#`, or `<builtin>#` for a call with no label.
+func stepPrefix(builtin, label string) string {
 	if label != "" {
 		builtin += ":" + label
 	}
 
-	return builtin + "#" + n
+	return builtin + "#"
 }
 
 // durable runs one call of a builtin as a recorded DBOS step named `<builtin>:<label>#<n>` and returns the struct of the outputs it recorded.
@@ -178,6 +184,16 @@ func (s *script) durableWith(builtin, label string, zeros map[string]any, fn fun
 
 // durableFields runs a recorded step and returns the Starlark value of each output field, by name.
 func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error), opts ...dbos.StepOption) (starlark.StringDict, error) {
+	outputs, err := s.durableOutputs(builtin, label, zeros, fn, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return fields(outputs)
+}
+
+// durableOutputs runs a recorded step and returns its outputs, with a zero for each field the record lacks.
+func (s *script) durableOutputs(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error), opts ...dbos.StepOption) (map[string]any, error) {
 	name, err := s.name(builtin, label)
 	if err != nil {
 		return nil, err
@@ -194,7 +210,7 @@ func (s *script) durableFields(builtin, label string, zeros map[string]any, fn f
 		return nil, errStopped
 	}
 
-	return fields(withZeros(done.Outputs, zeros))
+	return withZeros(done.Outputs, zeros), nil
 }
 
 // result makes the struct that a builtin returns from the outputs it recorded.

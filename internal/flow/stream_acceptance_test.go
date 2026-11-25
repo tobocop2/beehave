@@ -132,7 +132,7 @@ func TestAcceptance853_TheCallIsOneRecordedStepWithItsDeadlineAndAReplayReturnsT
 	rig.h.agents.said = said()
 
 	engine := rig.h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, flowFile(t, a853Parent("gather(runs, name = \"w\")\ns = stream(w, after = \"\", timeout = \"5s\", name = \"peek\")\n"+a853Log), "Work.\n"))
+	_, err := engine.RunFile(testItem, testProject, flowFile(t, a853Parent("gather(runs, name = \"w\")\ns = stream(w, after = \"\", timeout = \"5s\", name = \"peek\")\n"+a853Log), "Work.\n"), modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -167,7 +167,7 @@ func TestAcceptance853_TheCallIsOneRecordedStepWithItsDeadlineAndAReplayReturnsT
 		"the replay returns the recorded entries and does not read the stream again")
 }
 
-func TestAcceptance853_TheStepBelongsToTheCoreModuleAtVersion18(t *testing.T) {
+func TestAcceptance853_TheStepBelongsToTheCoreModuleFromVersion18(t *testing.T) {
 	t.Parallel()
 
 	module, known := moduleOfKind("stream")
@@ -176,7 +176,7 @@ func TestAcceptance853_TheStepBelongsToTheCoreModuleAtVersion18(t *testing.T) {
 	assert.Equal(t, moduleCore, module)
 	assert.True(t, recordedHere("stream:peek#1"), "recordedHere refuses a step of no module, and a resumed run cannot replay")
 	assert.True(t, recordedHere("stream:peek#1.deadline"))
-	assert.Equal(t, 18, coreVersion, "the recorded steps of the core module change")
+	assert.GreaterOrEqual(t, coreVersion, 18, "the stream step came with version 18 of the core module")
 }
 
 func TestAcceptance853_TheCheckKnowsTheBuiltinItsArgumentsAndItsResultFields(t *testing.T) {

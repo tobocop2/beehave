@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -27,6 +28,10 @@ const (
 	maxRunArgs = 2
 	// overCapFlag is the flag of beehave run that lets the first agent step take a runner over its usage cap.
 	overCapFlag = "over-cap"
+	// onOpenFlag is the flag of beehave run that says what the start does with an open run of the item.
+	onOpenFlag = "on-open"
+	// debounceFlag is the flag of beehave run that holds the start back for a window.
+	debounceFlag = workflow.DebounceKeyword
 )
 
 // errNoWorkflow is returned by run when no workflow file is named and the current folder holds none.
@@ -38,7 +43,7 @@ var errInterrupted = errors.New("stopped before the item finished: run beehave r
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
 	Launch() error
-	RunFile(item, project, file string) (flow.ItemResult, error)
+	RunFile(item, project, file string, options ...flow.RunOption) (flow.ItemResult, error)
 	Shutdown() error
 }
 
@@ -61,25 +66,48 @@ type Reading interface {
 	Schedules() ([]flow.ScheduleInfo, error)
 	// Days sums the runs that started or ended since the given time by local day, in the time zone of that time.
 	Days(since time.Time) ([]flow.DayFigures, error)
-	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
-	PinnedFile(item string) (string, error)
+	// AgentsCap returns the limit that the agents queue holds now. The second value is false for a static config, which shows no limit.
+	AgentsCap() (flow.AgentsCap, bool, error)
 }
 
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Reading
 	Messaging
-	Resume(item string) error
+	Resuming
+	Forking
+	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses.
+	OpenRun(item string) (flow.OpenRun, error)
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
 	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
 	Engine() (flow.EngineInfo, bool, error)
 	// JoinRun gives the item to the engine that holds the state folder and waits for its result.
-	JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error)
-	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
-	ResumeOnThisBuild(item string) error
+	JoinRun(ctx context.Context, item, project, file string, options ...flow.RunOption) (flow.ItemResult, error)
 	Canceling
 	Close() error
+}
+
+// Resuming reopens failed and canceled runs.
+type Resuming interface {
+	Resume(item string) error
+	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
+	ResumeOnThisBuild(item string) error
+	// ResumeOnThisFile reopens a run on the workflow file as it is on disk now, from its last finished step.
+	ResumeOnThisFile(item string) error
+	// ResumeOnThisBuildAndFile moves a run that another build started to this build and onto the workflow file as it is now, in one move.
+	ResumeOnThisBuildAndFile(item string) error
+	// ResumeRun is Resume, or with onThisBuild, onThisFile or both the move that ResumeOnThisBuild, ResumeOnThisFile or ResumeOnThisBuildAndFile makes, and it returns the id of the run that it reopened.
+	ResumeRun(item string, onThisBuild, onThisFile bool) (string, error)
+	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
+	// It returns apart the failed runs of the range whose input cannot be read.
+	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error)
+}
+
+// Forking starts a new run from a step of a run that ended.
+type Forking interface {
+	// Fork starts a new run of the item of a finished run from a step of it, and returns the id of the new run. The new run waits in the queue.
+	Fork(req flow.ForkRequest) (string, error)
 }
 
 // Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
@@ -90,8 +118,9 @@ type Messaging interface {
 	Send(item string, msg flow.Outgoing) (string, error)
 }
 
-// Canceling stops runs.
+// Canceling stops runs, and holds the gate of an item.
 type Canceling interface {
+	GateHolding
 	Cancel(item string) error
 	// CancelRun stops the one open run with this run id, even when it is not the latest run of its item.
 	CancelRun(runID string) error
@@ -113,6 +142,10 @@ type flowCommands struct {
 	factory  Flow
 	items    map[model.TrackerName]ItemOpener
 	registry config.Adapters
+	// ownProgram builds the effects of the gate command. A nil value leaves the command out.
+	ownProgram OwnProgram
+	// console gives the input of the gate command and says whether the input and the output are a terminal. A nil value reads the process.
+	console Console
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -120,7 +153,7 @@ func (f flowCommands) add(root *cobra.Command) {
 		return
 	}
 
-	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.cancelCommand())
+	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.forkCommand(), f.cancelCommand(), f.gateGroup())
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
@@ -153,8 +186,8 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 // engineOptions builds the options of the engine from the config and the state folder.
 func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
 	return flow.Options{
-		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, PerLogin: cfg.Agents.PerLogin, Env: f.env,
-		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
+		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, PerLogin: cfg.Agents.PerLogin, Concurrency: cfg.Agents.Concurrency, Env: f.env,
+		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxWeekBudget: cfg.Agents.MaxWeekBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
 		ReviewPoll:         time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
 		ReviewLookbackDays: cfg.Agents.ReviewLookbackDays,
 		Retention:          time.Duration(cfg.Agents.RetentionDays) * 24 * time.Hour,
@@ -206,7 +239,9 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 	"If an earlier run of the item is open, beehave run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and beehave run continues it. A second Ctrl-C during the stop exits at once with code 130. " +
 	"If the run has already ended when the stop begins, the next Ctrl-C exits at once with the exit code of the run: 0 for a finished run, 1 for a failed or stopped run.\n" +
 	"If the last run failed, beehave run refuses and names the step that failed. Run beehave resume, then beehave run. If the resume refuses the run, run beehave cancel, then beehave run: the cancel ends the failed run, and the next run starts a new attempt.\n" +
-	"After a finished or a canceled run, beehave run starts a new run.\n\n" +
+	"After a finished or a canceled run, beehave run starts a new run.\n" +
+	"With --" + onOpenFlag + " replace, an open run of the item is canceled with its children, as beehave cancel does, and the next attempt starts. The run that the command starts pins the workflow file that the command names. A failed run is still refused, and so is an open run of another project.\n" +
+	"With --" + debounceFlag + " <duration>, the start waits that long. A later start of the item in the window takes the place of this one: one run starts, with the workflow file of the last start. A start after the window makes a new run. The hold ends 10 windows after the first start. With --" + onOpenFlag + " replace, the first start cancels the open run at once.\n\n" +
 	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
 	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
 	"If that engine stops, the run stays open, and after 10 seconds the command starts its own engine and continues the run.\n\n" +
@@ -216,8 +251,8 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 
 func (f flowCommands) runCommand() *cobra.Command {
 	var (
-		flag, workflowFile string
-		overCap            bool
+		flag, workflowFile, onOpen, window string
+		overCap                            bool
 	)
 
 	command := &cobra.Command{
@@ -225,18 +260,51 @@ func (f flowCommands) runCommand() *cobra.Command {
 		Short: "Take one item through its workflow",
 		Long:  runLong,
 		Args:  runArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { return f.run(cmd, args, flag, workflowFile, overCap) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return f.run(cmd, args, flag, workflowFile, startOptions{onOpen: onOpen, debounce: window}, overCap)
+		},
 	}
 	addConfigFlag(command, &flag)
+	addStartFlags(command, &onOpen, &window)
 	command.Flags().BoolVar(&overCap, overCapFlag, false, "let the first agent step take a runner that is over its usage cap, in place of waiting for a reset")
 	command.Flags().StringVar(&workflowFile, workflowFlag, "", "the workflow file (default: "+defaultWorkflowFile+" in the current folder, when it exists)")
 
 	return command
 }
 
+// addStartFlags adds the flags that say what a start does with an open run of its item and how long it waits.
+func addStartFlags(command *cobra.Command, onOpen, window *string) {
+	command.Flags().StringVar(onOpen, onOpenFlag, string(workflow.OnOpenJoin), "what the start does with an open run of the item: join it, or replace it (cancel it and start the next attempt)")
+	command.Flags().StringVar(window, debounceFlag, "", "hold the start back for this long, so that a later start of the item in the window takes its place (default: start at once)")
+}
+
+// startOptions are the words of the start options of beehave run, as the command line gave them.
+type startOptions struct {
+	onOpen, debounce string
+}
+
+// runOptions refuses an on_open word that is neither join nor replace and a debounce that is no window, then reads the config and builds the options of the engine with the policy and the window of the start.
+func (f flowCommands) runOptions(stderr io.Writer, flag string, start startOptions) (config.Config, flow.Options, error) {
+	policy, err := workflow.OpenPolicy(start.onOpen)
+	if err != nil {
+		return config.Config{}, flow.Options{}, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
+	window, err := workflow.DebouncePeriod(start.debounce)
+	if err != nil {
+		return config.Config{}, flow.Options{}, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
+	cfg, opts, err := f.options(stderr, flag)
+	opts.OnOpen = policy
+	opts.Debounce = window
+
+	return cfg, opts, err
+}
+
 // run validates the config, the project and the workflow file, then takes the item to the end of its run.
-func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string, overCap bool) error {
-	cfg, opts, err := f.options(cmd.ErrOrStderr(), flag)
+func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string, start startOptions, overCap bool) error {
+	cfg, opts, err := f.runOptions(cmd.ErrOrStderr(), flag, start)
 	if err != nil {
 		return err
 	}
@@ -257,14 +325,32 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
 }
 
-// refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one.
-// A run with no file continues a pinned run, which passed this check when it started.
-func refuseNoRepositoryCalls(stderr io.Writer, project config.Project, file string) error {
-	if file == "" || project.HasRepository() {
-		return nil
+// sayOffLine prints the line for a run that uses the sandbox mode off. An open run continues with the mode that it stored.
+// A new run uses the mode of its project: a project with no sandbox key has the sandbox on and prints no line.
+// The mode of an open run is the one that the store returns, which is off for a run recorded before the mode existed.
+func sayOffLine(stderr io.Writer, open flow.OpenRun, project config.Project, item string) {
+	off := open.Sandbox == model.SandboxOff
+	if !open.Open {
+		off = project.Sandbox == model.SandboxOff
 	}
 
-	calls := workflow.CheckNoRepository(file, project.Name)
+	if off {
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintf(stderr, "item %s: project %s has %s\n", item, project.Name, model.SandboxOffLine)
+	}
+}
+
+// refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one,
+// or when the project has the sandbox on and a step sets sandbox = None. The engine refuses the second case at the call too.
+func refuseNoRepositoryCalls(stderr io.Writer, project config.Project, file string) error {
+	var calls []workflow.Diagnostic
+
+	if !project.HasRepository() {
+		calls = workflow.CheckNoRepository(file, project.Name)
+	}
+
+	calls = append(calls, workflow.CheckSandboxNone(file, project.Name, project.RunSandboxMode())...)
+
 	if len(calls) == 0 {
 		return nil
 	}
@@ -363,7 +449,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 		return err
 	}
 
-	chosen, running, err := f.chooseRunFile(stdout, client, item, file)
+	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, opts, project, item, file)
 	if err != nil {
 		return errors.Join(err, client.Close())
 	}
@@ -394,19 +480,22 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 }
 
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
-func (f flowCommands) chooseRunFile(stdout io.Writer, client Steering, item, file string) (string, bool, error) {
-	pinned, err := f.openRunFile(stdout, client, item)
+// It says the off line when the run uses the sandbox mode off.
+func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, project, item, file string) (string, bool, error) {
+	open, err := f.openRun(stdout, client, opts, item)
 	if err != nil {
 		return "", false, err
 	}
 
-	if file == "" && pinned == "" {
+	if file == "" && open.File == "" {
 		return "", false, missingWorkflow()
 	}
 
+	sayOffLine(stderr, open, cfg.Projects[project], item)
+
 	running, err := client.EngineRuns()
 
-	return cmp.Or(file, pinned), running, err
+	return cmp.Or(file, open.File), running, err
 }
 
 // joinLater opens a new client and joins the engine that holds the state folder.
@@ -426,7 +515,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
-	result, err := client.JoinRun(f.ctx, item, project, file)
+	result, err := client.JoinRun(f.ctx, item, project, file, startsOf(cfg, project, opts)...)
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
@@ -435,7 +524,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 		if errors.Is(err, flow.ErrEngineGone) {
 			_, _ = fmt.Fprintf(stderr, "the engine that ran item %s stopped; this command continues the run\n", item)
 
-			return f.ownEngine(stdout, stderr, cfg, opts, item, project, file)
+			return f.ownEngine(stdout, stderr, cfg, takeover(opts), item, project, file)
 		}
 
 		return err
@@ -455,7 +544,20 @@ func (f flowCommands) runOnEngine(stdout, stderr io.Writer, cfg config.Config, o
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file))
+	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, startsOf(cfg, project, opts)...))
+}
+
+// takeover returns the options of the start that continues the run which a join made: it joins that run, cancels nothing and holds nothing back.
+func takeover(opts flow.Options) flow.Options {
+	opts.OnOpen = workflow.OnOpenJoin
+	opts.Debounce = 0
+
+	return opts
+}
+
+// startsOf returns the run options of the start of the command line: the sandbox mode of the project, and the policy and the window of the command.
+func startsOf(cfg config.Config, project string, opts flow.Options) []flow.RunOption {
+	return []flow.RunOption{flow.RunSandbox(cfg.Projects[project].RunSandboxMode()), flow.RunOnOpen(opts.OnOpen), flow.RunDebounce(opts.Debounce)}
 }
 
 // shutDownWithExitStatus shuts the engine down for beehave run.
@@ -498,8 +600,8 @@ func sayStoppedAtOnce(stderr io.Writer, what string) {
 	_, _ = fmt.Fprintf(stderr, "%s: stopped at once; %s\n", commandName, what)
 }
 
-func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string) error {
-	result, err := f.await(engine, item, project, file)
+func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string, starts ...flow.RunOption) error {
+	result, err := f.await(engine, item, project, file, starts)
 	if err != nil {
 		return err
 	}
@@ -518,18 +620,30 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 	return nil
 }
 
-// openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
+// openRun returns the open run of the item. It says which file the run continues with, or that the start replaces the run.
 // beehave run ignores --workflow when it joins an open run.
-func (f flowCommands) openRunFile(stdout io.Writer, client Steering, item string) (string, error) {
-	pinned, err := client.PinnedFile(item)
-	if err != nil || pinned == "" {
-		return "", err
+func (f flowCommands) openRun(stdout io.Writer, client Steering, opts flow.Options, item string) (flow.OpenRun, error) {
+	open, err := client.OpenRun(item)
+	if err != nil || open.File == "" {
+		return open, err
 	}
 
 	// A failed write to stdout has no recovery.
-	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, pinned)
+	if opts.Debounce > 0 && open.Delayed {
+		_, _ = fmt.Fprintf(stdout, "item %s is held in its debounce window: this start extends the window and replaces the input of the run, which pinned %s\n", item, open.File)
 
-	return pinned, nil
+		return open, nil
+	}
+
+	if opts.OnOpen == workflow.OnOpenReplace {
+		_, _ = fmt.Fprintf(stdout, "item %s replaces its open run, which pinned %s\n", item, open.File)
+
+		return open, nil
+	}
+
+	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, open.File)
+
+	return open, nil
 }
 
 // endNote says why a run ended before the merge: a send back or a close. It is empty for any other end.
@@ -567,7 +681,7 @@ func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 }
 
 // await runs the item and waits for its result. An interrupt of the command ends the wait.
-func (f flowCommands) await(engine Runner, item, project, file string) (flow.ItemResult, error) {
+func (f flowCommands) await(engine Runner, item, project, file string, starts []flow.RunOption) (flow.ItemResult, error) {
 	type outcome struct {
 		result flow.ItemResult
 		err    error
@@ -576,7 +690,7 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	done := make(chan outcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(item, project, file)
+		result, err := engine.RunFile(item, project, file, starts...)
 		done <- outcome{result: result, err: err}
 	}()
 
@@ -654,7 +768,8 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, the next reminder, and the deadline with the time left. " +
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
-	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll and poll_not_scheduled. " +
+	"With agents.concurrency set to adaptive, the list shows the limit of the agents queue: the agents line, as current of ceiling.\n\n" +
+	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll, poll_not_scheduled and agents_concurrency. " +
 	"Each run has the fields id, state, item, project, question, asked, deadline, receiving, streaming, time_left_seconds, merge, sent_back, closed and stopped. " +
 	"A field with no value is left out. The list reads recorded state only.\n\n" +
 	"The list also shows the figures of each local day from the last --" + daysFlag + " days (default 7, the current day included): the runs that started, the runs that ended as done, failed or canceled, and the spend of those runs with the estimate and unknown marks of the run total. " +
@@ -733,6 +848,7 @@ func printRuns(out io.Writer, client Steering, clock func() time.Time, days int,
 
 	printStatus(out, list.Runs, now)
 	printEngine(out, list.Engine)
+	printAgentsCap(out, list.Agents)
 	printSchedules(out, list.Schedules)
 	printDays(out, list.Days)
 	printPollSection(out, list)
@@ -753,6 +869,16 @@ func printEngine(stdout io.Writer, engine *flow.EngineInfo) {
 	default:
 		_, _ = fmt.Fprintln(stdout, "\nengine: running")
 	}
+}
+
+// printAgentsCap writes the limit of the agents queue of an adaptive config. It writes nothing for a static one.
+func printAgentsCap(stdout io.Writer, shown *flow.AgentsCap) {
+	if shown == nil {
+		return
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintf(stdout, "agents: %d of %d at once (%s)\n", shown.Current, shown.Ceiling, shown.Mode)
 }
 
 // printDays writes the per-day figures, one line for each day. It writes nothing when the window has no run.
@@ -1000,7 +1126,7 @@ type manyAnswer struct {
 func given(cmd *cobra.Command) []string {
 	var names []string
 
-	for _, name := range []string{"project", "question", "items"} {
+	for _, name := range []string{projectFlag, "question", "items"} {
 		if cmd.Flags().Changed(name) {
 			names = append(names, name)
 		}
@@ -1089,15 +1215,7 @@ func answerMany(out io.Writer, client Steering, m manyAnswer, reply flow.Reply) 
 
 // replyAll answers each item in turn and returns how many refused.
 func replyAll(out io.Writer, client Steering, items []string, reply flow.Reply) int {
-	refused := 0
-
-	for _, item := range items {
-		if !replyTo(out, client, item, reply) {
-			refused++
-		}
-	}
-
-	return refused
+	return countRefused(items, func(item string) bool { return replyTo(out, client, item, reply) })
 }
 
 // replyTo answers one item, prints its line, and reports whether the run took the answer.
@@ -1187,12 +1305,26 @@ const resumeLong = "Reopen the cancelled or failed run of an item. The run resta
 	"A canceled run that left its claim gives it back at the next beehave run.\n" +
 	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
 	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
-	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned."
+	"The move is refused when the workflow file or a file the run pinned changed since the run started. A script that a command call names by a path is pinned, in the repository or outside it. A run that an older build started did not pin scripts outside the repository.\n" +
+	"A run replays the workflow file that it pinned when it started, and a changed file refuses the run. Add --on-this-file to run the file as it is now: the run keeps its finished steps and replays them over the new file.\n" +
+	"A change after the step that the run reached goes on at once. A change before it ends the run at the first step that differs, and the error names that step. Nothing that the run wrote is undone. Restore the file and run beehave resume --on-this-file again to finish the run.\n" +
+	"Give --on-this-build and --on-this-file together to move a run of another build onto the file in one move.\n\n" +
+	"Add --failed to resume every run that failed, and give no item. After an outage, this reopens the runs that the outage stopped.\n" +
+	"A run is failed when it ended with an error or gave up recovering. A run that was stopped is not failed: resume it by its item.\n" +
+	"Narrow the runs with --since and --until (the end time of the run, ends included, as an RFC 3339 time or a duration such as 6h for that long ago), --project (the project of the run) and --limit (the runs that ended first). A run must fit every filter that is set.\n" +
+	"Each run resumes as beehave resume <item> does, with the same refusals, --on-this-build and --on-this-file. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
+	"The command prints one line for each run: the item, the run id, the end time and the outcome. It exits 0 when no run refused, and exits 1 when a run refused or when no failed run fits.\n" +
+	"Add --dry-run to list the runs that would resume and change nothing."
 
-// resumeItem reopens the run of an item, and moves it to this build first when the owner asked for that.
-func resumeItem(client Steering, item string, onThisBuild bool) error {
-	if onThisBuild {
+// resumeItem reopens the run of an item, and moves it to this build, onto the workflow file as it is now, or both, when the owner asked for that.
+func resumeItem(client Steering, item string, onThisBuild, onThisFile bool) error {
+	switch {
+	case onThisBuild && onThisFile:
+		return client.ResumeOnThisBuildAndFile(item)
+	case onThisBuild:
 		return client.ResumeOnThisBuild(item)
+	case onThisFile:
+		return client.ResumeOnThisFile(item)
 	}
 
 	return client.Resume(item)
@@ -1201,19 +1333,85 @@ func resumeItem(client Steering, item string, onThisBuild bool) error {
 func (f flowCommands) resumeCommand() *cobra.Command {
 	var flag string
 
-	var onThisBuild bool
+	var many manyResume
 
 	command := &cobra.Command{
-		Use:   "resume <item>",
-		Short: "Reopen the cancelled or failed run of an item", //nolint:misspell // user-facing state word, same as the cancelled run state
+		Use:   "resume <item> | resume --failed [filters]",
+		Short: "Reopen the cancelled or failed run of an item, or every failed run", //nolint:misspell // user-facing state word, same as the cancelled run state
 		Long:  resumeLong,
-		Args:  oneItem,
+		Args:  func(cmd *cobra.Command, args []string) error { return many.resumeArgs(f.clock(), cmd, args) },
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.resume(cmd, flag, &many, args) },
+	}
+	addConfigFlag(command, &flag)
+	many.addFlags(command)
+
+	return command
+}
+
+// resume runs beehave resume: one item, or with --failed every failed run that the filter picks.
+func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, args []string) error {
+	if !many.failed {
+		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild, many.onThisFile) })
+	}
+
+	return f.withClient(cmd, flag, func(client Steering) error {
+		return many.resumeMany(cmd.OutOrStdout(), cmd.ErrOrStderr(), client, many.picked)
+	})
+}
+
+const forkLong = "Start a new run of an item from a step of a run that ended, with other vars if you want.\n" +
+	"The new run is the next attempt of the item. It keeps the recorded outputs of the steps before the step, and runs that step and every later step again.\n" +
+	"Name the step as beehave status shows it, such as command:review#2. The old run does not change.\n" +
+	"--vars names a file that holds one JSON object. Each key replaces the same var of the source run. A key that names a fact of the project is refused.\n" +
+	"The run uses the workflow file that the source run pinned. A fork takes a fresh claim on the item, and refuses an item that has an open run: run beehave cancel first.\n" +
+	"The new run waits in the queue. Run beehave run for the item next: it continues the new run."
+
+// forkRun starts the fork that the flags ask for and prints the id of the new run. varsFile is empty when the owner gave no --vars.
+func forkRun(out io.Writer, client Steering, run, step, varsFile string) error {
+	vars, err := readForkVars(varsFile)
+	if err != nil {
+		return err
+	}
+
+	id, err := client.Fork(flow.ForkRequest{Run: run, Step: step, Vars: vars})
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out, "Forked %s from %s as %s. Run beehave run for the item to continue it.\n", run, step, id)
+
+	return err
+}
+
+// readForkVars reads and decodes the vars file of a fork. An empty name holds no vars.
+func readForkVars(path string) (map[string]any, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	text, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("read the vars file: %w", err)
+	}
+
+	return flow.ParseForkVars(text)
+}
+
+func (f flowCommands) forkCommand() *cobra.Command {
+	var flag, step, varsFile string
+
+	command := &cobra.Command{
+		Use:   "fork <run id> --from <step> [--vars <file>]",
+		Short: "Start a new run of an item from a step of an ended run",
+		Long:  forkLong,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], onThisBuild) })
+			return f.withClient(cmd, flag, func(client Steering) error { return forkRun(cmd.OutOrStdout(), client, args[0], step, varsFile) })
 		},
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().BoolVar(&onThisBuild, "on-this-build", false, "move a run that another build started to this build")
+	command.Flags().StringVar(&step, "from", "", "the step to start from, as beehave status shows it, such as command:review#2")
+	command.Flags().StringVar(&varsFile, "vars", "", "a file that holds a JSON object of vars to change for the new run")
 
 	return command
 }

@@ -71,7 +71,7 @@ func TestClient_StepsOfAFinishedRunShowEachStepWithTheFieldsThatDecideTheFlow(t 
 
 	assert.Equal(t, testRun, view.Run)
 	assert.Equal(t, runDone, view.State)
-	assert.Equal(t, []string{"claim", "item", "login#1", "agent:a#1", "gate:g#1", "command:c#1", "worktree", "release"}, viewNames(view))
+	assert.Equal(t, []string{originStepName, "claim", "item", "login#1", "agent:a#1", "gate:g#1", "command:c#1", "worktree", "release"}, viewNames(view))
 
 	for _, line := range view.Steps {
 		assert.Equal(t, "done", line.State, line.Name)
@@ -81,19 +81,19 @@ func TestClient_StepsOfAFinishedRunShowEachStepWithTheFieldsThatDecideTheFlow(t 
 		assert.GreaterOrEqual(t, *line.Seconds, 0.0, line.Name)
 	}
 
-	work := view.Steps[3]
+	work := view.Steps[4]
 	require.NotNil(t, work.ExitCode)
 	assert.Equal(t, 0, *work.ExitCode)
 	assert.Equal(t, "approve", work.Verdict)
 	assert.Equal(t, rig.head, work.Head)
 	assert.Empty(t, work.Stop)
 
-	gate := view.Steps[4]
+	gate := view.Steps[5]
 	require.NotNil(t, gate.Passed)
 	assert.True(t, *gate.Passed)
 	assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, gate.Gate)
 
-	lint := view.Steps[5]
+	lint := view.Steps[6]
 	require.NotNil(t, lint.ExitCode)
 	assert.Equal(t, 3, *lint.ExitCode)
 }
@@ -286,7 +286,7 @@ func TestEngine_ProgressPrintsTheRunAndEachTopLevelStep(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	text := out.String()
@@ -423,7 +423,7 @@ func TestStepLine_TheOutputsTheEngineRecordsDecodeIntoTheFieldsOfTheLine(t *test
 	assert.Equal(t, "approve", read.Verdict)
 	assert.True(t, read.Rewrote)
 
-	other := callLine([]dbos.StepInfo{record("scope:s#1", stepResult{Outputs: map[string]any{"rc": 9, "head": "x"}})}, "scope:s#1")
+	other := callLine([]dbos.StepInfo{record("wait:s#1", stepResult{Outputs: map[string]any{"rc": 9, "head": "x"}})}, "wait:s#1")
 	assert.Nil(t, other.ExitCode, "a step of another kind has no exit code")
 	assert.Empty(t, other.Head)
 }
@@ -477,6 +477,7 @@ func TestStepLine_AnOutputThatDoesNotDecodeKeepsTheStepAndSaysTheOutputCannotBeR
 		"read wrong shape":    {StepName: "agent:a#1/read1", Output: `{"outputs":5}`},
 		"phase wrong shape":   {StepName: "phase", ChildWorkflowID: "child-1", Output: `[1]`},
 		"output not text":     {StepName: "command:c#1", Output: 42},
+		"closing wrong shape": {StepName: "pr_closing:s#1", Output: `{"outputs":{"forge":"yes"}}`},
 	} {
 		line := callLine([]dbos.StepInfo{record}, record.StepName)
 
@@ -485,7 +486,7 @@ func TestStepLine_AnOutputThatDoesNotDecodeKeepsTheStepAndSaysTheOutputCannotBeR
 		assert.Nil(t, line.ExitCode, name)
 	}
 
-	readable := callLine([]dbos.StepInfo{{StepName: "scope:s#1", Output: `anything`}}, "scope:s#1")
+	readable := callLine([]dbos.StepInfo{{StepName: "wait:s#1", Output: `anything`}}, "wait:s#1")
 	assert.False(t, readable.OutputUnreadable, "a step of a kind the view does not decode has nothing to read")
 
 	data, err := json.Marshal(callLine([]dbos.StepInfo{{StepName: "command:c#1", Output: `x`}}, "command:c#1"))
@@ -516,11 +517,11 @@ func TestClient_StepsReadTheExitCodeOfAnAgentFromItsChildWorkflowNotFromTheLibra
 	view, err := client.Steps(testRun)
 	require.NoError(t, err)
 
-	work := view.Steps[3]
+	work := view.Steps[4]
 	require.NotNil(t, work.ExitCode, "the exit code comes from the output of the child workflow")
 	assert.Equal(t, 0, *work.ExitCode)
 	assert.False(t, work.OutputUnreadable)
-	assert.Nil(t, view.Steps[4].ExitCode, "the gate line has no exit code")
+	assert.Nil(t, view.Steps[5].ExitCode, "the gate line has no exit code")
 }
 
 func withVerdict(outputs map[string]any, verdict string) map[string]any {

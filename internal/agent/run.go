@@ -37,6 +37,8 @@ const (
 	// A cap crossed on the last line (read after the process exited) ends the run as OutcomeBudgetCap too.
 	OutcomeTurnCap   Outcome = "turn-cap"
 	OutcomeBudgetCap Outcome = "budget-cap"
+	// OutcomeContextCap means the context of the run reached Spec.MaxContextPercent of Spec.ContextWindow, and the runner stopped the run.
+	OutcomeContextCap Outcome = "context-cap"
 	// OutcomeLimited means a provider limit (a rate limit or a spend limit) refused more work, and Result.Limit says which. The caller sets it from the
 	// output of the CLI, whatever the exit code.
 	OutcomeLimited Outcome = "limited"
@@ -48,6 +50,8 @@ const (
 	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
 	runDirMode     = 0o700
 	launchFileMode = 0o600
+	// promptFileName is the file of PromptFile in the run folder.
+	promptFileName = "beehave-prompt.txt"
 	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
 	// keeps the socket paths of the shell under the limit of 104 bytes on macOS, and the path of the CLI home under the limit of cliTempLimit.
 	shortTemp  = "/tmp"
@@ -64,6 +68,7 @@ var (
 	errIdleTimeout  = errors.New("idle timeout")
 	errTurnCap      = errors.New("turn cap")
 	errBudgetCap    = errors.New("budget cap")
+	errContextCap   = errors.New("context cap")
 )
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
@@ -88,10 +93,19 @@ type Spec struct {
 	// A profile without the turn flag has no turns of its own: the runner counts the shell calls of the run, and a call past MaxTurns ends the run with OutcomeTurnCap.
 	MaxTurns  int
 	MaxBudget float64
-	Log       io.Writer
-	OnStart   func(pid int)
+	// MaxContextPercent and ContextWindow cap the context of one run: the runner ends it with OutcomeContextCap on the first line whose context figure
+	// (Seen.Context) is at or past MaxContextPercent percent of ContextWindow tokens. 0 in either means no cap. An adapter that reports no figure never reaches it.
+	MaxContextPercent int
+	ContextWindow     int64
+	Log               io.Writer
+	OnStart           func(pid int)
+	// BeforeStart, when set, runs after every check that can refuse the run and just before the CLI starts. A refused run never calls it.
+	// The note it returns is added to the result of the run. Its time does not count against Timeout: the total limit starts again after it.
+	BeforeStart func(ctx context.Context) string
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
+	// Traceparent, when set, is the W3C TRACEPARENT that the CLI gets. No other trace or telemetry variable reaches the CLI.
+	Traceparent string
 	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs) and adds the ones that turn editing off
 	// (Profile.NoEditArgs and Profile.NoEditEnv).
 	NoEdits bool
@@ -154,17 +168,18 @@ type Timer interface {
 
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 // Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
+// Version gets the words that start the CLI (the prefix of the launch, then the CLI) and adds --version itself.
 // Temp is the folder in which a sandboxed run gets its own temporary folder; the zero value is /tmp.
 // Folders is the set of the temporary folders that this process made. The runners of one process share one. A runner with none keeps every folder of a live pid, this process included.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
-	Version   func(ctx context.Context, binary string, env []string) (string, error)
+	Version   func(ctx context.Context, command, env []string) (string, error)
 	OS        string
 	Temp      string
 	Folders   *fstree.Folders
 }
 
-// Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
+// Run starts the agent, gives it the prompt the way that the launch says (Launch.Prompt) and copies redacted stdout lines to Spec.Log.
 // The agent runs in its own process group, which dies on a timeout, a cancel or the end of the run.
 func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	p, refusal := prepare(spec, cmp.Or(r.OS, hostOS()))
@@ -177,12 +192,13 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 
 	after := r.after()
 
-	defer startTotalTimeout(cmp.Or(spec.Timeout, p.DefaultTimeout), after, cancel)()
+	total := startTotalTimeout(cmp.Or(spec.Timeout, p.DefaultTimeout), after, cancel)
+	defer total.stop()
 
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return stalled(execute(ctx, spec, p, idle, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
+	return stalled(execute(ctx, spec, p, timers{idle, total}, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
 }
 
 // stalled adds the StallNote of the profile to a run that a total or idle limit ended.
@@ -252,23 +268,42 @@ func optionProblem(spec Spec, p Profile) string {
 	return ""
 }
 
-// startTotalTimeout cancels the run when the total limit passes. It returns the function that stops the timer.
-func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) func() {
-	if limit <= 0 {
-		return func() {}
-	}
-
-	timer := after(limit, func() { cancel(errTotalTimeout) })
-
-	return func() { timer.Stop() }
+// totalTimer cancels the run when the total limit passes. A run with no limit has no timer.
+type totalTimer struct {
+	limit time.Duration
+	timer Timer
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, where tempPlace) Result {
-	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
-	if err != nil {
-		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
+// startTotalTimeout starts the total timer of the run.
+func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) *totalTimer {
+	if limit <= 0 {
+		return &totalTimer{}
 	}
 
+	return &totalTimer{limit: limit, timer: after(limit, func() { cancel(errTotalTimeout) })}
+}
+
+// stop stops the timer.
+func (t *totalTimer) stop() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+}
+
+// restart starts the timer again with the whole limit.
+func (t *totalTimer) restart() {
+	if t.timer != nil {
+		t.timer.Reset(t.limit)
+	}
+}
+
+// timers are the idle timer and the total timer of one run.
+type timers struct {
+	idle  *idleTimer
+	total *totalTimer
+}
+
+func execute(ctx context.Context, spec Spec, p Profile, clock timers, version versionOf, where tempPlace) Result {
 	runDir, err := os.MkdirTemp("", "beehave-run-") // mode 0700
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
@@ -283,7 +318,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 	defer remove()
 
-	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+	return launchRun(ctx, spec, p, runDir, clock, version)
 }
 
 // tempPlace is where a sandboxed run makes its temporary folder: the root of the folders of the users, and the set of the folders that this process made.
@@ -313,26 +348,107 @@ func withTemp(spec Spec, binary string, where tempPlace) (Spec, func(), string) 
 }
 
 // launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
-func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
-	launch := launchOf(spec, runDir)
-
-	if problem := cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies)); problem != "" {
+func launchRun(ctx context.Context, spec Spec, p Profile, runDir string, clock timers, version versionOf) Result {
+	launch, words, problem := launchWords(spec, p, runDir)
+	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
 	env := envFor(spec, p, launch.Env)
 
-	problem, printed := versionProblem(ctx, spec, p, binary, env, version)
+	problem, printed := versionProblem(ctx, spec, p, words, env, version)
 	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
-	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch, versionArgs(p, printed)), spec.Dir)
+	cmd, problem := commandOf(ctx, spec, launch, runDir, words, argsOf(spec, p, launch, versionArgs(p, printed)), env)
+	if problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
 
-	cmd.Env = env
-	cmd.Stdin = strings.NewReader(spec.Prompt)
+	note := beforeStart(ctx, spec, clock.total)
+	return withGuardProof(runCommand(ctx, spec, cmd, clock.idle), runDir, launch.Loaded).AddNote(note)
+}
 
-	return withGuardProof(runCommand(ctx, spec, cmd, idle), runDir, launch.Loaded)
+// launchWords returns the launch of the run and the words that start the CLI. It finds the programs first, then writes the files of the launch into runDir.
+// It returns why it cannot, or "".
+func launchWords(spec Spec, p Profile, runDir string) (Launch, []string, string) {
+	launch := launchOf(spec, runDir)
+
+	words, problem := commandWords(launch.Prefix, spec.Env["PATH"], p.Binary)
+	if problem != "" {
+		return Launch{}, nil, problem
+	}
+
+	return launch, words, cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies))
+}
+
+// commandOf returns the command of the run with the environment env: the words that start the CLI, then the arguments, with the prompt in the place that the
+// launch names. It returns why it cannot, or "".
+func commandOf(ctx context.Context, spec Spec, launch Launch, runDir string, words, args, env []string) (*exec.Cmd, string) {
+	stdin, args, problem := placePrompt(spec.Prompt, launch.Prompt, runDir, args)
+	if problem != "" {
+		return nil, problem
+	}
+
+	cmd := proc.GroupCommand(ctx, words[0], slices.Concat(words[1:], args), spec.Dir)
+	cmd.Env, cmd.Stdin = env, stdin
+
+	return cmd, ""
+}
+
+// placePrompt returns the standard input of the run and the arguments of the run with the prompt in the place that the mode names. Only PromptStdin has an
+// input. The file of PromptFile is promptFileName in runDir, with mode 0600, and the run removes runDir. It returns why it cannot, or "".
+func placePrompt(prompt string, mode PromptMode, runDir string, args []string) (io.Reader, []string, string) {
+	switch mode {
+	case PromptStdin:
+		return strings.NewReader(prompt), args, ""
+	case PromptArgument:
+		return nil, append(args, prompt), ""
+	case PromptFile:
+		path := filepath.Join(runDir, promptFileName)
+
+		if err := os.WriteFile(path, []byte(prompt), launchFileMode); err != nil {
+			return nil, nil, fmt.Sprintf("cannot write the prompt file in the run folder, so the run does not start: %v", err)
+		}
+
+		return nil, append(args, path), ""
+	default:
+		return nil, nil, fmt.Sprintf("the launch of the agent has the unknown prompt mode %d, so the run does not start.", mode)
+	}
+}
+
+// commandWords returns the words that start the CLI. With no prefix it is the CLI, found on PATH. With a prefix it is the first word of the prefix, found on
+// PATH, then the other words, then the name of the CLI, which the program of the prefix finds. It returns why a program is not installed, or "".
+func commandWords(prefix []string, path, cli string) ([]string, string) {
+	if len(prefix) == 0 {
+		program, err := proc.LookPath(cli, path)
+		if err != nil {
+			return nil, cli + " is not installed. Install it and put it on PATH."
+		}
+
+		return []string{program}, ""
+	}
+
+	program, err := proc.LookPath(prefix[0], path)
+	if err != nil {
+		return nil, prefix[0] + " is not installed, and the launch of the agent puts it before the CLI. Install it and put it on PATH."
+	}
+
+	return slices.Concat([]string{program}, prefix[1:], []string{cli}), ""
+}
+
+// beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none. The total timer stops while it runs and
+// starts again with the whole limit after it, so the time it takes does not count against the run.
+func beforeStart(ctx context.Context, spec Spec, total *totalTimer) string {
+	if spec.BeforeStart == nil {
+		return ""
+	}
+
+	total.stop()
+	defer total.restart()
+
+	return spec.BeforeStart(ctx)
 }
 
 // withGuardProof sets GuardMissing on the result when the launch named a marker file and the file is not in the run folder.
@@ -518,9 +634,7 @@ func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *reda
 		log = io.Discard
 	}
 
-	if spec.MaxTurns > 0 && spec.Adapter.Profile().TurnsFlag == "" {
-		log = &stepCounter{out: log, adapter: spec.Adapter, limit: spec.MaxTurns, cancel: cancel, seen: map[string]bool{}}
-	}
+	log = newContextCounter(spec, newStepCounter(spec, log, cancel), cancel)
 
 	counter := newSpendCounter(spec, log, cancel)
 	if counter != nil {
@@ -560,6 +674,8 @@ func outcomeOf(cause error) Outcome {
 		return OutcomeTurnCap
 	case errors.Is(cause, errBudgetCap):
 		return OutcomeBudgetCap
+	case errors.Is(cause, errContextCap):
+		return OutcomeContextCap
 	}
 
 	return OutcomeCancelled

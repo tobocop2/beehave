@@ -11,12 +11,17 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-const scopesMarker = "Token scopes:"
-
-var (
-	commitID    = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	quotedScope = regexp.MustCompile(`'([^']+)'`)
+const (
+	// workflowScope is the scope of a token that can change the workflow files of a repository.
+	workflowScope = "workflow"
+	// githubHost is the host whose login the CI read asks about.
+	githubHost = "github.com"
+	// authLoggedIn is the state of an account whose token GitHub accepted.
+	authLoggedIn  = "success"
+	cmdAuthStatus = "gh auth status"
 )
+
+var commitID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // workflowRefusal is the text of GitHub's refusal of a push that changes a workflow file without the workflow permission.
 const workflowRefusal = "create or update workflow"
@@ -87,18 +92,70 @@ func (f *Forge) DisableAutoMergePR(ctx context.Context, pr int) error {
 	return nil
 }
 
-// TokenScopes returns the scopes of the token of the active account. An answer with no scope line is a refusal: the scopes are unknown, not empty.
-func (f *Forge) TokenScopes(ctx context.Context) ([]string, error) {
-	done := f.run.Run(ctx, []string{"auth", "status", "--active"})
+// CanWriteCI answers from the scopes of the active account on github.com, read as JSON: yes when they hold the workflow scope, in any case, and no when
+// they do not. gh leaves the scopes out when GitHub shows none, as for a fine-grained token, so that is unknown. Any answer it cannot read is an error.
+func (f *Forge) CanWriteCI(ctx context.Context) (model.CIWrite, error) {
+	done := f.run.Run(ctx, []string{"auth", "status", "--active", "--hostname", githubHost, argJSON, "hosts"})
+	if done.ExitCode != 0 {
+		return model.CIWriteUnknown, refused(done, "%s exited with code %d", cmdAuthStatus, done.ExitCode)
+	}
 
-	// gh prints the status to stderr when it exits with an error, so both streams are read.
-	for line := range strings.Lines(done.Stdout + "\n" + done.Stderr) {
-		if _, list, found := strings.Cut(line, scopesMarker); found {
-			return scopeNames(list), nil
+	status, err := model.Decode[authStatus](cmdAuthStatus, done.Stdout)
+	if err != nil {
+		return model.CIWriteUnknown, forge.Refusal("cannot parse the answer of "+cmdAuthStatus, err)
+	}
+
+	account, err := status.active()
+	if err != nil {
+		return model.CIWriteUnknown, forge.Refusal(err.Error(), err)
+	}
+
+	return account.write(), nil
+}
+
+// authStatus is the answer of `gh auth status --json hosts`: the accounts of each host.
+type authStatus struct {
+	Hosts map[string][]authAccount `json:"hosts"`
+}
+
+// authAccount is one account in the answer. Scopes is the X-OAuth-Scopes header of GitHub, a list split by commas, and empty when GitHub sends none.
+type authAccount struct {
+	State  string `json:"state"`
+	Error  string `json:"error"`
+	Active bool   `json:"active"`
+	Scopes string `json:"scopes"`
+}
+
+// active returns the active account on github.com whose login GitHub accepted. No such account is an error that keeps what gh said.
+func (s authStatus) active() (authAccount, error) {
+	for _, account := range s.Hosts[githubHost] {
+		if !account.Active {
+			continue
+		}
+
+		if account.State != authLoggedIn {
+			return authAccount{}, fmt.Errorf("the login to %s is in state %q: %s", githubHost, account.State, account.Error)
+		}
+
+		return account, nil
+	}
+
+	return authAccount{}, fmt.Errorf("gh shows no active account on %s", githubHost)
+}
+
+// write is the answer of the scopes of the account.
+func (a authAccount) write() model.CIWrite {
+	if strings.TrimSpace(a.Scopes) == "" {
+		return model.CIWriteUnknown
+	}
+
+	for scope := range strings.SplitSeq(a.Scopes, ",") {
+		if strings.EqualFold(strings.TrimSpace(scope), workflowScope) {
+			return model.CIWriteYes
 		}
 	}
 
-	return nil, forge.Refuse("cannot read the token scopes of gh")
+	return model.CIWriteNo
 }
 
 // Login returns the login of the active account: the account the review poll reads for. An empty answer is a refusal.
@@ -114,17 +171,6 @@ func (f *Forge) Login(ctx context.Context) (string, error) {
 	}
 
 	return strings.TrimSpace(login), nil
-}
-
-// scopeNames returns the quoted words of a scope list. The text none has no quotes and gives no scope.
-func scopeNames(list string) []string {
-	var names []string
-
-	for _, match := range quotedScope.FindAllStringSubmatch(list, -1) {
-		names = append(names, match[1])
-	}
-
-	return names
 }
 
 // CreateBranch makes a branch at the commit. An existing branch is an error from the forge.

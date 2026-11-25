@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/examples/remediation/tools/roundcut"
-	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
@@ -24,38 +22,28 @@ const (
 	ExitRefused = 2
 )
 
-// Forge is the forge of every subcommand: the calls of the round cut, the calls of the takeover and the body read of the scope check and of the first review row.
-// A forge that also has the closing-reference read of scope.Listing gives both of them the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
+// Forge is the forge of every subcommand: the title and body read of the recount, and the body read of the first review row.
+// A forge that also has the closing-reference read of Listing gives the first review row the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
 type Forge interface {
-	roundcut.Forge
-	takeover.Reader
-	scope.BodyReader
+	bodyReader
+	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 }
 
-// Book is the lane ledger of the subcommands: the reads and the write of admission, and the reads of the scope check.
+// Book is the lane ledger of the subcommands: the reads and the write of admission, and the read of the issues of a first review.
 type Book interface {
 	brief.Book
-	scope.Records
-}
-
-// Claims is the claim store of beehave: the one call of the claim that the takeover needs.
-// EnsureFree refuses when another owner holds the item, and writes nothing. The tools write no claim: the run of an item in the engine holds it.
-type Claims interface {
-	EnsureFree(ctx context.Context, owner, item string) error
+	Closes(key string) ([]string, error)
 }
 
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
-// Git runs git in Dir, the working folder. Gh runs gh in the same folder for a take, which assigns the pull request and its closing issues. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
-// Claims opens the claim store of the project that owns the repository. A step opens it only when it reads the claim, after the guards that need no store.
+// Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
 // Book opens the lane ledger in the state folder that the --state flag of a subcommand names.
 type Deps struct {
-	Git    proc.Runner
-	Gh     proc.Runner
-	Dir    string
-	Forge  func(repo string) (Forge, error)
-	Now    func() time.Time
-	Claims func(repo string) (Claims, error)
-	Book   func(dir string) Book
+	Git   proc.Runner
+	Dir   string
+	Forge func(repo string) (Forge, error)
+	Now   func() time.Time
+	Book  func(dir string) Book
 }
 
 // streams are the two outputs of a run.
@@ -73,10 +61,10 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.star reads it.
 func commands() []command {
-	return slices.Concat(roundCommands(), mergeCommands(), syncCommands(), briefCommands(), ledgerCommands(), boardCommands(), papersCommands(), spendCommands(), gateCommands())
+	return slices.Concat(briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
 }
 
-// ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.
+// ledgerCommands are the subcommands that keep the lane ledger and count its rows.
 func ledgerCommands() []command {
 	return []command{
 		{
@@ -90,24 +78,6 @@ func ledgerCommands() []command {
 			usage:   recountSyntax,
 			summary: "count the rows of the integration pull request, and refuse a heading or title that says another number, or a count that did not change after a write",
 			run:     recountCommand,
-		},
-		{
-			name:    "scope",
-			usage:   scopeSyntax,
-			summary: "refuse a pull request that closes an issue it did not close at its first review, unless the ledger holds an owner-add row for it",
-			run:     scopeCommand,
-		},
-	}
-}
-
-// boardCommands are the subcommands that move a card on the project board.
-func boardCommands() []command {
-	return []command{
-		{
-			name:    "board",
-			usage:   boardSyntax,
-			summary: "put the pull request or issue on a GitHub Project board, set its status column, and refuse when the read-back shows another column",
-			run:     boardCommand,
 		},
 	}
 }
@@ -126,42 +96,6 @@ func briefCommands() []command {
 			usage:   sizeSyntax,
 			summary: "size the reading of a brief in tokens, warn about big files and refuse a reading above the budget",
 			run:     sizeCommand,
-		},
-	}
-}
-
-// roundCommands are the subcommands that cut a round and keep its integration pull request.
-func roundCommands() []command {
-	return []command{
-		{
-			name:    "cut",
-			usage:   "cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]",
-			summary: "cut the next round branch after the integration pull request merged",
-			run:     cutCommand,
-		},
-		{
-			name:    "integration",
-			usage:   integrationSyntax,
-			summary: "find the integration pull request of the round, or open it, add a row for each pull request merged into the round branch, and print `pr=<n> state=<state>`",
-			run:     integrationCommand,
-		},
-	}
-}
-
-// mergeCommands are the subcommands that audit merges and decide a takeover.
-func mergeCommands() []command {
-	return []command{
-		{
-			name:    "audit",
-			usage:   "audit authored <span> | audit present <tip> <base>",
-			summary: "read the merges of a range for content that no pull request diff shows",
-			run:     auditCommand,
-		},
-		{
-			name:    "take",
-			usage:   takeSyntax,
-			summary: "decide whether to take a pull request of somebody else: a dry read, --apply posts the notice, --take checks the grace period",
-			run:     takeCommand,
 		},
 	}
 }

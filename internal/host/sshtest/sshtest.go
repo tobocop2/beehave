@@ -48,6 +48,7 @@ type Machine struct {
 	Offline     bool // the ssh link does not connect
 	LingerOff   bool
 	NoSystemd   bool   // the user manager does not run
+	NoFlock     bool   // the machine has no flock command
 	SystemdText string // the first line of systemd-run --version; empty means systemd 255
 	Units       map[string]*Unit
 	Files       map[string]bool // markers and folders, by path
@@ -67,10 +68,16 @@ type Machine struct {
 
 // New returns a machine. A test builds the link over SSH().
 func New(mode hosttest.Mode) *Machine {
-	return &Machine{
+	m := &Machine{
 		Broken: mode == hosttest.Broken, BadDisk: mode == hosttest.UnreadableDisk, Offline: mode == hosttest.Unreachable,
 		Units: map[string]*Unit{}, Files: map[string]bool{},
 	}
+
+	if mode == hosttest.UnreadableLog {
+		m.Fail = map[string]int{"tail": 1}
+	}
+
+	return m
 }
 
 // SSH returns the ssh command line of the machine.
@@ -182,6 +189,8 @@ func (m *Machine) command(words []string) model.CommandResult {
 		return m.systemdRun(words)
 	case "sh":
 		return m.observe(words)
+	case "flock":
+		return m.flock()
 	case "df":
 		return m.df()
 	case "tail":
@@ -189,6 +198,15 @@ func (m *Machine) command(words []string) model.CommandResult {
 	}
 
 	return m.files(words)
+}
+
+// flock answers `flock --version`: the machine has util-linux unless NoFlock is set.
+func (m *Machine) flock() model.CommandResult {
+	if m.NoFlock {
+		return failure(127, "flock: command not found")
+	}
+
+	return ok("flock from util-linux 2.39.3\n")
 }
 
 // defaultLog is the log of a unit that a test gave no log.
@@ -285,9 +303,20 @@ func (m *Machine) systemctl(words []string) model.CommandResult {
 		}
 
 		return ok("")
+	case "show":
+		return m.loadState(words[len(words)-1])
 	}
 
 	return failure(1, "systemctl: unknown verb")
+}
+
+// loadState answers `systemctl --user show -p LoadState --value <unit>`: loaded for a unit that systemd holds, not-found for any other.
+func (m *Machine) loadState(name string) model.CommandResult {
+	if u := m.Units[name]; u == nil || u.Vanished || u.Reset {
+		return ok("not-found\n")
+	}
+
+	return ok("loaded\n")
 }
 
 func (m *Machine) stop(name string) model.CommandResult {
@@ -365,6 +394,10 @@ func (m *Machine) observe(words []string) model.CommandResult {
 	var lines []string
 	if m.Files[base+".canceled"] {
 		lines = append(lines, "beehave-canceled")
+	}
+
+	if m.Files[base+".waiting"] {
+		lines = append(lines, "beehave-waiting")
 	}
 
 	for _, state := range []string{"succeeded", "failed", "timed_out"} {

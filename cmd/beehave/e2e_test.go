@@ -74,7 +74,7 @@ func e2eBeehave() {
 		version = other
 	}
 
-	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Registry: newAdapters(nil, nil, nil).registry(), Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
+	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Registry: newAdapters(nil, nil, nil).registry(), Hooks: newAdapters(nil, nil, nil).hooks(), Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }
@@ -97,7 +97,7 @@ func e2eFlow(dir, path string) cli.Flow {
 
 			engine, err := flow.NewEngine(ctx, withModules(opts), withBatch(flow.Deps{
 				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)), SkillLine: skillLineOf(cfg.Runners, newAdapters(nil, nil, nil)),
-				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: files,
+				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: e2eHosts{files},
 			}, dir, cfg))
 			if err != nil {
 				return nil, err
@@ -117,9 +117,30 @@ func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, er
 }
 
 // Preflight finds nothing changed: the scripts own no pull request before the first agent.
-func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
+func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, bool) (preflight.Result, error) {
 	return preflight.Result{}, nil
 }
+
+// ReadPull finds no pull request.
+func (e2eFiles) ReadPull(context.Context, string, string, bool) (model.PullFacts, error) {
+	return model.PullFacts{}, nil
+}
+
+// IssueAssignees finds an issue that nobody holds.
+func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, error) {
+	return nil, nil
+}
+
+// IssueAuthor finds no issue: the items of the scripts are local.
+func (e2eFiles) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// SameItem keys items as their text, as the local store does.
+func (e2eFiles) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
+// CheckCredentials refuses every project: the project of the scripts has no build host.
+func (e2eFiles) CheckCredentials(context.Context, string) error { return errNoNoneHost }
 
 // Comments gives an item no comments: the pipeline of the example reads the parent of its item.
 func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { return nil, nil }
@@ -127,11 +148,26 @@ func (e2eFiles) Comments(context.Context, string, string) ([]string, error) { re
 // Parent gives an item no parent.
 func (e2eFiles) Parent(context.Context, string, string) (string, error) { return "", nil }
 
+// Sized and Defer say the project of the scripts has no size table and leaves no host for a gate.
+func (e2eFiles) Sized(string, string) (bool, error) { return false, nil }
+
+func (e2eFiles) Defer(context.Context, string, string) (bool, string, error) {
+	return false, "", nil
+}
+
 // Up starts no host: the project of the scripts has none. The finish function of the example stops the host that the round started.
-func (e2eFiles) Up(context.Context, string, string) (bool, string, error) { return false, "", nil }
+func (e2eFiles) Up(context.Context, string, string, func(string) (int, error)) (bool, string, error) {
+	return false, "", nil
+}
 
 // Teardown stops no host.
 func (e2eFiles) Teardown(context.Context, string, string) error { return nil }
+
+// e2eHosts is the host keeper of the scripts: the Ready of the lifecycle of e2eFiles has another meaning, so the host keeper answers its own.
+type e2eHosts struct{ e2eFiles }
+
+// Ready says no host is ready: the project of the scripts has none.
+func (e2eHosts) Ready(context.Context, string, string) (bool, error) { return false, nil }
 
 // LostProof gives no proof: the project of the scripts has no host, so it has no host job.
 func (e2eFiles) LostProof(context.Context, string, string, string) (model.LostProof, error) {
@@ -155,7 +191,7 @@ func (f e2eFiles) Claim(_ context.Context, _, item string) (string, error) {
 
 func (f e2eFiles) Ready(_ context.Context, _, item string) error { return f.event("ready", item) }
 
-func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, error) {
+func (e2eFiles) ClosingIssues(context.Context, string, string) ([]model.IssueRef, bool, error) {
 	return nil, true, nil
 }
 
@@ -215,7 +251,17 @@ func errJoin(first, second error) error {
 
 // e2eHeadOf reads the commit of the git folder that e2eSetup makes. The gate and the pull request show it.
 func e2eHeadOf(ctx context.Context, dir string) (string, error) {
-	result := proc.NewExecRunner("git", filepath.Join(dir, "tree")).Run(ctx, []string{"rev-parse", "HEAD"})
+	return e2eRevParse(ctx, dir, "HEAD")
+}
+
+// e2eTreeOf reads the tree of the commit of the git folder that e2eSetup makes, as a real gate reports it.
+func e2eTreeOf(ctx context.Context, dir string) (string, error) {
+	return e2eRevParse(ctx, dir, "HEAD^{tree}")
+}
+
+// e2eRevParse reads the object that the revision names in the git folder that e2eSetup makes.
+func e2eRevParse(ctx context.Context, dir, revision string) (string, error) {
+	result := proc.NewExecRunner("git", filepath.Join(dir, "tree")).Run(ctx, []string{"rev-parse", revision})
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf("git rev-parse: %s", result.Stderr)
 	}
@@ -227,13 +273,32 @@ func e2eHeadOf(ctx context.Context, dir string) (string, error) {
 // and a revert run in which the new test fails on the base code.
 type e2eGate struct{ dir string }
 
-func (e2eGate) Submit(_ context.Context, _, _, _, base, _ string) (flow.GateJob, error) {
+// e2eGated reads the commit and the tree of the git folder that e2eSetup makes: the code that the gate ran on.
+func e2eGated(ctx context.Context, dir string) (string, string, error) {
+	head, err := e2eHeadOf(ctx, dir)
+	if err != nil {
+		return "", "", err
+	}
+
+	tree, err := e2eTreeOf(ctx, dir)
+
+	return head, tree, err
+}
+
+// State reads the commit of the git folder that e2eSetup makes, with its tree, as a clean worktree.
+func (g e2eGate) State(ctx context.Context, _, _ string) (string, gate.State, error) {
+	head, tree, err := e2eGated(ctx, g.dir)
+
+	return filepath.Join(g.dir, "tree"), gate.State{Head: head, Tree: tree, Clean: true}, err
+}
+
+func (e2eGate) Submit(_ context.Context, _, _, _, base, _, _ string, _ model.Slot) (flow.GateJob, error) {
 	return flow.GateJob{Plan: gate.Plan{Base: base}}, nil
 }
 
 func (g e2eGate) Run(ctx context.Context, _, _, _ string, job flow.GateJob) (flow.GateResult, error) {
-	head, err := e2eHeadOf(ctx, g.dir)
-	result := flow.GateResult{Passed: true, Head: head, Tree: "tree-of-" + head}
+	head, tree, err := e2eGated(ctx, g.dir)
+	result := flow.GateResult{Passed: true, Head: head, Tree: tree}
 
 	if job.Plan.Base != "" {
 		result.Checks = &flow.GateChecks{NewTests: []string{"shop TestE2E"}, New: 1, Secrets: new(int), Complete: true, Revert: model.RevertPass, RevertCases: 1}
@@ -353,7 +418,7 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 	result := agent.Runner{}.Run(ctx, agent.Spec{
 		Adapter: adapter, Runner: runner, ConfigFolder: a.dir,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits, Resume: request.Resume,
-		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
+		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(claude.Name, request.Forbid, protect),
 	})
 
 	result, err := endOf(adapter, runner.ConfigDir, a.dir, tap, result, request.Forbid, protect)
@@ -438,7 +503,7 @@ if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
 fi
 if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
-  printf '{"verdict":"%s","mechanism":"","regressions":"0","open":"","findings":[]}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
+  printf '{"verdict":"%s","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
 if [ "$step" = plan ]; then
   printf '{"regressions":"0"}\n' > "$(field write)"
@@ -447,8 +512,12 @@ if [ "$step" = settle ]; then
   printf '{"parked":"[]"}\n' > "$(field write)"
 fi
 # A lane answers the two outputs the example declares for it: its report and the reds it did not cause. The report check of the scripts is answered by e2eCommands.
-if [ "$step" = implement ] || [ "$step" = fix ]; then
+# A fix also answers the two outputs of the review ledger: it resolved no id and declares no finding wontfix.
+if [ "$step" = implement ]; then
   printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
+fi
+if [ "$step" = fix ]; then
+  printf '{"report":"# Report\\n","uncaused":"[]","resolved":"[]","wontfix":"[]"}\n' > "$(field write)"
 fi
 # The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
 if [ "$step" = sweep ]; then
@@ -500,6 +569,8 @@ func (e2eLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 	return time.Time{}, false, nil
 }
 
+func (e2eLogins) Headroom(context.Context) bool { return false }
+
 // e2ePrompts replace the prompts of the example in the work folder. The workflow file is the example itself.
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\nwrite={{ .output_file }}\n",
@@ -518,6 +589,7 @@ runner(name = "a", agent = "claude", config_dir = "%DIR%")
 runner(name = "b", agent = "claude", config_dir = "%DIR%")
 `
 
+// e2eProject sets sandbox = "off" because the fake claude of the scripts does not model the sandbox. The sandboxed scripts set their own project.
 const e2eProject = `project(
     repo = "example/shop",
     tracker = "github",
@@ -527,6 +599,7 @@ const e2eProject = `project(
     base_branch = "main",
     gate = "true",
     test_report = "r.xml",
+    sandbox = "off",
     build_host = "build",
     host = host(provider = "ssh", disk_floor_gb = 50, slots = {"mutation": 1}, ssh = ssh(address = "10.0.0.5")),
     vars = {
@@ -791,13 +864,13 @@ func TestScripts(t *testing.T) {
 		Setup: e2eSetup,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
 			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus, "waitsession": cmdWaitSession, "waitline": cmdWaitLine,
-			"example": cmdExample, "script": cmdScript, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
+			"example": cmdExample, "fixture": cmdFixture, "script": cmdScript, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"swarmfakes": cmdSwarmFakes, "batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude, "deskfakes": cmdDeskFakes, "deskinit": cmdDeskInit,
 			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit, "maintfakes": cmdMaintFakes, "maintinit": cmdMaintInit,
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
-			"reviewfakes": cmdReviewLoopFakes,
+			"reviewfakes": cmdReviewLoopFakes, "claudemodel": cmdClaudeModel,
 		},
 	})
 }

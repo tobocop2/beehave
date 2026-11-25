@@ -5,7 +5,7 @@
 # Set PAUSE_AFTER_FAILURE to the time that the loop sleeps after a pass that saw a failed run, such as "2m". The default is "30s".
 #
 # Each pass does four things:
-#   1. queue() reads the items and the pull requests again. A merge in an earlier pass shows here, so an item that the merge unblocked is ready now.
+#   1. queue() of the library reads the items and the pull requests on BASE again. A merge in an earlier pass shows here, so an item that the merge unblocked is ready now.
 #   2. spawn starts the ready items that fit in the free slots. A held item is never ready, and a failed item is never ready.
 #   3. first_of(runs = live) waits until an open run ends, and its field `runs` lists every run that ended in the same read. The other runs keep their slots, so one item that loops does not stop the rest.
 #   4. The loop removes the ended runs from its list, holds each failed item with a comment, and sleeps before it starts runs after a pass that saw a failure.
@@ -16,6 +16,9 @@
 # This file is separate from examples/remediation because main is the entry of the parent and of a child alike.
 # The child function `work` is the one place to put the pipeline of one item: replace its agent call with the steps of the remediation example.
 
+load("@beehave//claims.star", "claim_stop")
+load("@beehave//queue.star", "queue")
+
 # The label of the forge that holds an item. Change it to the label that your repository uses.
 HOLD = "hold"
 
@@ -23,11 +26,13 @@ HOLD = "hold"
 MAX_PASSES = 500
 
 def work(item):
-    """Runs for each item as a child run. The agent works in its own work folder, pushes the branch that has the id of the item, and opens the pull request."""
+    """Runs for each item as a child run. The agent commits in its own work folder, and the engine pushes the branch that has the id of the item and opens the draft pull request."""
 
     # The forge is read here, at the start of the item, so a pull request that was opened after the pass read the queue still stops the item.
     # An open pull request of a login that is not OWNER_LOGIN claims the item. The failure holds the item with the reason, and no agent starts.
-    intake = preflight(name = "intake", base = env("BASE"), hold = HOLD, own = {"logins": [env("OWNER_LOGIN")]})
+    intake = preflight(name = "intake", base = env("BASE"))
+    if intake.ok:
+        intake = claim_stop(name = "intake", hold = HOLD, own = {"logins": [env("OWNER_LOGIN")]})
     if not intake.ok:
         fail(intake.reason)
 
@@ -36,14 +41,20 @@ def work(item):
         prompt = "prompts/task.md",
         model = "sonnet",
         forbid_commands = ["bulk-staging"],
-        # The shell pushes the branch and opens the pull request, so it reaches the forge and nothing else. A step with no list has no network.
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        # The shell edits and commits in the work folder only, so it reaches no host.
+        sandbox = sandbox(),
         inputs = {"item": item, "base": env("BASE")},
     )
 
-    # A cap ended the run (the output `stop` is "turns" or "budget"), so the pull request may be half done. The item fails with the reason.
+    # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the work may be half done. The item fails with the reason.
     if implement.stop != "":
         fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (implement.stop, item.id, item.id, item.id))
+
+    # The agent has no credential, so the engine pushes the commit of the step and opens the pull request. pr_open opens a draft; mark it ready when you want it reviewed.
+    # A step that made no commit opens nothing. These two steps need no patched: they come after the last step that an open run of the earlier file recorded, so that run takes them as new steps.
+    if implement.committed:
+        push(name = "push", branch = item.id, head = implement.head_sha, expect = "")
+        pr_open(name = "open", title = item.title, body = item.body, base = env("BASE"))
 
 def main(item):
     # The runs that this parent started and has not seen end.
@@ -53,7 +64,7 @@ def main(item):
     pause = False
 
     for n in range(MAX_PASSES):
-        q = queue(name = "q-%d" % n, hold = HOLD)
+        q = queue(name = "q-%d" % n, hold = HOLD, base = env("BASE"))
 
         # An item that has a run is `running`, `done` or `failed`, so only `ready` rows start. The list `live` guards the same rule on this side.
         open = [r.item for r in live]

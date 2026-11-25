@@ -23,14 +23,18 @@ import (
 )
 
 // contractUnreached is the exception of the rule that a use counts only when an entry of a workflow reaches it. foreign_followup of the remediation example
-// calls pr_state and files its item with the keyword shared, and no entry calls foreign_followup while the engine refuses every foreign pull request.
-// The follow-up of a foreign review belongs to #438.
+// files its item with the keyword shared, and no entry calls foreign_followup yet.
+// The follow-up of a foreign review belongs to #438. take_over of the same file calls pr_take, and no entry calls take_over yet either.
 // The test fails when an entry reaches the pair, so the exception ends with #438.
 var contractUnreached = map[contractPair]string{
-	{"pr_state", noKeyword}:   "#438",
-	{"pr_state", "name"}:      "#438",
-	{"pr_state", "pr"}:        "#438",
 	{"item_create", "shared"}: "#438",
+	{"pr_take", noKeyword}:    "#438",
+	{"pr_take", "grace"}:      "#438",
+	{"pr_take", "idle"}:       "#438",
+	{"pr_take", "me"}:         "#438",
+	{"pr_take", "name"}:       "#438",
+	{"pr_take", "pr"}:         "#438",
+	{"pr_take", "step"}:       "#438",
 }
 
 // contractLibrary is the label of the embedded library in a load, and the folder that holds it.

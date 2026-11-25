@@ -234,6 +234,28 @@ func (f swarmForgeAt) PRList(ctx context.Context, _ int, args ...string) ([]mode
 	return found, nil
 }
 
+// OpenPulls lists the open pull requests as the real forge does: the pull requests of PRList for the state open, and an error for each pull request that lacks a field.
+func (f swarmForgeAt) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error) {
+	rows, err := f.PRList(ctx, forge.OpenPullLimit, "--state", "open")
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		pulls []model.OpenPull
+		holes []error
+	)
+
+	for _, row := range rows {
+		if open := row.Open(); base == "" || open.Base == base {
+			pulls = append(pulls, open)
+			holes = append(holes, open.Check())
+		}
+	}
+
+	return pulls, errors.Join(holes...)
+}
+
 func (f swarmForgeAt) PRView(ctx context.Context, pr int, _ ...string) (model.PullRequest, error) {
 	branches, err := f.branches(ctx)
 	if err != nil {
@@ -241,6 +263,12 @@ func (f swarmForgeAt) PRView(ctx context.Context, pr int, _ ...string) (model.Pu
 	}
 
 	return f.view(ctx, branches, pr)
+}
+
+func (f swarmForgeAt) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
+	view, err := f.PRView(ctx, pr)
+
+	return pullFactsOf(pr, view, err)
 }
 
 func (swarmForgeAt) PullCounts(context.Context, int) (commits, files int, err error) {
@@ -346,7 +374,7 @@ func (swarmForgeAt) SetBody(context.Context, int, string) error { return nil }
 
 func (swarmForgeAt) StackID(context.Context, int) (string, error) { return "", nil }
 
-func (swarmForgeAt) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (swarmForgeAt) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (swarmForgeAt) TreeBlobs(context.Context, string) (map[string]string, error) { return nil, nil }
 
@@ -356,12 +384,13 @@ func (swarmForgeAt) Reviews(context.Context, int) ([]model.Review, error) { retu
 
 func (f swarmForgeAt) IssueState(context.Context, int) (string, error) { return "", errFake }
 
-// ClosingRefs fails, unless the file closing-ok exists in the forge folder: then no pull request closes an issue, and the base is the base of the forge.
-func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	if _, err := os.Stat(f.path("closing-ok")); err != nil {
-		return model.ClosingRefs{}, errFake
-	}
+// Association says the owner wrote every issue and pull request: the scripts stand for the repository of the owner.
+func (swarmForgeAt) Association(context.Context, int) (model.Association, error) {
+	return model.AssociationOwner, nil
+}
 
+// ClosingRefs reports that no pull request closes an issue, and that the base is the base of the forge.
+func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{BaseBranch: f.base(), DefaultBranch: "main"}, nil
 }
 
@@ -519,6 +548,7 @@ func cmdSwarmFakes(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Fatalf("swarmfakes: %v", err)
 	}
 
+	sandboxHome(ts)
 	swarmInit(ts, ts.Getenv("WORK"), work)
 }
 
@@ -530,9 +560,11 @@ func swarmInit(ts *testscript.TestScript, dir string, work *os.Root) {
 	}
 
 	remote := filepath.Join(dir, "remote.git")
+	login := filepath.Join(dir, "login") // sandboxHome made it: the login folder is a credential path, so it is not the folder of the state
+	// The project sets sandbox = "off" because isolate puts the tool wrappers, sh among them, in a test folder on PATH that a sandboxed gate may not read, so the merge gate fails.
 	files := map[string]string{
-		"config/runners.star":        "agents(max_concurrent = 2)\nrunner(name = \"one\", agent = \"claude\", config_dir = \"" + dir + "\")\nrunner(name = \"two\", agent = \"claude\", config_dir = \"" + dir + "\")\n",
-		"config/projects/swarm.star": "project(repo = \"o/r\", source = \"" + remote + "\", forge = \"github\", base_branch = \"main\", gate = \"make check\", test_report = \"reports/*.xml\")\n",
+		"config/runners.star":        "agents(max_concurrent = 2)\nrunner(name = \"one\", agent = \"claude\", config_dir = \"" + login + "\")\nrunner(name = \"two\", agent = \"claude\", config_dir = \"" + login + "\")\n",
+		"config/projects/swarm.star": "project(repo = \"o/r\", source = \"" + remote + "\", forge = \"github\", base_branch = \"main\", gate = \"make check\", test_report = \"reports/*.xml\", sandbox = \"off\")\n",
 		"seed/Makefile":              "check: ; @mkdir -p reports && echo '<testsuite tests=\"1\"><testcase name=\"t\"/></testsuite>' > reports/r.xml\n",
 		"seed/.gitignore":            "reports/\n",
 	}

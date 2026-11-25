@@ -22,6 +22,13 @@ type bankingHost interface {
 // On a stop the provider banks the work first and keeps the host up when it cannot.
 type hostStop struct {
 	programs programs
+	// credentials checks that the project declares its build host credentials = "none" and that every cluster passes the credential check.
+	credentials func(ctx context.Context, project string) error
+}
+
+// CheckCredentials returns nil only when the project declares its build host credentials = "none" and every cluster passes the credential check. It connects to no host.
+func (s hostStop) CheckCredentials(ctx context.Context, project string) error {
+	return s.credentials(ctx, project)
 }
 
 // Up launches the host of the project when it is absent, and reports started. A host that is up is left alone (started is false).
@@ -29,7 +36,8 @@ type hostStop struct {
 // A project with no host block has nothing to start: started is false and there is no error.
 // cluster is the host that the run chose. An empty one gives the build host of the project, and a cluster that the project does not declare is refused
 // before any host is built. chosen is the cluster that the call used.
-func (s hostStop) Up(ctx context.Context, project, cluster string) (started bool, chosen string, err error) {
+// waiting counts the gates that wait or run on a cluster. Up reads it for the cluster only when it starts a host whose project gives it a size table.
+func (s hostStop) Up(ctx context.Context, project, cluster string, waiting func(cluster string) (int, error)) (started bool, chosen string, err error) {
 	chosen, err = s.programs.resolve(project, cluster)
 	if err != nil {
 		return false, "", err
@@ -44,19 +52,99 @@ func (s hostStop) Up(ctx context.Context, project, cluster string) (started bool
 		return false, "", err
 	}
 
-	started, err = launchWhenAbsent(ctx, h, project)
+	started, err = launchWhenAbsent(ctx, h, project, func() (int, error) { return waiting(chosen) })
 
 	return started, chosen, err
 }
 
+// Sized says whether the project gives the cluster a size table (`instance_sizes`). It builds the host and calls nothing on it. A project with no host block gives false.
+func (s hostStop) Sized(project, cluster string) (bool, error) {
+	found, err := s.sizedHostOf(project, cluster)
+
+	return found.host != nil, err
+}
+
+// sizedFound is the host of a cluster that has a size table, and the cluster that the call used. The host is nil for a project with no host block and for a host with no size table.
+type sizedFound struct {
+	host    host.Host
+	cluster string
+}
+
+// sizedHostOf builds the host of the cluster and keeps it only when the project gives it a size table.
+func (s hostStop) sizedHostOf(project, cluster string) (sizedFound, error) {
+	chosen, err := s.programs.resolve(project, cluster)
+	if err != nil {
+		return sizedFound{}, err
+	}
+
+	h, err := s.programs.hosts(project, chosen)
+	if errors.Is(err, errNoHost) {
+		return sizedFound{cluster: chosen}, nil
+	}
+
+	if err != nil {
+		return sizedFound{}, err
+	}
+
+	if !hasSizeTable(h) {
+		return sizedFound{cluster: chosen}, nil
+	}
+
+	return sizedFound{host: h, cluster: chosen}, nil
+}
+
+// Defer says whether host_up leaves the cluster for the first gate: the project gives it a size table and the host is absent.
+// A host that is up, or in another state, is left to Up, which keeps it or refuses it by name.
+func (s hostStop) Defer(ctx context.Context, project, cluster string) (deferred bool, chosen string, err error) {
+	found, err := s.sizedHostOf(project, cluster)
+	if found.host == nil || err != nil {
+		return false, found.cluster, err
+	}
+
+	status, err := found.host.Status(ctx)
+	if err != nil {
+		return false, "", fmt.Errorf("project %s: read the host before the start: %w", project, err)
+	}
+
+	return status.State == model.HostAbsent, found.cluster, nil
+}
+
 // launchWhenAbsent reads the state of the host and launches it only when it is absent.
-func launchWhenAbsent(ctx context.Context, h host.Host, project string) (bool, error) {
+func launchWhenAbsent(ctx context.Context, h host.Host, project string, waiting func() (int, error)) (bool, error) {
 	status, err := h.Status(ctx)
 	if err != nil {
 		return false, fmt.Errorf("project %s: read the host before the start: %w", project, err)
 	}
 
-	return launchIfAbsent(ctx, h, project, status.State)
+	return launchIfAbsent(ctx, h, project, status.State, waiting)
+}
+
+// sizedHost is a host that can start at the size for a queue length, and says whether its project gives it a size table.
+type sizedHost interface {
+	UpQueued(ctx context.Context, queued int) error
+	HasSizeTable() bool
+}
+
+// hasSizeTable says whether the project gives the host a size table. A host with one type, or none, has no size table.
+func hasSizeTable(h host.Host) bool {
+	sized, ok := h.(sizedHost)
+
+	return ok && sized.HasSizeTable()
+}
+
+// start launches the host. A host with a size table gets the queue length first.
+func start(ctx context.Context, h host.Host, waiting func() (int, error)) error {
+	sized, ok := h.(sizedHost)
+	if !ok || !sized.HasSizeTable() {
+		return h.Up(ctx)
+	}
+
+	queued, err := waiting()
+	if err != nil {
+		return fmt.Errorf("read the gates that wait for the host: %w", err)
+	}
+
+	return sized.UpQueued(ctx, queued)
 }
 
 // resolve gives the declared cluster for the choice of a run. Without a declared function the choice stands as it is.
@@ -69,7 +157,7 @@ func (p programs) resolve(project, cluster string) (string, error) {
 }
 
 // launchIfAbsent launches the host only in the state absent. It leaves a host that is up alone and refuses every other state by name.
-func launchIfAbsent(ctx context.Context, h host.Host, project string, state model.HostState) (bool, error) {
+func launchIfAbsent(ctx context.Context, h host.Host, project string, state model.HostState, waiting func() (int, error)) (bool, error) {
 	switch {
 	case state == model.HostUp:
 		return false, nil
@@ -77,7 +165,7 @@ func launchIfAbsent(ctx context.Context, h host.Host, project string, state mode
 		return false, fmt.Errorf("project %s: %w: the host is %q. Stop it or wait until it is up, then run again", project, errHostState, string(state))
 	}
 
-	if err := h.Up(ctx); err != nil {
+	if err := start(ctx, h, waiting); err != nil {
 		return false, err
 	}
 
@@ -106,6 +194,31 @@ func (s hostStop) Teardown(ctx context.Context, project, cluster string) error {
 	}
 
 	return banking.Teardown(ctx)
+}
+
+// Ready says whether the cluster takes a new job: it is up and its disk holds the floor of the project. A project with no host block has no host that takes a job.
+// A host that cannot be read gives an error that names the host and the fix.
+func (s hostStop) Ready(ctx context.Context, project, cluster string) (bool, error) {
+	chosen, err := s.programs.resolve(project, cluster)
+	if err != nil {
+		return false, err
+	}
+
+	h, err := s.programs.hosts(project, chosen)
+	if errors.Is(err, errNoHost) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	ready, err := host.Ready(ctx, h)
+	if err != nil {
+		return false, fmt.Errorf("cannot read host %s of project %s: check that it answers: %w", chosen, project, err)
+	}
+
+	return ready, nil
 }
 
 // LostProof stops the job of a gate whose wait ended as lost, on the cluster that the job ran on, and reads whether it can no longer run.

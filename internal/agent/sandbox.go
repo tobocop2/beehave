@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -25,10 +26,12 @@ import (
 // Identity is the git identity of the engine at the work folder, which the commits of the shell carry.
 // Edits is true for a run that may edit the files of the work folder with the file tools. The runner sets it from Spec.NoEdits.
 // Temp is the short temporary folder of the run, which the runner makes before the launch and removes after it.
+// ModuleCache is the Go module cache that the engine filled for the project, which the shell reads with no network and never writes, or "" for none.
 type SandboxPlan struct {
 	Edits             bool
 	Temp              string
 	Work              string
+	ModuleCache       string
 	GitDirs           []string
 	Read              []string
 	ReadDirs          []string
@@ -47,7 +50,7 @@ type GitIdentity struct {
 }
 
 // versionOf reads the version that the CLI prints for --version.
-type versionOf func(ctx context.Context, binary string, env []string) (string, error)
+type versionOf func(ctx context.Context, command, env []string) (string, error)
 
 var versionNumber = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 
@@ -59,9 +62,9 @@ func sandboxProblem(spec Spec, p Profile, goos string) string {
 
 	switch {
 	case !p.Sandbox:
-		return p.Binary + " has no sandbox, so a step with the sandbox on does not start. Set sandbox = None on the step to run it with no sandbox."
+		return p.Binary + " has no sandbox, so a step with the sandbox on does not start. Set sandbox = \"off\" in the project, or use a Claude runner for the step."
 	case goos == "windows":
-		return p.Binary + " runs commands with no sandbox on Windows, so a step with the sandbox on does not start. Set sandbox = None on the step to run it with no sandbox."
+		return p.Binary + " runs commands with no sandbox on Windows, so a step with the sandbox on does not start. Set sandbox = \"off\" in the project to run it with no sandbox."
 	}
 
 	return ""
@@ -85,7 +88,7 @@ func versionNeeds(spec Spec, p Profile) []versionNeed {
 	var needs []versionNeed
 
 	if spec.Sandbox != nil {
-		needs = append(needs, versionNeed{p.MinVersion, "the sandbox", "the sandbox is not started", "set sandbox = None on the step to run it with no sandbox"})
+		needs = append(needs, versionNeed{p.MinVersion, "the sandbox", "the sandbox is not started", `set sandbox = "off" in the project to run it with no sandbox`})
 	}
 
 	return needs
@@ -100,7 +103,7 @@ func rangeText(p Profile) string {
 // new enough for the sandbox. A CLI that ignores a sandbox setting or a hook it does not know runs with no sandbox or no guard and exits with code 0, and a
 // CLI of a line that the adapter has no recording of can print a shape that the adapter reads wrong, so an old, new or unreadable version stops the run.
 // It also returns what the CLI printed, which is "" when the version was not read.
-func versionProblem(ctx context.Context, spec Spec, p Profile, binary string, env []string, version versionOf) (string, string) {
+func versionProblem(ctx context.Context, spec Spec, p Profile, command, env []string, version versionOf) (string, string) {
 	needs := versionNeeds(spec, p)
 	ranged := p.SupportedFrom != ""
 
@@ -108,7 +111,7 @@ func versionProblem(ctx context.Context, spec Spec, p Profile, binary string, en
 		return "", ""
 	}
 
-	out, err := version(ctx, binary, env)
+	out, err := version(ctx, command, env)
 	if err != nil {
 		return unreadable(p, err, needs, ranged), ""
 	}
@@ -215,11 +218,11 @@ func semverOf(found []string) string {
 	return "v" + strings.Join(numbers, ".")
 }
 
-// runVersion starts the CLI with --version in the environment of the run and returns what it prints.
-func runVersion(ctx context.Context, binary string, env []string) (string, error) {
-	result := proc.ExecRunner{Binary: binary, Only: env}.Run(ctx, []string{"--version"})
+// runVersion starts the command with --version in the environment of the run and returns what it prints. The first word of the command is the program.
+func runVersion(ctx context.Context, command, env []string) (string, error) {
+	result := proc.ExecRunner{Binary: command[0], Only: env}.Run(ctx, append(slices.Clone(command[1:]), "--version"))
 	if result.ExitCode != 0 {
-		return "", fmt.Errorf("%s --version exited with code %d: %s", binary, result.ExitCode, strings.TrimSpace(result.Stderr))
+		return "", fmt.Errorf("%s --version exited with code %d: %s", strings.Join(command, " "), result.ExitCode, strings.TrimSpace(result.Stderr))
 	}
 
 	return result.Stdout, nil

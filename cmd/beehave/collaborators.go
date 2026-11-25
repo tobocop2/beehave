@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +24,8 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/review"
-	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 var (
@@ -56,11 +55,16 @@ type worktrees struct {
 	root     string
 	repos    string
 	projects map[string]config.Project
-	// git runs git in the clone and its worktrees, with the file transport only. remote runs the calls that reach the remote: the first clone, and the
-	// fetch and the read of the branches in the push repository, which reads no setting of the clone config.
+	// git runs git in the clone and its worktrees, with the file transport only. remote replaces the runner of the owner for the calls that reach the
+	// remote of a project with no credentials; nil runs the real one (see reach).
 	git    func(dir string) proc.Runner
 	remote func(dir string) proc.Runner
-	forge  func(model.Project) (forge.Forge, error)
+	// pushCheck checks the config of the push repository before each call that reaches a remote; nil means the allow list.
+	pushCheck func(ctx context.Context, dir string) error
+	forge     func(model.Project) (forge.Forge, error)
+	// roles gives a call that reaches the remote of a project the writer role of that project. A project with no credentials reaches it as the owner. A
+	// project with credentials and no loaded role is refused. newWorktrees is the only constructor, so every value holds the roles of its caller.
+	roles *writers
 }
 
 // Ensure returns the worktree of the item. An item with no worktree gets one, cut from base on a new branch named for the item.
@@ -115,13 +119,8 @@ func (w worktrees) ensureLocked(ctx context.Context, project config.Project, clo
 // moveToTip moves the kept worktree of a round item to the tip of its base on the remote. A worktree with tracked or untracked changes, or with commits
 // that no remote branch holds, is refused, and the error names it, the commits and how to remove it.
 func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone, dir, base, item string) error {
-	status := w.git(dir).Run(ctx, []string{"status", "--porcelain"})
-	if err := gitExit("status", dir, status); err != nil {
+	if err := w.refuseChanges(ctx, clone, dir, item, "an earlier run left"); err != nil {
 		return err
-	}
-
-	if strings.TrimSpace(status.Stdout) != "" {
-		return keptTree(clone, dir, item, "changes that an earlier run left. Save what you need")
 	}
 
 	if err := w.fetchBase(ctx, project, clone, base, item); err != nil {
@@ -133,6 +132,95 @@ func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone,
 	}
 
 	return w.moveTo(ctx, dir, "origin/"+base)
+}
+
+// Place puts the worktree of the item at the commit head, for a fork. A round item gets a detached worktree at head. Any other item gets branch, cut at head,
+// and the branch of the item stays as it is. A commit that the clone lacks is refused and named. So is a worktree with changes, and a round worktree that
+// holds commits that no remote branch holds and that head does not hold. A project with no repository has nothing to place.
+func (w worktrees) Place(ctx context.Context, project, item, head, branch string) error {
+	if w.plain(project) {
+		return nil
+	}
+
+	found, err := w.project(project)
+	if err != nil {
+		return err
+	}
+
+	return cloneLock{repos: w.repos}.hold(ctx, project, func(clone string) error { return w.placeLocked(ctx, found, clone, item, head, branch) })
+}
+
+// placeLocked is Place while Place holds the lock of the clone.
+func (w worktrees) placeLocked(ctx context.Context, project config.Project, clone, item, head, branch string) error {
+	if err := w.run(ctx, clone, "cat-file", "-e", head+"^{commit}"); err != nil {
+		return fmt.Errorf("the clone of project %s does not hold the commit %s that the fork starts at. Start the item again: beehave run %s: %w", project.Name, head, item, err)
+	}
+
+	dir, err := w.lookup(ctx, project.Name, item)
+	if err != nil {
+		return err
+	}
+
+	if dir == "" {
+		return w.placeNew(ctx, clone, filepath.Join(w.root, model.SafeName(project.Name), model.SafeName(item)), item, head, branch)
+	}
+
+	return w.placeKept(ctx, clone, dir, item, head, branch)
+}
+
+// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made. Git drops the record of a removed folder first, so that record does not hold the branch.
+func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch string) error {
+	if _, round := model.RoundBase(item); round {
+		_, err := w.add(ctx, clone, dir, item, head)
+
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
+		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
+	}
+
+	if err := w.prune(ctx, clone); err != nil {
+		return err
+	}
+
+	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
+}
+
+// prune drops the records of the worktrees whose folder is gone, so that no such record holds a branch. A branch that a live worktree holds stays held.
+func (w worktrees) prune(ctx context.Context, clone string) error {
+	return w.run(ctx, clone, gitWorktree, "prune")
+}
+
+// placeKept moves the kept worktree of the item to head. The move never takes work off the worktree: changes stop it, and so do the commits of a round worktree that no remote branch holds.
+func (w worktrees) placeKept(ctx context.Context, clone, dir, item, head, branch string) error {
+	if err := w.refuseChanges(ctx, clone, dir, item, "the run before the fork left"); err != nil {
+		return err
+	}
+
+	if _, round := model.RoundBase(item); !round {
+		return w.run(ctx, dir, "checkout", "--quiet", "-B", branch, head)
+	}
+
+	if err := w.refuseUnpushed(ctx, clone, dir, item, head); err != nil {
+		return err
+	}
+
+	return w.moveTo(ctx, dir, head)
+}
+
+// refuseChanges fails when the worktree has tracked or untracked changes. left names who left them.
+func (w worktrees) refuseChanges(ctx context.Context, clone, dir, item, left string) error {
+	status := w.git(dir).Run(ctx, []string{"status", "--porcelain"})
+	if err := gitExit("status", dir, status); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(status.Stdout) != "" {
+		return keptTree(clone, dir, item, "changes that "+left+". Save what you need")
+	}
+
+	return nil
 }
 
 // moveTo checks the worktree out detached at revision and marks that commit as the one that beehave placed the worktree at.
@@ -151,8 +239,11 @@ func (w worktrees) markPlaced(ctx context.Context, dir string) error {
 
 // refuseUnpushed fails when the worktree holds commits that no remote branch holds, and the error names each commit and how to remove the worktree.
 // The commit that beehave placed the worktree at, and its history, are no work of the item, also after a force-push of the base took them off the remote.
-func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string) error {
-	unpushed := w.git(dir).Run(ctx, []string{"log", "--format=%h %s", "HEAD", "--not", "--remotes", "--glob=" + placedMarks})
+// A commit that a commit in keep holds is not counted: a move back to that commit leaves it in place. With no keep, every commit counts.
+func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string, keep ...string) error {
+	args := append([]string{"log", "--format=%h %s", "HEAD", "--not"}, keep...)
+
+	unpushed := w.git(dir).Run(ctx, append(args, "--remotes", "--glob="+placedMarks))
 	if err := gitExit("log", dir, unpushed); err != nil {
 		return err
 	}
@@ -267,7 +358,7 @@ func (w worktrees) fetchAll(ctx context.Context, project config.Project, clone s
 		return err
 	}
 
-	repo, err := w.openPush(ctx, project.Name)
+	repo, err := w.openPush(ctx, project.Name, remote)
 	if err != nil {
 		return err
 	}
@@ -316,7 +407,7 @@ func (w worktrees) fetchBranch(ctx context.Context, project config.Project, clon
 
 // fetchRemote fetches branch from remote onto ref of the push repository of the project, and returns the repository and the commit that ref then names.
 func (w worktrees) fetchRemote(ctx context.Context, project, remote, branch, ref string) (dir, tip string, err error) {
-	repo, err := w.openPush(ctx, project)
+	repo, err := w.openPush(ctx, project, remote)
 	if err != nil {
 		return "", "", err
 	}
@@ -343,12 +434,65 @@ func (w worktrees) Heads(ctx context.Context, project string) (string, error) {
 		return "", err
 	}
 
-	repo, err := w.openPush(ctx, project)
+	repo, err := w.openPush(ctx, project, remote)
 	if err != nil {
 		return "", err
 	}
 
 	return repo.run(ctx, "ls-remote", "--heads", remote)
+}
+
+// BaseTip reads the commit that branch names at remote, the address of the project, with git ls-remote in the push repository. The runner is the one
+// that reach picks, so no setting of the clone config reaches the read, and a project with credentials reads as its writer.
+// The read holds no lock, so the gates of one project do not wait on each other for the latency of the source.
+func (w worktrees) BaseTip(ctx context.Context, project, remote, branch string) (string, error) {
+	repo, err := w.openPushLocked(ctx, project, remote)
+	if err != nil {
+		return "", err
+	}
+
+	listing, err := repo.run(ctx, "ls-remote", "--", remote, gitexec.TipRef(branch))
+	if err != nil {
+		return "", err
+	}
+
+	return gitexec.TipOf(listing, remote, branch)
+}
+
+// FetchCommit fetches the commit sha by its id from remote into the push repository, then copies it into the clone over the file transport, as
+// fetchBranch does. A source that speaks protocol version 2 serves any commit it holds by its id.
+func (w worktrees) FetchCommit(ctx context.Context, project, remote, sha string) error {
+	return w.inPush(ctx, project, remote, func(clone string, repo pushRepo) error {
+		if _, err := repo.run(ctx, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--", remote, sha); err != nil {
+			return fmt.Errorf("a fetch by id needs a source that serves a commit by its id (git protocol version 2); if the base moved since the read, run again: %w", err)
+		}
+
+		return w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+	})
+}
+
+// inPush runs fn with the clone and the push repository of the project, under the lock of the clone.
+func (w worktrees) inPush(ctx context.Context, project, remote string, fn func(clone string, repo pushRepo) error) error {
+	return cloneLock{repos: w.repos}.hold(ctx, project, func(clone string) error {
+		repo, err := w.openPush(ctx, project, remote)
+		if err != nil {
+			return err
+		}
+
+		return fn(clone, repo)
+	})
+}
+
+// openPushLocked makes the push repository of the project under the lock of the clone, and gives the lock back before the caller reaches the remote.
+// A call that only reads the remote does not touch the clone or the objects of the push repository, so it needs no lock.
+func (w worktrees) openPushLocked(ctx context.Context, project, remote string) (repo pushRepo, err error) {
+	err = cloneLock{repos: w.repos}.hold(ctx, project, func(string) error {
+		repo, err = w.openPush(ctx, project, remote)
+
+		return err
+	})
+
+	return repo, err
 }
 
 // pushRepo is the push repository dir of a project, with the git that runs the calls that reach the remote.
@@ -359,9 +503,9 @@ type pushRepo struct {
 
 // openPush makes the push repository of the project when it is missing and returns it. The caller holds the lock of the clone, which also covers the
 // push repository.
-func (w worktrees) openPush(ctx context.Context, project string) (pushRepo, error) {
+func (w worktrees) openPush(ctx context.Context, project, remote string) (pushRepo, error) {
 	root, dir := pushRepository(w.repos, project)
-	repo := pushRepo{git: w.remote(dir), dir: dir}
+	repo := pushRepo{git: checkedPush{git: w.reach(project, dir, remote), dir: dir, check: w.pushCheck}, dir: dir}
 
 	return repo, openPushRepository(ctx, repo.git, root, dir)
 }
@@ -404,14 +548,19 @@ func absent(dir string) error {
 }
 
 // add makes the worktree dir from the clone. A round item gets a detached worktree at revision, with --force, so git replaces the record of a round
-// worktree whose folder someone removed and forgets no other record. Any other item uses the branch named item if the clone has one, and else starts
-// that branch at revision. It returns dir.
+// worktree whose folder someone removed and forgets no other record. Any other item first drops the records of removed folders, then uses the branch
+// named item if the clone has one, and else starts that branch at revision. It returns dir.
 func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return "", fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
 	}
 
-	if err := w.run(ctx, clone, w.addArgs(ctx, clone, dir, item, revision)...); err != nil {
+	args, err := w.addArgs(ctx, clone, dir, item, revision)
+	if err != nil {
+		return "", err
+	}
+
+	if err := w.run(ctx, clone, args...); err != nil {
 		return "", err
 	}
 
@@ -424,17 +573,18 @@ func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (
 	return dir, nil
 }
 
-// addArgs returns the git arguments that add the worktree dir of the item at revision.
-func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision string) []string {
+// addArgs returns the git arguments that add the worktree dir of the item at revision. An existing branch of the item is added after a prune, so the record of a removed folder does not hold it.
+func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision string) ([]string, error) {
 	if _, round := model.RoundBase(item); round {
-		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}
+		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}, nil
 	}
 
-	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + item}).ExitCode == 0 {
-		return []string{gitWorktree, gitAdd, dir, item}
+	branch := model.ItemBranch(item)
+	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
+		return []string{gitWorktree, gitAdd, dir, branch}, w.prune(ctx, clone)
 	}
 
-	return []string{gitWorktree, gitAdd, "-b", item, dir, revision}
+	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}, nil
 }
 
 // clone makes the clone of the repository of the project in dir, unless it is there. The clone comes from the source of the project, or else from its forge.
@@ -453,7 +603,13 @@ func (w worktrees) clone(ctx context.Context, project config.Project, dir string
 		return err
 	}
 
-	return gitExit("clone", w.repos, w.remote(w.repos).Run(ctx, []string{"clone", remote, dir}))
+	return gitExit("clone", w.repos, w.reach(project.Name, w.repos, remote).Run(ctx, []string{"clone", remote, dir}))
+}
+
+// reach returns the git runner for a call in dir that reaches the address remote of the project. Every call of the worktrees to a remote picks its runner
+// here, so the engine and the client both run it as the writer of a project that has credentials (see writers.git).
+func (w worktrees) reach(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the worktrees
+	return w.roles.git(w.projects, project, dir, remote, w.remote, []string{noPromptEnv})
 }
 
 // cloneSource returns what git clones the repository of the project from: its source when the project sets one, else the clone URL of its forge.
@@ -650,7 +806,7 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
 	}
 
-	if request.Gate && p.sandbox.applies(request.Project, true) {
+	if request.Sandbox != nil || (request.Gate && p.sandbox.applies(request.Project, true)) {
 		return p.sandboxed(ctx, request, dir)
 	}
 
@@ -667,7 +823,8 @@ func (p programs) folder(ctx context.Context, request flow.CommandRequest) (stri
 	return p.trees.Path(ctx, request.Project, request.Item)
 }
 
-// sandboxed runs the program of a gate under the sandbox of its project. Stdin and the process cap of the request do not apply to a sandboxed gate.
+// sandboxed runs the program of a gate, or of a command call with the sandbox keyword, under the sandbox of its project. A command call with the keyword
+// reaches the domains of its own network list in place of gate_network. Stdin and the process cap of the request do not apply to a sandboxed program.
 // The output is the plan, then what the program printed, with stdout and stderr in one stream.
 func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, dir string) (flow.CommandOutput, error) {
 	own := dir == ""
@@ -679,9 +836,11 @@ func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, di
 
 	defer cleanup()
 
-	run := p.sandbox.run
+	box := p.sandbox.asked(request.Project, request.Sandbox)
+
+	run := box.run
 	if own {
-		run = p.sandbox.runOwn
+		run = box.runOwn
 	}
 
 	out, code := run(ctx, request.Project, dir, request.Run, request.Env, request.Timeout)
@@ -749,7 +908,7 @@ func (p programs) onHost(ctx context.Context, request flow.CommandRequest) (flow
 		return flow.CommandOutput{}, err
 	}
 
-	id, err := h.Submit(ctx, model.JobSpec{Name: "beehave-" + request.Item, Command: shellLine(request.Run)})
+	id, err := h.Submit(ctx, model.JobSpec{Name: "beehave-" + request.Item, Command: shellLine(request.Run), Key: host.JobKey(ctx), Slot: model.Slot{Class: request.SlotClass, Count: request.SlotCount}})
 	if err != nil {
 		return flow.CommandOutput{}, fmt.Errorf("submit the command of item %s to the host: %w", request.Item, err)
 	}
@@ -797,6 +956,8 @@ func hostAdvice(state model.JobState) string {
 		return "the job died: the scheduler holds no record of it. Run the command again"
 	case model.JobStale:
 		return "the job was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the command is slow, then run it again"
+	case model.JobDiskFull:
+		return "the job was stopped because the host ran under its free-space floor `host.disk_floor_gb`. Free disk space on the host, then run it again"
 	case model.JobTimedOut:
 		return "the job was stopped by the run limit `host.max_run`. Raise `host.max_run` if the command is slow, then run it again"
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost, model.JobSucceeded, model.JobFailed:
@@ -865,9 +1026,13 @@ const namedListLimit = 50
 type pulls struct {
 	projects map[string]config.Project
 	forge    func(model.Project) (forge.Forge, error)
-	runners  []string
-	trees    worktrees
-	copier   headCopy
+	// issues is the GitHub access of the tracker of a project, for the read of who wrote an issue. It needs no forge key.
+	issues  func(model.Project) (forge.Forge, error)
+	runners []string
+	trees   worktrees
+	copier  headCopy
+	// writers gives the push of a project the writer role of that project. A project with none pushes with the login of the owner.
+	writers *writers
 }
 
 // opened is the forge of one project. It passes the optional reads of the merge (trees and failed logs) to the forge when the forge has them:
@@ -904,6 +1069,16 @@ func (o opened) AutoMergePR(ctx context.Context, pr int, sha string) error {
 	}
 
 	return queue.AutoMergePR(ctx, pr, sha)
+}
+
+// Protection reads what the forge requires of a branch, when the forge can. A forge that cannot returns merge.ErrNoProtectionRead.
+func (o opened) Protection(ctx context.Context, branch string) (model.Protection, error) {
+	reads, ok := o.Forge.(forge.Statuses)
+	if !ok {
+		return model.Protection{}, merge.ErrNoProtectionRead
+	}
+
+	return reads.Protection(ctx, branch)
 }
 
 // DisableAutoMergePR turns off the queued merge of a pull request, when the forge can queue one. A forge that cannot is an error.
@@ -1003,7 +1178,7 @@ func (p pulls) numberOf(ctx context.Context, built opened, item string) (opened,
 
 // listed returns the number of the one pull request in the state on the branch of the item, or 0 when there is none.
 func listed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
-	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	rows, err := built.PRList(ctx, pullListLimit, "--head", model.ItemBranch(item), "--state", state, "--json", "number")
 	if err != nil {
 		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
 	}
@@ -1029,12 +1204,12 @@ func (p pulls) Pull(ctx context.Context, project, item string) (review.Standing,
 	return review.Pull(ctx, built, number), nil
 }
 
-// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them.
-// An item with no pull request, and a project with no forge, give found false: there is no scope to fix.
-// GitHub lists closing references only for a pull request into the default branch, so a pull request into another base has an empty set.
-func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error) {
+// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: the issues of the repository of the pull request as "#N",
+// and the issues of other repositories as "owner/repo#N". An item with no pull request gives found false: there is no scope to fix yet.
+// A project with no forge is an error that matches forge.ErrNoForge.
+func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error) {
 	built, number, err := p.find(ctx, project, item)
-	if errors.Is(err, forge.ErrNoPull) || errors.Is(err, forge.ErrNoForge) {
+	if errors.Is(err, forge.ErrNoPull) {
 		return nil, false, nil
 	}
 
@@ -1042,12 +1217,24 @@ func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues 
 		return nil, false, err
 	}
 
+	issues, err = closingIssues(ctx, built, number)
+
+	return issues, err == nil, err
+}
+
+// closingIssues reads the issues that merging the pull request with the number closes: the issues of its repository as "#N" and the issues of other repositories as "owner/repo#N".
+func closingIssues(ctx context.Context, built opened, number int) ([]model.IssueRef, error) {
 	refs, err := built.ClosingRefs(ctx, number)
 	if err != nil {
-		return nil, false, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
+		return nil, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
 	}
 
-	return refs.Issues, true, nil
+	var issues []model.IssueRef
+	for _, number := range refs.Issues {
+		issues = append(issues, model.OwnIssue(number))
+	}
+
+	return append(issues, refs.Elsewhere...), nil
 }
 
 // Comment adds a comment to the pull request of the item, once for each key. A project with no forge and an item with no pull request are errors.
@@ -1104,29 +1291,95 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 		return merge.Result{}, err
 	}
 
-	return judge(ctx, built, p.request(project, found, item, number, head, settings, rules)), nil
+	req := p.request(found, number, head, settings, rules)
+	req.Post = posting(found.Project, built.Forge, settings.Statuses)
+
+	return judge(ctx, built, req), nil
 }
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
 // An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
-func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
-	built, err := p.forgeOf(project)
+// The result names the pull request that it judged and, with author true, who wrote it, read on the number of the one lookup.
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
 	if err != nil {
 		return preflight.Result{}, err
 	}
 
-	number, err := anyState(ctx, built, item)
-	if err != nil {
-		return preflight.Result{}, err
-	}
-
-	if number == 0 {
+	if pull.Number == 0 {
 		return preflight.Result{Stop: preflight.Unchanged, Lines: []string{"OK: the item has no pull request yet."}}, nil
 	}
 
-	req.PR = number
+	req.PR = pull.Number
 
-	return preflight.Check(ctx, built, req, hold)
+	result, err := preflight.Check(ctx, built, req)
+	result.Pull = pull
+
+	return result, err
+}
+
+// authoredPull finds the pull request of the item once and, with author true, reads who wrote it, on that number. With author false it makes no such read
+// and gives the number alone. An item with no pull request in any state gives number 0.
+func (p pulls) authoredPull(ctx context.Context, project, item string, author bool) (opened, model.Authored, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return opened{}, model.Authored{}, err
+	}
+
+	number, err := anyState(ctx, built, item)
+	if err != nil || number == 0 || !author {
+		return built, model.Authored{Number: number}, err
+	}
+
+	pull, err := authored(ctx, built, number)
+
+	return built, pull, err
+}
+
+// ReadPull reads the pull request of the item, found as Preflight finds it. An item with no pull request in any state gives facts with number 0.
+// With author true, the facts carry who wrote the pull request, read on the number of the one lookup.
+func (p pulls) ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error) {
+	built, pull, err := p.authoredPull(ctx, project, item, author)
+	if err != nil || pull.Number == 0 {
+		return model.PullFacts{}, err
+	}
+
+	facts, err := unreadAs(built.PullRead(ctx, pull.Number))
+	facts.Association = pull.Association
+
+	return facts, err
+}
+
+// unreadAs turns the two refusals that only a call with own logins needs into facts that name what they lack: a null assignee list and a body link that is not an int.
+// Every other refusal stays an error.
+func unreadAs(facts model.PullFacts, err error) (model.PullFacts, error) {
+	var (
+		hole *model.IncompletePull
+		link *model.LinkError
+	)
+
+	switch {
+	case errors.As(err, &hole) && slices.Equal(hole.Missing, []string{"assignees"}):
+		hole.Facts.Unread = []string{"the read has no assignees"}
+
+		return hole.Facts, nil
+	case errors.As(err, &link):
+		link.Facts.Unread = []string{link.Error()}
+
+		return link.Facts, nil
+	default:
+		return facts, err
+	}
+}
+
+// IssueAssignees reads who holds an issue of the project, on its own repository when repo names one.
+func (p pulls) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return built.IssueAssignees(ctx, repo, number)
 }
 
 // anyState returns the number of the pull request of the item: the open one on its branch, then an open one that names it, then the merged one, then the newest closed one. It is 0 when there is none.
@@ -1197,7 +1450,7 @@ func mention(item string) string {
 // newestListed returns the number of the newest pull request in the state on the branch of the item, or 0 when there is none.
 // A branch that was closed and opened again has many closed pull requests, and only the last one tells where the item stands. The forge lists the newest first.
 func newestListed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
-	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	rows, err := built.PRList(ctx, pullListLimit, "--head", model.ItemBranch(item), "--state", state, "--json", "number")
 	if err != nil {
 		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
 	}
@@ -1210,18 +1463,15 @@ func newestListed(ctx context.Context, built forge.Forge, item, state string) (i
 }
 
 // request is the merge request of one pull request: the settings of the step, and the runners of the config as own identities.
-// The id of an item of the GitHub tracker is the number of its issue, so that issue is the one the pull request must close, and the closing
-// references of the pull request are audited against it. An id of any other tracker is a free name, not an issue number, so the audit is off for it,
-// and the request carries the line that says so. The caller passes the project it has already found, so a project that beehave does not know never gets here.
-func (p pulls) request(name string, project config.Project, item string, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
-	names, unaudited := audited(name, project.Tracker, item)
-
+// The closing references of the pull request are audited against the issues that the step names for the member. The caller passes the project it has already found,
+// so a project that beehave does not know never gets here.
+func (p pulls) request(project config.Project, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
 	return merge.Request{
-		AuditClosing: names != nil, Names: names, Kept: settings.Kept, Unaudited: unaudited,
+		Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
-		Queue: true,
+		Queue: true, Credentialed: project.HasWriter(), ForgeName: string(project.Forge),
 	}
 }
 
@@ -1247,20 +1497,6 @@ func repoRefusal(err error) (merge.Result, bool) {
 	lines := []string{wrong.Error()}
 
 	return merge.Result{Stop: merge.Refused, Lines: lines, Refusal: lines}, true
-}
-
-// audited returns the issues that the item names, or the line that says why the audit is off.
-func audited(project string, tracker model.TrackerName, item string) ([]int, string) {
-	named, err := strconv.Atoi(item)
-
-	switch {
-	case tracker != storegithub.Tracker:
-		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran.", tracker, project)
-	case err != nil || named <= 0 || strconv.Itoa(named) != item:
-		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran.", item, project)
-	}
-
-	return []int{named}, ""
 }
 
 // repoError says that a merge step names a repository other than the one of the project. Its text is the line to show.

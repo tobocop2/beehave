@@ -4,6 +4,7 @@ package slurmtest
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,9 @@ const DF = hosttest.DF
 // Job is one job in the fake Slurm. Polls counts the squeue calls, so the first answer is a live state and the later ones are the empty answer of a forgotten job.
 type Job struct {
 	Command  string
+	Name     string // the job name that sbatch got
+	Forgot   bool   // the controller forgot the job: squeue by name does not list it, and sacct does
+	Final    string // the end state that a read by name reports in place of RUNNING (FAILED, COMPLETED); it ends the job, so squeue by name does not list it
 	Canceled bool
 	Polls    int
 	Live     int   // the number of squeue calls that answer RUNNING; zero means one
@@ -52,8 +56,11 @@ type Cluster struct {
 	Sbatches int             // the number of jobs submitted
 	DropOn   string          // the first word of a command whose ssh call drops once
 	NoStop   bool            // scancel fails
+	NoFlock  bool            // the head node has no flock command
 	Scancels int             // the number of scancel calls that took
 	DropAll  string          // the first word of a command whose ssh call always drops
+	// BadLookup is the command (squeue or sacct) whose read by job name fails with exit 1.
+	BadLookup string
 }
 
 // New returns a cluster that is down. A test sets Up before it calls the ssh runner.
@@ -126,10 +133,8 @@ func (f *Cluster) runSSH(args []string) model.CommandResult {
 		return ok("")
 	case "sbatch":
 		return f.sbatch(line)
-	case "squeue":
-		return f.squeue(words[3])
-	case "sacct":
-		return f.sacct(words[5])
+	case "squeue", "sacct":
+		return f.query(words)
 	}
 
 	return f.other(words)
@@ -171,30 +176,49 @@ func (f *Cluster) dropped(command string) bool {
 func (f *Cluster) other(words []string) model.CommandResult {
 	switch words[0] {
 	case "scancel":
-		if f.NoStop {
-			return failure("scancel: denied")
-		}
-
-		job := f.Jobs[words[1]]
-		if job == nil {
-			return failure("scancel: invalid job id " + words[1])
-		}
-
-		f.Scancels++
-		job.Canceled = true
-
-		return ok("")
+		return f.scancel(words[1])
 	case "touch":
 		f.Files[words[1]] = true
 
 		return ok("")
+	case "test":
+		if f.Files[words[2]] {
+			return ok("")
+		}
+
+		return model.CommandResult{ExitCode: 1}
+	case "flock":
+		if f.NoFlock {
+			return model.CommandResult{ExitCode: 127, Stderr: "flock: command not found"}
+		}
+
+		return ok("flock from util-linux 2.39.3\n")
 	case "stat":
 		return f.stat(words[len(words)-1])
+	case "sh":
+		return f.running(words[len(words)-2], words[len(words)-1])
 	case "pwd":
 		return ok("/home/lane\n")
 	}
 
 	return failure("ssh: unknown command")
+}
+
+// scancel cancels one job, unless the test denies the call or the job is not known.
+func (f *Cluster) scancel(id string) model.CommandResult {
+	if f.NoStop {
+		return failure("scancel: denied")
+	}
+
+	job := f.Jobs[id]
+	if job == nil {
+		return failure("scancel: invalid job id " + id)
+	}
+
+	f.Scancels++
+	job.Canceled = true
+
+	return ok("")
 }
 
 // stat prints the size of the log of a job, from the sizes the test planned. A job with none has no log.
@@ -208,6 +232,20 @@ func (f *Cluster) stat(log string) model.CommandResult {
 	job.Stats++
 
 	return ok(strconv.Itoa(size) + "\n")
+}
+
+// running answers the one read of a running job, sh -c <script> sh <marker> <log>: a waiting line when the marker exists, then the size of the log or -1.
+func (f *Cluster) running(marker, log string) model.CommandResult {
+	size := "-1"
+	if result := f.stat(log); result.ExitCode == 0 {
+		size = strings.TrimSpace(result.Stdout)
+	}
+
+	if f.Files[marker] {
+		return ok("beehave-waiting\n" + size + "\n")
+	}
+
+	return ok(size + "\n")
 }
 
 func (f *Cluster) df() model.CommandResult {
@@ -239,9 +277,71 @@ func (f *Cluster) sbatch(rest string) model.CommandResult {
 	f.Sbatches++
 
 	id := strconv.Itoa(f.Next)
-	f.Jobs[id] = &Job{Command: strings.ReplaceAll(strings.TrimSuffix(command, "'"), `'\''`, "'")}
+	f.Jobs[id] = &Job{Command: strings.ReplaceAll(strings.TrimSuffix(command, "'"), `'\''`, "'"), Name: nameOf(strings.Fields(rest))}
 
 	return ok(id + "\n")
+}
+
+const (
+	namePrefix  = "--name="     // the filter of squeue and sacct by job name
+	jobNameFlag = "--job-name=" // the name that sbatch gives the job
+)
+
+// nameOf returns the job name that a squeue, sacct or sbatch line carries, or an empty text for a line with none.
+func nameOf(words []string) string {
+	for _, word := range words {
+		for _, prefix := range []string{namePrefix, jobNameFlag} {
+			if name, found := strings.CutPrefix(word, prefix); found {
+				return name
+			}
+		}
+	}
+
+	return ""
+}
+
+// query answers a squeue or sacct line: a read by job name, or a read of one job id.
+func (f *Cluster) query(words []string) model.CommandResult {
+	if name := nameOf(words); name != "" {
+		return f.byName(words[0], name)
+	}
+
+	if words[0] == "squeue" {
+		return f.squeue(words[3])
+	}
+
+	return f.sacct(words[5])
+}
+
+// byName answers squeue or sacct for a job name. squeue lists the jobs the controller still knows, and sacct lists every job of the name that accounting holds.
+// BadLookup makes the read of that command fail.
+func (f *Cluster) byName(command, name string) model.CommandResult {
+	if f.BadLookup == command {
+		return failure("slurm_load_jobs error")
+	}
+
+	lines := make([]string, 0, len(f.Jobs))
+
+	for id, job := range f.Jobs {
+		if job.Name != name || job.Vanished || (command == "squeue" && (job.Forgot || job.Final != "")) {
+			continue
+		}
+
+		state := "RUNNING"
+		if job.Final != "" {
+			state = job.Final
+		}
+
+		if job.Canceled {
+			state = "CANCELLED by 1000" //nolint:misspell // Slurm's spelling
+		}
+
+		lines = append(lines, id+"|"+state)
+	}
+
+	slices.Sort(lines)
+
+	return ok(strings.Join(lines, "\n") + "\n")
 }
 
 func (f *Cluster) squeue(id string) model.CommandResult {

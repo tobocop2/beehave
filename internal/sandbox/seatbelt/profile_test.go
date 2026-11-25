@@ -121,3 +121,13 @@ func readsOf(defines []string) []string {
 
 	return reads
 }
+
+func TestProfile_ADeveloperFolderAddsNoPreferenceReadAndNoPathToTheText(t *testing.T) {
+	t.Parallel()
+
+	with, _ := seatbelt.Profile(sandbox.Plan{Developer: "/d"}, 0)
+	without, _ := seatbelt.Profile(sandbox.Plan{}, 0)
+
+	assert.Equal(t, without, with, "the developer folder changes the read list of the plan and no rule of the profile")
+	assert.NotContains(t, with, "user-preference-read")
+}

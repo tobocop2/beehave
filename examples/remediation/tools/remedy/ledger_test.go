@@ -147,9 +147,9 @@ func TestLedger_AnOwnerAddRowKeepsTheWordsOfTheOwner(t *testing.T) {
 
 	assert.Equal(t, remedy.ExitPass, code, errOut)
 
-	issues, err := ledger.Open(state).OwnerAdds("7")
+	_, found, err := ledger.Open(state).Since("7", ledger.KindOwnerAdd, time.Now())
 	require.NoError(t, err)
-	assert.Equal(t, []string{"13"}, issues)
+	assert.True(t, found)
 }
 
 func TestLedger_ARefusedRowIsExitCodeTwoAndWritesNothing(t *testing.T) {
@@ -288,11 +288,11 @@ func TestLedger_AnUnknownVerbIsRefusedByName(t *testing.T) {
 	assert.Contains(t, errOut, "usage: remedy ledger add")
 }
 
-func TestLedger_HelpListsTheLedgerAndScopeCommands(t *testing.T) {
+func TestLedger_HelpListsTheLedgerCommand(t *testing.T) {
 	t.Parallel()
 
 	_, out, _ := run(t, remedy.Deps{}, "--help")
 
 	assert.Contains(t, out, "ledger add <key> <lane> <kind>")
-	assert.Contains(t, out, "scope <pr>")
+	assert.NotContains(t, out, "scope <pr>")
 }

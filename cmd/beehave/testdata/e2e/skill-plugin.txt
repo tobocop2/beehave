@@ -41,7 +41,6 @@ env HOME=$WORK/home
 exec git config --file home/.gitconfig user.name e2e
 exec git config --file home/.gitconfig user.email e2e@example.com
 cp base forge/base
-cp base forge/closing-ok
 cp base forge/open-on-create
 
 # The setup of the scripts writes a runner file whose login folder is the work folder. That folder holds the state folder, so the script puts its own runners in place.
@@ -71,12 +70,13 @@ grep -count=1 '^implement$' loaded.log
 grep -count=1 '^sweep$' loaded.log
 ! grep '^review$' loaded.log
 grep -count=2 '^review$' calls.log
-grep -count=1 '^sync land ' remedy.log
-grep -count=1 '^MergePR ' forge/calls.log
+grep -count=2 '^MergePR ' forge/calls.log
 grep -count=1 '^integration/s1$' forge/opened-1
-# The child branch starts at the tip of the round branch after the sync land, not at the trunk branch.
-exec git --git-dir=remote.git rev-parse 432^
-cmp stdout s1-after-sync
+grep -count=1 '^integration/r1$' forge/opened-2
+grep -count=1 '^integration/s1$' forge/opened-3
+# The child branch starts at the tip of the round branch after the sync land, not at the trunk branch: its parent holds the commit that the trunk moved.
+exec git --git-dir=remote.git show 432^:moved.txt
+stdout '^moved$'
 exec git --git-dir=remote.git show integration/s1:432.txt
 stdout '^432$'
 exec git --git-dir=remote.git show integration/s1:moved.txt
@@ -105,7 +105,9 @@ agents(max_concurrent = 2)
 runner(name = "one", agent = "claude", config_dir = "@WORK@/login")
 runner(name = "two", agent = "claude", config_dir = "@WORK@/login")
 -- config/projects/round.star --
+# The sandbox is off because the gate runs here, and isolate puts the tool wrappers, sh among them, in a test folder on PATH that a sandboxed gate may not read.
 project(
+    sandbox = "off",
     repo = "o/r",
     source = "file://@WORK@/remote.git",
     forge = "github",
@@ -178,7 +180,7 @@ else
 fi
 case $step in
   plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
-  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
+  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
   sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)
@@ -193,25 +195,5 @@ esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
 -- fake/remedy --
 #!/bin/sh
-# The remedy tool of the round. Its first sync finds the moved trunk; every later call finds nothing to do.
-key=$1
-[ "$1" = sync ] && [ "$2" = land ] && key=sync-land
-echo "$*" >> @WORK@/remedy.log
-echo "$key" >> @WORK@/remedy-keys.log
-n=$(grep -c "^$key\$" @WORK@/remedy-keys.log)
-git="git --git-dir=@WORK@/remote.git"
-case $key in
-  sync)
-    if [ "$n" = 1 ]; then
-      echo "state=synced branch=sync/s1 pr=7 head=$($git rev-parse refs/heads/sync/s1) base_tip=$($git rev-parse refs/heads/integration/s1)"
-    else
-      echo "state=current"
-    fi
-    ;;
-  sync-land)
-    $git update-ref refs/heads/integration/s1 refs/heads/sync/s1
-    $git rev-parse refs/heads/integration/s1 > @WORK@/s1-after-sync
-    echo "state=landed"
-    ;;
-  integration) echo "pr=3 state=OPEN" ;;
-esac
+# The remedy tool of the round runs only the read-only report step, which passes. The gate list is `beehave check gate-list`, which these rounds do not call. The forge writes run in the engine, on the forge of the script.
+exit 0

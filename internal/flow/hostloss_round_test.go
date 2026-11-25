@@ -79,9 +79,9 @@ func TestRound_FiveHostLossesOfOneRoundOneOnALandingGateHoldTheRoundForTheOwner(
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "wait:round-wait#")
-	assert.NotContains(t, joined, "queue:round-queue-3#", "the pass after the landing is held, so it starts no item")
+	assert.NotContains(t, joined, "item_list:round-queue-3-items#", "the pass after the landing is held, so it starts no item")
 	assert.NotContains(t, joined, "agent:queue-audit-3#")
-	assert.NotContains(t, joined, "command:sync-3#", "the held round starts no sync")
+	assert.NotContains(t, joined, "round_sync:sync-3#", "the held round starts no sync")
 }
 
 func TestRound_AHostLossOnTheSyncGateRerunsAndIsNeverSyncRed(t *testing.T) {
@@ -152,7 +152,7 @@ func TestRound_AnAnswerToTheHostLossHoldWaitsAgainOnlyAfterANewLoss(t *testing.T
 	names := stepNames(t, rig.last)
 	assert.GreaterOrEqual(t, at(names, "gate:sync-gate-4#"), 0, "the sync gate of the pass after the first answer ran and lost")
 	assert.Equal(t, -1, at(names, "gate:sync-gate-4-host-1#"), "a sync gate at the limit is not run again")
-	assert.GreaterOrEqual(t, at(names, "command:sync-5#"), 0, "after the second answer the round goes on")
+	assert.GreaterOrEqual(t, at(names, "round_sync:sync-5#"), 0, "after the second answer the round goes on")
 }
 
 func TestRound_AChildThatStoppedOnTheHostLossLimitHoldsTheRoundAndLandsNothing(t *testing.T) {
@@ -168,7 +168,7 @@ func TestRound_AChildThatStoppedOnTheHostLossLimitHoldsTheRoundAndLandsNothing(t
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.NotContains(t, joined, "hold-", "the item is not at fault: no hold status")
-	assert.NotContains(t, joined, "queue:round-queue-2#")
+	assert.NotContains(t, joined, "item_list:round-queue-2-items#")
 
 	// The comment and the hold status of an item are steps of the child run of the item, not of the round run.
 	child := strings.Join(stepNamesOf(t, rig.last, lastRunOf(t, rig.last, "1")), " ")

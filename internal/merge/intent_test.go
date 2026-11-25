@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
@@ -47,7 +46,7 @@ func TestRun_AnIntentCountsAMergedPullRequestAtTheGatedHeadAsDone(t *testing.T) 
 	assert.Empty(t, w.writes)
 	assert.Contains(t, result.Lines, "checks: 1 of 1 passed")
 	assert.Equal(t, "MERGED #5 at "+sha+"; main tip is now "+tipSHA, last(result))
-	assert.True(t, w.called("PRView 5 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,files,commits,body,author,labels,mergedAt"))
+	assert.True(t, w.called("PRView 5 state,isDraft,headRefName,mergeable,files,commits,body,author,labels,mergedAt"))
 }
 
 func TestRun_AnIntentStillRunsTheTreeProof(t *testing.T) {
@@ -201,11 +200,9 @@ func TestRun_AnIntentSkipsTheGuardsOfAnOpenPullRequest(t *testing.T) {
 func TestNewIntent_RecordsThePullRequestRead(t *testing.T) {
 	t.Parallel()
 
-	view := pullJSON(t, nil)
-	got, err := merge.NewIntent(view, "tree0", intentTime)
+	facts := model.PullFacts{Number: pr, State: "OPEN", Head: sha, Base: "main", Author: dev, Assignees: []string{"other"}}
 
-	require.NoError(t, err)
-	assert.Equal(t, *intentFor(), got)
+	assert.Equal(t, *intentFor(), merge.NewIntent(facts, "tree0", intentTime))
 }
 
 // replayRefuses runs a replay of a merged pull request that a guard must still refuse, and returns the result.
@@ -233,7 +230,7 @@ func TestRun_AnIntentDoesNotSkipTheReviewsTheFileListOrTheAuthors(t *testing.T) 
 		"an unresolved thread":      {nil, func(w *world) { w.threads = []model.ReviewThread{thread} }, "unresolved review threads"},
 		"a workflow file with no scope": {
 			map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}},
-			func(w *world) { w.scopes = []string{"repo"} }, "no workflow scope",
+			func(w *world) { w.ci = model.CIWriteNo }, "no workflow scope",
 		},
 		"a short file list": {nil, func(w *world) { w.counts = &counts{commits: 1, files: 101} }, "incomplete"},
 		"an unlinked author": {
@@ -249,42 +246,5 @@ func TestRun_AnIntentDoesNotSkipTheReviewsTheFileListOrTheAuthors(t *testing.T) 
 			assert.NotEqual(t, merge.Done, result.Stop, result.Lines)
 			assert.Contains(t, strings.Join(result.Lines, "\n"), one.want)
 		})
-	}
-}
-
-func TestRun_AReplayLeavesOneIntegrationRow(t *testing.T) {
-	t.Parallel()
-
-	req := replay()
-	req.IntegrationPR, req.Dir = 9, t.TempDir()
-	row := "- #5 merged at " + sha
-
-	w := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	w.authorOf = map[int]string{9: me}
-	w.body = "rows\n" + row
-	assert.Equal(t, merge.Done, w.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(w.body, row))
-
-	crlf := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	crlf.authorOf = map[int]string{9: me}
-	crlf.body = "rows\r\n" + row + "\r\n"
-	assert.Equal(t, merge.Done, crlf.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(crlf.body, row), "a body written with CRLF keeps one row")
-
-	fresh := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	fresh.authorOf = map[int]string{9: me}
-	assert.Equal(t, merge.Done, fresh.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(fresh.body, row))
-}
-
-func TestNewIntent_RefusesAReadWithoutAFact(t *testing.T) {
-	t.Parallel()
-
-	for name, over := range map[string]map[string]any{
-		"state": {"state": nil}, "head": {"headRefOid": nil}, "base": {"baseRefName": nil},
-	} {
-		_, err := merge.NewIntent(pullJSON(t, over), "tree0", intentTime)
-
-		require.Error(t, err, name)
 	}
 }

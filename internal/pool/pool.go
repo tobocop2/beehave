@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -47,22 +47,20 @@ func (e *NoneQualifiesError) ResetAt() (time.Time, bool) { return e.Reset, !e.Re
 // Reader reads the usage of one runner. A failure is a reading with a reason, never a panic.
 type Reader func(ctx context.Context, runner model.Runner) model.Reading
 
-// OverCap returns the windows at or over their cap.
+// OverCap returns the windows at or over their cap. A window with no cap, and a cap with no window in the usage, do nothing.
 func OverCap(usage model.Usage, caps config.Pool) []model.Window {
 	var over []model.Window
 
-	if usage.FiveHour.Percent >= caps.FiveHourMax {
-		over = append(over, usage.FiveHour)
-	}
-
-	if usage.SevenDay.Percent >= caps.SevenDayMax {
-		over = append(over, usage.SevenDay)
+	for _, window := range usage.Windows {
+		if limit, capped := caps[window.Name]; capped && window.Percent >= limit {
+			over = append(over, window)
+		}
 	}
 
 	return over
 }
 
-// Choose returns the runner with room: the lowest seven-day use, then the lowest five-hour use, then the first in config order.
+// Choose returns the runner with room: the lowest use of the last window, then of the one before it, and so on to the first, then the first in config order.
 // A runner with unknown usage is never chosen. A runner that busy names is chosen only when no other runner has room.
 func Choose(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, busy ...string) (model.Runner, bool) {
 	free := make([]model.Runner, 0, len(runners))
@@ -94,13 +92,23 @@ func lowest(runners []model.Runner, readings map[string]model.Reading, caps conf
 			continue
 		}
 
-		if !found || usage.SevenDay.Percent < best.SevenDay.Percent ||
-			(usage.SevenDay.Percent == best.SevenDay.Percent && usage.FiveHour.Percent < best.FiveHour.Percent) {
+		if !found || lessUsed(usage, best) {
 			chosen, best, found = runner, usage, true
 		}
 	}
 
 	return chosen, found
+}
+
+// lessUsed reports whether a uses less than b, comparing the last window first and the first window last.
+func lessUsed(a, b model.Usage) bool {
+	for index := min(len(a.Windows), len(b.Windows)) - 1; index >= 0; index-- {
+		if a.Windows[index].Percent != b.Windows[index].Percent {
+			return a.Windows[index].Percent < b.Windows[index].Percent
+		}
+	}
+
+	return false
 }
 
 // EarliestReset returns the first time a runner over a cap gets room: when its last over-cap window resets.
@@ -140,23 +148,43 @@ func freeAt(windows []model.Window) (time.Time, bool) {
 	return latest, len(windows) > 0
 }
 
-// Describe returns the usage of one runner as text: both windows with their reset times, or the reason.
+// Describe returns the usage of one runner as text: each window with its reset time, or the reason.
 func Describe(reading model.Reading) string {
 	usage, known := reading.Usage()
 	if !known {
 		return "unknown: " + reading.Reason()
 	}
 
-	return describeWindow("five-hour", usage.FiveHour) + ", " + describeWindow("seven-day", usage.SevenDay)
+	parts := make([]string, 0, len(usage.Windows))
+	for _, window := range usage.Windows {
+		parts = append(parts, describeWindow(window))
+	}
+
+	return strings.Join(parts, ", ")
 }
 
-func describeWindow(label string, window model.Window) string {
+func describeWindow(window model.Window) string {
 	reset := "no reset time"
 	if !window.ResetsAt.IsZero() {
 		reset = formatReset(window.ResetsAt)
 	}
 
-	return fmt.Sprintf("%s %g%% (resets %s)", label, window.Percent, reset)
+	return fmt.Sprintf("%s %g%% (resets %s)", label(window.Name), window.Percent, reset)
+}
+
+// label writes a window name for people: five_hour becomes five-hour.
+func label(name string) string { return strings.ReplaceAll(name, "_", "-") }
+
+// capsText lists the caps in sorted name order, such as "five-hour 90%, seven-day 95%".
+func capsText(caps config.Pool) string {
+	names := slices.Sorted(maps.Keys(caps))
+	parts := make([]string, 0, len(names))
+
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s %g%%", label(name), caps[name]))
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 // ReadAll returns one reading for each runner, by name. The runners are read at the same time, so the whole read takes one timeout, not one for each runner.
@@ -208,8 +236,12 @@ func Refusal(runners []model.Runner, readings map[string]model.Reading, caps con
 		when, wait = "", ""
 	}
 
-	return fmt.Sprintf("no %s runner is under both caps (five-hour %g%%, seven-day %g%%).%s%s%s",
-		agent, caps.FiveHourMax, caps.SevenDayMax, when, unknown, wait)
+	head := fmt.Sprintf("no %s runner is under both caps (%s)", agent, capsText(caps))
+	if len(caps) == 0 {
+		head = fmt.Sprintf("no %s runner can be picked: the agent has no usage caps", agent)
+	}
+
+	return head + "." + when + unknown + wait
 }
 
 // unknownUsage returns one sentence for each runner with unknown usage, and whether one of them needs a login.
@@ -260,12 +292,34 @@ func SelectOverCap(ctx context.Context, runners []model.Runner, caps config.Pool
 
 	readings := ReadAll(ctx, mine, read)
 
-	picked, ok := Choose(mine, readings, config.Pool{FiveHourMax: math.Inf(1), SevenDayMax: math.Inf(1)}, busy...)
+	picked, ok := Choose(mine, readings, config.Pool{}, busy...)
 	if !ok {
 		return model.Runner{}, none(mine, readings, caps, agent)
 	}
 
 	return picked, nil
+}
+
+// HasRoom reports whether the readings are not empty, every one of them is known, and no window of any is at or over its cap.
+// A login with an unknown reading is no room: the engine adds no agent while it cannot see the usage.
+func HasRoom(readings map[string]model.Reading, caps config.Pool) bool {
+	if len(readings) == 0 {
+		return false
+	}
+
+	for _, reading := range readings {
+		usage, known := reading.Usage()
+		if !known || len(OverCap(usage, caps)) > 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Headroom reads the usage of every runner of the agent and reports whether HasRoom holds. It uses the reader that Select uses, so no second read path exists.
+func Headroom(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader) bool {
+	return HasRoom(ReadAll(ctx, ofAgent(runners, agent), read), caps)
 }
 
 // none builds the error of a pick that finds no runner with room.

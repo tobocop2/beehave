@@ -23,7 +23,7 @@ func TestClient_ResumeOnThisBuildRefusesWhatItCannotMove(t *testing.T) {
 	require.NoError(t, err)
 
 	err = other.ResumeOnThisBuild(testItem)
-	require.ErrorIs(t, err, errWrongState, "a finished run has nothing to move")
+	require.ErrorIs(t, err, ErrWrongState, "a finished run has nothing to move")
 	require.ErrorContains(t, err, "only a cancelled, failed or open run moves to this build") //nolint:misspell // user-facing state word
 }
 
@@ -35,26 +35,6 @@ func TestClient_ResumeOnThisBuildRefusesARunWhoseStepsDifferInFormatOnly(t *test
 	client.version = testVersion // the run is stored with the version of the steps, this build without it
 
 	require.ErrorIs(t, client.ResumeOnThisBuild(testItem), errStranded)
-}
-
-func TestClient_ResumeOnThisBuildNamesTheScriptsOutsideTheRepositoryWhenAFileChanged(t *testing.T) {
-	t.Parallel()
-
-	const outside = "    command(run = [\"/bin/sh\", \"-c\", \"true\"])\n"
-
-	harness := newHarness(t)
-	harness.flowIs(t, waitFlow+outside)
-	engine := harness.engine(t)
-
-	runInBackground(engine, testItem)
-	waitOn(t, ownerAsks(t, harness))
-
-	harness.flowIs(t, waitFlow+outside+"# edited\n")
-
-	err := harness.client(t, otherBuild).ResumeOnThisBuild(testItem)
-
-	require.ErrorContains(t, err, "changed since the run started")
-	require.ErrorContains(t, err, "These scripts are outside the repository and are not pinned: /bin/sh")
 }
 
 func TestClient_ResumeOnThisBuildCountsTheCommandsWhoseScriptsAreNotPinned(t *testing.T) {
@@ -116,7 +96,7 @@ func TestClient_ReopenHereGivesBackItsClaimWhenTheRewindFails(t *testing.T) {
 	last, err := other.newest(testItem)
 	require.NoError(t, err)
 
-	err = other.reopenHere(testItem, last) // the run is still open, and DBOS rewinds only a run that ended
+	err = other.reopenHere(testItem, last, nil) // the run is still open, and DBOS rewinds only a run that ended
 
 	require.Error(t, err)
 

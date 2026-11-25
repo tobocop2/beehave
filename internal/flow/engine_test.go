@@ -58,6 +58,7 @@ func TestOptions_RefuseUnusableSettingsForTheEngineAndTheClient(t *testing.T) {
 		{"no_agent_slot", func(o *Options) { o.MaxConcurrent = 0 }, "agents.max_concurrent is 0: set it to 1 or more"},
 		{"a_negative_per_login", func(o *Options) { o.PerLogin = -1 }, "agents.per_login is -1: set it to 1 or more"},
 		{"a_per_login_above_a_queue_cap", func(o *Options) { o.MaxConcurrent, o.MaxReviewConcurrent, o.PerLogin = 3, 1, 2 }, "agents.per_login is 2: set it to agents.max_concurrent (3) or agents.max_review_concurrent (1), whichever is lower, or less"},
+		{"an_unknown_concurrency", func(o *Options) { o.Concurrency = "turbo" }, "agents.concurrency is \"turbo\": set it to \"static\" or \"adaptive\". Set it in runners.star or in BEEHAVE_AGENTS_CONCURRENCY"},
 		{"a_negative_review_lookback", func(o *Options) { o.ReviewLookbackDays = -1 }, "agents.review_lookback_days is -1: set it to 1 or more"},
 		{"a_negative_review_poll", func(o *Options) { o.ReviewPoll = -time.Minute }, "review poll interval is -1m0s: set it to 0 or more"},
 	}
@@ -347,7 +348,7 @@ func TestEngine_PinsTheApplicationVersionToTheBuildVersion(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	assert.Equal(t, "v1.2.3-pinned+core18.agent15.tracker2.forge6.land9.gate6.host1.round5", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
+	assert.Equal(t, "v1.2.3-pinned+core20.agent16.tracker4.forge13.land16.gate8.host1.round7", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
 
 	infos, err := harness.client(t, "v1.2.3-pinned").Status()
 	require.NoError(t, err)
@@ -410,6 +411,108 @@ func TestEngine_TheShutdownWaitsForAStartInFlight(t *testing.T) {
 	assert.True(t, engine.stopped)
 }
 
+func TestEngine_TheShutdownWaitsForACallOfRunThatReadsTheStore(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+
+	// Count a call as run does between its entry and its return.
+	require.NoError(t, engine.enter(testItem))
+
+	release := sync.OnceFunc(engine.callers.Done)
+	t.Cleanup(release)
+
+	down := make(chan error, 1)
+
+	go func() { down <- engine.Shutdown() }()
+
+	waitOn(t, condition(func() bool { return engine.ctx.Err() != nil }))
+	staysTrue(t, func() bool { return len(down) == 0 }, "the shutdown returned while a call of run was in flight")
+
+	release()
+
+	require.NoError(t, receive(t, down))
+}
+
+func TestEngine_ACountedCallThatReachesTheStartAfterTheShutdownBeganIsRefused(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+
+	// A call of run that passed enter before the shutdown began reaches its start after the shutdown began.
+	require.NoError(t, engine.enter(testItem))
+
+	release := sync.OnceFunc(engine.callers.Done)
+	t.Cleanup(release)
+
+	down := make(chan error, 1)
+
+	go func() { down <- engine.Shutdown() }()
+
+	// The library stops after the shutdown refused the starts.
+	waitOn(t, condition(func() bool { return engine.ctx.Err() != nil }))
+
+	handle, err := engine.joinOrStart(ItemInput{Item: testItem})
+
+	release()
+
+	require.ErrorIs(t, err, errEngineShutDown)
+	assert.Nil(t, handle)
+	require.NoError(t, receive(t, down))
+}
+
+func TestEngine_ACallOfRunThatWaitsForItsItemIsCountedUntilItReturns(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, waitFlow)
+
+	engine := h.engine(t)
+	done := runInBackground(engine, testItem)
+
+	waitOn(t, ownerAsks(t, h))
+
+	counted := make(chan struct{})
+
+	go func() {
+		engine.callers.Wait()
+		close(counted)
+	}()
+
+	staysTrue(t, func() bool {
+		select {
+		case <-counted:
+			return false
+		default:
+			return true
+		}
+	}, "the call of run waits for its item and is not counted")
+
+	require.NoError(t, engine.Shutdown())
+	receive(t, counted)
+
+	// This test proves the count: the call ends when the library stops, before the shutdown returns. TheShutdownWaitsForACallOfRunThatReadsTheStore proves the wait.
+	assert.Len(t, done, 1, "the call of run is counted until it returns, and it returned before the shutdown did")
+}
+
+func TestEngine_ARunAfterTheShutdownIsRefusedAndCountsNoCall(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+	require.NoError(t, engine.Shutdown())
+
+	require.ErrorIs(t, engine.enter(testItem), errEngineShutDown)
+
+	counted := make(chan struct{})
+
+	go func() {
+		engine.callers.Wait()
+		close(counted)
+	}()
+
+	receive(t, counted)
+}
+
 func TestEngine_RunsAsTheLocalExecutor(t *testing.T) {
 	t.Parallel()
 
@@ -460,7 +563,7 @@ func TestResult_ARunThatCompletedInTheInstantTheEngineStoppedReportsItsResult(t 
 	engine := harness.engine(t)
 	file := writeFlow(t, bodyFlow("command(run = [\"c\"])\n"))
 
-	want, err := engine.RunFile(testItem, testProject, file)
+	want, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	got, err := engine.result(stoppedHandle{}, testItem)

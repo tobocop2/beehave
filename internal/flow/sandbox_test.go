@@ -45,36 +45,21 @@ func TestAgentStep_ASandboxCallWithNoListsTurnsTheSandboxOnWithNoDomain(t *testi
 	assert.Equal(t, &model.Sandbox{}, sandboxSeen(t, rig))
 }
 
-func TestAgentStep_ANoneOptsOutEvenWhenTheProjectDefaultIsOn(t *testing.T) {
-	t.Parallel()
-
-	rig := newAgentRig(t)
-	rig.h.sandboxDefault = func(string) bool { return true }
-	rig.reply("", exited)
-
-	_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
-
-	require.NoError(t, err)
-	assert.Nil(t, sandboxSeen(t, rig))
-}
-
-func TestAgentStep_ALeftOutKeywordTakesTheDefaultOfTheProject(t *testing.T) {
+func TestAgentStep_ALeftOutKeywordTakesTheSandboxModeOfTheRun(t *testing.T) {
 	t.Parallel()
 
 	for name, test := range map[string]struct {
-		def  func(string) bool
+		mode model.SandboxMode
 		want *model.Sandbox
 	}{
-		"default on":        {func(string) bool { return true }, &model.Sandbox{}},
-		"default off":       {func(string) bool { return false }, nil},
-		"no default at all": {nil, nil},
-		"another project":   {func(project string) bool { return project != testProject }, nil},
+		"mode on":  {model.SandboxOn, &model.Sandbox{}},
+		"mode off": {model.SandboxOff, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			rig := newAgentRig(t)
-			rig.h.sandboxDefault = test.def
+			rig.sandbox = test.mode
 			rig.reply("", exited)
 
 			_, err := rig.run(t, agentFlow(``), "x")
@@ -85,11 +70,11 @@ func TestAgentStep_ALeftOutKeywordTakesTheDefaultOfTheProject(t *testing.T) {
 	}
 }
 
-func TestAgentStep_ASandboxCallOverridesTheDefaultOff(t *testing.T) {
+func TestAgentStep_ASandboxCallOverridesTheModeOff(t *testing.T) {
 	t.Parallel()
 
 	rig := newAgentRig(t)
-	rig.h.sandboxDefault = func(string) bool { return false }
+	rig.sandbox = model.SandboxOff
 	rig.reply("", exited)
 
 	_, err := rig.run(t, agentFlow(`sandbox = sandbox(network = ["a.example.org"]), `), "x")

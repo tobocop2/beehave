@@ -14,10 +14,11 @@ stderr 'merge\.star:3:'
 stderr 'project local: no forge; set forge = "github" in the project file'
 ! stdout 'finished'
 
-# The claim of the item is released, and the run ends as failed.
+# The claim of the item is released, and the run ends as failed. The workflow loads no scope library and reads no closing issues, so the run has no scope check and the status shows no note.
 noclaims local
 exec beehavereal status
 stdout '^item-ship-it-r1\tfailed\titem ship-it of [a-z]+$'
+! stdout 'scope check off'
 
 -- origin/readme.txt --
 The source repository.
@@ -33,4 +34,4 @@ project(
 -- flow/merge.star --
 def main(item):
     command(name = "before", run = ["git", "--version"])
-    merge(name = "ship", base = "main", repo = "x", prs = [struct(item = "1", head = "abc123")])
+    merge(name = "ship", base = "main", repo = "x", members = [struct(item = "1", head = "abc123", closes = [])])

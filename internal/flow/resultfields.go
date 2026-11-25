@@ -5,8 +5,15 @@ import (
 	"encoding/json"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
+
+// commitField is the result field of base_tip that holds the tip commit.
+const commitField = "commit"
+
+// unprovenField is the result field of landing_proof: each landed member that the forge cannot show on the base, with the reason.
+const unprovenField = "unproven"
 
 // revertField is the result field of gate that holds the verdict of the revert run.
 const revertField = "revert"
@@ -42,7 +49,7 @@ func writeOutputs(run CommandOutput, attempts int, key string, skipped bool) map
 // required holds the names that the gate list of the project had when the gate ran. A merge reads them from this record, never from the config of the day.
 // checks is what the log of a candidate job gave. new_tests is the list of its new test names, and a gate with no checks records an empty list and a zero record.
 // host_loss is an empty dict and host_losses is 0 here. Only a gate whose host job was lost and proved unable to run fills them: host_losses then counts
-// the host losses of the item tree, this one included (recordLoss).
+// the host losses of the item tree, this one included (recordLoss). step is empty here: the gate call that records the result fills it with its own step name (recordGate).
 func gateOutputs(passed bool, head, tree, report string, steps []GateStep, required []string, checks *GateChecks) map[string]any {
 	recorded := GateChecks{}
 	if checks != nil {
@@ -54,7 +61,7 @@ func gateOutputs(passed bool, head, tree, report string, steps []GateStep, requi
 
 	return map[string]any{
 		"passed": passed, "head": head, treeName: tree, "report": report, "steps": append([]GateStep{}, steps...), "required": append([]string{}, required...),
-		"checks": recorded, "new_tests": recorded.NewTests, revertField: string(recorded.Revert), hostLossKey: map[string]any{}, hostLossesKey: 0,
+		"checks": recorded, "new_tests": recorded.NewTests, revertField: string(recorded.Revert), hostLossKey: map[string]any{}, hostLossesKey: 0, stepField: "",
 	}
 }
 
@@ -64,6 +71,11 @@ func teardownOutputs(down bool, reason string) map[string]any {
 
 func upOutputs(started bool, host string) map[string]any {
 	return map[string]any{"started": started, hostKeyword: host}
+}
+
+// deferredOutputs records a host_up that started nothing because the host has a size table and the first gate starts it. Only this record holds the field deferred.
+func deferredOutputs(host string) map[string]any {
+	return map[string]any{"started": false, hostKeyword: host, "deferred": true}
 }
 
 // answerOutputs records the answer of a wait. timed_out is true when the deadline of the wait passed first, and the answer is then empty.
@@ -97,16 +109,51 @@ func openOutputs(r OpenResult) map[string]any {
 // prStateOutputs are the fields of pr_state: the state of the pull request, OPEN, CLOSED or MERGED.
 func prStateOutputs(state string) map[string]any { return map[string]any{stateField: state} }
 
-// pushOutputs are the fields of push: the head that the branch holds after the push.
-func pushOutputs(head string) map[string]any { return map[string]any{headKeyword: head} }
+// baseTipOutputs are the fields of base_tip: the tip commit of the base and its tree.
+func baseTipOutputs(commit, tree string) map[string]any {
+	return map[string]any{commitField: commit, treeName: tree}
+}
+
+// landingProofOutputs are the fields of landing_proof: each landed member that the forge cannot show on the base, with the reason.
+func landingProofOutputs(unproven []landing.Outcome) map[string]any {
+	return map[string]any{unprovenField: unproven}
+}
+
+// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED, whether a read ran, and the cause of a failed read.
+// A project whose tracker has no issue numbers gives found false, no state and no error.
+func issueStateOutputs(state string, found bool, failure string) map[string]any {
+	return map[string]any{stateField: state, foundField: found, errorField: failure}
+}
+
+// pushOutputs are the fields of push: the head that the branch holds after the push, and the branch. A fork reads the branch to keep out of it.
+func pushOutputs(branch, head string) map[string]any {
+	return map[string]any{headKeyword: head, branchKeyword: branch}
+}
 
 // prHistoryOutputs are the fields of pr_history: the pull requests of the item, an empty list and never null for an item with none.
 func prHistoryOutputs(pulls []model.PriorPull) map[string]any {
 	return map[string]any{pullsField: append([]model.PriorPull{}, pulls...)}
 }
 
+// prReadOutputs are the fields of pr_read. A pull request that was not found has number 0 and found false, and every list is empty and never null.
+func prReadOutputs(facts model.PullFacts) map[string]any {
+	return map[string]any{
+		foundField: facts.Number != 0, numberField: facts.Number, stateField: facts.State, "draft": facts.Draft, "labels": append([]string{}, facts.Labels...),
+		authorField: facts.Author, assigneesField: append([]string{}, facts.Assignees...), "reviewers": append([]string{}, facts.Reviewers...),
+		"links": append([]model.IssueLink{}, facts.Links...), "unread": append([]string{}, facts.Unread...),
+	}
+}
+
+// issueAssigneesOutputs are the fields of issue_assignees: the logins that hold the issue, an empty list and never null for an issue that nobody holds.
+func issueAssigneesOutputs(logins []string) map[string]any {
+	return map[string]any{assigneesField: append([]string{}, logins...)}
+}
+
+// itemStopOutputs are the fields of item_stop: whether the stop is the stop of the run, which is so for the item of the run.
+func itemStopOutputs(recorded bool) map[string]any { return map[string]any{"recorded": recorded} }
+
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
-// stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
+// stop is "turns", "budget" or "context" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
 // cost_estimated is true when cost_usd is an estimate that beehave made from the tokens of the run, and false when the agent CLI reported the cost.
 // cost_unknown is true when the run used tokens of a model that has no price, so cost_usd holds no dollars for it.

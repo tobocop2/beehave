@@ -97,12 +97,12 @@ func TestCapStop_TheTreeSumReportsTheReadThatFailedAtEachLevel(t *testing.T) {
 		5: "read the steps of " + runID("3", 1),
 		6: "list the item runs",
 	} {
-		_, err := runAndBelowSpend(&failingRead{Context: engine.ctx, at: read}, root)
+		_, err := runAndBelowSpend(viewOf(&failingRead{Context: engine.ctx, at: read}, engine.dir), root)
 		require.ErrorContains(t, err, words, "read %d", read)
 		require.ErrorContains(t, err, "the store failed", "read %d", read)
 	}
 
-	spent, err := runAndBelowSpend(&failingRead{Context: engine.ctx}, root)
+	spent, err := runAndBelowSpend(viewOf(&failingRead{Context: engine.ctx}, engine.dir), root)
 	require.NoError(t, err, "no read fails")
 	assert.InDelta(t, 6.0, spent.Cost, 0)
 }
@@ -113,10 +113,10 @@ func TestCapStop_TheClimbReportsAReadThatFailedAboveTheRun(t *testing.T) {
 	engine := deepTree(t, newAgentRig(t))
 
 	// The climb from the grandchild reads the run, then its parent.
-	_, err := rootRun(&failingRead{Context: engine.ctx, at: 1}, runID("3", 1))
+	_, err := rootRun(viewOf(&failingRead{Context: engine.ctx, at: 1}, engine.dir), runID("3", 1))
 	require.ErrorContains(t, err, "the store failed")
 
-	_, err = rootRun(&failingRead{Context: engine.ctx, at: 2}, runID("3", 1))
+	_, err = rootRun(viewOf(&failingRead{Context: engine.ctx, at: 2}, engine.dir), runID("3", 1))
 	require.ErrorContains(t, err, "the store failed")
 }
 
@@ -126,7 +126,7 @@ func TestCapStop_TheClimbEndsAtTheRunWhenNoItemRunIsAboveIt(t *testing.T) {
 	engine := deepTree(t, newAgentRig(t))
 
 	// The run names a parent, but the read of the parent finds no item run: the run is the root.
-	root, err := rootRun(&failingRead{Context: engine.ctx, at: 2, empty: true}, runID("3", 1))
+	root, err := rootRun(viewOf(&failingRead{Context: engine.ctx, at: 2, empty: true}, engine.dir), runID("3", 1))
 
 	require.NoError(t, err)
 	assert.Equal(t, runID("3", 1), root)
@@ -229,7 +229,7 @@ func TestCapStop_AStoreThatRefusesTheRecordOfTheStopFailsTheStepWithNoAgentRun(t
 		"WHEN NEW.function_name = 'agent:c#3/budget1.0' BEGIN SELECT RAISE(ABORT, 'the store refused the record'); END")
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, capFile(t, threeFlow))
+	_, err = engine.RunFile(testItem, testProject, capFile(t, threeFlow), modeOff())
 
 	require.ErrorContains(t, err, "the store refused the record")
 	assert.Len(t, rig.h.agents.seen(), 2, "c does not run past the cap")
@@ -297,12 +297,12 @@ func TestCapStop_AReadThatFailsReachesTheCallerWithItsWords(t *testing.T) {
 
 	engine := stoppedTree(t)
 
-	_, err := runAndBelowSpend(engine.ctx, runID("1", 1))
+	_, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), runID("1", 1))
 	require.ErrorContains(t, err, "read the steps of "+runID("1", 1))
 
-	_, err = itemRuns(engine.ctx, dbos.WithFilterParentWorkflowID(runID("1", 1)))
+	_, err = itemRuns(viewOf(engine.ctx, engine.dir), dbos.WithFilterParentWorkflowID(runID("1", 1)))
 	require.ErrorContains(t, err, "list the item runs")
 
-	_, err = rootRun(engine.ctx, runID("3", 1))
+	_, err = rootRun(viewOf(engine.ctx, engine.dir), runID("3", 1))
 	require.ErrorContains(t, err, "list the item runs")
 }

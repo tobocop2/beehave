@@ -21,6 +21,12 @@ A swarm runs one backlog with many agents at once. Each line of the parent item 
 
 `REPO`, `BASE`, `OWNER_LOGIN`, `OWNER_EMAIL`, `SWARM` (the id of the parent item). Optional: `REMOTE` (the default is the GitHub address of `REPO`, so a private repository needs credentials for `git ls-remote`), `DEADLINE_MIN`, `BATCH`.
 
+## Credentials and the base
+
+`project.star` has no `credentials` key, so `merge` keeps the guards of a project with no writer. The base needs no ruleset. If the base requires `beehave/gate` or `beehave/review`, `merge` refuses and says that the project needs credentials.
+
+When the project gets a `credentials` entry for the `writer` role, `merge` refuses unless the base requires a pull request and the statuses `beehave/gate` and `beehave/review`. Post the ruleset first (docs/design/trust.md, section "The ruleset"). The ruleset file names `integration/**`, so change its branch pattern to the value of `BASE`. A later change will remove the no-credentials path, and this example then needs both the key and the ruleset.
+
 ## Engine gaps
 
 Each gap is true on main now.

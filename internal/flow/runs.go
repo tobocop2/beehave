@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const runPrefix = "item-"
@@ -32,6 +33,9 @@ var ErrBadItem = errors.New("invalid item")
 
 // errNoProject is returned when run names no project.
 var errNoProject = errors.New("no project for the item")
+
+// errNoSandboxMode is returned when a run starts with no sandbox mode: the caller must give on or off.
+var errNoSandboxMode = errors.New("the run has no sandbox mode")
 
 // errProjectConflict is returned when an open run of the item belongs to another project.
 var errProjectConflict = errors.New("the item has an open run under another project")
@@ -59,6 +63,9 @@ func (r run) terminal() bool {
 	return false
 }
 
+// delayed reports whether a debounced start holds the run back: it has not started, and the window is open.
+func (r run) delayed() bool { return r.Status.Status == dbos.WorkflowStatusDelayed }
+
 // cancelable reports whether a cancel reaches the run: an open run, a failed one, or a canceled one, whose children a cancel that stopped between two levels of the tree left open.
 func (r run) cancelable() bool {
 	return !r.terminal() || r.Status.Status == dbos.WorkflowStatusCancelled || r.failed()
@@ -67,6 +74,15 @@ func (r run) cancelable() bool {
 // failed reports whether the attempt ended with an error. Only beehave resume continues it.
 func (r run) failed() bool {
 	return stateOf(r.Status.Status) == runFailed
+}
+
+// checkItemID refuses an id that is not an item id, with the sentence that every entry point of an item gives.
+func checkItemID(id string) error {
+	if model.ItemKind(id) == "" {
+		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, id)
+	}
+
+	return nil
 }
 
 // failedError tells the owner why a new attempt does not start after a failed one.
@@ -91,10 +107,8 @@ func runID(item string, attempt int) string {
 }
 
 // latestRun returns the attempt of the item with the highest number. found is false when the item never ran.
-func latestRun(client dbos.Client, item string) (run, bool, error) {
-	prefix := runPrefix + item + attemptMarker
-
-	rows, err := dbos.ListWorkflows(client, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
+func latestRun(client storeView, item string) (run, bool, error) {
+	attempts, err := attemptsOf(client, item, dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return run{}, false, fmt.Errorf("list the runs of item %s: %w", item, err)
 	}
@@ -103,14 +117,34 @@ func latestRun(client dbos.Client, item string) (run, bool, error) {
 
 	found := false
 
-	for _, row := range rows {
-		attempt, err := strconv.Atoi(strings.TrimPrefix(row.ID, prefix))
-		if err == nil && attempt > last.Attempt {
-			last, found = run{Status: row, Attempt: attempt}, true
+	for _, attempt := range attempts {
+		if attempt.Attempt > last.Attempt {
+			last, found = attempt, true
 		}
 	}
 
 	return last, found, nil
+}
+
+// attemptsOf lists the attempts of the item that the store holds, in no order. It is the one read of the runs of an item: latestRun and earlierRuns take it, and so do run_read and earlier_reads.
+// The prefix of item 12 also matches a run of item 12-r2, whose tail is not a number: only a numbered id is an attempt of this item. A caller names in opts what the store loads of each run.
+func attemptsOf(client storeView, item string, opts ...dbos.ListWorkflowsOption) ([]run, error) {
+	prefix := runPrefix + item + attemptMarker
+
+	rows, err := client.List(append([]dbos.ListWorkflowsOption{dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName)}, opts...)...)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the caller names the read
+	}
+
+	var attempts []run
+
+	for _, row := range rows {
+		if attempt, numbered := attemptOf(row.ID, prefix); numbered {
+			attempts = append(attempts, run{Status: row, Attempt: attempt})
+		}
+	}
+
+	return attempts, nil
 }
 
 // withBaseOf gives a run that a user started the base of the last run of the same item, which holds the base that its spawn gave it.

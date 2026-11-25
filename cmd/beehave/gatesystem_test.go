@@ -14,7 +14,7 @@ func TestPlanOf_AGatePlanReadsTheSystemFoldersAndWritesTheSystemDevices(t *testi
 	t.Parallel()
 
 	for _, readOnly := range []bool{false, true} {
-		plan := planOf(nil, "/w", "/t", nil, nil, readOnly)
+		plan := planOf(nil, "/w", "/t", nil, nil, readOnly, "")
 
 		for _, path := range sandbox.SystemRead() {
 			assert.Contains(t, plan.Read, path, "read-only %v", readOnly)

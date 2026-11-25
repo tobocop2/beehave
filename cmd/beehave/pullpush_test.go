@@ -35,7 +35,7 @@ func newPushRig(t *testing.T) pushRig {
 
 	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: remote, BaseBranch: "main", Forge: forgegithub.Name}}}
 	opts := flow.Options{StateDir: evaluated(t, t.TempDir())}
-	trees := newWorktrees(projects, opts, nil)
+	trees := newWorktrees(projects, opts, nil, nil)
 
 	tree, err := trees.Ensure(t.Context(), "p", pushItem, "", "")
 	require.NoError(t, err)
@@ -158,14 +158,45 @@ func TestDepsOn_TheForgeOfTheEnginePushesACommitOfTheCloneThatTheEngineMade(t *t
 	assert.Equal(t, rig.head, rig.remoteHead(t))
 }
 
-func TestPulls_PushOfAProjectWithNoForgeIsRefusedAndPushesNothing(t *testing.T) {
+func TestPulls_PushOfAProjectWithASourceAndNoForgePushesToTheSource(t *testing.T) {
 	t.Parallel()
 
 	rig := newPushRig(t)
+	local := rig.pulls.projects["p"]
+	local.Forge = ""
+	rig.pulls.projects["p"] = local
 	rig.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
 
-	err := rig.pulls.Push(t.Context(), "p", pushItem, pushItem, rig.head, "")
+	require.NoError(t, rig.pulls.Push(t.Context(), "p", pushItem, pushItem, rig.head, ""))
+	assert.Equal(t, rig.head, rig.remoteHead(t), "the branch lands in the source of the project")
+}
 
-	require.ErrorIs(t, err, forge.ErrNoForge)
-	assert.Empty(t, gitOut(t, rig.remote, "branch", "--list", pushItem), "the remote has no branch of the item")
+func TestPulls_PushWithNoAddressToPushToIsRefusedAndPushesNothing(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		project  string
+		noSource bool
+		want     error
+	}{
+		"no_source_and_no_forge": {project: "p", noSource: true, want: forge.ErrNoForge},
+		"unknown_project":        {project: "missing", want: errUnknownProject},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newPushRig(t)
+			if tc.noSource {
+				rig.pulls.projects["p"] = config.Project{Project: model.Project{Name: "p", BaseBranch: "main"}}
+			}
+			rig.pulls.forge = func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }
+
+			err := rig.pulls.Push(t.Context(), tc.project, pushItem, pushItem, rig.head, "")
+
+			require.ErrorIs(t, err, tc.want)
+			assert.Empty(t, gitOut(t, rig.remote, "branch", "--list", pushItem), "the remote has no branch of the item")
+		})
+	}
 }

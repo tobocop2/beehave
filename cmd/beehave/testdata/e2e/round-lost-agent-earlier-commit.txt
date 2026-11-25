@@ -12,8 +12,10 @@ exec git -C origin add BASE_MARKER
 exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
 exec git -C origin checkout -q main
 
-example local/project.star config/projects/local.star
+fixture project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 subst flow/round.star
 subst fake/claude
 chmod 755 fake/claude

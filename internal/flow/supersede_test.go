@@ -18,11 +18,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
 // supersedeGate holds each gate until the test lets it end or its context ends, and counts the gates that started and the ones that its context stopped.
 type supersedeGate struct {
+	cleanTree
+
 	started *atomic.Int32
 	stopped *atomic.Int32
 	release chan struct{}
@@ -33,7 +36,7 @@ func (g supersedeGate) Key(context.Context, string, string, string, string, stri
 	return GateKey{Head: g.tip}, nil
 }
 
-func (supersedeGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (supersedeGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 

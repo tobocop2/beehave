@@ -86,7 +86,7 @@ func runSlotItem(t *testing.T, engine *Engine, item, text string) <-chan error {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(item, testProject, file)
+		_, err := engine.RunFile(item, testProject, file, modeOff())
 		ended <- err
 	}()
 
@@ -113,14 +113,14 @@ func TestReopen_ACanceledSlotJobGoesBackToTheQueueOfItsClassInThePartitionOfItsH
 		return dbos.WorkflowStatus{Name: hostJobName, Input: string(text)}
 	}
 
-	queue, partition, err := gateRewindTarget(job(ExclusiveInput{Kind: kindCommand, HostKey: hostKeyPrefix + "box", Request: CommandRequest{SlotClass: "mutation"}}))
+	queue, partition, err := gateRewindTarget(job(ExclusiveInput{Kind: kindCommand, HostKey: hostKeyPrefix + "box", SlotCount: 3, Request: CommandRequest{SlotClass: "mutation"}}))
 	require.NoError(t, err)
-	assert.Equal(t, "slots:mutation", queue)
+	assert.Equal(t, "slots:mutation:3", queue)
 	assert.Equal(t, "host:box", partition)
 
-	queue, partition, err = gateRewindTarget(job(ExclusiveInput{Kind: kindGate, HostKey: hostKeyPrefix + "box"}))
+	queue, partition, err = gateRewindTarget(job(ExclusiveInput{Kind: kindGate, HostKey: hostKeyPrefix + "box", SlotCount: 2}))
 	require.NoError(t, err)
-	assert.Equal(t, hostQueueName, queue, "a build job of a gate keeps the host queue")
+	assert.Equal(t, "slots:gate:2", queue, "a build job of a gate goes back to the queue of the gate class and its count")
 	assert.Equal(t, "host:box", partition)
 }
 
@@ -259,7 +259,7 @@ func TestCommand_AHostJobWaitsForAFreeSlotOfItsClass(t *testing.T) {
 	host.Store("box")
 
 	h.slots = func(_, _, class string) (SlotGrant, error) {
-		return SlotGrant{Host: host.Load(), Count: map[string]int{"mutation": 1, "bench": 1}[class]}, nil
+		return SlotGrant{Host: host.Load(), Count: map[string]int{"mutation": 1, "bench": 1, "default": 1}[class]}, nil
 	}
 
 	engine := h.engine(t)
@@ -367,7 +367,7 @@ func TestCommand_ACanceledSlotJobFreesItsSlotAndTheReopenWaitsOnTheQueueOfItsCla
 	rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued))
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, slotQueuePrefix+"mutation", rows[0].QueueName, "the reopened job is back on the queue of its class")
+	assert.Equal(t, slotQueueName("mutation", 1), rows[0].QueueName, "the reopened job is back on the queue of its class")
 	assert.Equal(t, 1, entriesOf(jobs.order(), "start m1"), "the reopened job waits: the slot is held by the other job")
 
 	jobs.let("m2")
@@ -425,7 +425,7 @@ func TestCommand_ARestartKeepsTheLimitOfAClassForTheJobThatWasRunning(t *testing
 	endPasses()
 
 	for _, item := range []string{testItem, "13"} {
-		last, found, lerr := latestRun(second.ctx, item)
+		last, found, lerr := latestRun(viewOf(second.ctx, second.dir), item)
 		require.NoError(t, lerr)
 		require.True(t, found)
 

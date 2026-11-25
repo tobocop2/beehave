@@ -50,7 +50,7 @@ func TestStore_ConformsToTracker(t *testing.T) {
 		run := newFakeBd(t)
 		run.Add(storetest.ItemID, beadstest.Fields{"title": "A finding", "description": "The body."})
 
-		return beadsOver(t, run)
+		return beadsOver(t, readyList{inner: run})
 	})
 }
 

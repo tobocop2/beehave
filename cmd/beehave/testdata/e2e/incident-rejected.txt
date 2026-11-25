@@ -30,6 +30,10 @@ grep 'rejected by primary: reject: the deploy is not the cause' home/.incident/i
 ! exists home/.incident/postmortems/incident-2.md
 ! grep postmortem calls.log
 
+# The analyst call started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
+
 -- body.txt --
 The watch.
 -- alert.json --

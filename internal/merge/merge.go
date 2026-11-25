@@ -53,7 +53,7 @@ func (s Stop) String() string {
 	return "UNKNOWN"
 }
 
-// Reads is what the guards read from the forge. TokenScopes is read only for a pull request that changes a workflow.
+// Reads is what the guards read from the forge. CanWriteCI is read only for a pull request that changes a workflow, in a project with no credentials.
 type Reads interface {
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 	PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error)
@@ -63,7 +63,7 @@ type Reads interface {
 	OpenChangeRequests(ctx context.Context, pr int) ([]model.ChangeRequest, error)
 	UnresolvedThreads(ctx context.Context, pr int) ([]model.ReviewThread, error)
 	StackID(ctx context.Context, pr int) (string, error)
-	TokenScopes(ctx context.Context) ([]string, error)
+	CanWriteCI(ctx context.Context) (model.CIWrite, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 }
 
@@ -100,19 +100,18 @@ type Writes interface {
 	MergePR(ctx context.Context, pr int, sha string) error
 }
 
-// Body is the body of a pull request. The merge records its row there, through EditBody. SetBody refuses a pull request that the owner did not write, so EditBody holds no author check of its own.
-type Body interface {
-	PRBody(ctx context.Context, pr int) (string, error)
-	SetBody(ctx context.Context, pr int, body string) error
+// Pins is what the merge reads to check that the pull request is still the one that was gated: the state, the head and the base, from the typed read.
+type Pins interface {
+	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
 }
 
 // Forge is the forge the merge works on.
 type Forge interface {
 	Reads
+	Pins
 	Approvals
 	Closings
 	Writes
-	Body
 }
 
 // Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.star.
@@ -120,7 +119,7 @@ type Forge interface {
 // Approved is true when a step other than the author accepted the head: work of an own identity merges only then.
 // Hold is the label of a pull request that is never merged; empty means no label holds. ForbidText holds the patterns that no line of the body or of a commit message may match.
 // Retarget moves each child pull request onto the base before the merge, where a child would otherwise block it.
-// IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
+// Dir is the state folder: the logs of failed checks go under it.
 // GatedTree is the tree id of the gated head. When it is set, the run reads the tree of the base tip after the merge and stops if it differs; empty asks for no proof.
 // Intent is the record of a caller that wrote it before the merge. With an intent, a pull request in state MERGED counts as done
 // when the intent ties the merge to this run (see Intent) and the guards that still apply to a merged pull request pass. Without one, MERGED refuses.
@@ -143,19 +142,29 @@ type Request struct {
 	Queue         bool
 	Runners       []string
 	Dir           string
-	IntegrationPR int
 	AllowOrphans  bool
 	AllowNoChecks bool
 	AllowReady    bool
 	// OwnDraft is the number of the draft that the caller opened. The draft guard accepts that pull request, and the ready step marks it ready after the guards.
 	OwnDraft int
-	// AuditClosing turns on the audit of the closing references. Names are the issues the item names: the pull request must close exactly those.
-	AuditClosing bool
-	Names        []int
+	// Names are the issues that the caller says the pull request closes: it must close exactly those, and an empty list means none.
+	Names []int
 	// Kept are issues that the owner kept by an answer. A closing keyword in a commit message may name them besides Names.
-	Kept []int
-	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
-	Unaudited string
+	Kept []model.IssueRef
+	// Pinned is the set of closing issues that a check read before the merge. The pull request must close exactly those, own and other repositories. Nil pins no set; an empty list pins no issue.
+	Pinned []model.IssueRef
+	// Credentialed is true when the project declares a writer credential. Such a merge needs a base whose protection requires the gate, the review and a pull request.
+	// ForgeName names the forge in the refusal for a forge that cannot read the protection.
+	Credentialed bool
+	ForgeName    string
+	// Post posts the commit statuses of the pull request after every guard passed and right before the merge call. Nil posts nothing.
+	Post Poster
+}
+
+// Poster posts the commit statuses of one pull request. Skipped is the reason it posted none, for example a project with no writer.
+// A post that is repeated is harmless: a status with the same context, state and commit replaces the last one at the forge.
+type Poster interface {
+	Post(ctx context.Context) (skipped string, err error)
 }
 
 // Result is the verdict. A Done result merged the pull request. Lines are the lines to show, a refusal last.
@@ -208,6 +217,8 @@ type attempt struct {
 	forge Forge
 	req   Request
 	view  model.PullRequest
+	// facts are the state, head and base from the typed read, made with the first read. The state guard decides on them.
+	facts model.PullFacts
 	files int // the forge's count of changed files, read with the first read
 	// committers are the committers of the commits, read with the first read.
 	committers []model.Committer
@@ -229,7 +240,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).protected, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).reviewed, (*attempt).provable, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }

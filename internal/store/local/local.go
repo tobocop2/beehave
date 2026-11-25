@@ -8,13 +8,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
-	"path/filepath"
 	"time"
-
-	// The driver registers itself under the name sqlite, as it does for the workflow store.
-	_ "modernc.org/sqlite"
 
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
@@ -28,7 +23,6 @@ const (
 
 const (
 	databaseFile  = "local.db"
-	fileMode      = 0o600
 	dirMode       = 0o700
 	schemaVersion = 1
 	busyTimeoutMs = 5000
@@ -68,80 +62,22 @@ type Store struct {
 // Open opens local.db in stateDir for a project and creates the folder, the file and the tables when they are missing.
 // The folder has mode 0700 and the file has mode 0600. SQLite gives its -wal and -shm files the mode of the file. now is the clock of the leases.
 func Open(ctx context.Context, stateDir, project string, now func() time.Time) (*Store, error) {
-	if err := create(stateDir); err != nil {
-		return nil, err
+	if err := os.MkdirAll(stateDir, dirMode); err != nil {
+		return nil, fmt.Errorf("local store: cannot create the state folder: %w", err)
 	}
 
-	db, err := connect(ctx, filepath.Join(stateDir, databaseFile))
+	db, err := store.OpenSQLite(ctx, stateDir, store.SQLiteFile{
+		Name:    databaseFile,
+		Schema:  schema + writerSchema,
+		Version: schemaVersion,
+		Owned:   []string{"items", "claims", "item_keys", "item_links", "comments"},
+		BusyMs:  busyTimeoutMs,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store: %w", err)
 	}
 
 	return &Store{db: db, project: project, now: now}, nil
-}
-
-// create makes the state folder and an empty database file in it. The file has mode 0600 before SQLite opens it, so SQLite makes its -wal and -shm files with that mode.
-func create(stateDir string) error {
-	if err := os.MkdirAll(stateDir, dirMode); err != nil {
-		return fmt.Errorf("local store: cannot create the state folder: %w", err)
-	}
-
-	root, err := os.OpenRoot(stateDir)
-	if err == nil {
-		err = errors.Join(touch(root), root.Close())
-	}
-
-	if err != nil {
-		return fmt.Errorf("local store: cannot create %s: %w", databaseFile, err)
-	}
-
-	return nil
-}
-
-// touch creates the database file in root when it is missing, and leaves a file that exists as it is.
-func touch(root *os.Root) error {
-	file, err := root.OpenFile(databaseFile, os.O_CREATE|os.O_RDWR, fileMode)
-	if err == nil {
-		err = file.Close()
-	}
-
-	return err
-}
-
-// connect opens the database and prepares it. A database that cannot be prepared is closed.
-func connect(ctx context.Context, path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dsn(path))
-	if err == nil {
-		err = prepare(ctx, db)
-		if err != nil {
-			err = errors.Join(err, db.Close())
-		}
-	}
-
-	return db, err
-}
-
-// dsn returns the address of the file. Each connection waits for a lock, uses a write-ahead log, and starts a transaction with BEGIN IMMEDIATE.
-func dsn(path string) string {
-	return store.SQLiteDSN(path, busyTimeoutMs, url.Values{"_pragma": {"journal_mode(WAL)"}, "_txlock": {"immediate"}})
-}
-
-// prepare creates the tables on a new file and refuses a file of a schema version it does not know.
-func prepare(ctx context.Context, db *sql.DB) error {
-	return inTx(ctx, db, "open", func(tx *sql.Tx) error {
-		var version int
-
-		err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version)
-		if err == nil && version != 0 && version != schemaVersion {
-			err = fmt.Errorf("the file has schema version %d, and this build knows version %d", version, schemaVersion)
-		}
-
-		if err == nil {
-			_, err = tx.ExecContext(ctx, schema+writerSchema)
-		}
-
-		return err
-	})
 }
 
 // inTx runs fn in one BEGIN IMMEDIATE transaction, so no other writer runs between its statements. An error from fn rolls it back.
@@ -209,9 +145,14 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 	return map[string]string{"id": id, "title": title, "body": body, "severity": string(model.SeverityUnknown)}, nil
 }
 
-// OpenItems lists the open items and the held items of the project in the order they were added. A local item has no severity.
+// ItemList lists the open items and the held items of the project in the order they were added. A local item has no severity.
 // An item with state hold has Hold set, as a beads item with the hold label has. A closed item is not listed.
-func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
+// The local store keeps no labels, so a label lists no item.
+func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error) {
+	if label != "" {
+		return []model.Item{}, nil
+	}
+
 	return list(ctx, s.db, "the open items", func(rows *sql.Rows) (model.Item, error) {
 		item := model.Item{Severity: model.SeverityUnknown}
 		var state string

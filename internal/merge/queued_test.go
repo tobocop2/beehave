@@ -3,7 +3,6 @@ package merge_test
 import (
 	"context"
 	"fmt"
-	"slices"
 	"testing"
 	"time"
 
@@ -18,9 +17,10 @@ import (
 // oldest first. The last state repeats. A poll is the read of the fields state, headRefOid and headRefName, which no other read of the merge asks for.
 type queuedWorld struct {
 	*world
-	states []string
-	head   string
-	polls  int
+	states  []string
+	head    string
+	polls   int
+	running bool
 }
 
 func (q *queuedWorld) AutoMergePR(_ context.Context, number int, pin string) error {
@@ -35,16 +35,17 @@ func (q *queuedWorld) DisableAutoMergePR(_ context.Context, number int) error {
 	return q.fail("DisableAutoMergePR")
 }
 
-func (q *queuedWorld) PRView(ctx context.Context, number int, fields ...string) (model.PullRequest, error) {
-	if !slices.Equal(fields, []string{"state", "headRefOid", "headRefName"}) {
-		return q.world.PRView(ctx, number, fields...)
+// PullRead answers a poll or a disarm with the next state. The typed read of a run answers from the world.
+func (q *queuedWorld) PullRead(ctx context.Context, number int) (model.PullFacts, error) {
+	if q.running {
+		return q.world.PullRead(ctx, number)
 	}
 
 	q.polls++
 
-	state, head, branch := q.states[min(q.polls, len(q.states))-1], q.head, "feat"
+	state := q.states[min(q.polls, len(q.states))-1]
 
-	return model.PullRequest{State: &state, HeadRefOid: &head, HeadRefName: &branch}, q.fail("PRView poll")
+	return model.PullFacts{Number: number, State: state, Head: q.head, Base: "main"}, q.fail("PRView poll")
 }
 
 func queued(t *testing.T, states ...string) *queuedWorld {
@@ -64,6 +65,9 @@ func queuing() merge.Request {
 }
 
 func (q *queuedWorld) run(req merge.Request) merge.Result {
+	q.running = true
+	defer func() { q.running = false }()
+
 	return merge.Run(context.Background(), q, req)
 }
 
@@ -264,6 +268,21 @@ func TestPoll_AFailedReadKeepsWaitingUntilTheLastRead(t *testing.T) {
 	final := q.poll(queuing(), true)
 	assert.Equal(t, merge.Transient, final.Reason)
 	assert.Equal(t, []string{"DisableAutoMergePR 5"}, q.writes, "the last read disarms even when it cannot read")
+}
+
+func TestPoll_AFailedReadOfTheBranchNameKeepsWaitingUntilTheLastRead(t *testing.T) {
+	t.Parallel()
+
+	q := queued(t, "OPEN")
+	q.fails["PRView"] = true
+
+	middle := q.poll(queuing(), false)
+	assert.Equal(t, merge.Queued, middle.Reason)
+	assert.Empty(t, q.writes)
+
+	final := q.poll(queuing(), true)
+	assert.Equal(t, merge.Transient, final.Reason)
+	assert.Equal(t, []string{"DisableAutoMergePR 5"}, q.writes)
 }
 
 func TestDisarm_TurnsOffTheQueuedMergeOfAnOpenPullRequest(t *testing.T) {

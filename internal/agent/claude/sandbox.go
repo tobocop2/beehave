@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/gotelemetry"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -34,8 +35,20 @@ const envFile = "sandbox-env.sh"
 
 // homeLines returns the lines of the env file that give the shell a new, empty home folder of its own, named after the run folder, in its temporary folder, which
 // the sandbox lets it write. The Go command keeps its telemetry and its build cache under the home folder, and the sandbox denies the home folder of the owner.
+// The lines write the telemetry mode off where the Go command reads it and point XDG_CONFIG_HOME at the config folder of the home folder, so no go call of
+// the shell starts a telemetry child that outlives the step.
 func homeLines(runDir string) string {
-	return "export HOME=\"${TMPDIR:-/tmp}\"/" + model.ShellQuote("beehave-home-"+filepath.Base(runDir)) + "\nmkdir -p \"$HOME\"\n"
+	var lines strings.Builder
+
+	lines.WriteString("export HOME=\"${TMPDIR:-/tmp}\"/" + model.ShellQuote("beehave-home-"+filepath.Base(runDir)) + "\nmkdir -p \"$HOME\"\n")
+	lines.WriteString("export XDG_CONFIG_HOME=\"$HOME\"/" + model.ShellQuote(gotelemetry.ConfigFolder) + "\n")
+
+	for _, file := range gotelemetry.ModeFiles() {
+		lines.WriteString("mkdir -p \"$HOME\"/" + model.ShellQuote(filepath.Dir(file)) + "\n")
+		lines.WriteString("printf %s " + model.ShellQuote(gotelemetry.Mode) + " > \"$HOME\"/" + model.ShellQuote(file) + "\n")
+	}
+
+	return lines.String()
 }
 
 // Tools that the settings deny by name. The sandbox covers the Bash tool; these two reach the network without it.
@@ -95,7 +108,7 @@ type permissions struct {
 // The plugin folder is also a working directory (--add-dir), so the agent reads the files of a skill; the settings deny its write.
 func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skillFolders []string) agent.Launch {
 	skills := skillsPlugin(skillFolders, runDir)
-	plan = skills.confine(readOutput(plan, write))
+	plan = skills.confine(readOnlyCache(readOutput(plan, write)))
 	envPath := filepath.Join(runDir, envFile)
 	settings := withGuard(settingsOf(plan, envPath, write), guard)
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings and booleans always encodes
@@ -106,7 +119,7 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skil
 			addDirs(plan.ReadDirs), skills.args, []string{"--settings", string(raw)},
 		),
 		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath, tempVar: plan.Temp},
-		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv()) + homeLines(runDir)}),
+		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv()) + homeLines(runDir) + exports(goEnv(plan.ModuleCache))}),
 		Copies: skills.copies,
 		Hooked: guard != "",
 	}
@@ -118,6 +131,26 @@ func readOutput(plan agent.SandboxPlan, write []string) agent.SandboxPlan {
 	plan.ReadDirs = slices.Concat(plan.ReadDirs, outputDirs(write))
 
 	return plan
+}
+
+// readOnlyCache returns the plan with its module cache readable by the shell and denied for write, in the sandbox and in the file tools.
+func readOnlyCache(plan agent.SandboxPlan) agent.SandboxPlan {
+	if plan.ModuleCache != "" {
+		plan.Read = append(slices.Clone(plan.Read), plan.ModuleCache)
+		plan.DenyWrite = append(slices.Clone(plan.DenyWrite), plan.ModuleCache)
+	}
+
+	return plan
+}
+
+// goEnv returns the Go variables that make the go command of the shell read the module cache with no network, or none for a plan with no cache.
+// GOFLAGS is empty, so a -mod of the owner does not reach the shell.
+func goEnv(cache string) map[string]string {
+	if cache == "" {
+		return nil
+	}
+
+	return map[string]string{"GOMODCACHE": cache, "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOFLAGS": ""}
 }
 
 // addDirs returns the --add-dir flag with each folder, which the CLI takes as a working directory, or no argument for no folder.

@@ -24,14 +24,15 @@ func buildWithModule(c *Client, module string, version int) *Client {
 	return c
 }
 
-// buildAtVersionOne is a client of another build whose core and agent modules, the two that every waiting run of the harness recorded a step of, are at version 1.
+// buildAtVersionOne is a client of another build whose core, agent and forge modules are at version 1: every waiting run of the harness recorded a step of
+// the core and the agent module, and the forge module covers the step that reads who wrote the item in every run.
 func buildAtVersionOne(c *Client) *Client {
 	table := moduleTable()
 	parts := make([]string, len(table))
 
 	for i, entry := range table {
 		number := entry.version
-		if entry.name == moduleCore || entry.name == moduleAgent {
+		if entry.name == moduleCore || entry.name == moduleAgent || entry.name == moduleForge {
 			number = 1
 		}
 
@@ -229,7 +230,7 @@ func TestClient_ResumeOnThisBuildMovesARunStoredUnderAListOfSomeModules(t *testi
 	t.Parallel()
 
 	harness, _, other := strandedHarness(t)
-	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?", testVersion+"+core"+strconv.Itoa(coreVersion)+".agent"+strconv.Itoa(agentVersion), testRun)
+	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?", testVersion+"+core"+strconv.Itoa(coreVersion)+".agent"+strconv.Itoa(agentVersion)+".forge"+strconv.Itoa(forgeVersion), testRun)
 	require.NoError(t, err)
 
 	buildWithModule(other, moduleGate, gateVersion+1)
@@ -289,6 +290,40 @@ func TestClient_ResumeOnThisBuildRefusesARoundRunOfABuildWithAnOlderRoundModuleA
 	assert.Equal(t, testVersion, buildVersion(row.ApplicationVersion), "a refused run stays where it was")
 }
 
+func TestClient_ResumeOnThisBuildRefusesARunOfABuildWithAnOlderForgeModuleAndNamesTheStepThatReadsWhoWroteTheItem(t *testing.T) {
+	t.Parallel()
+
+	for _, item := range []string{testItem, testRound} {
+		_, other := olderRoundRun(t, item, moduleForge, forgeVersion-1)
+
+		err := other.ResumeOnThisBuild(item)
+
+		require.ErrorIs(t, err, errStranded, item)
+		require.ErrorContains(t, err, fmt.Sprintf("forge module at version %d, and this build has version %d", forgeVersion-1, forgeVersion), item)
+		require.ErrorContains(t, err, `the step "origin"`, item)
+		require.ErrorContains(t, err, "start the item again: beehave run "+item, item)
+	}
+}
+
+func TestClient_ResumeOnThisBuildRefusesARunRecordedAtForgeTwelveWhichHasNoOriginStep(t *testing.T) {
+	t.Parallel()
+
+	// Forge 12 is the last version of the forge module whose runs record no origin step, so this build must not move such a run.
+	const lastWithoutOrigin = 12
+
+	h, other := olderRoundRun(t, testItem, moduleForge, lastWithoutOrigin)
+
+	// The run of that build recorded no origin step.
+	_, err := sqlOf(t, h).ExecContext(t.Context(), "DELETE FROM operation_outputs WHERE workflow_uuid = ? AND function_name = ?", runID(testItem, 1), originStepName)
+	require.NoError(t, err)
+
+	err = other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("forge module at version %d", lastWithoutOrigin))
+	require.ErrorContains(t, err, `the step "origin"`)
+}
+
 func TestClient_ResumeOnThisBuildMovesARunOfAnItemThatIsNotARoundWhenOnlyTheRoundModuleChanged(t *testing.T) {
 	t.Parallel()
 
@@ -328,7 +363,6 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfTheSingleMergeAnd
 	}{
 		"a scope check and a merge":                          {4, []string{"scope-check:m#1", "merge:m#1"}, moduleRound},
 		"a scope check in the owner wait, under equal lists": {landVersion, []string{"scope-check:m#1", "wait:scope#1"}, moduleRound},
-		"a merge alone":                                      {4, []string{"merge:m#1"}, moduleLand},
 		"a before_review step":                               {gateVersion, []string{"before_review:candidate-before-review#1"}, moduleGate},
 		"the read of the owner merge wait":                   {landVersion, []string{"watch", "DBOS.sleep", "watch"}, moduleCore},
 	}
@@ -351,6 +385,32 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfTheSingleMergeAnd
 			assert.Equal(t, testVersion, buildVersion(row.ApplicationVersion), "a refused run stays where it was")
 		})
 	}
+}
+
+func TestClient_ResumeOnThisBuildMovesARunThatRecordedTheStepsOfAMergeOfMembers(t *testing.T) {
+	t.Parallel()
+
+	harness, other := olderRoundRun(t, testItem, moduleLand, landVersion)
+	recordSteps(t, harness, testItem, "merge:u.plan", "merge:u.intent#1", "merge:u.poll#1", "merge:u.tip")
+
+	require.NoError(t, other.ResumeOnThisBuild(testItem), "this build records the steps of a merge of members")
+
+	row, err := other.row(runID(testItem, 1))
+	require.NoError(t, err)
+	assert.Equal(t, other.version, row.ApplicationVersion, "the run is stored under this build")
+}
+
+func TestClient_ResumeOnThisBuildRefusesARunWithTheSingleMergeOfAnOlderLandModuleByItsVersion(t *testing.T) {
+	t.Parallel()
+
+	// Land module 4 recorded the single merge as merge:<name>#<n>. The kind merge is live again, so the version of the land module refuses the run.
+	harness, other := olderRoundRun(t, testItem, moduleLand, 4)
+	recordSteps(t, harness, testItem, "merge:m#1")
+
+	err := other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("recorded steps of the land module at version 4 and this build has version %d", landVersion))
 }
 
 func TestClient_ResumeOnThisBuildRefusesARunThatRecordedARetiredAssignStepAndNamesItsModule(t *testing.T) {
@@ -379,6 +439,19 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedARetiredAssignStepAndNam
 			require.ErrorContains(t, err, fmt.Sprintf("the step %q, and an older build recorded it for the %s module, and this build does not record it", test.step, test.module))
 		})
 	}
+}
+
+func TestClient_ResumeOnThisBuildRefusesARunThatRecordedTheRetiredQueueStepAndNamesTheRoundModule(t *testing.T) {
+	t.Parallel()
+
+	// Round module 5 recorded the step queue. The queue is a library function now, and this build retired the step.
+	harness, other := olderRoundRun(t, testItem, moduleRound, 5)
+	recordSteps(t, harness, testItem, "queue:q#1")
+
+	err := other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("the step %q, and an older build recorded it for the %s module, and this build does not record it", "queue:q#1", moduleRound))
 }
 
 func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfNoModuleAndNamesTheStep(t *testing.T) {

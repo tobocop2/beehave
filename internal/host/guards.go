@@ -33,6 +33,19 @@ func BankAll(ctx context.Context, git, find proc.Runner, root, private string, o
 	return Bank(ctx, git, repos, private, opts...)
 }
 
+// BankFolder banks the work in the repositories under one folder, the folder of a job, as BankAll does for the work root. probe is the command line of test on the host.
+// A folder that does not exist holds no work, and the answer is ErrNoRepos, as for a root with no repository. A probe that fails any other way is a refusal.
+func BankFolder(ctx context.Context, git, find, probe proc.Runner, folder, private string, opts ...ScanOption) error {
+	switch result := probe.Run(ctx, []string{"-d", folder}); result.ExitCode {
+	case 0:
+		return BankAll(ctx, git, find, folder, private, opts...)
+	case 1:
+		return fmt.Errorf("%w: %s", ErrNoRepos, folder)
+	default:
+		return fmt.Errorf("check the folder %s: exit %d: %s", folder, result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
+}
+
 // Teardown scans the host, banks its work and stops it. It is the only way to stop a host with the guards:
 // a host with unbanked work, or one whose work cannot be read, stays up. A host with no repository stays up too: Teardown refuses zero repositories.
 // It scans the root that Host.WorkRoot names, the root that Wait scans.
@@ -75,15 +88,50 @@ func DiskFloor(ctx context.Context, h Host, floorGB int) error {
 		return fmt.Errorf("%w: %w", err, ErrDiskRead)
 	}
 
-	if !status.Disk.Readable {
+	return belowFloor(status.Disk, floorGB)
+}
+
+// belowFloor is nil when the reading is readable and holds at least floorGB of free space.
+func belowFloor(disk model.DiskReading, floorGB int) error {
+	if !disk.Readable {
 		return ErrDiskRead
 	}
 
-	if free := status.Disk.FreeBytes; free < uint64(floorGB)*bytesPerGB { //nolint:gosec // config keeps the floor between 1 and MaxDiskFloorGB, so the product cannot wrap
+	if free := disk.FreeBytes; free < uint64(floorGB)*bytesPerGB { //nolint:gosec // config keeps the floor between 1 and MaxDiskFloorGB, so the product cannot wrap
 		return fmt.Errorf("%d GB free, floor %d GB: %w", free/bytesPerGB, floorGB, ErrDiskLow)
 	}
 
 	return nil
+}
+
+// readier is a Host that says whether it takes a new job now. The wrapper of the disk floor is one.
+type readier interface {
+	Ready(ctx context.Context) (bool, error)
+}
+
+// Ready says whether h takes a new job: it is up, and the wrapper of the disk floor, when h has one, finds enough free space.
+// A host that cannot be read gives the error of the read. A host that is absent, draining or under its floor gives false and no error.
+func Ready(ctx context.Context, h Host) (bool, error) {
+	if r, ok := h.(readier); ok {
+		return r.Ready(ctx)
+	}
+
+	status, err := h.Status(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read the host: %w", err)
+	}
+
+	return status.State == model.HostUp, nil
+}
+
+// Ready reads the status once: the host is ready when it is up and its disk holds the floor.
+func (f floored) Ready(ctx context.Context) (bool, error) {
+	status, err := f.Status(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read the host: %w", err)
+	}
+
+	return status.State == model.HostUp && belowFloor(status.Disk, f.floorGB) == nil, nil
 }
 
 // floored is a Host that checks the disk floor before it starts a job.
@@ -93,19 +141,23 @@ type floored struct {
 	floorGB int
 	wait    time.Duration
 	poll    time.Duration
+	fleet   *Fleet
 }
 
 // WithDiskFloor returns h with a Submit that first runs DiskFloor. A job does not start on a host under its floor, or on a host that cannot report its free space.
-// Every other method of Host is the method of h. Of the methods outside Host, the wrapper keeps only Teardown, so a wrapped host has no Drain or Resume.
+// Every other method of Host is the method of h, with the Wait of diskwatch.go. Of the methods outside Host, the wrapper keeps only Teardown, so a wrapped host has no Drain or Resume.
+// It does not watch the disk while a job runs.
 func WithDiskFloor(h Host, floorGB int) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return keepTeardown(floored{Host: h, floorGB: floorGB}, h)
+	return keepTeardown(floored{Host: h, floorGB: floorGB, fleet: NewFleet()}, h)
 }
 
 // WithDiskWait is WithDiskFloor with a wait: a job under the floor reads the disk again every poll, for at most wait, and starts when the space is back.
 // A job still under the floor when the wait ends is refused with ErrDiskLow. A reading that cannot be read is refused at once, because waiting does not fix it.
-// A wait of zero or less is WithDiskFloor.
-func WithDiskWait(h Host, floorGB int, wait, poll time.Duration) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return keepTeardown(floored{Host: h, floorGB: floorGB, wait: wait, poll: poll}, h)
+// A wait of zero or less does not wait before the start.
+// While a job runs, the guard reads the disk every poll and stops the youngest job of the fleet when the host is under the floor; see Wait.
+// Guards of one host share one fleet. A poll of zero or less does not watch the disk.
+func WithDiskWait(h Host, floorGB int, wait, poll time.Duration, fleet *Fleet) Host { //nolint:ireturn // the wrapper is a Host of any provider
+	return keepTeardown(floored{Host: h, floorGB: floorGB, wait: wait, poll: poll, fleet: fleet}, h)
 }
 
 // teardowner is the Teardown that a provider adds to the contract: it banks the work of the host and releases it.

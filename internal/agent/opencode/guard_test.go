@@ -131,15 +131,18 @@ var decisions = []struct {
 	name, line string
 	verdict    bool
 }{
-	{"the plugin writes its marker", `writeFileSync(LOADED, "loaded\n")`, false},
+	{"the plugin writes its marker", `const markLoaded = () => writeFileSync(LOADED, "loaded\n")`, false},
 	{"the verdict runs the guard command", `const run = spawnSync(GUARD, { shell: true, input: event, encoding: "utf8", timeout: 30000 })`, true},
 	{"a check that did not run refuses", `if (run.error) return "the check of the command did not run"`, true},
 	{"exit code 2 refuses with the text of the check", `if (run.status === 2) return (run.stderr || "").trim() || "the command is not allowed"`, true},
 	{"any other exit code refuses", `if (run.status !== 0) return "the check of the command failed"`, true},
 	{"only exit code 0 lets the call through", `return ""`, true},
 	{"a throw refuses, and never with an empty text", `return String(err && err.message ? err.message : err) || "the check of the command threw"`, true},
-	{"only the bash tool is checked", `if (input.tool !== "bash") return`, false},
-	{"the hook asks the verdict about the command of the call", `const why = verdict(directory, output && output.args ? output.args.command : undefined)`, false},
+	{"only the shell tools of 1.x and 2.x are checked", `if (tool !== "bash" && tool !== "shell") return`, false},
+	{"the refusal asks the verdict about the call as OpenCode gives it", `const why = verdict(directory, tool, args)`, false},
+	{"OpenCode 1.x checks the call with its output args", `"tool.execute.before": async (input, output) => refuse(directory, input.tool, output && output.args),`, false},
+	{"OpenCode 2.x checks the call with its input", `ctx.tool.hook("execute.before", async (input) => refuse(ctx.location.directory, input.tool, input.input))`, false},
+	{"a context with no tool takes no hook", `if (!ctx.tool) return`, false},
 	{"a refusal throws", `if (why !== "") throw new Error("beehave refused: " + why)`, false},
 }
 
@@ -200,11 +203,14 @@ func TestGuard_AMutantOfThePluginBreaksADecision(t *testing.T) {
 		{"a spawn error passes", `    if (run.error) return "the check of the command did not run"` + "\n", ""},
 		{"a throw passes", `return String(err && err.message ? err.message : err) || "the check of the command threw"`, `return ""`},
 		{"a throw with an empty text passes", ` || "the check of the command threw"`, ``},
-		{"every tool is skipped", `if (input.tool !== "bash") return`, `if (input.tool !== "bash" || true) return`},
-		{"the hook skips the verdict", `const why = verdict(directory, output && output.args ? output.args.command : undefined)`, `const why = ""`},
+		{"every tool is skipped", `if (tool !== "bash" && tool !== "shell") return`, `if (tool !== "bash" && tool !== "shell" || true) return`},
+		{"the shell tool of 2.x is skipped", `if (tool !== "bash" && tool !== "shell") return`, `if (tool !== "bash") return`},
+		{"the hook skips the verdict", `const why = verdict(directory, tool, args)`, `const why = ""`},
+		{"OpenCode 2.x takes no hook", `ctx.tool.hook("execute.before", async (input) => refuse(ctx.location.directory, input.tool, input.input))`, `void 0`},
+		{"OpenCode 1.x takes no hook", `"tool.execute.before": async (input, output) => refuse(directory, input.tool, output && output.args),`, ``},
 		{"the verdict never runs the guard command", `const run = spawnSync(GUARD, { shell: true, input: event, encoding: "utf8", timeout: 30000 })`, `const run = { status: 0 }`},
 		{"a refusal does not throw", `if (why !== "") throw new Error("beehave refused: " + why)`, `if (why !== "") return`},
-		{"the marker is not written", `  writeFileSync(LOADED, "loaded\n")` + "\n", ""},
+		{"the marker is not written", `writeFileSync(LOADED, "loaded\n")`, `void 0`},
 		{"exit code 2 passes", `if (run.status === 2) return (run.stderr || "").trim() || "the command is not allowed"`, `if (run.status === 2) return ""`},
 	}
 

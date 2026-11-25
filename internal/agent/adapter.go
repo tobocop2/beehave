@@ -15,7 +15,7 @@ type VersionArgs struct {
 	Args []string
 }
 
-// Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
+// Profile is the command line and the login variables of one agent CLI. The launch says how the prompt reaches it (Launch.Prompt).
 // ModelFlag is the flag that takes a model name. An empty flag means the CLI has no such option.
 type Profile struct {
 	Binary string
@@ -54,6 +54,9 @@ type Profile struct {
 	// A CLI older than SupportedFrom can fail to load the hook of Guard, and then it runs every shell command with no check and exits with code 0.
 	SupportedFrom   string
 	SupportedBefore string
+	// Windows are the usage windows that ReadUsage reports, from the shortest to the longest, each with the default cap of a pool. A reading holds these windows only, in this order.
+	// A profile of a CLI that cannot report usage has none. Two agents that declare one name declare one default.
+	Windows []model.WindowSpec
 	// VersionArgs are arguments that only a CLI of the version From or later takes. The runner adds each entry whose From is at or below the version that the
 	// CLI prints, after Args and before the model. A profile with VersionArgs sets the supported range, so the version is always read.
 	VersionArgs []VersionArgs
@@ -83,6 +86,8 @@ type Stop string
 const (
 	StopTurns  Stop = "turns"
 	StopBudget Stop = "budget"
+	// StopContext is the stop of a run that the runner ended at the context limit of the step. The CLI never reports it.
+	StopContext Stop = "context"
 )
 
 // LimitKind names the provider limit that refused more work.
@@ -116,7 +121,25 @@ func (l Limit) Name() string {
 	return strings.TrimSpace(string(l.Kind) + " limit " + l.Window)
 }
 
+// PromptMode is the way that the prompt reaches the CLI.
+type PromptMode int
+
+// The ways that the prompt reaches the CLI. The zero value is PromptStdin.
+const (
+	// PromptStdin sends the prompt on standard input.
+	PromptStdin PromptMode = iota
+	// PromptArgument puts the prompt in one argument, the last one. The prompt shows in the process list of the machine, and the argument limit of the system bounds it.
+	PromptArgument
+	// PromptFile writes the prompt to a file in the run folder and puts the path of the file in the last argument.
+	PromptFile
+)
+
 // Launch is what an adapter adds to the start of one run, beyond the arguments of its profile.
+// Prompt says how the prompt reaches the CLI. For PromptArgument and PromptFile the runner appends one argument after every other argument, so a flag that
+// names the prompt goes last in Args. The file of PromptFile is beehave-prompt.txt in the run folder, has mode 0600 and is removed with the folder when the run ends. A launch file of that name is replaced.
+// Prefix is a list of words that the runner puts before the CLI on the command line, such as a wrapper that sets up an environment. The first word is looked
+// up on PATH, and the runner does not look up the CLI itself: the program of the prefix finds it by name. Each word is one argument and no shell reads the line.
+// The probe of the version of the CLI runs the prefix, then the CLI, then --version.
 // Args are appended to the command line. Env is added to the environment after the allow-list; it never replaces a login variable or the token.
 // Files maps a path inside the run folder to its content. The runner writes them before the CLI starts, with mode 0600 in a folder of mode 0700.
 // A path must be local: no absolute path and no "..". The runner removes the folder when the run ends.
@@ -129,6 +152,8 @@ type Launch struct {
 	Files  map[string]string
 	Copies map[string]string
 	Loaded string
+	Prompt PromptMode
+	Prefix []string
 	// Hooked is true when the launch holds the hook that refuses a command before it runs. An adapter sets it only when it adds that hook for a guard command.
 	// A launch can hold other settings with no hook, so the arguments do not tell.
 	Hooked bool
@@ -184,11 +209,14 @@ type Denial struct {
 // a limit is near reports none.
 // Denied is the reason why the provider refused more work in a way that no wait cures, such as usage credits that the account does not have or a pause of
 // the organization, or empty when the line reports none. A line with Denied reports no Limit.
+// Context is the tokens in the context window after the turn that the line closes: the input tokens plus the cache read and cache creation tokens of that turn.
+// It is 0 when the line reports none, and for a CLI that cannot report it; the context limit of a step then never fires. A line of a sub-agent reports none.
 // Said is the message texts and the tool calls of an assistant line, for the stream that a reader follows. A tool call reads "<tool>: <target>".
 type Seen struct {
 	Cost      float64
 	Spent     float64
 	Usage     Tokens
+	Context   int64
 	Stop      Stop
 	Failed    string
 	Shell     []Call

@@ -42,7 +42,7 @@ func TestRestartText_ACapStopOfALocalQueueOrResearchExampleNamesResumeThenCancel
 
 			rig, _, file := guardRig(t, guard)
 
-			_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+			_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 			assertNamesTheRestartSteps(t, err)
 		})

@@ -28,7 +28,7 @@ func TestRun_AMissingFileIsRefusedAndNamesThePath(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "runners.star")
 
-	err := newLoader(path, runnersSpecs()).run()
+	err := newLoader(path, runnersSpecs(nil)).run()
 
 	require.ErrorIs(t, err, ErrRefused)
 	require.ErrorIs(t, err, fs.ErrNotExist)

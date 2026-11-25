@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/tobocop2/beehave/internal/ci/githubactions"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -50,10 +51,13 @@ func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildIn
 		Version:  version,
 		Adapters: table.check,
 		Registry: table.registry(),
+		Hooks:    table.hooks(),
 		Items:    table.itemOpener(),
 		Doctor:   newDoctor(table, newSecurityRunner()),
 		Flow:     flow,
 
 		GateRefusal: enforcers.Refusal,
+		OwnProgram:  ownProgramFor,
+		GateList:    githubactions.Derive,
 	}
 }

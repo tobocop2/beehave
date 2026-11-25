@@ -2,6 +2,7 @@
 # api and web each get one run and one draft pull request. tools is skipped before any run exists. The report counts the three rows.
 # The update creates go.sum and package-lock.json for the first time: the commit must hold both, which only a status check sees.
 [!exec:jq] skip
+[!exec:perl] skip
 [!exec:sha256sum] [!exec:shasum] skip
 isolate
 maintinit

@@ -107,7 +107,7 @@ func TestItemWrite_ASharedKeyIsTheKeyOfTheCallInEveryRun(t *testing.T) {
 	file := writeFlow(t, "def main(item):\n    made = item_create(title = \"t\", key = \"o/r:41\", shared = True)\n    command(run = [made.id, str(made.created)])\n")
 
 	for range 2 {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		require.NoError(t, err)
 	}
 
@@ -151,7 +151,7 @@ func TestItemWrite_ASharedCreateHoldsTheLockOfItsKeyAndARunScopedCreateDoesNot(t
 	engine := h.engine(t)
 	w.dir = engine.dir
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    item_create(title = \"t\", key = \"o/r:41\", shared = True)\n    item_create(title = \"t\", key = \"plan\")\n"))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    item_create(title = \"t\", key = \"o/r:41\", shared = True)\n    item_create(title = \"t\", key = \"plan\")\n"), modeOff())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{testProject + "|o/r:41|held"}, w.held, "only the shared create holds the lock of its key")
@@ -169,7 +169,7 @@ func TestItemWrite_ASharedCreateWhoseLockCannotBeTakenFailsAndFilesNothing(t *te
 	sum := sha256.Sum256([]byte(testProject + "\no/r:41"))
 	require.NoError(t, os.Mkdir(filepath.Join(engine.dir, "item-"+hex.EncodeToString(sum[:16])+".lock"), 0o700), "a folder in place of the lock file")
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    item_create(title = \"t\", key = \"o/r:41\", shared = True)\n"))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    item_create(title = \"t\", key = \"o/r:41\", shared = True)\n"), modeOff())
 
 	require.ErrorContains(t, err, "take the lock of a shared item key")
 	assert.Empty(t, w.created)
@@ -196,7 +196,7 @@ func TestItemWrite_AReplayWritesNothingTwiceAndKeepsTheStepNames(t *testing.T) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

@@ -16,12 +16,13 @@ import (
 const (
 	scopeRun  = "run"
 	scopeTree = "tree"
+	scopeWeek = "week"
 )
 
 // CapStop is a cap that holds an agent step back. The step waits for the owner to raise the cap, so the run stays open and no step fails.
 // The view shows it on the run and on the line of the held step.
 type CapStop struct {
-	// Scope is the cap that stopped the step: run (agents.max_run_budget_usd) or tree (agents.max_tree_budget_usd).
+	// Scope is the cap that stopped the step: run (agents.max_run_budget_usd), tree (agents.max_tree_budget_usd) or week (agents.max_week_budget_usd).
 	Scope string `json:"scope"`
 	// Cap is the dollars of the cap that the check read from the config.
 	Cap float64 `json:"cap_usd"`
@@ -47,6 +48,8 @@ type capLimit struct {
 	// subject is what the cap counts, and key the config key that sets it.
 	subject, key, env string
 	limit             float64
+	// spenders names who spent the sum, for the note of the stop.
+	spenders string
 }
 
 // capLookStepName is the step of a phase that looks at the run cap and the tree cap before the agent starts.
@@ -82,15 +85,20 @@ func (s *script) waitForCap() error {
 
 // runCap is the cap of one item run, as the config of the engine sets it.
 func (e *Engine) runCap() capLimit {
-	return capLimit{scopeRun, "one item run", "agents.max_run_budget_usd", "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD", e.maxRunBudget}
+	return capLimit{scopeRun, "one item run", "agents.max_run_budget_usd", "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD", e.maxRunBudget, "the item run"}
 }
 
 // treeCap is the cap of the item tree, as the config of the engine sets it.
 func (e *Engine) treeCap() capLimit {
-	return capLimit{scopeTree, "the item tree", "agents.max_tree_budget_usd", "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD", e.maxTreeBudget}
+	return capLimit{scopeTree, "the item tree", "agents.max_tree_budget_usd", "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD", e.maxTreeBudget, "the item tree"}
 }
 
-// checkCaps reads both caps and the sums they count for the item run run. A cap of 0 is not read. Both sums read the records of the runs, so a resume keeps them.
+// weekCap is the cap of the last seven days over all items, as the config of the engine sets it.
+func (e *Engine) weekCap() capLimit {
+	return capLimit{scopeWeek, "the last seven days", "agents.max_week_budget_usd", "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD", e.maxWeekBudget, "all items"}
+}
+
+// checkCaps reads the caps and the sums they count for the item run run. A cap of 0 is not read. Both sums read the records of the runs, so a resume keeps them.
 func (e *Engine) checkCaps(name, run string) (capCheck, error) {
 	for _, c := range e.capsSet() {
 		if stop, err := underCap(name, c.cap, run, c.sum); err != nil || stop != nil {
@@ -119,6 +127,10 @@ func (e *Engine) capsSet() []cappedSum {
 		set = append(set, cappedSum{tree, e.treeSpend})
 	}
 
+	if week := e.weekCap(); week.limit > 0 {
+		set = append(set, cappedSum{week, e.weekSpend})
+	}
+
 	return set
 }
 
@@ -135,7 +147,7 @@ func underCap(name string, c capLimit, id string, sum func(id string) (agent.Spe
 // ownSpend sums the recorded cost of the item run id, the failed runs that a resume kept included.
 func (e *Engine) ownSpend(id string) (agent.Spend, error) {
 	// The read goes through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
-	return runSpend(e.ctx, id)
+	return runSpend(e.store(), id)
 }
 
 // overCap is the stop of an agent step that may not start under a cap, or nil when it may. A sum that holds an unknown cost fails the step instead:
@@ -153,20 +165,20 @@ func overCap(name string, c capLimit, spent agent.Spend) (*CapStop, error) {
 		return nil, nil //nolint:nilnil // no stop is the answer: the step may start
 	}
 
-	return &CapStop{Scope: c.scope, Cap: c.limit, Spent: spent.Cost, Note: fmt.Sprintf("the agent step %s waits: the cap for %s is $%s and the agent steps of the item %s spent $%s. "+
+	return &CapStop{Scope: c.scope, Cap: c.limit, Spent: spent.Cost, Note: fmt.Sprintf("the agent step %s waits: the cap for %s is $%s and the agent steps of %s spent $%s. "+
 		"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
-		"Raise %s (or %s) and restart beehave, or set it to 0 for no cap", name, c.subject, dollars(c.limit), c.scope, dollars(spent.Cost), c.key, c.env)}, nil
+		"Raise %s (or %s) and restart beehave, or set it to 0 for no cap", name, c.subject, dollars(c.limit), c.spenders, dollars(spent.Cost), c.key, c.env)}, nil
 }
 
 // treeSpend sums the recorded cost of the root run of the item tree and of every run below it. It reads the step records and the stream of failed agent runs of each run, so a resume keeps the sum.
 func (e *Engine) treeSpend(id string) (agent.Spend, error) {
 	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
-	root, err := rootRun(e.ctx, id)
+	root, err := rootRun(e.store(), id)
 	if err != nil {
 		return agent.Spend{}, err
 	}
 
-	return runAndBelowSpend(e.ctx, root)
+	return runAndBelowSpend(e.store(), root)
 }
 
 // treeRoot is the root run of the item tree of the run of ctx.
@@ -177,11 +189,11 @@ func (e *Engine) treeRoot(ctx dbos.Context, item string) (string, error) {
 	}
 
 	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
-	return rootRun(e.ctx, id)
+	return rootRun(e.store(), id)
 }
 
 // runAndBelowSpend sums the cost of a run and of every item run below it.
-func runAndBelowSpend(ctx dbos.Client, id string) (agent.Spend, error) {
+func runAndBelowSpend(ctx storeView, id string) (agent.Spend, error) {
 	var spent agent.Spend
 
 	err := walkTree(ctx, id, dbos.WithStepsLoadOutput(true), func(run string, records []dbos.StepInfo) error {
@@ -197,8 +209,8 @@ func runAndBelowSpend(ctx dbos.Client, id string) (agent.Spend, error) {
 // walkTree passes a run and its step records, and then each item run below it with its step records, to fold. It is the one walk of an item tree:
 // the sum of the tree cap and the count of the host losses both fold over it. load says whether the records hold the outputs of the steps.
 // A read that fails, or a fold that fails, ends the walk with its error.
-func walkTree(ctx dbos.Client, id string, load dbos.GetWorkflowStepsOption, fold func(run string, records []dbos.StepInfo) error) error {
-	records, err := dbos.GetWorkflowSteps(ctx, id, load)
+func walkTree(ctx storeView, id string, load dbos.GetWorkflowStepsOption, fold func(run string, records []dbos.StepInfo) error) error {
+	records, err := dbos.GetWorkflowSteps(ctx.flow, id, load)
 	if err != nil {
 		return fmt.Errorf("read the steps of %s: %w", id, err)
 	}
@@ -211,7 +223,7 @@ func walkTree(ctx dbos.Client, id string, load dbos.GetWorkflowStepsOption, fold
 }
 
 // walkBelow walks each item run that a run spawned, with walkTree.
-func walkBelow(ctx dbos.Client, id string, load dbos.GetWorkflowStepsOption, fold func(run string, records []dbos.StepInfo) error) error {
+func walkBelow(ctx storeView, id string, load dbos.GetWorkflowStepsOption, fold func(run string, records []dbos.StepInfo) error) error {
 	children, err := itemRuns(ctx, dbos.WithFilterParentWorkflowID(id))
 	if err != nil {
 		return err
@@ -227,17 +239,27 @@ func walkBelow(ctx dbos.Client, id string, load dbos.GetWorkflowStepsOption, fol
 }
 
 // runSpend sums the cost that the step records and the failed runs of one run hold, as the view of the steps reads it.
-func runSpend(ctx dbos.Client, id string) (agent.Spend, error) {
-	records, err := dbos.GetWorkflowSteps(ctx, id, dbos.WithStepsLoadOutput(true))
+func runSpend(ctx storeView, id string) (agent.Spend, error) {
+	return runSpendSince(ctx, id, time.Time{})
+}
+
+// runSpendSince is runSpend for the lines that count in the window that starts at since. A zero since counts every line.
+func runSpendSince(ctx storeView, id string, since time.Time) (agent.Spend, error) {
+	records, err := dbos.GetWorkflowSteps(ctx.flow, id, dbos.WithStepsLoadOutput(true))
 	if err != nil {
 		return agent.Spend{}, fmt.Errorf("read the steps of %s: %w", id, err)
 	}
 
-	return recordsSpend(ctx, id, records)
+	return recordsSpendSince(ctx, id, records, since)
 }
 
 // recordsSpend sums the cost of the step records of a run and of the failed runs that the run holds.
-func recordsSpend(ctx dbos.Client, id string, records []dbos.StepInfo) (agent.Spend, error) {
+func recordsSpend(ctx storeView, id string, records []dbos.StepInfo) (agent.Spend, error) {
+	return recordsSpendSince(ctx, id, records, time.Time{})
+}
+
+// recordsSpendSince is recordsSpend for the lines that count in the window that starts at since. A zero since counts every line.
+func recordsSpendSince(ctx storeView, id string, records []dbos.StepInfo, since time.Time) (agent.Spend, error) {
 	lines, err := runLines(ctx, id, records, "", false, time.Time{})
 	if err != nil {
 		return agent.Spend{}, err
@@ -246,15 +268,68 @@ func recordsSpend(ctx dbos.Client, id string, records []dbos.StepInfo) (agent.Sp
 	var spent agent.Spend
 
 	for _, line := range lines {
-		spent = spent.Plus(line.Spend)
+		if inWindow(line, since) {
+			spent = spent.Plus(line.Spend)
+		}
 	}
 
 	return spent, nil
 }
 
-// itemRuns lists the item runs that match the filter.
-func itemRuns(ctx dbos.Client, filter dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(ctx, filter, dbos.WithFilterName(itemName))
+// inWindow reports whether the cost of a line counts in the window that starts at since: the line ended at since or later. A line that has not ended counts from its start,
+// and a line with no time at all counts, so a cost that cannot be placed in time never drops out of the cap.
+func inWindow(line StepLine, since time.Time) bool {
+	at := cmp.Or(line.Ended, line.Started)
+
+	return at.IsZero() || !at.Before(since)
+}
+
+// weekWindow is the span that the week cap counts back from the time of the check.
+const weekWindow = 7 * 24 * time.Hour
+
+// windowRuns lists the item runs that can hold a cost that ended at or after since: the runs that finished after since, and the runs that have not finished.
+// A run that finished before since holds no such cost, so the sum never reads it.
+func windowRuns(ctx storeView, since time.Time) ([]dbos.WorkflowStatus, error) {
+	finished, err := itemRuns(ctx, dbos.WithFilterCompletedAfter(since), dbos.WithFilterStatus(dbos.WorkflowStatusSuccess, dbos.WorkflowStatusError, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded))
+	if err != nil {
+		return nil, err
+	}
+
+	open, err := itemRuns(ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusDelayed, dbos.WorkflowStatusSuspended))
+	if err != nil {
+		return nil, err
+	}
+
+	return append(finished, open...), nil
+}
+
+// weekSpend sums the recorded cost of every item run of the store that ended inside the last week. The run id is not read: the week cap is one sum for all items.
+func (e *Engine) weekSpend(string) (agent.Spend, error) {
+	since := e.deps.Clock.wall().Add(-weekWindow)
+
+	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
+	runs, err := windowRuns(e.store(), since)
+	if err != nil {
+		return agent.Spend{}, err
+	}
+
+	var spent agent.Spend
+
+	for _, run := range runs {
+		own, err := runSpendSince(e.store(), run.ID, since)
+		if err != nil {
+			return agent.Spend{}, err
+		}
+
+		spent = spent.Plus(own)
+	}
+
+	return spent, nil
+}
+
+// itemRuns lists the item runs that match the filters. With no filter it lists every item run of the store.
+func itemRuns(ctx storeView, filters ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
+	rows, err := ctx.List(append(filters, dbos.WithFilterName(itemName))...)
 	if err != nil {
 		return nil, fmt.Errorf("list the item runs: %w", err)
 	}
@@ -263,7 +338,7 @@ func itemRuns(ctx dbos.Client, filter dbos.ListWorkflowsOption) ([]dbos.Workflow
 }
 
 // rootRun climbs from a run to the highest item run above it. A run that no run spawned is its own root.
-func rootRun(ctx dbos.Client, id string) (string, error) {
+func rootRun(ctx storeView, id string) (string, error) {
 	for {
 		rows, err := itemRuns(ctx, dbos.WithFilterWorkflowIDs(id))
 		if err != nil || len(rows) == 0 || rows[0].ParentWorkflowID == "" {

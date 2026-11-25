@@ -59,7 +59,7 @@ func TestProjectGate_AGateOfARunThatChoseAHostSubmitsAndWaitsOnThatHost(t *testi
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "", "", model.Slot{})
 	require.NoError(t, err)
 
 	_, err = gate.Run(t.Context(), "p", "1", "gpu-b", job)
@@ -83,11 +83,11 @@ func TestProjectGate_AGateOfARunThatChoseNoHostUsesTheDefaultAndAnUndeclaredHost
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err := gate.Submit(t.Context(), "p", "1", "", "", "", "", model.Slot{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"gpu"}, asked.asked())
 
-	_, err = gate.Submit(t.Context(), "p", "1", "rogue", "", "")
+	_, err = gate.Submit(t.Context(), "p", "1", "rogue", "", "", "", model.Slot{})
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	assert.Len(t, asked.asked(), 1, "a refused host starts no job")
 }
@@ -110,7 +110,7 @@ func TestProjectGate_AResumedRunWhoseRecordedHostLeftTheProjectFileIsRefusedAndS
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "")
+	_, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "", "", model.Slot{})
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	require.ErrorContains(t, err, "use one of gpu")
 
@@ -126,7 +126,7 @@ func TestProjectGate_AWorkflowThatNamesTheLocalHostWorksOnAProjectThatBuildsHere
 	require.NoError(t, err, "BUILD_HOST=local is the host of a project with no cluster")
 }
 
-func TestProjectGate_TheKeyOfAGateNamesTheHostTheRunChose(t *testing.T) {
+func TestProjectGate_TheKeyOfAGateIsTheSameOnEveryHostTheProjectDeclares(t *testing.T) {
 	t.Parallel()
 
 	gate := projectGate{
@@ -144,7 +144,17 @@ func TestProjectGate_TheKeyOfAGateNamesTheHostTheRunChose(t *testing.T) {
 	onB, err := gate.Key(t.Context(), "p", "1", "gpu-b", "", "")
 	require.NoError(t, err)
 
-	assert.NotEqual(t, onDefault.ID, onB.ID, "a pass on one host never stands in for a gate on another")
+	assert.Equal(t, onDefault.ID, onB.ID, "the project declares both hosts, so a pass on one host stands for the same tree on the other")
+
+	other := twoHostProject()
+	project := other["p"]
+	project.BuildHosts = []string{"gpu", "gpu-c"}
+	other["p"] = project
+
+	onOtherList, err := projectGate{projects: other, programs: gate.programs, forge: gate.forge}.Key(t.Context(), "p", "1", "", "", "")
+	require.NoError(t, err)
+
+	assert.NotEqual(t, onDefault.ID, onOtherList.ID, "a project that declares other hosts never shares a key")
 }
 
 func TestPrograms_ACommandOnTheHostRunsOnTheHostThatTheRunChose(t *testing.T) {

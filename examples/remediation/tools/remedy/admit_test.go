@@ -36,8 +36,6 @@ func (fakeBook) Add(ledger.Request) (ledger.Added, error) { return ledger.Added{
 
 func (fakeBook) Closes(string) ([]string, error) { return nil, nil }
 
-func (fakeBook) OwnerAdds(string) ([]string, error) { return nil, nil }
-
 // bookDeps gives deps whose ledger is the fake, and records the state folder that the command opened.
 func bookDeps(book fakeBook, opened *string) remedy.Deps {
 	return remedy.Deps{Book: func(dir string) remedy.Book {

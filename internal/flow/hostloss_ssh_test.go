@@ -19,6 +19,8 @@ import (
 
 // sshGate is the gate of an engine whose gate jobs run on one ssh host. Submit starts the job, and then the link to the machine goes down.
 type sshGate struct {
+	cleanTree
+
 	host    *ssh.Host
 	machine *sshtest.Machine
 }
@@ -27,7 +29,7 @@ func (*sshGate) Key(context.Context, string, string, string, string, string) (Ga
 	return GateKey{}, nil
 }
 
-func (g *sshGate) Submit(ctx context.Context, _, _, _, _, _ string) (GateJob, error) {
+func (g *sshGate) Submit(ctx context.Context, _, _, _, _, _, _ string, _ model.Slot) (GateJob, error) {
 	id, err := g.host.Submit(ctx, model.JobSpec{Name: "gate", Command: hosttest.PassingCommand})
 	if err != nil {
 		return GateJob{}, err
@@ -113,7 +115,7 @@ func TestHostLoss_TheSshAdapterEndsTheGateVoidAfterTheHostComesBack(t *testing.T
 	h.hosts, h.reading, h.facts = hosts, reading.read, lostFacts(time.Hour)
 	engine := h.engineWith(t, func(e *Engine) { e.deps.Gate = &sshGate{host: host, machine: machine} })
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=beehave-n1`)
 	assert.Equal(t, 2, hosts.proofReads(), "the first read finds the link down and gives no proof, and the second read comes after the host is back")

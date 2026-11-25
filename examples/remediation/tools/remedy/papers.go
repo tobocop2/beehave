@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"strings"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 	"github.com/tobocop2/beehave/examples/remediation/tools/check"
@@ -14,25 +13,16 @@ import (
 )
 
 const (
-	papersSyntax  = "papers <base>..<head> [--globs <patterns>]"
 	handoffSyntax = "handoff <file> [--name <text>] [--transcript <file>] [--cap <tokens>]"
 	authorsSyntax = "authors <file> --email <address> --login <name>"
-
-	refusedPrefix = "REFUSED"
 
 	// authorsWrongAddress is the code that the authors check gives for a commit of the owner under another address.
 	authorsWrongAddress = 3
 )
 
-// papersCommands are the subcommands that judge what a papers lane leaves: its changed paths, its handoff and its commit authors.
+// papersCommands are the subcommands that judge what a papers lane leaves: its handoff and its commit authors.
 func papersCommands() []command {
 	return []command{
-		{
-			name:    "papers",
-			usage:   papersSyntax,
-			summary: "refuse a range that changes a source path, for a lane that writes proof and papers only; with no --globs, every path but *.md and *.txt is source",
-			run:     papersCommand,
-		},
 		{
 			name:    "handoff",
 			usage:   handoffSyntax,
@@ -104,25 +94,6 @@ func refused(s streams, name string, err error) int {
 	say(s.err, "remedy %s: %v\n", name, err)
 
 	return ExitRefused
-}
-
-// papersCommand lists the source paths that the range changes. A source path is exit code 1. A range that git cannot read is exit code 2.
-func papersCommand(ctx context.Context, deps Deps, s streams, args []string) int {
-	var globs string
-
-	revisions, ok := parseSubject("papers", papersSyntax, args, s.err, func(f *flag.FlagSet) {
-		f.StringVar(&globs, "globs", "", "the patterns of the source paths, split on white space; every path but *.md and *.txt when not given. The dialect is doublestar: * and ? stop at /, and ** crosses it. [!x] and [^x] negate a set. {a,b} chooses between patterns, so write \\{ for a literal brace. \\ escapes the next character, so write \\\\ for a literal backslash. A pattern that does not parse is refused")
-	})
-	if !ok {
-		return ExitRefused
-	}
-
-	lines, err := papers.SourcePaths(ctx, deps.Git, revisions, globs)
-	if err != nil {
-		return refused(s, "papers", err)
-	}
-
-	return showLines(s, lines, strings.HasPrefix(lines[0], refusedPrefix))
 }
 
 // handoffFlags are the values of the flags of handoff.

@@ -295,6 +295,16 @@ func TestSlot_ReleaseWritesTheMarkerOnTheHeadNode(t *testing.T) {
 	assert.True(t, ssh.Called("lane-host", "touch", ".beehave-banked-lane-host-77-n"))
 }
 
+func TestSlot_TheMarkerOfAJobWithAFolderHoldsNoFolder(t *testing.T) {
+	t.Parallel()
+
+	_, queue, _, ssh := newHost(t, hostConfig(nil))
+	ssh.Plan("", "touch")
+
+	require.NoError(t, queue.slot.Release(context.Background(), jobwait.Job{ID: "77", Nonce: "n", Folder: "/home/lane/beehave-gate-one-abc"}))
+	assert.True(t, ssh.Called("lane-host", "touch", ".beehave-banked-lane-host-77-n"), "the folder is not in a file name")
+}
+
 func TestSlot_ReportsTheFailureOfSkyExec(t *testing.T) {
 	t.Parallel()
 

@@ -60,7 +60,7 @@ func TestCancel_EndsTheOpenChildAndItsSiblingGoesOnToTheEnd(t *testing.T) {
 	defer close(release)
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, cancelFlow))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, cancelFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after True 21:failed 22:ok"}, h.commands.ranBy(testItem))
@@ -74,10 +74,10 @@ func TestCancel_ARunThatSpawnReusedHadEndedSoTheCancelStopsNothing(t *testing.T)
 	h := newHarness(t)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, cancelFlow))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, cancelFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after False 21:ok 22:ok"}, h.commands.ranBy(testItem), "the reused run ended before the cancel, so cancel reads False and gather reads it ok")
@@ -99,7 +99,7 @@ def main(item):
     command(name = "after", run = ["after", str(c.cancelled)])
 `
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after False"}, h.commands.ranBy(testItem))
@@ -121,7 +121,7 @@ func TestCancel_RefusesARunThatThisRunDidNotSpawnAndAValueThatIsNoRun(t *testing
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body)))
+			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body)), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 		})
@@ -191,7 +191,7 @@ func TestGatherDeadline_CancelEndsTheOpenRunAsDeadlineAndCancelsIt(t *testing.T)
 	defer close(release)
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1s", "cancel")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1s", "cancel")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ready", "after False deadline False"}, h.commands.ranBy(testItem))
@@ -207,10 +207,13 @@ func TestGatherDeadline_ReturnLeavesTheOpenRunOpenAndReadsOpenTrue(t *testing.T)
 	defer close(release)
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1s", "return")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1s", "return")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ready", "after False deadline True"}, h.commands.ranBy(testItem))
+
+	// The gather reads the run as open while the queue still holds it, so the test waits for the queue to start the run before it reads that the run runs.
+	soon(t, func() bool { return statusOf(t, engine, "item-21-r1") != dbos.WorkflowStatusEnqueued }, "the queue starts the open run")
 	assert.Equal(t, dbos.WorkflowStatusPending, statusOf(t, engine, "item-21-r1"), "return leaves the run running")
 }
 
@@ -218,7 +221,7 @@ func TestGatherDeadline_ARunThatEndsBeforeTheDeadlineIsItsOwnOutcome(t *testing.
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1h", "cancel")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, deadlineFlow("1h", "cancel")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ready", "after True  False"}, h.commands.ranBy(testItem))
@@ -240,7 +243,7 @@ def main(item):
     command(name = "after", run = ["after", r.error])
 `
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after deadline"}, h.commands.ranBy(testItem))
@@ -260,7 +263,7 @@ func TestGatherDeadline_ARefusedModeNamesTheRule(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body)))
+			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body)), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 		})
@@ -293,7 +296,7 @@ func TestGatherDeadline_ARecoveredGatherKeepsTheDeadlineThatItRecordedFirst(t *t
 	require.NoError(t, err)
 	require.NoError(t, first.Launch())
 
-	go func() { _, _ = first.RunFile(testItem, testProject, file) }() //nolint:errcheck // the stop of the engine ends the run with an error
+	go func() { _, _ = first.RunFile(testItem, testProject, file, modeOff()) }() //nolint:errcheck // the stop of the engine ends the run with an error
 
 	waitOn(t, condition(func() bool { return deadlineRecorded(first) }))
 	stop()
@@ -302,7 +305,7 @@ func TestGatherDeadline_ARecoveredGatherKeepsTheDeadlineThatItRecordedFirst(t *t
 	// The clock moves past the recorded deadline. A deadline recorded again at the recovery would lie one hour ahead, and the run would not end.
 	ahead.Store(int64(61 * time.Minute))
 
-	_, err = h.engine(t).RunFile(testItem, testProject, file)
+	_, err = h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ready", "after False deadline False"}, h.commands.ranBy(testItem), "the step before the gather ran once, and the first deadline ended the wait")
@@ -338,7 +341,7 @@ func TestCancel_AndTheDeadlineReportACancelMarkerThatCannotBeWritten(t *testing.
 			// A file where the folder of the cancel markers belongs makes every marker fail.
 			require.NoError(t, os.WriteFile(filepath.Join(engine.dir, cancelsDir), nil, 0o600))
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 			require.ErrorContains(t, err, "mark the cancel of run item-21-r1")
 			assert.NotContains(t, h.commands.ranBy(testItem), "after", "the call failed before the command after it")
@@ -378,7 +381,7 @@ def main(item):
     command(name = "after", run = ["after", str(first.cancelled), str(again.cancelled)])
 `
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after True False"}, h.commands.ranBy(testItem), "the run had ended at the second call, so that call ended nothing")

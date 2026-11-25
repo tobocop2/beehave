@@ -6,6 +6,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -16,9 +17,10 @@ import (
 
 // roundGate is the gate of the engine.
 type roundGate interface {
-	Submit(ctx context.Context, project, item, host, base, _ string) (flow.GateJob, error)
+	Submit(ctx context.Context, project, item, host, base, _, _ string, slot model.Slot) (flow.GateJob, error)
 	Run(ctx context.Context, project, item, host string, job flow.GateJob) (flow.GateResult, error)
 	Key(ctx context.Context, project, item, host, base, _ string) (flow.GateKey, error)
+	State(ctx context.Context, project, item string) (string, gate.State, error)
 }
 
 // checkedGate gives the gate of a candidate, the gate with a base, a clean record of the host checks: one new test, a clean secret scan, and a revert run in which the test fails.

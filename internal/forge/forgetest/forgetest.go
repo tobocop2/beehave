@@ -4,6 +4,7 @@ package forgetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -26,7 +27,9 @@ type Factory func(t *testing.T, broken bool) forge.Forge
 
 // SevenReviewer, SevenBody and SevenTitle describe pull request 7, which the fake behind a Factory serves.
 const (
-	Seven         = 7
+	Seven = 7
+	// SevenIssue is the number of the issue that the body of pull request 7 links.
+	SevenIssue    = 5
 	SevenReviewer = "alice"
 	SevenBody     = "Closes #5"
 	SevenTitle    = "Add the adapters"
@@ -34,7 +37,66 @@ const (
 	// SevenCommits and SevenFiles are the counts the fake serves for pull request 7.
 	SevenCommits = 2
 	SevenFiles   = 3
+	// SevenState, SevenBase and SevenAssignee are the state, base branch and assignee that the fake serves for pull request 7. Its author is SevenReviewer and its head is SevenTip.
+	SevenState    = "OPEN"
+	SevenBase     = "main"
+	SevenAssignee = "bob"
+	// SevenHold is the one label that the typed read of pull request 7 gives, and SevenAsked the login that was asked to review it. Pull request 7 is a draft, and its body links issue 5.
+	SevenHold  = "hold"
+	SevenAsked = "carol"
+	// NoHeadPull, NoStatePull, NoBasePull, NoDraftPull, NoLabelsPull and NoAssigneesPull are the pull requests that the fake serves with no head commit, no state, no base branch,
+	// no draft flag, no label list and no assignee list. The typed read of each must be a *model.IncompletePull that names the field, never a partial answer.
+	NoHeadPull      = 8
+	NoStatePull     = 9
+	NoBasePull      = 10
+	NoDraftPull     = 11
+	NoLabelsPull    = 12
+	NoAssigneesPull = 13
 )
+
+// The open pull requests that the fake serves, with the base that each is on: OtherPull is on OtherBase. A list of HoleBase holds a pull request with no head branch,
+// which the typed list read reports as a *model.IncompletePull that names the branch, and still lists. SevenLabel is the one label of pull request 7.
+const (
+	OtherPull  = 11
+	OtherBase  = "dev"
+	HoleBase   = "hole"
+	EmptyBase  = "empty"
+	SevenLabel = "round"
+)
+
+// What the closing read serves. Pull request 7 closes issue SevenClosing of its own repository and SevenClosingElsewhere of another one. NoClosingPull closes none.
+const (
+	SevenClosing                         = 12
+	SevenClosingElsewhere model.IssueRef = "other-org/other-repo#3"
+	NoClosingPull                        = 14
+)
+
+// What the issue read serves. Issue SevenIssue is open and ClosedIssue is closed.
+const (
+	ClosedIssue = 6
+	IssueOpen   = "OPEN"
+	IssueClosed = "CLOSED"
+)
+
+// SevenClosingRefs is the closing read of pull request 7 as every forge gives it.
+func SevenClosingRefs() model.ClosingRefs {
+	return model.ClosingRefs{BaseBranch: SevenBase, DefaultBranch: DefaultBranch, Issues: []int{SevenClosing}, Elsewhere: []model.IssueRef{SevenClosingElsewhere}}
+}
+
+// NoClosingRefs is the closing read of a pull request that closes no issue. Both lists are empty and never nil.
+func NoClosingRefs() model.ClosingRefs {
+	return model.ClosingRefs{BaseBranch: SevenBase, DefaultBranch: DefaultBranch, Issues: []int{}, Elsewhere: []model.IssueRef{}}
+}
+
+// SevenOpen is pull request 7 as the typed list read gives it.
+func SevenOpen() model.OpenPull {
+	return model.OpenPull{Number: Seven, Branch: SevenBranch, Base: SevenBase, Author: SevenReviewer, Title: SevenTitle, Labels: []string{SevenLabel}, ReviewDecision: "APPROVED"}
+}
+
+// OtherOpen is the draft pull request on OtherBase as the typed list read gives it.
+func OtherOpen() model.OpenPull {
+	return model.OpenPull{Number: OtherPull, Branch: "other", Base: OtherBase, Author: SevenAssignee, Draft: true, Title: "Other work"}
+}
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
 // the branch of pull request 7 with its tip, and a branch that does not exist.
@@ -141,6 +203,91 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 	checkStanding(c, target)
 }
 
+// SevenFacts is the typed read that every forge serves for pull request 7.
+func SevenFacts() model.PullFacts {
+	return model.PullFacts{
+		Number: Seven, State: SevenState, Head: SevenTip, Base: SevenBase, Author: SevenReviewer, Assignees: []string{SevenAssignee},
+		Draft: true, Labels: []string{SevenHold}, Links: []model.IssueLink{{Number: SevenIssue}}, Reviewers: []string{SevenAsked},
+	}
+}
+
+// checkPullRead runs the typed read of pull request 7.
+func checkPullRead(c check, target forge.Forge) {
+	c.r.Helper()
+
+	facts, err := target.PullRead(context.Background(), Seven)
+	c.noError(err, "PullRead")
+	c.equal(facts, SevenFacts(), "pull facts")
+
+	for pr, field := range map[int]string{NoHeadPull: "head", NoStatePull: "state", NoBasePull: "base", NoDraftPull: "draft", NoLabelsPull: "labels", NoAssigneesPull: "assignees"} {
+		_, err = target.PullRead(context.Background(), pr)
+
+		var hole *model.IncompletePull
+
+		if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{field}) {
+			c.r.Errorf("PullRead of a pull request with no %s: want an IncompletePull that names it, got %v", field, err)
+		}
+	}
+}
+
+// CheckOpenPulls runs the typed list read of the open pull requests: no base lists every one, a base lists only the pull requests on it, a base with none lists none,
+// and a pull request with no head branch is an IncompletePull that names the branch.
+func CheckOpenPulls(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	all, err := target.OpenPulls(context.Background(), "")
+	if err != nil {
+		r.Errorf("OpenPulls: unexpected error: %v", err)
+
+		return
+	}
+
+	check{r: r}.equal(all, []model.OpenPull{SevenOpen(), OtherOpen()}, "OpenPulls of no base")
+
+	checkOpenBases(r, target)
+	checkOpenHole(r, target)
+}
+
+// checkOpenBases checks that a base lists only the pull requests on it, and a base with none lists none.
+func checkOpenBases(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what, base string
+		want       []int
+	}{
+		{"a base", SevenBase, []int{Seven}},
+		{"another base", OtherBase, []int{OtherPull}},
+		{"a base with no pull request", EmptyBase, []int{}},
+	} {
+		pulls, err := target.OpenPulls(context.Background(), one.base)
+		c.noError(err, "OpenPulls")
+
+		if got := pick(pulls, func(v model.OpenPull) int { return v.Number }); !slices.Equal(got, one.want) {
+			r.Errorf("OpenPulls of %s: got %v, want %v", one.what, got, one.want)
+		}
+	}
+}
+
+// checkOpenHole checks that a pull request with no head branch is an IncompletePull that names the branch.
+func checkOpenHole(r Reporter, target forge.OpenPullsRead) {
+	r.Helper()
+
+	pulls, err := target.OpenPulls(context.Background(), HoleBase)
+
+	var hole *model.IncompletePull
+
+	if !errors.As(err, &hole) || !slices.Equal(hole.Missing, []string{"branch"}) {
+		r.Errorf("OpenPulls of a pull request with no branch: want an IncompletePull that names it, got %v", err)
+	}
+
+	if got := pick(pulls, func(v model.OpenPull) int { return v.Number }); !slices.Equal(got, []int{OtherPull}) {
+		r.Errorf("OpenPulls of a pull request with no branch: want the list to hold the pull request with the error, got %v", got)
+	}
+}
+
 // checkCounts runs the read of the forge's own counts.
 func checkCounts(c check, target forge.Forge) {
 	c.r.Helper()
@@ -154,11 +301,22 @@ func checkCounts(c check, target forge.Forge) {
 	c.equal(len(committers), SevenCommits, "committers")
 }
 
+// checkReadSuites runs the reads that have a check of their own: the open pull requests, the closing references and the state of an issue.
+func checkReadSuites(c check, target forge.Forge) {
+	c.r.Helper()
+
+	CheckOpenPulls(c.r, target)
+	CheckClosingRefs(c.r, target)
+	CheckIssueState(c.r, target)
+}
+
 // checkStanding runs the batched read of our pull requests, the title of an item and the annotations of a check run.
 func checkStanding(c check, target forge.Forge) {
 	c.r.Helper()
 
 	checkCounts(c, target)
+	checkPullRead(c, target)
+	checkReadSuites(c, target)
 
 	ctx := context.Background()
 
@@ -227,9 +385,9 @@ func checkBranches(c check, target forge.Forge) {
 	c.noError(err, "BranchRef of a missing branch")
 	c.equal([]any{tip, found}, []any{"", false}, "missing branch")
 
-	scopes, err := target.TokenScopes(ctx)
-	c.noError(err, "TokenScopes")
-	c.equal(scopes, []string{ScopeRepo, ScopeWorkflow}, "token scopes")
+	answer, err := target.CanWriteCI(ctx)
+	c.noError(err, "CanWriteCI")
+	c.equal(answer, model.CIWriteYes, "the token holds the scopes repo and workflow, so it can change CI")
 }
 
 func checkLists(c check, target forge.Forge) {
@@ -252,6 +410,48 @@ func CheckCloneURL(r Reporter, target forge.Forge) {
 
 	if target.CloneURL() == "" {
 		r.Errorf("CloneURL: want the URL to clone the repository from, got none")
+	}
+}
+
+// CheckClosingRefs checks the closing read on a forge that serves pull requests 7 and NoClosingPull: the issues of the pull request, in its repository and in another one,
+// and an empty list, never nil, for a pull request that closes none. The failed command is checked by CheckForgeFails.
+func CheckClosingRefs(r Reporter, target forge.Lookup) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what string
+		pr   int
+		want model.ClosingRefs
+	}{
+		{"a pull request that closes two issues", Seven, SevenClosingRefs()},
+		{"a pull request that closes none", NoClosingPull, NoClosingRefs()},
+	} {
+		got, err := target.ClosingRefs(context.Background(), one.pr)
+		c.noError(err, "ClosingRefs")
+		c.equal(got, one.want, "ClosingRefs of "+one.what)
+	}
+}
+
+// CheckIssueState checks the state read on a forge that serves issue SevenIssue as open and issue ClosedIssue as closed. The state is the name that the forge gives,
+// OPEN or CLOSED. The failed command is checked by CheckForgeFails.
+func CheckIssueState(r Reporter, target forge.Lookup) {
+	r.Helper()
+
+	c := check{r: r}
+
+	for _, one := range []struct {
+		what   string
+		number int
+		want   string
+	}{
+		{"an open issue", SevenIssue, IssueOpen},
+		{"a closed issue", ClosedIssue, IssueClosed},
+	} {
+		got, err := target.IssueState(context.Background(), one.number)
+		c.noError(err, "IssueState")
+		c.equal(got, one.want, "IssueState of "+one.what)
 	}
 }
 
@@ -304,10 +504,42 @@ func checkDeclared(r Reporter, got map[string]string, declared []string) {
 func CheckForgeFails(r Reporter, target forge.Forge) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(forgeCalls(target))
+}
+
+// FailedCommandMethods names every method that a failed-command check runs: forge.Forge, Syncer, Statuses, AssigneeReads, ReadyReads and Boarder.
+// A method of those interfaces that is not in the list has no failed-command case.
+// Opener is left out: its three methods only write, so no read can turn an error into an empty answer, and the adapter tests prove each write.
+func FailedCommandMethods() []string {
+	var names []string
+
+	for _, calls := range [][]call{forgeCalls(nil), syncerCalls(nil), statusCalls(nil), assigneeCalls(nil), readyCalls(nil), boarderCalls(nil)} {
+		for _, one := range calls {
+			names = append(names, one.name)
+		}
+	}
+
+	return names
+}
+
+// forgeCalls is every method of forge.Forge that takes arguments, with the arguments filled in. The closures need a target only when they run.
+func forgeCalls(target forge.Forge) []call {
+	var all []call
+
+	all = append(all, readCalls(target)...)
+	all = append(all, newCalls(target)...)
+	all = append(all, mergeCalls(target)...)
+
+	return append(all, standingCalls(target)...)
+}
+
+func readCalls(target forge.Forge) []call {
+	return []call{
 		{"Reviews", func(ctx context.Context) error { _, err := target.Reviews(ctx, Seven); return err }},
 		{"PRBody", func(ctx context.Context) error { _, err := target.PRBody(ctx, Seven); return err }},
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
+		{"PullRead", func(ctx context.Context) error { _, err := target.PullRead(ctx, Seven); return err }},
+		{"OpenPulls", func(ctx context.Context) error { _, err := target.OpenPulls(ctx, SevenBase); return err }},
 		{"PRList", func(ctx context.Context) error {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err
@@ -318,29 +550,24 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 		{"UnresolvedThreads", func(ctx context.Context) error { _, err := target.UnresolvedThreads(ctx, Seven); return err }},
 		{"StackID", func(ctx context.Context) error { _, err := target.StackID(ctx, Seven); return err }},
 		{"ExistingReview", func(ctx context.Context) error { _, err := target.ExistingReview(ctx, Seven); return err }},
-	})
-	checkNewFail(r, target)
-	checkMergeFail(r, target)
-	checkStandingFail(r, target)
+	}
 }
 
-// checkStandingFail runs the batched read, the title read, the annotation read and the item read on a forge whose commands all fail.
-func checkStandingFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// standingCalls are the batched read, the title read, the annotation read, the item read, the closing references and the state of an issue.
+func standingCalls(target forge.Forge) []call {
+	return []call{
 		{"Item", func(ctx context.Context) error { _, err := target.Item(ctx, Seven); return err }},
 		{"Title", func(ctx context.Context) error { _, err := target.Title(ctx, Seven); return err }},
 		{"OwnPulls", func(ctx context.Context) error { _, err := target.OwnPulls(ctx, SearchUser); return err }},
 		{"CheckNotStarted", func(ctx context.Context) error { _, err := target.CheckNotStarted(ctx, SevenRun); return err }},
-	})
+		{"ClosingRefs", func(ctx context.Context) error { _, err := target.ClosingRefs(ctx, Seven); return err }},
+		{"IssueState", func(ctx context.Context) error { _, err := target.IssueState(ctx, Seven); return err }},
+	}
 }
 
-// checkNewFail runs the overlap, the conversation and the branch methods on a forge whose commands all fail.
-func checkNewFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// newCalls are the overlap, the conversation and the branch methods.
+func newCalls(target forge.Forge) []call {
+	return []call{
 		{"Overlap", func(ctx context.Context) error {
 			_, err := target.Overlap(ctx, model.OverlapRequest{PR: "7"})
 			return err
@@ -355,21 +582,64 @@ func checkNewFail(r Reporter, target forge.Forge) {
 		{"BranchRef", func(ctx context.Context) error { _, _, err := target.BranchRef(ctx, SevenBranch); return err }},
 		{"PostComment", func(ctx context.Context) error { return target.PostComment(ctx, Seven, "hello") }},
 		{"SetDraft", func(ctx context.Context) error { return target.SetDraft(ctx, Seven, true) }},
-	})
+	}
 }
 
-// checkMergeFail runs the merge, the branch and pull request edits and the scope read on a forge whose commands all fail.
-func checkMergeFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// mergeCalls are the merge, the branch and pull request edits and the CI write read.
+func mergeCalls(target forge.Forge) []call {
+	return []call{
 		{"MergePR", func(ctx context.Context) error { return target.MergePR(ctx, Seven, SevenTip) }},
 		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
-		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
+		{"CanWriteCI", func(ctx context.Context) error { _, err := target.CanWriteCI(ctx); return err }},
 		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
-	})
+	}
+}
+
+// CheckAssigneeReadsFail runs the assignee read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckAssigneeReadsFail(r Reporter, target forge.AssigneeReads) {
+	r.Helper()
+
+	check{r: r}.allFail(assigneeCalls(target))
+}
+
+func assigneeCalls(target forge.AssigneeReads) []call {
+	return []call{
+		{"IssueAssignees", func(ctx context.Context) error { _, err := target.IssueAssignees(ctx, "", Seven); return err }},
+	}
+}
+
+// CheckReadyReadsFail runs the ready-mark read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckReadyReadsFail(r Reporter, target forge.ReadyReads) {
+	r.Helper()
+
+	check{r: r}.allFail(readyCalls(target))
+}
+
+func readyCalls(target forge.ReadyReads) []call {
+	return []call{
+		{"ReadyMarks", func(ctx context.Context) error { _, err := target.ReadyMarks(ctx, Seven); return err }},
+	}
+}
+
+// sevenCard is the card of pull request 7 on board 1, for the board calls of a forge whose commands all fail.
+func sevenCard() model.Card {
+	return model.Card{Board: 1, Number: Seven, Pull: true, Status: "Todo"}
+}
+
+// CheckBoarderFails runs both methods of a Boarder whose commands all fail. Each must return an error and never a guess.
+func CheckBoarderFails(r Reporter, target forge.Boarder) {
+	r.Helper()
+
+	check{r: r}.allFail(boarderCalls(target))
+}
+
+func boarderCalls(target forge.Boarder) []call {
+	return []call{
+		{"PlaceCard", func(ctx context.Context) error { return target.PlaceCard(ctx, sevenCard()) }},
+		{"CardStatus", func(ctx context.Context) error { _, err := target.CardStatus(ctx, sevenCard()); return err }},
+	}
 }
 
 // What the fake behind a Syncer serves: the count of commits that SyncHead has and SyncBase lacks, and the merge commit of the merge.
@@ -399,10 +669,52 @@ func CheckSyncer(r Reporter, target forge.Syncer) {
 func CheckSyncerFails(r Reporter, target forge.Syncer) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(syncerCalls(target))
+}
+
+func syncerCalls(target forge.Syncer) []call {
+	return []call{
 		{"CommitsAhead", func(ctx context.Context) error { _, err := target.CommitsAhead(ctx, SyncBase, SyncHead); return err }},
 		{"MergeBranch", func(ctx context.Context) error { _, err := target.MergeBranch(ctx, SyncBase, SyncHead); return err }},
-	})
+	}
+}
+
+// What the fake behind a Statuses serves: the branch that requires a pull request and the statuses StatusGate and StatusReview, and the commit that a status is posted on.
+const (
+	StatusBranch = "integration/round"
+	StatusGate   = "beehave/gate"
+	StatusReview = "beehave/review"
+	StatusCommit = "fedcba9876543210fedcba9876543210fedcba98"
+)
+
+// CheckStatuses runs the rules of a Statuses whose fake accepts a status on StatusCommit and serves a protection of StatusBranch that requires a pull request
+// and the statuses StatusGate and StatusReview.
+func CheckStatuses(r Reporter, target forge.Statuses) {
+	r.Helper()
+
+	c, ctx := check{r: r}, context.Background()
+
+	c.noError(target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess, Description: "the gate passed"}), "PostStatus")
+
+	got, err := target.Protection(ctx, StatusBranch)
+	c.noError(err, "Protection")
+	c.equal(got, model.Protection{PullRequest: true, RequiredStatuses: []string{StatusGate, StatusReview}}, "protection")
+}
+
+// CheckStatusesFails runs both methods of a Statuses whose commands all fail. Each must return an error and never a guess.
+func CheckStatusesFails(r Reporter, target forge.Statuses) {
+	r.Helper()
+
+	check{r: r}.allFail(statusCalls(target))
+}
+
+func statusCalls(target forge.Statuses) []call {
+	return []call{
+		{"PostStatus", func(ctx context.Context) error {
+			return target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess})
+		}},
+		{"Protection", func(ctx context.Context) error { _, err := target.Protection(ctx, StatusBranch); return err }},
+	}
 }
 
 func pick[T, V any](rows []T, field func(T) V) []V {

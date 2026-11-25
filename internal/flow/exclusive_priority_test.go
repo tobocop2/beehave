@@ -33,7 +33,6 @@ func TestExclusivePriority_AGateOfAPullRequestThatAPersonWaitsOnComesFirst(t *te
 		{"a_closed_pull_request_with_a_thread", kindGate, review.Standing{Closed: true, UnresolvedThreads: 1}, nil, false, priorityNormal},
 		{"a_merged_pull_request_with_a_thread", kindGate, review.Standing{Merged: true, UnresolvedThreads: 1}, nil, false, priorityNormal},
 		{"a_merge_keeps_the_normal_place", kindMerge, review.Standing{UnresolvedThreads: 1}, nil, false, priorityNormal},
-		{"a_batch_gate_keeps_the_normal_place", kindBatchGate, review.Standing{UnresolvedThreads: 1}, nil, false, priorityNormal},
 		{"a_pull_request_that_cannot_be_read", kindGate, review.Standing{UnresolvedThreads: 1}, errFake, false, priorityNormal},
 		{"no_forge", kindGate, review.Standing{}, nil, true, priorityNormal},
 	}
@@ -116,7 +115,7 @@ func TestExclusivePriority_TheQueuedGateRecordsItsPriority(t *testing.T) {
 			harness.forge.state = test.standing
 			engine := harness.engine(t)
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 			require.NoError(t, err)
 
 			rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(exclusiveName))

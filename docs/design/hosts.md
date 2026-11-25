@@ -20,6 +20,12 @@ The config names three providers, and each one runs:
 | `ssh` | A machine of the owner | No |
 | `slurm` | A Slurm cluster of the owner | No |
 
+### The job key
+
+A `Submit` with a key returns the job that the host already holds for that key, and starts no second job. The engine builds the key from the run id and the step id. A `command` call with retries adds the number of the try, so each try has its own key and a retry of a failed job starts a new job.
+
+A step that runs again after a crash counts its tries from 1 again. Slurm keeps ended jobs in accounting, so the re-run finds the job of the try that the crash cut short. The ssh provider releases the unit of a try in `Wait`. A crash during try 2 therefore runs try 1 again, because its unit is gone. The base had the same duplicate on any crash. The follow-up issue tracks it.
+
 ### Shared packages and imports
 
 - The ssh command line and the text of a failed command are in `host/link`.
@@ -119,6 +125,9 @@ It composes the Slurm adapter: SkyPilot creates and deletes the cluster, and the
 
 - `Up` is the first call and `Down` the last.
 - `Up` runs `sky launch --down` with `host.idle_minutes`. It passes `host.max_run` as the SkyPilot setting for the lifetime of an instance, which SkyPilot documents for GPU instances only.
+- With `spot = True`, `Up` adds `--use-spot` and leaves out the `host.max_run` setting. SkyPilot refuses a spot instance in the instance group that the setting makes. The queue still limits each job to `host.max_run`, so the run limit still ends the job.
+- With `disk_size_gb`, `Up` adds `--disk-size`. With `host.setup_command`, `Up` writes a task file and adds it to the launch line. SkyPilot runs the `setup` field of the file once, when it creates the cluster. The setup clones the project at the head of `base_branch` into `~/beehave-setup/<project>` and runs the command there. The command installs the tools. Each gate job still clones its own head. `Up` deletes the task file and its folder after the launch. SkyPilot runs the `setup` field again on each `sky launch` of a cluster that exists, and the clone fails when its folder exists. beehave starts only an absent host, so the setup runs once for each cluster. Keep it so: do not call `Up` on a host that runs. SkyPilot runs the setup inside `sky launch`, not through the ssh link of beehave.
+- A cluster that SkyPilot takes back deletes itself with the instance. beehave starts no watchdog: `--down -i` is the only self-delete.
 - `Status` reads `sky status -o json`, then `sinfo` and `df` through the Slurm adapter.
 - The Slurm adapter calls the SkyPilot slot: `Hold` after the job is queued, `Release` once the work is banked.
 - The `skypilot` provider keeps its own slot and its own run limit (the `timeout` in the slot command).
@@ -201,6 +210,10 @@ A Slurm or ssh `Wait` can also end with one of these states:
 | `stale` | The log did not grow for `host.stale_minutes` (default 20). | The wait sends one cancel and waits up to five minutes for its final state before it banks. If the job has not ended then, the error says the cancel did not take. |
 | `lost` | No ssh read answered for five minutes. | The error is `ErrLost`. The job keeps running, and the error tells a person to cancel it before a new run. |
 
+The disk guard of a host adds one more end. At each poll while a job runs, the wait of the youngest job of the host reads the free space with the same read as `DiskFloor`. When the host is under `host.disk_floor_gb`, that wait stops its job and ends as `disk_full`. A gate on a `disk_full` job has every step unknown, and the report says the host is the problem: it is not a failed gate. If the free space cannot be read, no job stops. The next poll reads it again. Only one job stops for each reading, and the next reading decides whether another job stops. A stop that fails is tried again at the next poll.
+
+A job joins the list of the host when its wait starts, and leaves it when the wait returns. A job that is submitted and not yet waited for is not in the list, so it never blocks another job. A job that a restarted beehave waits for again joins when that wait starts. "Youngest" is the job whose wait began last in this process of beehave: the adapters do not report the start time of a job. Two processes of beehave on one host each have their own list, so each stops its own youngest job.
+
 A dropped link never submits the job again.
 
 #### Proof of a lost job
@@ -257,40 +270,78 @@ A project selects a host with `build_host` and the `host` block.
 - Each provider declares its own block, and the config reads no key of it. The `skypilot` provider takes the `skypilot` block, `ssh` takes the `ssh` block, and `slurm` takes the `slurm` block.
 - A block of another provider is refused, and the refusal names the block and the provider.
 - `idle_minutes` is refused for `ssh` and `slurm`, because beehave does not delete a machine it does not own.
+- `setup_command` is a command that runs once, in a clone of the project, when beehave creates the machine. It is refused when it is empty, and refused for `ssh` and `slurm`, because beehave does not create a machine it does not own. The default is no set-up, and then no task file is written.
 - An unknown key or block is refused.
 - `lost_job_wait` is a duration with the default `"60m"`, from `"1m"` to `"24h"`. It is the time that the engine waits for a proof that a lost job no longer runs. It is allowed for all three providers. A value outside the range, or text that is not a duration, is refused, and the refusal names the key and the range.
 - `lost_after` is a duration above zero with the default `"5m"`. It is the time without an answered read of a job before the wait for the job ends as lost. It is not `lost_job_wait`: that key is the time the engine waits for a proof after the loss. It is allowed for all three providers.
 - `stop_limit` is a duration above zero with the default `"5m"`. It is the time that a job may take to end after a cancel. When the job is not final by then, the cancel ends with an error. It is allowed for all three providers.
 - A value of `lost_after` or `stop_limit` that is zero, negative or not a duration is refused, and the refusal names the key.
-- `slots` is an optional dict from a slot class name to a count, such as `{"mutation": 1, "bench": 2}`. See the next section.
+- `slots` is an optional dict from a slot class name to a count, such as `{"mutation": 1, "bench": 2}`. See the next section. The class name `gate` is refused: use `gate_slots`.
+- `gate_slots` is the number of gates that the host builds at once. It is a whole number from 1 to 1048576, with the default 1. A value outside the range, or one that is not a whole number, is refused, and the refusal names the key. Two projects that declare one host must give the same value.
+- `credentials` is optional, and its only value is `"none"`. It is the statement of the owner that the host gets no credential of the owner: no SSH agent, no key, no X display, no Kerberos credential and no secret variable. Declare it for a host that runs code you do not trust. Any other value is refused, and the refusal names `"none"`. The `ssh` and `slurm` providers accept it. The `skypilot` provider refuses it at load, for `check config`, `run`, `join` and `serve`. The `sky launch` command reads the ssh config of the owner by the address of the cluster, so it can forward the agent of the owner, and it copies the cloud credentials of the owner (for GCP, the files under `~/.config/gcloud`) to every cluster. beehave cannot stop either, so it cannot keep the promise for SkyPilot.
+- For a host declared `credentials = "none"`, `beehave check config` runs `ssh -G` for each cluster that `build_host` names, with the ssh options of the link of that host, and connects to nothing. It refuses the host unless `forwardagent` is `no`: a socket path or `$SSH_AUTH_SOCK` forwards the agent too. It refuses the host unless `forwardx11` is `no`, and when `gssapidelegatecredentials` is `yes`, which gives the host the Kerberos credentials of the owner. It also refuses a `sendenv` other than `LANG` and `LC_*`, and a `setenv` whose name marks a secret, by the rule of the `env` builtin. It refuses a host that ssh reaches through another host, with `ProxyJump` or `ProxyCommand`: beehave cannot check what ssh gives that other host, such as the agent. To use a jump host, remove `credentials = "none"` for that host. The refusal names the host and the setting, and never shows the value of a variable. `Up` runs the same check before its first call to the host. This check covers the `ssh` and `slurm` providers.
+- Every ssh call to a host declared `credentials = "none"` also passes `ForwardAgent=no`, `ClearAllForwardings=yes`, `ForwardX11=no`, `ForwardX11Trusted=no`, `ControlMaster=no`, `ControlPath=none` and `GSSAPIDelegateCredentials=no`. `ControlMaster=no` and `ControlPath=none` make each call its own connection: a call that joins a connection opened earlier, for example by `ssh -A`, keeps the agent of that connection whatever its own options say. The check runs `ssh -G` without these options, so it tests the ssh config of the owner. A host without the key runs no `ssh -G`, and its calls are unchanged.
 
 #### Slot classes
 
-A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one state folder, which has one `dbos.db`, like the `hosts` queue. Two beehave processes with separate state folders each run the count.
+A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one host. The engine queue limits the jobs of one state folder, which has one `dbos.db`. The job script on the host limits the jobs of every engine, so two engines with separate state folders share the count on the host.
+
+- The job script takes one of `count` lock files with `flock` before the command runs. The files are `slots/<class>/<i>.lock` in the work folder of the host. The kernel frees a lock when the last process that holds it ends, so no cleanup and no lease table exist.
+- A job that waits for a lock writes a marker file. The poll reads the marker and reports the job as `pending`, so a waiting job is not stale. The wait counts against `host.max_run`. A stop signal while the job waits removes the marker. A kill that no shell can catch leaves it, and no poll reads it for a job that is not running.
+- Every engine that uses a host gives the same count for one class. Equal counts are needed. With different counts the lower count does not hold, because each job takes any free lock of its own count.
+- `Up` refuses a host with no `flock` command on `ssh`, `slurm` and `skypilot`, and the refusal says to install `flock`.
+- On `slurm` the lock files are in the login folder. A cluster with many nodes and no shared file system that supports `flock` runs the jobs of different nodes with no limit.
 
 - A class name holds letters, digits, dot, underscore and hyphen, and starts with a letter or a digit.
 - A count is a whole number from 1 to 1048576. A count below 1, or a value that is not a whole number, is refused, and the refusal names the class.
 - A `command` call joins a class with `slots = "<class>"`. See `command` in the workflow file reference.
-- The jobs of a class share one durable queue with one partition for each host, so a job of another class, and a job of no class, never waits for it.
+- The jobs of a class with one count share one durable queue, named `slots:<class>:<count>`, with one partition for each host. A job of another class never waits for it. Two hosts with different counts for one class use two queues, so each host keeps its own count.
+- The engine records the count in the input of the job when it queues the job. A rewind of the job reads the queue from that input.
+- A change of a count in the `host` block takes effect for the next job that queues. A job that is already queued stays on the queue with its old name and still runs, because the queues live in the database. For a short time a host can run the old count plus the new count at once.
+- A job that was queued by a build before the count was recorded has no count in its input. A resume cannot put it back in a queue, and it fails with an error that names the run, the step and the job. Run the item again from its start. Before an upgrade, let the slot queues drain.
 - A call names a class that the `host` block of its project lists. Any other class is refused when the workflow calls it, and the refusal names the class and the host.
 - Projects share a host by name. If two projects declare the same host and give different counts for one class, the config load is refused, and the refusal names the host, the class, both projects and both counts. Equal counts are fine.
-- A call with no `slots` has no limit from the engine. A gate keeps its own rule: one build job for each host.
+- A `command` call with a `host` and no `slots` runs in the class `default`. Its count is the entry `default` in `slots`, and 1 when the block names none. Two projects that declare one host must give the same count for `default`. The `beehave` program always has the slots resolver, so a project with no `slots` entry runs its host jobs one at a time on each host. A call with `retries` takes no slot, because it is one step and a step cannot wait on a queue.
+- A gate uses the reserved class `gate` with the count `gate_slots`, on the queue `slots:gate:<count>`.
+- A gate that was queued before an upgrade waits on the old queue `hosts`. That queue is gone. Let the gates drain before an upgrade, or run the item again from its start.
 
 `cmd/beehave/adapters.go` picks the provider from its host block by `provider`, like the tracker and the forge. `beehave check config` builds the host of each project.
 
 | Block | Keys |
 |---|---|
-| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`. The cluster name is `build_host`. |
+| `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`, `instance_sizes`, `disk_size_gb` (a whole number from 10 to 65536; the default is the disk size that SkyPilot picks), `spot` (`True` or `False`; the default is `False`; any other value is refused). The cluster name is `build_host`. |
 | `slurm` | The keys of the `ssh` block. `work_root` is refused, because jobs run in the login folder. `build_host` is the ssh alias of the head node. |
 | `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, with no trailing dot, no `..` and no `.-`, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
 
+#### Size by queue length
+
+Only the `skypilot` provider starts a machine, so only it has a size. The `ssh` and `slurm` blocks refuse `instance_sizes` as an unknown key when the project loads.
+
+- `instance_sizes` is a table of rows that are separated by commas. Each row but the last is `<limit>:<type>`, and the last row is a bare `<type>`. Example: `"3:n2-standard-4,n2-standard-16"`.
+- A row takes a queue of up to `<limit>` jobs. The last row takes every longer queue, so no queue length has no size.
+- The limits are whole numbers above zero, and each limit is above the one before it. A table that breaks a rule is refused when the host is built (`beehave check config` builds it), and the refusal names the key.
+- `instance_type` is the table of one row. Set `instance_type` or `instance_sizes`, never both: the refusal names both keys.
+- Only a host whose block has an `instance_sizes` table is deferred. A `skypilot` block with `instance_type` alone, or with no size key, starts at `host_up` exactly as before, and its gates record no extra step.
+- `host_up` on an absent host with an `instance_sizes` table starts nothing. It records `deferred` and the cluster. At that point no gate exists, so the queue length is 0 and cannot size the host.
+- The first gate that is placed on the cluster starts the host. It takes the count of the gates that already wait or run on the cluster in the gate queue (`slots:gate:<count>`, the partition of the cluster). The count covers every project that shares the cluster. No second counter exists.
+- The start is a recorded step of the gate (`gate:host`). A replay reads the record and starts no second host.
+- Two gates that are placed at once start one host. The start runs under the placement lock of the engine, so the second gate finds the host up and starts nothing. The cost: while a slow start runs (`sky launch` can take minutes), the placement of every other gate of the engine waits for it.
+- The run that placed the gate owns the host that the gate started. `host_teardown` stops it as it stops a host that `host_up` started, and the idle watchdog stays a backstop.
+- Only a gate starts a deferred host. The batch library gates through the same `gate` call. A `command` call that needs the host before any gate fails until a gate has started it.
+- A host that is up keeps its size. `host_up` never resizes it. The next size is picked when the host is absent again, after the idle watchdog or `host_teardown` deleted it.
+- A queue that cannot be read ends the gate with an error. No host starts at a guessed size.
+- `ssh` and `slurm` have no table. `host_up` starts and records them as before.
+- The step `gate:host` needs no new module version: only a host with an `instance_sizes` table records it, and that key is new, so no run in flight has a gate on such a host.
+
 #### The build_host key
 
-The key `build_host` is the one declaration of the hosts of a project: a name, or a list of names that share the `host` block. The first name is the default.
+The key `build_host` is the one declaration of the hosts of a project: a name, or a list of names that share the `host` block. The first name is the default. The gate key holds the whole list, so a pass on one host is reused on the others. Every host in one list must therefore match in architecture and toolchain.
 
-- A run chooses another with the `host` argument of `host_up`, and the step records the cluster.
+- A run chooses another with the `host` argument of `host_up`, and the step records the cluster. A call of `host_up` with no name records the default host.
+- A run that never calls `host_up` has its gates placed: each gate goes to the declared host that is up and has the most free gate slots, and the first declared host wins a tie (see the gate design, `gate:place`). To keep the old behaviour, declare one host or call `host_up`.
 - The gate, its key, each `command` call with a `host`, and `host_teardown` read that record, so a resume uses the same cluster.
 - A resume reads the cluster from the replayed record of `host_up` for every later step.
 - `"local"` is the only name of a project that builds here. `host_up(host = "local")` starts nothing there and records `local`, and a cluster name is refused.
 - If the project file no longer declares the recorded cluster, the gate, the command and `host_teardown` refuse it with an error that lists the declared hosts.
-- The run never moves to another host.
+- A host that `host_up` recorded never changes for the run. Only a run that recorded none has its gates placed.
+- The placement lock covers only the gates that are placed. A gate on a host that `host_up` recorded and a `command` job queue into the same host partition without the lock, so a free slot that a placed gate read can be taken before its job queues.

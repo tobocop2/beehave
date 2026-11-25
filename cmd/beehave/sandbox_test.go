@@ -77,6 +77,59 @@ func TestSandboxPlan_TheIdentityIsTheGitIdentityOfTheEngineAtTheWorktree(t *test
 		"the email of the worktree config wins, and the name comes from the global config")
 }
 
+func TestSandboxPlan_TheSocketOfTheSSHAgentOfTheEngineIsOnTheDenyList(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	socket := filepath.Join(t.TempDir(), "agent.sock")
+	r.f.agents.env = map[string]string{"SSH_AUTH_SOCK": socket}
+	req := request()
+	req.Sandbox = &model.Sandbox{}
+
+	_, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, r.f.spec.Sandbox)
+	assert.Contains(t, r.f.spec.Sandbox.Deny, socket)
+	assert.Contains(t, r.f.spec.Sandbox.Deny, filepath.Join(r.home, ".ssh"), "the key folder stays denied")
+}
+
+func TestSandboxPlan_ASocketThatIsALinkIsDeniedWithItsTarget(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	folder := evaluated(t, t.TempDir())
+	target, link := filepath.Join(folder, "real.sock"), filepath.Join(folder, "link.sock")
+	require.NoError(t, os.WriteFile(target, nil, 0o600))
+	require.NoError(t, os.Symlink(target, link))
+	r.f.agents.env = map[string]string{"SSH_AUTH_SOCK": link}
+	req := request()
+	req.Sandbox = &model.Sandbox{}
+
+	_, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, r.f.spec.Sandbox)
+	assert.Contains(t, r.f.spec.Sandbox.Deny, link)
+	assert.Contains(t, r.f.spec.Sandbox.Deny, target)
+}
+
+func TestSandboxPlan_AnEngineWithNoSSHAgentAddsNoSocketToTheDenyList(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	r.f.agents.env = map[string]string{"PATH": "/bin"}
+	req := request()
+	req.Sandbox = &model.Sandbox{}
+
+	_, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, r.f.spec.Sandbox)
+	assert.NotContains(t, r.f.spec.Sandbox.Deny, "")
+	assert.Equal(t, credentialPaths(r.home, filepath.Join(r.home, "login"), nil), r.f.spec.Sandbox.Deny)
+}
+
 func TestSandboxPlan_AStepWithNoGitIdentityDoesNotStartAndNamesTheGitConfigCommand(t *testing.T) {
 	t.Parallel()
 

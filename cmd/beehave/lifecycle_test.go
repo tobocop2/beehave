@@ -25,9 +25,12 @@ type pullForge struct {
 	mu      sync.Mutex
 	listed  map[string][]model.PullRequest
 	listErr error
-	state   string
-	drafts  []draftCall
-	asked   [][]string
+	// opened is the answer of OpenPulls, and openBases holds the base of each call.
+	opened    []model.OpenPull
+	openBases []string
+	state     string
+	drafts    []draftCall
+	asked     [][]string
 	// refs and refsErr are the answer of ClosingRefs.
 	refs    model.ClosingRefs
 	refsErr error
@@ -39,6 +42,16 @@ type pullForge struct {
 	readyOnCall bool
 	// viewErr fails PRView.
 	viewErr error
+}
+
+// OpenPulls answers with the open pull requests that the test set, and keeps the base of each call. listErr fails the read.
+func (f *pullForge) OpenPulls(_ context.Context, base string) ([]model.OpenPull, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.openBases = append(f.openBases, base)
+
+	return slices.Clone(f.opened), f.listErr
 }
 
 func (f *pullForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
@@ -188,13 +201,13 @@ func TestPulls_CommentPostsOneCommentForOneKeyEvenWhenTheCallRunsTwice(t *testin
 func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIsNotFound(t *testing.T) {
 	t.Parallel()
 
-	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refs: model.ClosingRefs{Issues: []int{12}}}
+	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refs: model.ClosingRefs{Issues: []int{12}, Elsewhere: []model.IssueRef{"other-org/other-repo#5"}}}
 
 	issues, found, err := pullsOver(f).ClosingIssues(t.Context(), "p", "bb-1")
 
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, []int{12}, issues)
+	assert.Equal(t, []model.IssueRef{"#12", "other-org/other-repo#5"}, issues, "an issue of another repository stays in the scope as a full reference")
 
 	_, found, err = pullsOver(&pullForge{}).ClosingIssues(t.Context(), "p", "bb-1")
 
@@ -205,7 +218,7 @@ func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIs
 
 	_, found, err = noForge.ClosingIssues(t.Context(), "p", "bb-1")
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, forge.ErrNoForge, "a project with no forge is an error the scope step reads as the scope check being off")
 	assert.False(t, found)
 }
 

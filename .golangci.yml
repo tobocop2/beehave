@@ -106,6 +106,10 @@ linters:
           msg: return an error; panic is for cmd/beehave and internal/cli only
         - pattern: ^os\.(Stdout|Stderr)$
           msg: write to an io.Writer you receive; os.Stdout and os.Stderr are for cmd/beehave and internal/cli only
+        - pattern: ^dbos\.(ListWorkflows|RetrieveWorkflow)$
+          msg: read runs through the storeView of internal/flow, so a run under a move never reads as ended
+        - pattern: \.GetStatus$
+          msg: read the status of a run through settledStatus in internal/flow/storeview.go, so a run under a move never reads as ended
     depguard:
       rules:
         no-testify-in-production:
@@ -159,19 +163,19 @@ linters:
           deny:
             - pkg: github.com/tobocop2/beehave/examples
               desc: the engine never imports the examples, and the rule has no exception
-        remedy-binary-takes-the-forge-and-the-claim-rows-only:
+        remedy-binary-takes-the-forge-only:
           files: ["**/examples/remediation/tools/cmd/remedy/**"]
           deny:
             - pkg: github.com/tobocop2/beehave/internal/store/github
-              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+              desc: the remedy binary imports the forge backend, and no other backend
             - pkg: github.com/tobocop2/beehave/internal/agent/claude
-              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+              desc: the remedy binary imports the forge backend, and no other backend
             - pkg: github.com/tobocop2/beehave/internal/host/skypilot
-              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+              desc: the remedy binary imports the forge backend, and no other backend
             - pkg: github.com/tobocop2/beehave/internal/host/slurm
-              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+              desc: the remedy binary imports the forge backend, and no other backend
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
-              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+              desc: the remedy binary imports the forge backend, and no other backend
         # The skypilot adapter takes its job queue as a parameter, so no backend imports another. The three host adapters (ssh, slurm, skypilot) never
         # import each other: a blank-import probe in each of ssh, slurm, skypilot and flow shows a denial.
         backends-only-in-main:
@@ -192,6 +196,8 @@ linters:
             - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: only cmd/beehave and the remedy binary import a backend
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/ci/githubactions
               desc: only cmd/beehave and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
         # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
@@ -314,7 +320,10 @@ linters:
             - "**/internal/lockfile/**"
             - "**/internal/atomicfile/**"
             - "**/internal/fstree/**"
+            - "**/internal/gotelemetry/**"
+            - "**/internal/closing/**"
             - "**/internal/exectest/**"
+            - "**/internal/ifacetest/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -324,7 +333,10 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
+            - github.com/tobocop2/beehave/internal/closing
             - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/ifacetest
         layer-1:
           list-mode: lax
           files:
@@ -334,6 +346,13 @@ linters:
             - "**/internal/agent/**"
             - "**/internal/host/**"
             - "**/internal/sandbox/**"
+            - "**/internal/credential/**"
+            - "**/internal/roundsync/**"
+            - "**/internal/roundcut/**"
+            - "**/internal/roundintegration/**"
+            - "**/internal/takeover/**"
+            - "**/internal/gomod/**"
+            - "**/internal/ledger/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -342,22 +361,34 @@ linters:
             - github.com/tobocop2/beehave/internal/config
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
+            - github.com/tobocop2/beehave/internal/closing
             - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/ifacetest
+            - github.com/tobocop2/beehave/internal/credential
+            - github.com/tobocop2/beehave/internal/roundsync
+            - github.com/tobocop2/beehave/internal/roundcut
+            - github.com/tobocop2/beehave/internal/roundintegration
+            - github.com/tobocop2/beehave/internal/takeover
+            - github.com/tobocop2/beehave/internal/gomod
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
             - github.com/tobocop2/beehave/internal/proc
             - github.com/tobocop2/beehave/internal/agent
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/sandbox
+        # The ci glob stops at the files of internal/ci: the tests of internal/ci/githubactions import that package, and make lint refuses them under ci/**.
         layer-2:
           list-mode: lax
           files:
             - "**/internal/check/shell/**"
-            - "**/internal/batch/**"
+            - "**/internal/ci/*.go"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
+            - "**/internal/landing/**"
             - "**/internal/lease/**"
             - "**/internal/merge/**"
+            - "**/internal/ownprogram/**"
             - "**/internal/review/**"
             - "**/internal/pool/**"
             - "**/internal/preflight/**"
@@ -371,9 +402,13 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
+            - github.com/tobocop2/beehave/internal/closing
             - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/ci$
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
             - github.com/tobocop2/beehave/internal/lease
@@ -382,6 +417,20 @@ linters:
             - github.com/tobocop2/beehave/internal/pool
             - github.com/tobocop2/beehave/internal/preflight
             - github.com/tobocop2/beehave/internal/workflow
+        # The CI reader is an adapter: it imports the shared CI types and the shell reader, and no engine package.
+        # Only cmd/beehave imports it (backends-only-in-main).
+        ci-reader:
+          list-mode: lax
+          files:
+            - "**/internal/ci/githubactions/**"
+          deny:
+            - pkg: github.com/tobocop2/beehave/internal
+              desc: the CI reader imports the model, the shell reader and the CI types only
+          allow:
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/check/shell
+            - github.com/tobocop2/beehave/internal/ci$
+            - github.com/tobocop2/beehave/internal/ci/githubactions
         layer-step:
           list-mode: lax
           files:
@@ -395,6 +444,7 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
@@ -403,7 +453,7 @@ linters:
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/sandbox
             - github.com/tobocop2/beehave/internal/check/shell
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
             - github.com/tobocop2/beehave/internal/lease
@@ -426,6 +476,8 @@ linters:
             - github.com/tobocop2/beehave/internal/lockfile
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
+            - github.com/tobocop2/beehave/internal/gotelemetry
+            - github.com/tobocop2/beehave/internal/closing
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
@@ -434,7 +486,7 @@ linters:
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/merge
             - github.com/tobocop2/beehave/internal/review
             - github.com/tobocop2/beehave/internal/pool
@@ -442,30 +494,47 @@ linters:
             - github.com/tobocop2/beehave/internal/workflow
             - github.com/tobocop2/beehave/internal/step
             - github.com/tobocop2/beehave/internal/flow
+            - github.com/tobocop2/beehave/internal/roundsync
+            - github.com/tobocop2/beehave/internal/roundcut
+            - github.com/tobocop2/beehave/internal/roundintegration
+            - github.com/tobocop2/beehave/internal/takeover
+            - github.com/tobocop2/beehave/internal/ledger
         unlisted-package:
           list-mode: lax
           files:
             - "!**/cmd/beehave/**"
             - "!**/examples/**"
-            - "!**/scripts/**"
+            - "!**/internal/hostsetup/**"
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/lockfile/**"
             - "!**/internal/atomicfile/**"
             - "!**/internal/fstree/**"
+            - "!**/internal/gotelemetry/**"
+            - "!**/internal/closing/**"
             - "!**/internal/exectest/**"
+            - "!**/internal/ifacetest/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
             - "!**/internal/proc/**"
             - "!**/internal/agent/**"
             - "!**/internal/host/**"
             - "!**/internal/sandbox/**"
+            - "!**/internal/credential/**"
+            - "!**/internal/roundsync/**"
+            - "!**/internal/roundcut/**"
+            - "!**/internal/roundintegration/**"
+            - "!**/internal/takeover/**"
+            - "!**/internal/gomod/**"
+            - "!**/internal/landing/**"
+            - "!**/internal/ledger/**"
             - "!**/internal/check/**"
-            - "!**/internal/batch/**"
+            - "!**/internal/ci/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
             - "!**/internal/lease/**"
             - "!**/internal/merge/**"
+            - "!**/internal/ownprogram/**"
             - "!**/internal/review/**"
             - "!**/internal/pool/**"
             - "!**/internal/preflight/**"
@@ -486,6 +555,10 @@ linters:
         linters:
           - forbidigo
         text: os\.(Getenv|LookupEnv|Environ)
+      - path: (internal/flow/storeview\.go|_test\.go)
+        linters:
+          - forbidigo
+        text: dbos\.(ListWorkflows|RetrieveWorkflow)|\.GetStatus
       - path: (internal/cli/|cmd/beehave/|examples/remediation/tools/cmd/remedy/)
         linters:
           - forbidigo

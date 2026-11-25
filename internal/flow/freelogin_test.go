@@ -48,10 +48,10 @@ func (p *poolLogins) Pick(ctx context.Context, _, item string, busy []string, _ 
 	}
 
 	read := func(context.Context, model.Runner) model.Reading {
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: 10}, SevenDay: model.Window{Percent: 10}})
+		return model.Known(model.Usage{Windows: []model.Window{{Name: "five_hour", Percent: 10}, {Name: "seven_day", Percent: 10}}})
 	}
 
-	runner, err := pool.Select(ctx, p.runners, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, claude.Name, read, busy...)
+	runner, err := pool.Select(ctx, p.runners, config.Pool{"five_hour": 90, "seven_day": 95}, claude.Name, read, busy...)
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +328,7 @@ func TestFreeLogin_APlainRunHoldsNoLoginBetweenPhases(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { _, err := engine.RunFile(testItem, testProject, r.file); done <- err }()
+	go func() { _, err := engine.RunFile(testItem, testProject, r.file, modeOff()); done <- err }()
 
 	waitOn(t, condition(func() bool { return picks.loginOf("21") != "" }))
 	close(release)
@@ -403,7 +403,7 @@ func TestFreeLogin_ALoginThatHoldsARunStaysBusyUntilItEnds(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { _, err := engine.RunFile(testItem, testProject, r.file); done <- err }()
+	go func() { _, err := engine.RunFile(testItem, testProject, r.file, modeOff()); done <- err }()
 
 	waitOn(t, condition(func() bool { return picks.loginOf("23") != "" }))
 	close(release)
@@ -432,7 +432,7 @@ func TestFreeLogin_AResumeKeepsTheRecordedLogins(t *testing.T) {
 
 	crashed, stop := r.crashEngine(t)
 
-	go func() { _, _ = crashed.RunFile(testItem, testProject, r.file) }() //nolint:errcheck // the crash ends the run with an error
+	go func() { _, _ = crashed.RunFile(testItem, testProject, r.file, modeOff()) }() //nolint:errcheck // the crash ends the run with an error
 
 	waitOn(t, condition(func() bool { return len(r.agents.started()) == 2 }))
 	stop()
@@ -448,11 +448,11 @@ func TestFreeLogin_AResumeKeepsTheRecordedLogins(t *testing.T) {
 	resumed := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, resumed.Shutdown()) })
 
-	_, err := resumed.RunFile(testItem, testProject, r.file)
+	_, err := resumed.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	for item, login := range before {
-		last, found, lookErr := latestRun(resumed.ctx, item)
+		last, found, lookErr := latestRun(viewOf(resumed.ctx, resumed.dir), item)
 		require.NoError(t, lookErr)
 		require.True(t, found)
 

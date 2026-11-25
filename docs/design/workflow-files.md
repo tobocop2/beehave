@@ -2,7 +2,7 @@
 
 Part of the [beehave architecture](../architecture.md).
 
-A workflow is one Starlark file. The engine calls its `main` function with the work item, and each builtin call except `struct`, `json`, `paths_outside` and `closing_references` runs as a recorded DBOS step, so a restart replays the file and never runs a finished step again. This part lists the builtins, their arguments and results, the pinning of files, the static check and the examples.
+A workflow is one Starlark file. The engine calls its `main` function with the work item, and each builtin call except `struct`, `json`, `paths_outside`, `closing_references` and `keep_issues` runs as a recorded DBOS step, so a restart replays the file and never runs a finished step again. This part lists the builtins, their arguments and results, the pinning of files, the static check and the examples.
 
 ## Workflow files
 
@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `hand_off`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `landing_proof`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -56,7 +56,13 @@ Four cases are not safe today, and a later change fixes each of them.
 | `pr_comment` | Safe. | The forge reads the comments of the pull request first and finds the key. |
 | `pr_open` | Safe. It opens no second pull request, and `created` is false. | The forge looks for an open pull request on the branch first. |
 | `push` | Safe. | Git exits 0 when the branch is already at the head, and checks no lease then. A replay of a push that landed passes. |
-| `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
+| `round_sync` | Safe. | The step reads the trunk, the round branch and the open sync pull request first. A merge that is done shows no new commit, and an open sync pull request is found, not opened again. |
+| `round_land` | Safe. | The merge is pinned to the head that the gate ran on. A pull request that is merged reads as a landing that is done. |
+| `round_cut` | Safe. | The step reads the new branch first and makes it only when it is missing. A pull request that already targets the new branch is not moved again. |
+| `integration_pull` | Safe. | The step finds the open integration pull request first, and writes a body that it builds again from the merged pull requests, so a repeat writes the same body. |
+| `board_card` | Safe. | The same card with the same column changes nothing on the board. |
+| `pr_take` | Safe. | The notice step reads the comments first and posts no second notice. The take step claims a pull request that it already holds without a change. |
+| `merge`: each member | Safe. | The step `merge:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
 | `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
 | `send` | Safe. It rests on the library. | The send is a recorded step of the library: the insert and the step record commit together, so a resume inserts the message once. |
@@ -75,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `base_tip`, `landing_proof`, `issue_state`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -93,7 +99,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 `env("<NAME>")` reads a variable of the engine environment. The value is recorded, so a replay sees the value of the first run.
 
 - A name that is not set fails the step and names the variable, unless the call gives `default`, which is then the value.
-- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `OAUTH` and `SSH_AUTH_SOCK` are not secret names.
+- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `env` also refuses to read `SSH_AUTH_SOCK`. The check refuses a literal name, and the call refuses any name, such as one that the workflow builds. So no value of a workflow holds the path of the agent socket of the engine. `OAUTH` is not a secret name.
 
 ### `now`
 
@@ -112,7 +118,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 - The sleep is the durable sleep of the workflow library. The library records the wake time. A run that stops during the sleep and continues later sleeps only the time left, and a wake time in the past ends the sleep at once.
 - The call records the steps `sleep:<name>#<n>/start` (a marker with no value) and `sleep:<name>#<n>`, with the library record `DBOS.sleep` between them. The marker tells the call from the other sleeps of the engine. `beehave status` shows `sleeps until <time>` for a run that is in the sleep.
 - A cancel of the run ends the sleep, as it ends a wait.
-- A dry run sleeps the real duration, as a dry run of `wait` waits its real timeout. Use a short duration in a file that you check with `--dry-run`.
+- A dry run sleeps no time. The call records its marker step `sleep:<name>#<n>/start` and returns `slept` 0, and the record `DBOS.sleep` does not appear. A dry run ends `wait` and `recv` at once in the same way (see `beehave check workflow`).
 - `sleep` records `slept` once, so a replay returns the first value. After a stop in the middle of the sleep, `slept` is the time that the second execution slept.
 
 ### `facts`
@@ -136,20 +142,47 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 
 A file loads another file with `load("//file.star", "name")` for a file in its own folder, or `load("@beehave//review_fix.star", "review_fix")` for a library in the binary. The library `review_fix.star` holds the review and fix loop of the remediation method as a function. A project that wants another policy copies it into its folder. The function names no model: the argument `steps` gives the model and the runner of each step, and the arguments `design_after`, `void_reruns`, `void_asks` and `escalate_after` give its limits. The remediation example reads them from `vars.round` (see "The steps and the limits" in `durable-loop.md`).
 
+The function `review_fix` gives each finding of a review a stable id across the fix rounds. A review writes the output `findings` as a JSON list, a fix writes the outputs `resolved` and `wontfix`, and the result carries the field `ledger`. A caller that passes an argument `ledger` gets the refusal for an unknown argument. `beehave check workflow` needs no change, because `review_fix` is a library function and the check reads only literal `agent` calls. See "The ledger of the review loop" in `durable-loop.md`.
+
 At the start of a run, the engine pins the SHA-256 of the workflow file and of every file it loads.
 
 - A run continues with its pinned path. `beehave resume` takes no file, and `beehave run` ignores `--workflow` for an open run.
-- Each file must still have its pinned hash. A changed file refuses the run. To go on, restore the file, or cancel the run and start a new one.
+- Each file must still have its pinned hash. A changed file refuses the run. To go on, restore the file, run `beehave resume <item> --on-this-file` (next section), or cancel the run and start a new one.
 - A different workflow file never applies to a run that is open.
+
+#### Change a workflow file under an open run
+
+`beehave resume <item> --on-this-file` puts an open, failed or cancelled run on the workflow file as it is on disk now. The author runs it once, after the edit. An edit never moves a run by itself.
+
+- The command reads the workflow file and each file it loads, and stores that pin on the run. The run keeps its id and its finished steps, and replays them over the new file. A child run of the run takes the same pin.
+- A change after the step that the run reached goes on at once, and the run ends done on the new file.
+- A change before the reached step ends the run as failed at the first step that differs. The error is the one of the engine of the store, and it names the step. No new step runs, and nothing that the run wrote is undone. To finish the run, restore the file and run the command again.
+- A file that did not change is no error. A run that ended resumes as `beehave resume` does, and an open run is reopened.
+- A run of another build is refused, as `beehave resume` refuses it. Give `--on-this-build` and `--on-this-file` together to move the run and put it on the file in one move.
+- A run that is open is cancelled and reopened under `probe.lock`, as `--on-this-build` does it. The claim lease of the run must have ended.
+- A run that a changed file refused names the command in its error.
+
+#### Change a step before the reached step: `patched`
+
+`patched("<name>")` lets an author change a step before the step that an open run reached, so the run replays after `--on-this-file` and does not fail. The call returns true for a run that has not passed the call, and false for a run that has. Put the new steps in the true branch and keep the old steps in the false branch.
+
+- A new run, and an open run that did not reach the call, take the true branch. The run records the marker `DBOS.patch-<name>` before the new steps. The dry run of `beehave check workflow` shows it as a row.
+- A run that passed the call takes the false branch and replays its recorded steps with no failure.
+- A name is letters, digits, dots, dashes and underscores. One run calls each name once, and a second call with the same name is refused by name.
+- Keep the old branch while any run that passed the call can replay. See `durable-loop.md`, "Change a builtin that old runs replay", for when the branch goes. A call that stays costs one recorded step, so remove it only when no open, failed or cancelled run recorded its marker. No builtin wraps `DeprecatePatch`: a call that stays is harmless, and the removal is rare.
 
 #### Pinned scripts
 
-A `command` call pins its script like a loaded file when all of these hold: the `run` list is a literal list, the call has no `host`, and the first word is a path to a file in the repository of the workflow file.
+A `command` call pins its script like a loaded file when all of these hold: the `run` list is a literal list, the call has no `host`, and the first word is a path to a file.
 
 - The repository is the nearest folder with a `.git` entry at or above the workflow folder.
 - A relative path resolves against the root of that repository, not against the work tree or the folder where the command runs.
 - A word with no `/`, such as `git`, names a program on the path and is not pinned.
-- A script outside the repository is not pinned, and a script on a build host is not pinned.
+- A script outside the repository is pinned when the first word is a path to a file that starts with `#!`. The path is absolute, or relative and leaves the repository. A link is pinned by the content of its target.
+- The run records the SHA-256 of such a script, and a changed or deleted script refuses the run with its path.
+- A compiled program outside the repository, such as `/bin/sh`, is not a script of the workflow and is not pinned. A file that the user cannot read is not pinned either.
+- A run that an older build started recorded no outside script, and it resumes even when such a script changed.
+- A script on a build host is not pinned.
 - A `command` call whose `run` list is not a literal list of texts is not pinned either, and the refusal counts such calls.
 - A changed script refuses the run in the same way as a changed workflow file.
 
@@ -167,6 +200,9 @@ The `item_` builtins change or read the tracker of the project.
 | `item_status(id, status, name)` | `id`, `status` |
 | `item_comment(id, text, key, forbid_text, name)` | `id` |
 | `item_read(of, name)` | `found`, `id`, `fields`, `comments`, `parent` |
+| `item_stop(step, code, reason, id, name)` | `recorded` |
+
+`item_stop` records the stop of an item in the result of the run, as the stop of a command does: the step, the exit code and the reason. It writes nothing to the tracker. `code` is 1 or more, and `step` and `reason` are not empty. The stop counts only for the item of the run. When `id` names another item, the call records nothing and returns `recorded` false. The library function `claim_stop` calls it.
 
 The `key` is required, and the engine joins it to the run id. `item_create` with `shared = True` is the one exception.
 
@@ -209,26 +245,37 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 #### `pr_comment`
 
-`pr_comment(text, key, forbid_text, integration)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+`pr_comment(text, key, forbid_text)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+
+#### `pr_read`
+
+`pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers`, `links` and `unread`.
+
+- `id` is an item id, as `beehave run` takes it, such as `12` or `fix-login`. The call refuses any other text, such as `#12` or `+12`, before it reads. A dry run refuses it too, as the run does.
+
+- The call finds the pull request as `preflight` does: the open one on the branch of the item, then an open one that names the item, then the merged one, then the newest closed one. An item with no pull request gives `found` false and empty lists.
+- `reviewers` lists the logins that reviewed the pull request or were asked to. `links` lists the issues that the body names with `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related`. Each link is a dict with `repo` and `number`. An empty `repo` is the repository of the pull request.
+- A read that fails ends the step with an error. A pull request with no draft flag or no label list is refused, because a null would pass as a pull request that nothing holds. A pull request with no assignee list, or a body link whose number is not an int, is not refused: `unread` names what the read could not give, and `claim_stop` ends the step with an error when it has own logins to compare. `unread` is an empty list for a clean read.
+- A project with no repository refuses the call. A build with no reader fails the call and names the fix.
+
+#### `issue_assignees`
+
+`issue_assignees(repo, number, name)` returns `assignees`: the logins that hold an issue. An empty `repo` is the repository of the project, and any other `repo` is read on that repository. `number` is 1 or more. A read that fails ends the step with an error that names the issue, and is never an issue that nobody holds. A forge that cannot read assignees refuses the call.
 
 #### `pr_open`
 
-`pr_open(title, base, body, issue, parent, forbid_text, integration, name)` opens the draft pull request of the item and returns `number`, `created` and `stack`.
+`pr_open(title, base, body, parent, forbid_text, name)` opens the draft pull request of the item and returns `number`, `created` and `stack`.
 
 - The branch of the item must be on the remote already.
 - The forge looks for an open pull request on that branch first, and opens one only when there is none. A resume after a lost step record therefore opens no second pull request, and `created` is then false.
 - The step needs a forge that implements `forge.Opener` (`CreatePR`, `LinkStack`). With a forge that does not, it fails with an error that says so.
 - In a dry run it shows the dry-run pull request and writes nothing.
 
-The body is `body` plus one closing line that the engine picks from the base:
+The call writes the body as given. The engine adds no closing line, and it does not read the base to change the text. The workflow writes the line it wants in `body`, such as `Closes #12` for a pull request into the trunk and `Addresses #12` for any other base.
 
-| Case | Closing line |
-| --- | --- |
-| The base is the default branch. | `Closes #N` |
-| Any other base. | `Addresses #N` |
-| `issue` is 0 or left out. | No line. |
+`body` is used only when the call opens the pull request. A pull request that exists already keeps its body, and the call writes nothing to it.
 
-`body` is used only when the call opens the pull request. A pull request that exists already keeps its body, and the call owns only the closing line. It corrects a line for the issue that has the wrong keyword in place, adds the line at the end when the body has none, keeps every other line, and writes only when the body changes.
+The call takes no argument `issue` and no argument `integration`. A call that passes one fails at the check, and the message names the form that the call takes.
 
 The `parent` argument:
 
@@ -237,6 +284,37 @@ The `parent` argument:
 | The pull request of `parent` is open. | The new pull request is based on the branch of the parent and linked into its native stack with `gh stack link` (the pull requests go by address, on github.com). The first link of a stack passes `--base` with the base of the call. The call reads the base of the parent pull request before and after every link. If the base moved on a new stack, the call unstacks, checks that the stack is gone, sets the base back and links again with that base. A second move, a stack that stays after the unstack, or a move on a stack that already held other pull requests fails the step. The call then reads the stack id of both pull requests, and fails unless they show one non-empty id. `stack` holds the id. |
 | The pull request of `parent` merged. | The base stays as given, and the call links nothing. |
 | `parent` has no pull request. | An error. |
+
+#### `pr_closing`
+
+`pr_closing(item, pr, name)` reads the issues that a pull request closes. It returns `found`, `issues`, `forge` and `error`. `item` is the item of the run when it is empty.
+
+- `pr` names the pull request by its number, such as the integration pull request of a round. A call with `item` and `pr` is refused, and so is a `pr` below zero. A pull request that is read by its number is `found` when the read succeeds. A read by number that fails, a pull request that is gone included, gives `found = False`, no issues and the cause in `error`. A build with no queue reader fails the call, and a dry run does not fake the read.
+- `issues` is the sorted list of the references that the forge shows as closed by that pull request. An issue of another repository is a full reference, such as `other-org/other-repo#3`.
+- An item with no pull request gives `found = False` and no issues.
+- A project with no forge gives `forge = False`, `found = False` and no issues.
+- A failed read of the pull request of an item ends the step with an error. The call never gives an empty set with `found = True` for a failed read.
+- The read is a recorded step named `pr_closing:<name>#<n>`, so a resumed run replays the first answer. The dry run gives a pull request that closes no issue.
+
+#### `earlier_reads`
+
+`earlier_reads(kind, name, item, own_run)` returns `reads`, the recorded results of the earlier steps of one kind and name. The runs come newest first, and the steps of one run come newest first.
+
+- `kind` is `pr_closing` or `wait`. Any other kind is refused with the list of the kinds. A read of `wait` has the field `answer`.
+- `item` is the item of the run when it is empty. The runs of that item are read, except the run that calls.
+- With `own_run = True`, the earlier steps of the calling run come first.
+- A step that failed is left out. A store that cannot be read ends the step with an error.
+- The call reads the same store as `run_read`. It is a recorded step, so a resumed run replays the first reads.
+
+#### The scope library
+
+The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_scope")`. It uses `pr_closing`, `earlier_reads` and `keep_issues`. A workflow that does not load it has no scope check.
+
+- `fix_scope(name, item)` fixes the scope of an item at its first review. It takes the first read of the run or of an earlier run of the item. If there is none, it makes one `pr_closing` read. It returns `found`, `issues` and `off`. `off` is true for a project with no forge, and `beehave status` then shows `scope check off: the project has no forge`.
+- `hold_scope(name, prs, run, own)` runs before `batch_merge`. For each member of `prs`, it reads the closing references and compares them with the first review of the item: `own`, the result of `fix_scope` in this run, for the item of the run, and the first review of an earlier run named `scope` for any other item. It returns `prs`, the members with the fields `kept` and `closing`, and `rejected`, the members that the owner did not allow.
+- A new issue makes the run ask the owner. The question names the run, so `beehave answer` with the item `run` answers it. The answer form is `keep #N[, #N ...]`, or `keep owner/repo#N` for an issue of another repository. Any other answer rejects the member. The builtin `keep_issues(text)` reads that form, and the merge reads the same form to trust the `kept` list.
+- The kept issues are read back from the owner waits of the earlier calls and runs, so a kept issue gets no second question. A kept issue stays kept when a later pull request no longer closes it.
+- A member with no first read has nothing to compare, and the call reads nothing for it.
 
 #### `pr_state`
 
@@ -247,6 +325,38 @@ The `parent` argument:
 - The read is a recorded step, so a resumed run replays the first state.
 - A read that fails ends the step with an error. A project with no forge cannot show a state, which is an error too.
 - A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `issue_state`
+
+`issue_state(number, name)` reads the state of the issue with the number `number` and returns `state`, `found` and `error`. `state` is `OPEN` or `CLOSED`, and `error` is empty for a read that gave a state.
+
+- A project whose tracker is not GitHub has no issue numbers. The call then reads nothing and returns `found` False, an empty `state` and an empty `error`.
+- A `number` below 1 is refused before any read.
+- The read is a recorded step named `issue_state:<name>#<n>`, so a resumed run replays the first state.
+- A read that fails returns `found` False, an empty `state`, and the cause in `error`. An issue that does not exist is a failed read. So is an answer that is neither `OPEN` nor `CLOSED`. The call never gives a guessed state, and the caller decides: `issue_audit` of the batch library makes it a finding.
+- A read that the end of the run stops ends the step with an error.
+- A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `base_tip`
+
+`base_tip(base, name)` reads the tip commit of the branch `base` on the forge and returns `commit` and `tree`, the tree of that commit.
+
+- The call makes the worktree of the item when it has none, then fetches the branches of the remote into it before it reads the tree. A worktree that cannot be made ends the step with an error.
+- An empty `base` is refused before any read.
+- The read is a recorded step named `base_tip:<name>#<n>`, so a resumed run replays the first tip.
+- A read that fails ends the step with an error. A branch that is not there is a failed read, and so is a tip with no commit. The call never gives an empty tip.
+- A build with no batch host fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `landing_proof`
+
+`landing_proof(base, start, end, landed, name)` checks on the forge that each landed member is on the base, and returns `unproven`: one `struct(item, reason)` for each member that it cannot show there.
+
+- `start` and `end` are the tips of `base` before and after the landing, each a `struct(commit, tree)` as `base_tip` returns it. `landed` is a list of `struct(item, head)`.
+- A member is proven when its head is in the history of the base, or when the vehicle commit from `start` to `end` holds its change.
+- An empty `landed` list reads nothing and returns an empty `unproven` list.
+- The read is a recorded step named `landing_proof:<name>#<n>`, so a resumed run replays the first answer.
+- A read that fails ends the step with an error. A tip or a member that is not a struct with its text fields fails before any read.
+- A build with no batch host fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
 
 #### `push`
 
@@ -264,12 +374,28 @@ The `parent` argument:
 - The run must hold a trusted claim on the item. A run that lost its claim pushes nothing and stops with the loss, and a loss during the push stops the push.
 - A branch already at `head` is no error. A replay after a crash between the push and its step record therefore passes, whatever its lease. A resume after the step record reads the record and pushes nothing.
 - A branch that moved since the lease is refused with an error that names the branch, and the item stops.
-- An empty `branch` or `head` is refused before the push. So is a project with no clone, and a project with no forge, which pushes nothing.
+- An empty `branch` or `head` is refused before the push. So is a project with no clone, and a project with no `source` and no forge, which pushes nothing. A project with a `source` and no forge pushes to its `source`.
 - In a dry run the push writes nothing and returns `head`.
+
+#### Forge writes of a round
+
+`round_sync(base, trunk, name)`, `round_land(pr, head, base_tip, name)`, `round_cut(old, new, pr, trunk, name)`, `integration_pull(base, into, pr, name)`, `board_card(board, status, owner, pr, issue, name)` and `pr_take(pr, me, idle, grace, step, name)` are the writes of a round to the forge. The engine runs each one as the writer role of the project. A command step runs as the owner, so none of these is a command.
+
+- The engine process runs the write with the credentials of the writer role (`credentials`). The step passes no token, and no program of the workflow folder runs. A project with no credentials runs the write with the login of the owner, as `pr_open` does.
+- The run must hold a trusted claim on the item. A run that lost its claim writes nothing and stops with the loss.
+- `round_sync` returns `state`, which is `current`, `synced`, `conflict` or `refused`, with `branch`, `source`, `number`, `head`, `base_tip` and `reason` set as the state needs them, and the empty text or 0 for the others. It opens the sync pull request with the `pr_label` of the project.
+- `round_land` returns the same fields. Its `state` is `landed`, `stale` or `head-moved`. A stale or moved landing merges nothing, and the workflow decides what the round does next.
+- `round_cut` returns `lines`. A cut that the step refuses (the integration pull request is not merged, or a branch is in the way) ends the item with those lines and the code 2.
+- `integration_pull` finds the integration pull request, or opens it with the `pr_label` of the project, and writes its body. A `pr` above 0 names the pull request. It returns `number` and `state`.
+- `board_card` names the card by exactly one of `pr` and `issue`, puts it on the board `board`, sets the column `status` and reads the card back. A board that shows another column ends the item with code 2. It returns `status`, the column that the board shows. A project with no board is not an error of the step: the workflow makes no call.
+- `pr_take` runs one step of the takeover of a pull request of somebody else. `step` is `apply` (post the notice) or `take` (take the pull request). `idle` and `grace` are numbers of hours. A refusal of a rule or a guard ends the item with the lines of the step and the exit code 2. It returns `code` and `lines`. The `code` is 2 for a guard and 3 for a rule.
+- A write that the forge refuses ends the item with the error as its lines and the code 2, as a refusal of the tool does. The loss of the claim and the end of the run are not answers of the forge: they fail the run.
+- A call checks its arguments before any write. `round_land`, `round_cut` and `pr_take` take a `pr` above 0. `round_cut` takes an `old` that is not empty and a `new` that ends in a Roman numeral after a dash. `pr_take` takes a `step` of `apply` or `take`. `board_card` takes a `status` that is not blank. Each refusal names the argument.
+- A build with no round writer fails the call. A forge that lacks the write that a step needs ends the item with an error that names the write. A dry run shows each write as done and writes nothing.
 
 #### `pr_history`
 
-`pr_history(name)` reads the pull requests of the item of the run in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at` and `closing_comment`.
+`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at` and `closing_comment`.
 
 - The forge lists the pull requests on the branch of the item. For an item that is an issue number, it also lists the pull requests whose title or body names `#N`, and keeps those that name it as a whole word. The two lists join by number.
 - `closing_comment` is the body of the last comment made at or before the close of a closed or merged pull request. A comment after the close does not count. It is empty for an open one and for one with no comment until its close.
@@ -283,9 +409,9 @@ A sandboxed agent holds no forge tool and no credential. The workflow passes `pu
 
 #### Closing keywords in posted text
 
-`pr_comment` and `pr_open` refuse text with a closing keyword (`Closes`, `Fixes`, `Resolves` and their forms, with an issue). The check reads the text of the comment, and the title and the body of the pull request. It uses the same keywords as the guard of `merge`. The refusal happens before the post and names the argument and the issue.
+The engine has no closing-keyword rule for `pr_comment` and `pr_open`. A workflow that wants one passes the keywords in `forbid_text`, and the refusal is the one of every other `forbid_text` pattern. `examples/remediation/workflow.star` keeps the list in `CLOSING_KEYWORDS` and adds it to `forbid_text` of `pr_open`, `pr_comment` and `merge` for a base that is not the trunk (`project.base_branch`).
 
-Only the integration pull request may close an issue. A call for that pull request sets `integration = True`. The line that `pr_open` adds from `issue` is not part of the text and is not checked.
+`forbid_text` tests one line at a time, so a keyword and its number on two lines is not seen. The merge guard reads the commit messages with the grammar that sees it.
 
 ### `forbid_text` on public text
 
@@ -335,25 +461,16 @@ The four steps that post public text (`item_create`, `item_comment`, `pr_comment
 
 ### `preflight`
 
-`preflight(head, base, hold, own, id, own_draft, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
+`preflight(head, base, id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`. `id` is an item id, as for `pr_read`; the call refuses any other text before it reads.
 
 It checks, in this order:
 
 1. Merged or closed.
 2. The head branch.
-3. The assignees. A login that is not in `own["logins"]` and holds the pull request, or an issue that the pull request body links, gives ASSIGNED, exit code 11. An empty `own` checks no assignee.
-4. The author. An open pull request by a login that is not in `own["logins"]` gives CLAIMED, exit code 10. An empty `own` checks no author.
-5. The `hold` label.
-6. A draft. The keyword `own_draft` is the number of a draft that the run opened itself, and that one draft is no stop. A call that leaves it out stops at every draft, so the intake keeps the stop for a pull request that somebody else may rework. The value must be a whole number of 1 or more: the check and the run refuse zero, a negative number and any other type. The loop of the example passes the number that `pr_open` returned, so a draft with another number still stops the loop. The child run returns that number as the field `pr` of its value, and the batch intake of the round passes it, because the pull request stays a draft until the merge marks it ready.
-7. The expected head.
-8. The expected base.
+3. The expected head.
+4. The expected base.
 
-The assignee check reads the pull request and each linked issue once. A link is a `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related` keyword with `#N`, `owner/repo#N` or the URL of an issue. The call reads a link to another repository on that repository.
-
-- A read that fails ends the step with an error. A failed read is not a clean item.
-- The read of the assignees of an issue is optional for a forge. A forge without it is refused when the body has a link.
-- The reason of ASSIGNED names the holder and ends with `knows=yes` or `knows=no`. The value is `yes` only when the holder opened the pull request or reviews it.
-- The reason also gives the recovery: leave the item to the holder, or ask the holder first.
+The claim stops are not in `preflight`. The library function `claim_stop` holds them, and a workflow calls it after `preflight`. A call of `preflight` with the argument `hold`, `own` or `own_draft` is refused, by `beehave check workflow` and by the run, with a message that names `claim_stop`.
 
 - A keyword that the call leaves out checks nothing of its kind. An item with no pull request passes.
 - A stop is a result and not an error, so the workflow decides what to do with it. `code` is the exit code of the stop.
@@ -367,8 +484,26 @@ The assignee check reads the pull request and each linked issue once. A link is 
 If no open pull request has the item as its head branch, the call searches the open pull requests for one that names the item in its title or body.
 
 - Any `#N` mention in an open pull request counts, as in "Closes #7", "see #7" or "follow-up to #7". A passing mention makes the item not free, which is the safe direction.
-- Such a pull request gives CLAIMED, and it outranks a merged or closed pull request on the branch.
+- Such a pull request is the pull request of the item for `preflight`, `pr_read` and `claim_stop`, and it outranks a merged or closed pull request on the branch.
 - A search that fails ends the step with an error.
+
+#### `claim_stop`
+
+`claim_stop` is a function of the library: `load("@beehave//claims.star", "claim_stop")`. `claim_stop(name, id, hold, own, own_draft)` reads the pull request of the item with `pr_read` and returns `ok`, `stop`, `code` and `reason`, as `preflight` does. It checks, in this order:
+
+1. The assignees. A login that is not in `own["logins"]` and holds the pull request, or an issue that the pull request body links, gives ASSIGNED, exit code 11. The call reads each link with `issue_assignees`. The reason names the holder and ends with `knows=yes` or `knows=no`. The value is `yes` only when the holder opened the pull request or reviews it.
+2. The author. An open pull request by a login that is not in `own["logins"]` gives CLAIMED, exit code 10.
+3. The `hold` label gives HELD, exit code 9. An empty `hold` holds nothing.
+4. A draft gives DRAFT, exit code 8. `own_draft` is the number of a draft that the run opened itself, and that one draft is no stop. A call that leaves it out stops at every draft. The value must be a whole number of 0 or more. The loop of the example passes the number that `pr_open` returned, so a draft with another number still stops the loop. The child run returns that number as the field `pr` of its value, and the batch intake of the round passes it, because the pull request stays a draft until the merge marks it ready.
+
+An empty `own` checks no assignee and no author.
+
+- A workflow calls `preflight` first and `claim_stop` only when `preflight` passes, so a merged or closed pull request, a gone branch, a moved head and a changed base outrank every claim stop.
+- A pull request that is not open and an item with no pull request give a clear result.
+- A read that fails, or a read with no draft flag or label list, ends the step with an error. A failed read is not a clean item. With `own` logins set, a read with no assignee list or with a body link that is not an int ends the step with an error too.
+- A clear result has the reason `OK: #<number> is unchanged in every respect this checks.`, or `OK: the item has no pull request yet.` when there is none. A label name is split at a comma, so the label `a,hold` holds with `hold` = `hold`, as the preflight did.
+- A stop of the item of the run goes into the `stopped` field of the result of the run, under the step `claim_stop:<name>`.
+- The reason also gives the recovery: leave the item to the holder, or ask the holder first.
 
 #### Other orchestrators
 
@@ -399,19 +534,50 @@ A finding is a result, not an error. `ok` is true when `findings` is empty. The 
 
 The steps are `command` steps, so a replay reads their records and runs no git again. A run recorded with the builtin step `before_review` does not move to this build with `resume --on-this-build`: the gate module is at version 6, and the refusal names it.
 
-#### `paths_outside` and `closing_references`
+#### `paths_outside`, `closing_references` and `keep_issues`
 
 `paths_outside(allow, paths)` returns the sorted paths in `paths` that no glob of `allow` matches. It reads `allow` with the same code as `allow_paths` of `agent`, so the two judge a path alike. Unlike `allow_paths`, `allow` must be a list: `None` is refused, because a check with no scope has nothing to compare.
 
 `closing_references(text)` returns the issues that `text` closes with a closing keyword, each as `#N` or `owner/repo#N`, in the order of the text. It reads the grammar of the merge guard.
 
-Both builtins match text. They run no command, record no step and need no repository.
+`keep_issues(text)` returns the issues of an owner line in the form `keep #N[, owner/repo#N ...]`, each as `#N` or `owner/repo#N` with the repository in lower case. The word `keep` takes any case. Any other text gives an empty list. The merge reads the recorded owner answers with the same parser.
 
-### `queue`
+The three builtins match text. They run no command, record no step and need no repository.
 
-`queue(name, hold, label)` reads the open items of the tracker and the open pull requests of the forge in one recorded step. It returns `rows`, `free` and `pulls`.
+### The queue library and its reads
 
-`label` keeps the items that carry that tracker label. A call with no `label` keeps every open item. The engine reads no project setting for the choice: the workflow passes it. A workflow that needs a list of item ids keeps the rows whose `item` is in the list.
+`queue(name, hold, label, base)` is a function of the embedded library `queue.star`. Load it with `load("@beehave//queue.star", "queue")`. It reads the open work of the project with three builtins and returns `rows`, `free` and `pulls`. The library also exports `rank(rows, me)` and `SEVERITIES`.
+
+#### `item_list`
+
+`item_list(label, name)` reads the open items of the tracker and returns `items`. Each item has `id`, `severity`, `hold`, `parent`, `assignee`, `title` and `labels`. `labels` is an empty list when the item has none.
+
+- A `label` keeps the items that carry that tracker label. The tracker applies the label. An empty `label` keeps every open item.
+- The read is a recorded step. A replay returns the first answer.
+- A read that fails ends the step with an error. A build with no queue reader fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `pr_list`
+
+`pr_list(base, name)` reads the open pull requests of the forge and returns `pulls`. Each pull request has `number`, `branch`, `base`, `author`, `draft`, `title`, `labels` and `review_decision`.
+
+- A `base` keeps the pull requests on that base. The forge applies the base. An empty `base` keeps every open pull request.
+- A project with no forge has no pull requests.
+- The read is a recorded step. A read that fails ends the step with an error. A build with no queue reader fails the call.
+
+#### `run_read`
+
+`run_read(items, name)` reads the free slots, then the last run of each item in `items`. It returns `runs`, a list in the order of `items`, and `free`. Each run has `item`, `state`, `value`, `stop_step` and `stop_reason`.
+
+- `state` is `none`, `running`, `failed`, `stopped` or `done`. `none` is an item that never ran, or whose last run was canceled.
+- `value` is what the last run of a `done` item returned. It is None for any other state.
+- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued. The call reads the slots before the runs, so a run that ended a moment ago still holds its slot.
+- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error that names the run and the command `beehave run <item>`.
+
+#### `queue`
+
+`queue(name, hold, label, base)` reads in this order: `item_list`, `pr_list`, `run_read`, and `pr_state` for each owed foreign row. The steps are named `<name>-items`, `<name>-pulls`, `<name>-runs` and `<name>-state-<item>`. A call with a `label` makes one more `item_list` read, named `<name>-all`, so that a pull request names its item whatever the label of that item. A call with a `base` makes one more `pr_list` read with no base, named `<name>-all-pulls`, so that a hold label on a pull request of another base still holds its item. Each extra read costs one list of the tracker or the forge on each call, and only when the argument is set.
+
+`label` keeps the rows of the items that carry that tracker label. `base` keeps the pull requests on that base in `pulls`. The workflow passes both. The engine reads no project setting for the choice.
 
 Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step`, `stop_reason` and `value`. A `done` row carries in `value` what its last run returned, whoever started that run; it is None on any other row. The round of the remediation example reads it to land an approved run that the owner started with `beehave run`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
@@ -424,44 +590,78 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 | `hold` | The tracker holds the item, or its pull request has the label that `hold` names. A held item with a succeeded run is `hold`, not `done`, so a landing that the round rejected is offered once. |
 | `ready` | Otherwise. A held item is never `ready`. |
 
-- A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
-- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error that names the run and the command `beehave run <item>`. The new run is the last run of the item, and the call reads it in place of the unreadable one.
+- A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and `pr_state` shows that pull request as `MERGED`. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
-- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
-- `pulls` lists every open pull request of the forge, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
-- A read of the tracker or the forge that fails ends the step with an error.
-- A project with no forge has no pull requests.
-- A build with no queue reader fails the call.
+- A foreign record matches its keys whatever their case: `Reason`, `PR` and `Findings` read as `reason`, `pr` and `findings`.
+- `pr`, `author` and `changes_requested` of a row, and the hold of a pull request, come from every open pull request, whatever its base.
+- `pulls` lists every open pull request that `pr_list` returned, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
+- The old `queue` builtin is removed. A file that calls `queue` with no load fails `beehave check workflow` with `undefined: queue` and the load line.
 
 A run that `spawn` started reads the hold of its item in the tracker again before its first step. If the item is on hold, the run stops with the stop `queue` and the code of a held pull request, and `gather` reports it as `stopped`.
 
 ### `merge`
 
-`merge(prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name)` lands a list of `struct(item, head, approved)` with one gate run on the union tree of the base tip and all heads. It splits the list when the gate is red. A forge with a native merge queue needs no `merge`.
+`merge(members, base, repo, gate, hold, own, forbid_text, name)` lands a gated union: a list of `struct(item, head, approved, own_draft, closes, kept, closing)` in landing order, with no item twice. A call with one member merges one pull request. The batch of a round, which folds the members, gates the union once and splits a red union, is the library function `batch_merge` (see "The batch library" below). A forge with a native merge queue needs no `merge`.
+
+A call that passes `prs`, `gate_run` or `integration` fails the check and the run. The error names the keyword and the library: `load("@beehave//batch.star", "batch_merge")`.
 
 `approved` is an optional bool of each member, and a member that leaves it out is not approved. It applies to that member only: a pull request of an `own` identity merges only when its own member sets `approved = True`. The call has no `approved` of its own, so the approval of one member never reaches another. A value that is not a bool fails the call and names the field.
 
-`own_draft` is an optional int of each member: the number of the draft that the run opened for it. The pull request of a member stays a draft until the merge marks it ready, and the guards of the merge run before that step. The draft guard passes only when the pull request has the number `own_draft`, and the ready step then marks it ready after the guards, as it does for any draft. A member that leaves it out, or a draft with another number, is refused as before. `merge` has no `allow_ready` of its own. The value follows the same rule as `own_draft` of `preflight`: the check and the run refuse zero, a negative number and any other type, and the error names the member. A call with `hand_off` reads no `own_draft`: the call marks each pull request ready itself.
+`closes` is a required list of issue numbers of each member: the issues that its pull request must close. Each number is 1 or more, and none repeats. Write `closes = []` for a member that closes nothing. A member with no `closes`, or a value that is not such a list, fails the call and the check. The merge guard refuses the member when the forge lists other issues (see Closing references in the merge design).
 
-`beehave check workflow` reads each `struct(...)` member of a `prs` list with the parser that the run uses, so a wrong field is a problem before the run. The error names the member and the field, for example ``prs[1]: `approved` of a member of `prs` must be a bool, not string``, and is the same text that the run gives. The check reads the first wrong field of a member. A member that is a literal but not a struct, such as `1`, a dict or a list, is refused. A list, a dict or a struct that a field or a member holds counts as that type, whatever it contains. A value that only the run knows, such as a variable or a call, is left to the run: the check skips that field or that member and still reads the other fields. A file that defines its own `struct` is not read as the builtin.
+`kept` and `closing` are optional lists of issues as text, `#N` or `owner/repo#N`, on each member. `hold_scope` sets them. `kept` holds the issues that the owner allowed: a closing keyword in a commit message of the member may name them. The merge takes a kept issue only when a recorded answer to `wait(name = "keep-<item>")` of this run, or of an earlier run of the run item, keeps it in the form that `keep_issues` reads. A kept issue with no such answer fails the call before any gate or merge, and the error names the item and the issue. `closing` holds the closing issues that the scope check read. The merge refuses the member when the forge lists another set at the merge. A member that leaves `closing` out pins no set. A list that holds a value that is not an issue as text fails the call and the check.
 
-It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`, `note`, `unproven`, `moved`, `host_loss` and `host_losses`.
+`own_draft` is an optional int of each member: the number of the draft that the run opened for it. The pull request of a member stays a draft until the merge marks it ready, and the guards of the merge run before that step. The draft guard passes only when the pull request has the number `own_draft`, and the ready step then marks it ready after the guards, as it does for any draft. A member that leaves it out, or a draft with another number, is refused as before. `merge` has no `allow_ready` of its own. The value follows the same rule as `own_draft` of `preflight`: the check and the run refuse zero, a negative number and any other type, and the error names the member. `hand_off` reads no `own_draft`: the call marks each pull request ready itself.
 
+`beehave check workflow` reads each `struct(...)` member of a `members` list, and of the `prs` list of `hand_off`, with the parser that the run uses, so a wrong field is a problem before the run. The error names the member and the field, for example ``members[1]: `approved` of a member of `prs` must be a bool, not string``, and is the same text that the run gives. The check reads the first wrong field of a member. A member that is a literal but not a struct, such as `1`, a dict or a list, is refused. A list, a dict or a struct that a field or a member holds counts as that type, whatever it contains. A value that only the run knows, such as a variable or a call, is left to the run: the check skips that field or that member and still reads the other fields. A file that defines its own `struct` is not read as the builtin.
+
+It returns `merged`, `rejected`, `deferred`, `rest`, `moved`, `reason` and `tip`.
+
+- `merged` lists the items that landed, in order.
 - Each entry of `rejected` and `deferred` has `item` and `reason`. For a member that a merge guard refused, the reason is every line of that refusal, one per line. No line of it matches a pattern of `forbid_text`, with each line tested as the posting steps test it, so a step can post it with the same `forbid_text`. This holds only for patterns that do not match the words of beehave itself, such as "left out".
-- Each entry of `unproven` has `item` and `reason`. An item of `merged` that `unproven` names has not landed.
-- `findings` holds one line for each finding. `note` says why no read ran (see below).
-- `host_loss` lists one record for each lost gate job of the call, in the shape of the `gate` record, with `kind` `batch_gate` and the union commit in `head_or_commit`. It is an empty list when the call lost nothing.
-- `host_losses` is the count of the host losses in the item tree that the last record of the call read. It is 0 when the call lost nothing.
+- `rest` lists the members after a refused member. They did not merge, and the caller gates them again.
+- `moved` is true when the call merged nothing because the members on the base tip do not make the tree of the gate. `reason` then says which tree the members make and which tree the gate ran on.
+- `tip` is `struct(commit, tree)` of the base tip after the call.
 - `name` is required, and each call of a run needs its own.
-- The union is gated in the worktree of the item that runs the workflow.
-- Each member merges through the guards of the merge package, pinned to its head and to the tree of its prefix.
-- Git 2.38 or newer is the minimum on the gate host.
-- For each member, the step `batch:<name>.intent#<item>` records the pull request as OPEN before the step `batch:<name>.merge#<item>` merges it. A resume after a crash therefore counts a merge that the forge already made as done.
+
+With `gate`, the call lands the union that the gate saw, and nothing else:
+
+- `gate` is the result of a `gate` call of this run. The engine never trusts the value that the workflow passes. It reads the record of that gate step. A made-up value, a gate of another run, a gate call after the merge, and a gate with a step that is not a pass post no status and merge nothing, and the call fails with the reason.
+- The step `merge:<name>.plan` reads the base tip and folds the member heads onto it in the given order with git, without a working copy. A conflict, or a fold whose last tree is not the tree of the gate, merges nothing and posts nothing, and the call returns `moved`.
+- For each member in order, the step `merge:<name>.intent#<item>` reads the tip and records the pull request as OPEN before the merge. If the tip does not have the tree of the fold before that member, the call stops: the member and the rest are deferred with the reason "the base moved while the batch ran; run the batch again". A resume after a crash counts a merge that the forge already made as done.
+- Each member merges through the guards of the merge package, pinned to its head and to the tree of its prefix. Right before the merge call, the engine posts `beehave/gate` and, for an approved member, `beehave/review` on the head of the member.
+- A refused member is rejected and stops the loop; the members after it come back in `rest`. A transient refusal, or a mergeable state that is still unknown after three reads (`merge:<name>.poll#<item>`), defers the member and the rest. A tree proof that stops ends the run with an error.
+- The step `merge:<name>.tip` records the tip after the call.
+
+With no `gate`, each member merges in order with no status and no tree proof, and a refusal stops the loop as above.
+
+#### The batch library
+
+`load("@beehave//batch.star", "batch_merge", "issue_audit")` loads the batch of a round from the library `lib/batch.star`. A project that wants another policy copies the file into its workflow folder and loads it with `load("//batch.star", "batch_merge")`.
+
+`batch_merge(name, prs, base, repo, hold = "", own = {}, forbid_text = [], gate_run = [], integration = 0)` lands the pull requests of `prs` with one gate run for the whole set:
+
+- It reads the base tip with `base_tip`, which makes the worktree of the item. Every git command of the batch runs in that worktree. A member whose head is not in the repository is rejected.
+- It folds the members in item order onto the tip with `git merge-tree` and `git commit-tree`, run by `command`. A member that conflicts with the tip alone is rejected as `conflict`. A member that conflicts only with an earlier member is held, and gated again once on the new tip; a second conflict rejects it and names the earlier member.
+- It checks the union out and gates it with `gate`: the project gate, or the program of `gate_run`. The gate must report the tree of the union. A green union lands with one `merge` call. A red union splits in halves, and a single red member is rejected as `red`, or `red on top of the merged members` after an earlier part landed. A union with the tree of an earlier red union is not gated again.
+- A gate with no result about the code ends the call with "the gate gave no result", and blames no member. A lost gate job with a proof gates the same union again, and the second loss in one call ends the call with the host and both proofs.
+- When the base moves during the batch, the rest is deferred with the reason "the base moved while the batch ran; run the batch again".
+- After the last merge, `landing_proof` checks each merged member once, and `issue_audit` reads the issues.
+
+It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`, `note`, `unproven`, `moved`, `host_loss` and `host_losses`. `gates` counts the gate runs. Each entry of `unproven` has `item` and `reason`; an item of `merged` that `unproven` names has not landed. `host_loss` lists one `gate` record for each lost gate job, and `host_losses` is the count of the host losses that the last record read. `moved` is an empty list.
+
+`issue_audit(landed, integration = 0, name = "")` reads the issue of each landed item with `issue_state`, and returns `findings` and `note`:
+
+- An issue that is not closed is a finding. A read that fails is the finding "cannot read issue #N: <error>", never a pass, and the audit reads the next issue.
+- The id of an item of the GitHub tracker is the number of its issue. An id that is not a plain number is a finding, and its issue is not read.
+- If `integration` is not 0, it also reads the closing references of that pull request with `pr_closing`. An issue that it closes and no landed item names is a finding. A read that fails is the finding "cannot read the closing references of pull request #N: <error>", and the audit goes on.
+- A tracker with no issue numbers gives no findings and the note "issue states: the tracker of the project has no issue numbers, so no read ran." The first issue read tells it. If no landed id is a plain number, `facts()` tells it, and the ids are no findings. A batch that landed nothing reads no issue and gives the note "issue states: no member landed, so no read ran."
+- The audit never closes or reopens an issue. A finding does not fail the call, because the batch has landed. The workflow reads `findings` and decides what to tell the owner.
 
 #### `hand_off`
 
-`hand_off = True` hands the landing to the owner. The call lands nothing, runs no gate and takes no `hold`, `own`, `forbid_text`, `gate_run` or `integration`: a call with one of them fails and names it. `beehave check workflow` refuses the same call when `hand_off` is the literal `True`.
+`hand_off(prs, base, repo, name)` hands the landing to the owner. The call lands nothing, runs no gate and takes no `hold`, `own`, `forbid_text`, `gate_run` or `integration`. `merge` takes no `hand_off` keyword.
 
 - For each member, the step `batch:<name>.ready#<item>` reads the pull request. A draft at the head of the member is marked ready. A resume replays the step and marks nothing ready again.
 - The call does not mark a draft ready while a review asks for changes, the pull request conflicts with its base branch, or a review thread is unresolved. The member goes into `rejected` with the reasons, and the draft stays a draft. A read of the reviews or the threads that fails fails the call.
@@ -475,22 +675,9 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 - A call that ends by a cancel of the run, or by an error, marks each member that has not ended a draft again, when it is open and ready for review. Each member has a limit of 30 seconds of its own. A resume of a canceled run goes on with the watch, finds the draft and ends the member as above. If a read or a draft call fails, the owner gets a notice that tells them to convert the pull request by hand, and the notice has its own limit of 30 seconds. A stop of the engine does not draft a pull request, because the run resumes.
 - The call reads each pull request through the standing review of `internal/review`, so the reasons use the same words as the ready read.
 
-#### A lost batch gate job
+#### The step field of `gate`
 
-The project gate of the union is two steps in its gate run: `batch_gate:job` checks out the union commit and records the tree and the host job, then `batch_gate` waits for that job. A restart during the wait waits on the recorded job and submits none. A `gate_run` program has no host job and stays one step, `batch_gate`.
-
-- When the wait ends as lost, the gate run waits for a proof as the `gate` call does, and a cancel of the run during that wait reads the proof once more. See "The wait for a proof" in [hosts.md](hosts.md). With no proof at `host.lost_job_wait`, the item run asks the owner.
-- After a proof, the item run records the loss as the step `batch:<name>.gate#<n>/host-loss`, then gates the same commit once more. The rerun records its own loss as `batch:<name>.gate#<n>@2/host-loss`. The batch counts one gate in `gates`.
-- A second proven loss in one call fails the call with "the gate gave no result". The count is over every gate of the call: the rerun of the same commit, or the gate of a part after a split. A restart keeps it, because each loss is a recorded step. The error names the host and both proofs. No member is rejected or deferred. The call returns no result, so `beehave status <run id> --json` holds the count.
-
-#### Checks after the batch lands
-
-- One recorded step `batch:<name>.prove` checks each merged member.
-- One recorded step `batch:<name>.issues` reads the issue of each landed item, for a project of the GitHub tracker whose item ids are issue numbers. An issue that is not closed is a finding.
-- If `integration` names a pull request that is MERGED, the step also reads its closing references. An issue that it closes and no landed item names is a finding.
-- A read that fails is a finding, never a pass.
-- `note` says why no read ran: a base that is not the default branch with no `integration`, an integration pull request that is not merged, or a tracker with no issue numbers.
-- The read never closes or reopens an issue. A finding does not fail the call, because the batch has landed and the merge cannot be undone. The workflow reads `findings` and decides what to tell the owner.
+A `gate` result has the field `step`. The gate module is at version 7 for it, so a run that recorded a gate before it does not replay on the new build. It holds the name of the step that recorded the result, such as `gate:check#1`, the name that `beehave status` shows. A later call reads it to name the gate that a result came from.
 
 #### The host loss fields
 
@@ -520,7 +707,11 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+`spawn(items, entry="main", base="", retries=0, on_open="join", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+
+- With `on_open="replace"`, `spawn` cancels the open run of an item with its children, as `beehave cancel` does, and starts the next attempt. The parent of the canceled run reads its end at once. `spawn` still refuses a failed run, an open run of another project, and an item that a run above the call executes. The default `on_open="join"` refuses an open run, as below. The cancel is part of the recorded plan of the call, so a replay cancels nothing again.
+
+- `spawn` takes no `debounce`: the DBOS debouncer has no priority and no queue for each call, and a spawned child has both. The window is an option of `beehave run --debounce`.
 
 - With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
 - The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
@@ -537,7 +728,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 `spawn` refuses:
 
-- An item that has an open run.
+- An item that has an open run, unless the call has `on_open="replace"`.
 - An item whose last attempt failed.
 - The parent itself.
 - An item that is in `items` twice.
@@ -637,7 +828,7 @@ The retry route for a parent that failed in a `gather` is `beehave resume <paren
 
 1. Finds the step that started the failed child.
 2. Takes a fresh claim for that child, and reopens it on the items queue of its depth. A child at depth 2 or 3 reopens in the same way, from the failed run at its own level.
-3. Forks the parent from that step.
+3. Rewinds the parent to that step.
 
 The resume also reopens each sibling that the raise canceled while it was open, so that no child stays canceled and fails the next `gather`.
 
@@ -686,7 +877,9 @@ A send to a child goes to its latest attempt: the run that `gather` started agai
 
 ### `command`
 
-A `command` step has five settings besides `run`, `timeout`, `host` and `name`: `max_new_processes`, `slots`, `stdin`, `env` and `stop_on_rc`.
+A `command` step has six settings besides `run`, `timeout`, `host` and `name`: `max_new_processes`, `slots`, `stdin`, `env`, `stop_on_rc` and `sandbox`.
+
+The `env` setting of `command` and `write` refuses the name `SSH_AUTH_SOCK` as a key. The check refuses a literal key. The call refuses every other form: a key that the workflow builds, a dict held in a variable and a `**` spread. This refusal is separate from the `env` builtin, which refuses to read the variable.
 
 A `command` can run twice after a crash that cuts the step before its record. Put a program that changes a system outside the run in `write`. A `command` with `host` or `slots` can also submit its host job twice today. A later change fixes this.
 
@@ -697,7 +890,8 @@ A `command` can run twice after a crash that cuts the step before its record. Pu
 - A step with `slots` needs `host`. A step with no `host` is refused.
 - The `host` block of the project lists the class and its count in `slots`. The engine runs at most that many jobs of the class on one host at once. A job that finds no free slot waits in a durable queue and starts when a job of its class ends.
 - A class that the `host` block does not list is refused when the step runs. The refusal names the class and the host.
-- A job of another class, and a job with no `slots`, never waits for the class.
+- A job of another class never waits for the class.
+- A step with `host` and no `slots` runs in the class `default`. The `host` block sets its count in `slots = {"default": 2}`, and it is 1 when the block names none. A step with `retries` takes no slot.
 - `beehave check workflow` refuses a literal `slots` that is blank, and a literal `slots` with no `host`.
 
 #### `max_new_processes`
@@ -768,17 +962,29 @@ The returned struct also holds `stderr`, the second output stream of the program
 - `agent` takes no `retries`.
 - `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero or is above 10 minutes, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
 
+#### `sandbox`
+
+`sandbox` runs the program of a `command` step under the sandbox enforcer that the gate uses (Seatbelt on macOS, Landlock on Linux). Use it for a program that runs code an agent wrote, such as `make` or a test run.
+
+- The value is `sandbox(network = [...])` or `None`. A step that leaves the keyword out, or gives `None`, runs with no sandbox. The `sandbox` key of the project does not apply to a `command` step.
+- The plan is the plan of the program gate (see [the program gate](sandbox.md#the-program-gate)). The program reads the system folders, the work folder, the shared git folders and the `sandbox_read` paths. It writes a disposable copy of the work folder, its own temporary folder and the `gate_allow_write` paths. It cannot read the home folder of the owner, so it cannot read the `gh` login, the keychain or `~/.ssh`.
+- The `network` list replaces `gate_network` of the project for this step. The default is no network.
+- Git reads the `user.name` and `user.email` of the engine, from variables of the step, and no config file of the owner. Go and `bd` start and answer: `go env GOCACHE`, `git config user.name` and `bd --version` print their values. `go env GOCACHE` computes the default path from `HOME` and reads no file in the cache. A program that compiles needs the Go folders (the build cache, the module cache and `GOPATH`): the project lists them in `sandbox_read` and `gate_allow_write`, the same two keys that give them to the gate.
+- The step cannot use `sandbox` together with `host`, `stdin` or `max_new_processes`. A sandboxed program gets no input and no process cap.
+- The step is refused, and the program does not run, when the folder of the item is not a clone or a worktree of beehave, or when no enforcer can run here. The output then starts with "beehave sandbox:" and the code is 1.
+- `beehave check workflow` refuses a literal `sandbox` that is not `sandbox(...)` or `None`, and a literal pair with `host`, `stdin` or `max_new_processes`. It prints a note for `sandbox = None`.
+
 #### The environment of the program
 
-The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
+The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and no `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
 
-A `gate` step keeps the environment of the process.
+A `gate` step keeps the environment of the process, except `SSH_AUTH_SOCK`. A gate that runs in the sandbox of the project gets no `SSH_AUTH_SOCK`, and the sandbox refuses a `sandbox_read` or `gate_allow_write` path that holds the socket of the engine. A gate that runs with no sandbox keeps the variable, because it runs as the owner and the socket is a file that it can find. That is a limit. A gate on a build host reaches the host over the ssh of the engine, which the step does not see.
 
 ### `write`
 
 `write(run, read_back, undo, stdin, env, timeout, name)` is a `command` step for a program that changes a system outside the run.
 
-- It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc` or `max_new_processes`.
+- It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc`, `max_new_processes` or `sandbox`.
 - The result has the fields `stdout`, `stderr`, `rc`, `attempts`, `key` and `skipped`.
 - It takes `retries` and `backoff` with the rules of `command`, and no `failure`. Each try runs the read-back first, so a try after a write that landed is skipped. All the tries have the same key.
 - A write runs on this machine only.
@@ -866,6 +1072,30 @@ It checks that:
 - A helper function that receives the item is not tracked, and neither is a function in a loaded file.
 - A missing prompt file, or a field that the item lacks, fails the step when it runs, with the file, the line and the column of the call.
 
+#### The dry run and the fixture
+
+`beehave check workflow --dry-run` runs the file for one item over fakes. Every agent call ends as done, every review approves, and every gate passes.
+
+A dry run takes no real time at a `sleep`, a `wait` or a `recv`. A call with no entry in the fixture times out at once, with `timed_out` true. A `wait` with no `timeout` and no entry hangs for ever in a real run, so a dry run refuses it and says that it has no deadline.
+
+`--fixture <file.json>` scripts the result of each agent call, gate call, wait call and recv call. It needs `--dry-run`; without it the command exits 2.
+
+```json
+{
+  "agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}],
+  "agent:fix": {},
+  "gate:check": [{"passed": false}, {"passed": true}],
+  "wait:ask": {"answer": "go"},
+  "recv:got": {"value": "x"}
+}
+```
+
+- A key is the builtin (`agent`, `gate`, `wait` or `recv`) for a call with no name, or `agent:<name>`, `gate:<name>`, `wait:<name>` or `recv:<name>` for the call with that name. Any other key is refused when the file loads, and so is `merge`: the gate of a merge is not scripted and always passes.
+- A key holds a list with one result for each call of that key, in order, or one object that every call of that key takes.
+- An agent result is `{"outputs": {"<output>": "<text>"}}`. A gate result is `{"passed": <bool>}`; a gate that does not pass is red with one failed step. A result with no `passed` field passes. A wait result is `{"answer": "<text>", "timed_out": <bool>}`, and a recv result is `{"value": <JSON>, "timed_out": <bool>}`; `timed_out` is false unless the result sets it. An output that the result does not name keeps its base value. An output that the call does not declare fails the run and names the file, the key, the call number and the declared outputs.
+- With a fixture, an agent call or a gate call whose key the file does not list fails the run and names the keys of the file. A wait or a recv that the file does not list takes the default above. A call past the end of a list fails the run. A result that no call used fails the run at its end, with the text `never made`.
+- An unknown key, an unknown field, a value of the wrong type and a name that an object of the file holds twice exit 2 and name the file. The message for a call with no entry says to add its key to the file.
+
 ### Examples
 
 #### `examples/remediation/`
@@ -926,10 +1156,10 @@ A project with another mutation tool sets another command. This repository uses 
 - A report that fails one of these checks fails the run: its paths or its changed lines do not match the diff.
 - A run that applied no mutant fails in every other case: an empty report, or mutants on changed lines that are all not covered.
 - Gremlins reports LIVED for a test run that exits 0, for a run that a signal ends, and for every exit code other than 1 and 2. So the script sets `GOFLAGS` to run each mutant test binary through `scripts/mutation-exec.sh`, which records the exit code and the first failing line of the run. The `-count=1` flag in `GOFLAGS` makes each mutant run its tests, so that no cached pass leaves a mutant with no record. The script keeps the `GOFLAGS` value that `go env GOFLAGS` gives and adds the two flags.
-- Gremlins writes each mutant with `go/printer`, which reformats the file. So `scripts/mutation-exec.sh` formats the original file and the mutated copy with `gofmt`, and records the line and the column of the first byte that differs. It reads the mutant before the test binary starts, so a record of a run that gremlins stopped on a timeout still names its own mutant. The step pairs a lived mutant with the records at its file, line and column. A boundary mutant changes the byte after its token, so its column is one more. A record of a timed out mutant is not read. The step needs `gofmt` and `go` on the path.
+- Gremlins writes each mutant with `go/printer`, which reformats the file. So `scripts/mutation-exec.sh` formats the original file and the mutated copy with `gofmt`, and records the line, the column of the first changed byte that is not white space, and the column of the byte before it. It reads the mutant before the test binary starts, so a record of a run that gremlins stopped on a timeout still names its own mutant. Gremlins gives the test run no mutator, so the step pairs a lived mutant with the records at its file, line and column. A boundary mutant adds or removes the "=" after its token, so it pairs by the byte before the change. Mutators that share one place share its records: each killed mutant takes one record with exit code 1 or 2, and a lived mutant reads the rest. If those records hold exit code 0 and another code, the run error says that the records are ambiguous, and names no failing test. A record of a timed out mutant is not read. The step needs `gofmt` and `go` on the path.
 - A run with lived mutants fails. For each lived mutant whose test run exited 0, at most 50, it prints one `finding: ` line and one marker line, `mutation-pr: lived <file>:<line> <mutator>`. A summary line follows, with the full count and the number of finding lines printed.
 - A lived mutant whose test run did not exit 0, or left no record, is an error of the run and not a weak test. It prints `mutation-pr: run error <file>:<line> <mutator>: <reason>`, at most 50, and no finding. The counts line still counts the mutant as lived. The run fails.
-- A run that ends with no report, because it exceeds `MUTATION_TIMEOUT` or because gremlins fails, prints each recorded test run as `mutation-pr: test run of <file>:<line>:<column> exited with <code>: <first failing line>`.
+- A run that ends with no report, because it exceeds `MUTATION_TIMEOUT` or because gremlins fails, prints each recorded test run as `mutation-pr: test run of <file>:<line>:<column> exited with <code>: <first failing line>`. When the run exceeds `MUTATION_TIMEOUT`, each line ends with `Gremlins wrote <status> <type> for this place.`, taken from the output of gremlins, or `Gremlins wrote no verdict for this place.`
 - The end marker `mutation-pr: end count=N printed=P` is the last `mutation-pr:` line of each run that prints a result line: "not applicable", "no candidate" or the counts line. N is the number of lived mutants whose test run exited 0, and P is the number of marker lines. Both are 0 when no mutant lived. A run that stops before its result line prints no end marker.
 - The script gives the git of gremlins the settings `diff.noprefix=false` and `diff.mnemonicPrefix=false`, so a repository that sets `diff.noprefix` gets the same result.
 - Gremlins has no package filter, so the script starts it once for each folder that holds a changed non-test Go file. A folder below another changed folder is dropped, a folder that the diff deleted is dropped, and a changed file in the module root gives one start on the module root. The coverage run and the mutants of a start cover that folder only. A start on a folder runs there with `diff.relative=true`, and the script prefixes the file names of its report with the folder, so the checks read paths from the module root. A diff with no folder left prints `no candidate`.

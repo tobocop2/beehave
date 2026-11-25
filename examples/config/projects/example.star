@@ -18,7 +18,8 @@ project(
     # pr_label = "made-by-beehave",  # optional; the label of every item pull request that the engine opens. The default is "made-by-beehave". An empty value is refused. The forge creates the label when the repository has none.
     # max_spawn_depth = 3,  # optional; the deepest level below the run a user started at which spawn may start a run. The default is 3. Set 1 to let a run spawn but stop its children from spawning. A value below 1 is refused.
     # pin_file =".tool-versions",  # optional; a relative path with no `..`. beehave reads the file at origin/<base_branch>, not in the work tree of the lane, one tool and its exact version on each line ("1.27.3", not "1.27"). Before a local gate runs, beehave asks each tool for its version by name, in the directory and the environment of the gate. A gate that sets its own PATH or runs the tool through a wrapper is not checked. A tool at another version, or one that gives no version, voids the gate: every step is unknown and the gate command does not run. A gate on a build host runs the same check on the host
-    # sandbox = "on",  # optional; "on" or "off". "on" runs the shell of each agent step that sets no `sandbox` in the Claude Code sandbox: no network, and no read outside the work folder. A project that leaves it out runs with no sandbox. A step sets `sandbox = sandbox(network = [...])` or `sandbox = None`
+    # gate_program = ["Makefile", "scripts/"],  # optional; the repository paths that hold the program of the gate, with no `..` and no glob. A directory ends in `/`. A path that the base branch lacks is legal and means the path must stay absent. A project with no `source` and no `forge` refuses it. The config reads the key; the gate does not use it yet
+    # sandbox = "on",  # optional; "on" or "off". "on" runs the shell of each agent step that sets no `sandbox` in the Claude Code sandbox: no network, and no read outside the work folder. A project that leaves it out gets "on". "off" runs those steps with no sandbox, for a project whose steps cannot run in it, such as one with an OpenCode step or one on Linux with no bwrap and socat. A step sets `sandbox = sandbox(network = [...])` to name the hosts that its shell reaches
     # sandbox_read = ["~/sdk"],         # optional; extra paths that a sandboxed shell can read. Absolute, or starting with ~/
     # sandbox_deny = ["~/.config/vault"],  # optional; extra credential paths, added to the built-in list
     # gate_network = ["proxy.golang.org"],  # optional; domains that the gate command can reach when the project has `sandbox = "on"` and the gate runs on this machine. The default is no network.
@@ -77,15 +78,20 @@ project(
     #     disk_floor_gb = 50,      # a host with less free space gets no new job; required
     #     disk_wait_minutes = 10,  # a job under the floor waits this many minutes for space, then is refused (default 0: refused at once)
     #     slots = {"mutation": 1}, # at most this many host jobs of a class at once, for a command call with slots = "<class>" (default: no class)
+    #     gate_slots = 1,          # at most this many gates build on the host at once, from 1 up (default 1); projects that share a host give the same value
     #     bank_budget = "20s",     # the bank scan gives each repository this long for all its git calls; a repository that is slower counts as unbanked (default "20s")
     #     lost_job_wait = "60m",   # how long a job that lost its link waits for the proof that it no longer runs; from "1m" to "24h" (default "60m")
     #     lost_after = "5m",       # how long a job gets no answer to a read before the wait ends as lost; above zero (default "5m")
     #     stop_limit = "5m",       # how long a job may take to end after a cancel; above zero (default "5m")
     #     private_remote = "git@example.com:your-org/your-repo-private.git",  # where beehave pushes unbanked work before the host goes down
+    #     setup_command = "make setup",  # runs once in a clone of the project when the cluster is created; skypilot only (default: no set-up)
     #     skypilot = skypilot(
     #         cloud = "gcp",       # empty leaves the choice to SkyPilot
     #         region = "us-central1",
-    #         instance_type = "n2-standard-8",
+    #         instance_type = "n2-standard-8",   # one size for every queue; or give instance_sizes, never both
+    #         disk_size_gb = 100,  # boot disk size, 10 to 65536 (default: the size SkyPilot picks)
+    #         spot = True,         # a spot instance; True or False (default False). A spot cluster has no max_run setting; the queue still ends each job at max_run
+    #         # instance_sizes = "3:n2-standard-4,n2-standard-16",  # up to 3 waiting gates: the first type; more: the last type. The first gate starts the host
     #     ),
     # ),
     # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the block of any other provider. beehave never deletes the machine: host_teardown banks the work and leaves it up.
@@ -94,6 +100,8 @@ project(
     # host = host(
     #     provider = "ssh",
     #     disk_floor_gb = 50,
+    #     credentials = "none",         # optional, for a host that runs code you do not trust: it gets no SSH agent, key, X display, Kerberos credential or secret variable of yours. check config refuses it when ssh -G shows one, or a jump host. Only ssh and slurm accept it: skypilot refuses it, because sky launch can forward your agent and copies your cloud credentials to the cluster
+
     #     ssh = ssh(
     #         address = "10.0.0.5",         # the name or IP to connect to; the default is the ssh alias in build_host
     #         user = "ci",                  # the login user; the default is your ssh config

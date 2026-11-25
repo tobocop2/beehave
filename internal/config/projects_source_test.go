@@ -27,6 +27,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
 		Name: "p", Tracker: "local", Claims: "local", Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
+		Sandbox: model.SandboxOn,
 	}, project.Project)
 }
 
@@ -77,6 +78,22 @@ func TestLoadFolder_ASourceThatIsAUrlOrAPathWithALocalHostIsKept(t *testing.T) {
 	project, problems := loadProjectText(t, call(`source = "https://example.com/o/n.git", `+tail+`, build_host = "gpu", host = `+hostCall("")))
 	require.Empty(t, problems)
 	require.Equal(t, "gpu", project.BuildHost)
+}
+
+func TestLoadFolder_TheSchemeAndTheHostOfASourceAreWrittenInLowerCaseAndThePathIsKept(t *testing.T) {
+	t.Parallel()
+
+	for source, want := range map[string]string{
+		"HTTPS://GitHub.COM/O/R.git":       "https://github.com/O/R.git",
+		"https://Example.COM:8443/O/R?x=Y": "https://example.com:8443/O/R?x=Y",
+		"ssh://Git@Example.COM/O/R.git":    "ssh://Git@example.com/O/R.git",
+		"https://example.com":              "https://example.com",
+		"Git@Example.COM:O/R.git":          "Git@Example.COM:O/R.git",
+	} {
+		project, problems := loadProjectText(t, call(`source = "`+source+`", `+tail))
+		require.Empty(t, problems, source)
+		require.Equal(t, want, project.Source, source)
+	}
 }
 
 func TestLoadFolder_ALeadingTildeOfASourceExpands(t *testing.T) {

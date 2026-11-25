@@ -11,7 +11,6 @@ import (
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
-	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
 )
 
 const ledgerSyntax = "ledger add <key> <lane> <kind> --state <folder> [--mechanism <token>] [--model <token>] [--round <n>] [--words <text>] [--body-file <path> | --pr <number>] | ledger count <key> <kinds> --state <folder> | ledger rounds <key> <mechanism> --state <folder> | ledger prior <key> <lane> --state <folder> | ledger closes <key> --state <folder>"
@@ -227,7 +226,7 @@ func (f ledgerFlags) closingReader(ctx context.Context, deps Deps) (read func() 
 	return read, err
 }
 
-// pullClosing reads the issues a pull request of the origin repository closes, with the read that the scope check uses.
+// pullClosing reads the issues a pull request of the origin repository closes.
 func pullClosing(ctx context.Context, deps Deps, pr int) ([]string, error) {
 	repo, err := originRepo(ctx, deps)
 	if err != nil {
@@ -239,7 +238,7 @@ func pullClosing(ctx context.Context, deps Deps, pr int) ([]string, error) {
 		return nil, err
 	}
 
-	numbers, err := scope.ReaderOf(forge).ClosingIssues(ctx, pr)
+	numbers, err := closingIssues(ctx, forge, pr)
 
 	return texts(numbers), err
 }

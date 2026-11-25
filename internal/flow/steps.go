@@ -79,6 +79,8 @@ type StepLine struct {
 	NewTests []string `json:"new_tests,omitempty"`
 	// Revert is the verdict of the revert run of a candidate gate: pass or fail. It is empty for any other step.
 	Revert model.RevertVerdict `json:"revert,omitempty"`
+	// ScopeOff is set on the line of the call that recorded a pr_closing step of a project with no forge.
+	ScopeOff bool `json:"scope_off,omitempty"`
 	// OutputUnreadable is set when a recorded output of the step did not decode into the type the engine wrote. The other fields are then incomplete.
 	OutputUnreadable bool `json:"output_unreadable,omitempty"`
 }
@@ -130,12 +132,12 @@ func (c *Client) runSteps(id string) (RunSteps, error) {
 
 // addHostLosses counts the host losses of the item tree of the run id into the progress, from the root of the tree, with the walk of the engine (walkTree).
 func (c *Client) addHostLosses(id string, progress *RunProgress) error {
-	root, err := rootRun(c.flow, id)
+	root, err := rootRun(c.store(), id)
 	if err != nil {
 		return err
 	}
 
-	progress.HostLosses, err = hostLossesBelow(c.flow, root)
+	progress.HostLosses, err = hostLossesBelow(c.store(), root)
 
 	return err
 }
@@ -154,12 +156,12 @@ func (c *Client) takeDeadline(row dbos.WorkflowStatus, records []dbos.StepInfo, 
 
 // runRow reads the row of one run, with its error. The error is kept with the output of the row.
 func (c *Client) runRow(id string) (dbos.WorkflowStatus, error) {
-	return runRowOf(c.flow, id)
+	return runRowOf(c.store(), id)
 }
 
 // runRowOf reads the row of one run from a client or from the engine.
-func runRowOf(c dbos.Client, id string) (dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(c, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
+func runRowOf(c storeView, id string) (dbos.WorkflowStatus, error) {
+	rows, err := c.List(dbos.WithFilterWorkflowIDs(id), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return dbos.WorkflowStatus{}, fmt.Errorf("read the run %s: %w", id, err)
 	}
@@ -212,7 +214,7 @@ const passedLookOutput = "{}"
 
 // outputsOf reads the outputs of workflows by id with outputOf.
 func (c *Client) outputsOf(ids []string) (map[string]any, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
+	rows, err := c.store().List(dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("read the child workflows of a run: %w", err)
 	}
@@ -267,15 +269,15 @@ func (c *Client) runView(id string, state RunState, open bool) ([]dbos.StepInfo,
 		return nil, nil, err
 	}
 
-	lines, err := runLines(c.flow, id, records, state, open, time.Now())
+	lines, err := runLines(c.store(), id, records, state, open, time.Now())
 
 	return records, lines, err
 }
 
 // runLines makes the step lines of a run from its records and adds the cost of each failed agent run from its stream. Every total of a cost reads
 // its lines here. The read of the stream is a snapshot, because a plain read waits until the run ends. The lines come back with an error of the read too.
-func runLines(ctx dbos.Client, id string, records []dbos.StepInfo, state RunState, open bool, now time.Time) ([]StepLine, error) {
-	runs, _, err := dbos.ReadStream[failedRun](ctx, id, failedRunsStream, dbos.WithReadStreamSnapshot())
+func runLines(ctx storeView, id string, records []dbos.StepInfo, state RunState, open bool, now time.Time) ([]StepLine, error) {
+	runs, _, err := dbos.ReadStream[failedRun](ctx.flow, id, failedRunsStream, dbos.WithReadStreamSnapshot())
 	if err != nil {
 		err = fmt.Errorf("read the cost of the failed agent runs of %s: %w", id, err)
 	}
@@ -310,24 +312,31 @@ func errorText(err error) string {
 // stepLines groups the records of a run into lines. The records of one builtin call end with its own record, so the records before it belong to it.
 // A group that has no ending record is the step that the run is in, or the one that failed.
 func stepLines(records []dbos.StepInfo, state RunState, open bool, now time.Time) []StepLine {
-	var (
-		lines   []StepLine
-		pending []dbos.StepInfo
-	)
+	calls, pending := callGroups(records)
+	lines := make([]StepLine, 0, len(calls))
 
+	for _, group := range calls {
+		lines = append(lines, callLine(group, group[len(group)-1].StepName))
+	}
+
+	return append(lines, unfinishedLine(records, pending, state, open, now)...)
+}
+
+// callGroups splits the records of a run into the records of each finished builtin call, in order, and the records of the call that has no ending record yet.
+func callGroups(records []dbos.StepInfo) (calls [][]dbos.StepInfo, pending []dbos.StepInfo) {
 	for _, record := range records {
 		switch {
 		case endsCall(record.StepName):
-			lines = append(lines, callLine(append(pending, record), record.StepName))
+			calls = append(calls, append(pending, record))
 			pending = nil
 		case partOfCall(record.StepName):
 			pending = append(pending, record)
 		default:
-			lines = append(lines, callLine([]dbos.StepInfo{record}, record.StepName))
+			calls = append(calls, []dbos.StepInfo{record})
 		}
 	}
 
-	return append(lines, unfinishedLine(records, pending, state, open, now)...)
+	return calls, pending
 }
 
 // endsCall reports whether the record is the last one of a builtin call: the record of a command or a gate or another builtin, or the read of an agent.
@@ -387,6 +396,8 @@ func (l *StepLine) decode(record dbos.StepInfo) bool {
 		return decodeThen(record.Output, l.fromPhase)
 	case split && builtinOf(base) == builtinAgent:
 		return l.decodeAgentSub(sub, record.Output)
+	case !split && builtinOf(base) == prClosingKind:
+		return decodeThen(record.Output, func(read recorded[closingRead]) { l.ScopeOff = !read.Outputs.Forge })
 	case !split && builtinOf(base) == kindGate:
 		return decodeThen(record.Output, func(gate recorded[GateResult]) { l.fromGate(gate.Outputs) })
 	case !split && builtinOf(base) == builtinCommand:

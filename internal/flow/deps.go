@@ -21,6 +21,9 @@ var errEmptyLogin = errors.New("no agent login for this step: add a runner to ru
 // Forbid lists the kinds of command that the step forbids. The result holds one line in Violations for each Bash call of the run that breaks one.
 // Protect lists the directories of the kind protected-path; a relative one starts at the folder of the step.
 type AgentRequest struct {
+	// Run is the id of the run that queued the step. Call is the name of the agent call, such as agent:fix#1. Both stay the same on a replay.
+	Run         string
+	Call        string
 	Item        string
 	Project     string
 	Login       string
@@ -33,6 +36,8 @@ type AgentRequest struct {
 	Protect     []string
 	// MaxBudget is the most dollars that the run may spend, passed to the budget option of the agent CLI. 0 means the step sets no cap.
 	MaxBudget float64
+	// MaxContextPercent is the share of the context window, in percent, at which the run stops with the stop reason context. 0 means the step sets no limit.
+	MaxContextPercent int
 	// NoEdits starts the agent so that it cannot edit files. Shell commands stay allowed.
 	NoEdits bool
 	// Sandbox is the sandbox the shell of the step runs in, or nil for none.
@@ -124,10 +129,12 @@ type agents interface {
 
 // GateKey names the gate that Run would start for an item: ID is the same for the same tree, gate command, test report, build host and pins.
 // Head and Tree are the commit and tree id of the item. An empty ID means that no earlier pass may stand in for the gate.
+// BaseSHA is the commit of the base branch that the key read. Submit takes it, so the key and the job of one gate name the same base commit.
 type GateKey struct {
-	ID   string
-	Head string
-	Tree string
+	ID      string
+	Head    string
+	Tree    string
+	BaseSHA string
 }
 
 // GateJob is the host job that a gate started: its id and the head that it judges. A gate with no host job has an empty GateJob.
@@ -137,17 +144,24 @@ type GateJob struct {
 	Head string `json:"head,omitempty"`
 	// Plan is what the job runs and the steps that it reports, fixed when the job text was made. Run judges the job by it.
 	Plan gatepkg.Plan `json:"plan"`
+	// Call is the key of the gate call that asked for the job, such as gate:check. The engine sets it only in a dry run, and it is never encoded. It is empty in a real run.
+	Call string `json:"-"`
 }
 
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.
 // Submit starts the host job and returns at once. A base names the base branch of a candidate head: the job then also runs the secret scan and the new-tests check.
 // An empty base is a sync head or a landing gate, and the job runs the gate command only. Key and Submit read the pin file at the pinBase, else at the base, else at the base branch of the project.
+// A baseSHA is the base commit that Key read: Submit uses it and reads no tip. An empty baseSHA makes Submit read the tip itself.
 // A pinBase turns on no candidate check. Run then waits for that job and judges the result; given an empty GateJob it starts the job itself.
 // host is the build host that the run recorded in host_up. An empty host is the default build host of the project.
+// A slot is the limit that the host job takes on the host, shared with every engine that uses it. The zero Slot means no limit.
 type gate interface {
-	Submit(ctx context.Context, project, item, host, base, pinBase string) (GateJob, error)
+	Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error)
 	Run(ctx context.Context, project, item, host string, job GateJob) (GateResult, error)
 	Key(ctx context.Context, project, item, host, base, pinBase string) (GateKey, error)
+	// State reads the worktree of the item with the reader of the project gate: its folder, its head, the tree of that head and whether it has no change
+	// that is not committed. The program of a gate call reads it before and after the program runs. It reads only.
+	State(ctx context.Context, project, item string) (dir string, state gatepkg.State, err error)
 }
 
 // logins picks the agent login for an item of a project and returns its runner name.
@@ -157,6 +171,8 @@ type logins interface {
 	Pick(ctx context.Context, project, item string, busy []string, overCap bool) (string, error)
 	// Reset reads the usage of one login and returns the time when it gets room again, and false when the usage read knows none.
 	Reset(ctx context.Context, project, login string) (time.Time, bool, error)
+	// Headroom reads the usage of every login and says whether each one is known and under both usage caps. It reads only: the controller of an adaptive agents queue calls it at any time after Launch.
+	Headroom(ctx context.Context) bool
 }
 
 // resetter is the error of a pick that found no runner under the usage caps. ResetAt returns the earliest time a runner gets room,
@@ -190,6 +206,7 @@ type beats interface {
 
 // clock sets the intervals the engine waits on. The zero value uses the real ones.
 // Tick replaces the ticker of the status tick: each value received runs one tick.
+// Adapt replaces the ticker of the controller of an adaptive agents queue: each value received runs one step at that time.
 // Poll replaces the interval at which the agents queue looks for work, at which a run looks for the result of a phase,
 // at which a phase looks again for the first trust of its run, and at which a run tries again the first renewal of a claim it did not take.
 // Release replaces the time that the git calls of one worktree release share.
@@ -213,6 +230,7 @@ type clock struct {
 	Overload  time.Duration
 	LostPoll  time.Duration
 	Tick      <-chan time.Time
+	Adapt     <-chan time.Time
 	Poll      time.Duration
 	Release   time.Duration
 	Beat      time.Duration
@@ -227,6 +245,8 @@ type clock struct {
 	Queued    time.Duration
 	Watch     time.Duration
 	Draft     time.Duration
+	// JobStop replaces the longest time that a reopen of a held build job waits for the earlier run of the job to end.
+	JobStop time.Duration
 	// Gone is how long a joining run waits for an engine to come back before it reports that the engine stopped.
 	Gone time.Duration
 }
@@ -297,18 +317,22 @@ type CommandRequest struct {
 	// BuildHost is the build host that the run recorded in host_up. The gate and a call with Host run there. Empty means the default of the project.
 	BuildHost string
 	Timeout   time.Duration
-	// Gate is true for the program of a gate (a gate call with run, or the gate_run of merge). A gate on this machine runs under the sandbox of its project.
+	// Gate is true for the program of a gate call with run. A gate on this machine runs under the sandbox of its project.
 	Gate bool
 	// MaxNewProcesses is the number of tasks that the tree of the command may hold besides the command (on Linux), or the process count of the user at the start plus this number (elsewhere). It is zero for a call that sets no cap.
 	MaxNewProcesses int
 	// SlotClass names the slot class of a call with Host. The host runs at most the count of its host block for the class at once. It is empty for a call that names none.
 	SlotClass string
+	// SlotCount is the count of SlotClass on the host. The engine sets it when it runs the call, and the host job takes a slot of that class and count.
+	SlotCount int
 	// Stdin is the text that the program reads. It is empty when the call sets none.
 	Stdin string
 	// Env is the whole environment of the program as NAME=value pairs. It is nil for a request that keeps the environment of the process.
 	Env []string
 	// TreeStart is the commit that the recorded step made the worktree of a round item at. A worktree that someone removed is made again there. It is empty for any other item.
 	TreeStart string
+	// Sandbox is the sandbox keyword of a command call. A program on this machine with a Sandbox runs under the enforcer of its project, with the network list of the Sandbox. It is nil for a call with no sandbox.
+	Sandbox *model.Sandbox
 }
 
 // CommandOutput is what a program printed and its exit code. A non-zero RC is data, not an error.
@@ -322,6 +346,14 @@ type CommandOutput struct {
 // commands runs the programs of command calls.
 type commands interface {
 	Run(ctx context.Context, request CommandRequest) (CommandOutput, error)
+}
+
+// waitSource ends the sleeps, waits and receives of a run at once and answers each wait and receive. A nil waitSource means each one takes its real time.
+// The dry run is the only build that sets it. label is the name of the call, empty for a call with no name.
+// Wait gives the answer of a wait call, and refuses a wait that has no deadline and no answer. Recv gives the message of a recv call, and whether it timed out.
+type waitSource interface {
+	Wait(label string, deadline bool) (heard, error)
+	Recv(label string) (envelope, bool, error)
 }
 
 // items reads the fields of an item, which are the `item` argument of main in a workflow file.
@@ -352,16 +384,20 @@ type Deps struct {
 	Trees     treeMaker
 	Beats     beats
 	Merge     merger
+	// Rounds serves the builtins that write the forge for a round (round_sync, round_land, round_cut, integration_pull, board_card and pr_take). A nil Rounds means the build cannot run them: a call fails.
+	Rounds rounds
 	// Preflight serves preflight. A nil Preflight means the build cannot run it: a preflight call fails.
 	Preflight preflighter
 	Commands  commands
 	Items     items
-	Writer    writer
+	// Waits replaces the time of a sleep, a wait and a recv. A nil Waits means they take their real time.
+	Waits  waitSource
+	Writer writer
 	// Reader serves item_read. A nil Reader means the tracker of the build cannot read comments or parents: an item_read call fails and says so.
 	Reader reader
 	// Batch serves merge. A nil Batch means the build cannot run it.
 	Batch batchHost
-	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.
+	// Queue serves item_list, pr_list, pr_state and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a call of those builtins fails.
 	Queue queueReader
 	// Others lists the other orchestrators at the start of a run. A nil Others means the build cannot list them: the run lists none.
 	Others orchestrators
@@ -370,8 +406,6 @@ type Deps struct {
 	// Hosts serves host_up and host_teardown. A nil Hosts means the build cannot start or stop a host: both calls fail.
 	// Hosts also reads the proof that a lost gate job can no longer run. With a nil Hosts no proof comes, and the wait for it ends at host.lost_job_wait.
 	Hosts hostKeeper
-	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
-	SandboxDefault func(project string) bool
 	// RefuseGate returns the error of a gate that must not run on this machine, or nil. program is true for a gate that names its own program.
 	// A nil RefuseGate means every gate runs. The engine asks inside a recorded step that comes before the gate key, an earlier pass, any git work or any program
 	// (for merge, the first step of the call), so a replay of a recorded gate returns the record and is never refused.

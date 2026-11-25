@@ -70,6 +70,20 @@ func TestAgentStep_TheCapOfTheStepGoesToTheAgentRequest(t *testing.T) {
 	}
 }
 
+func TestAgentStep_TheRunAndTheCallOfTheStepGoToTheAgentRequest(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(""), "x")
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.Equal(t, "item-"+testItem+"-r1", rig.h.agents.seen()[0].Run)
+	assert.Equal(t, "agent:a#1", rig.h.agents.seen()[0].Call)
+}
+
 func TestAgentStep_ABadStepCapFailsTheStepAndNamesTheKeyword(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +151,7 @@ func TestAgentStep_TheCostOfAFailedRunIsRecordedForTheRunCap(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("x\n"), 0o600))
 
 	engine := rig.h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "ended as exited (exit 3)", "a failed run still fails the step with its own error")
 

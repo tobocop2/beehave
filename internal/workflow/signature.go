@@ -51,10 +51,16 @@ type Param struct {
 }
 
 // StatusValues lists the values of the status argument of an item_status call.
-func StatusValues() []string { return []string{"open", "closed", "hold"} }
+func StatusValues() []string { return []string{"open", "closed", holdKeyword} }
 
 // ofKeyword is the keyword of item_read that names the item to read.
 const ofKeyword = "of"
+
+// itemKeyword names the item whose pull requests pr_history reads. It is the item of the run when the call leaves it out.
+const itemKeyword = "item"
+
+// ItemsKeyword is the keyword of a call that takes a list of item ids.
+const ItemsKeyword = "items"
 
 // ItemTargets lists the values of the of argument of an item_read call: the item of the run, or its parent.
 func ItemTargets() []string { return []string{"self", "parent"} }
@@ -243,10 +249,10 @@ func triesRule(v starlark.Value) error {
 	return OutputTries(tries)
 }
 
-func ownDraftRule(v starlark.Value) error {
-	_, err := OwnDraft(v)
+func contextRule(v starlark.Value) error {
+	percent, _ := starlark.AsInt32(v) //nolint:errcheck // the unpack check has refused a value that the destination cannot take
 
-	return err
+	return ContextPercent(percent)
 }
 
 func ownRule(v starlark.Value) error {
@@ -257,6 +263,12 @@ func ownRule(v starlark.Value) error {
 
 func prsRule(v starlark.Value) error {
 	_, err := PullRequests(v)
+
+	return err
+}
+
+func membersRule(v starlark.Value) error {
+	_, err := Members(v)
 
 	return err
 }
@@ -298,6 +310,7 @@ func allowRule(v starlark.Value) error {
 const (
 	pathsOutsideName      = "paths_outside"
 	closingReferencesName = "closing_references"
+	keepIssuesName        = "keep_issues"
 	allowWord             = "allow"
 )
 
@@ -316,6 +329,7 @@ func signatures() map[string][]Param {
 	maps.Copy(all, readSignatures())
 	maps.Copy(all, inboxSignatures())
 	maps.Copy(all, streamSignatures())
+	maps.Copy(all, roundSignatures())
 
 	return all
 }
@@ -328,7 +342,7 @@ func agentParams() []Param {
 		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), opt(LabelKeyword, KindText), ruled("timeout", KindText, durationRule("timeout")),
-		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), ruled("max_context_percent", KindInt, contextRule), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 		ruled(dataKeyword, KindDict, dataRule), ruled("skill", KindText, skillRule),
 	}
 }
@@ -343,8 +357,8 @@ const dataKeyword = "data"
 func commandParams() []Param {
 	return []Param{
 		runParam(),
-		opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
-		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(nameKeyword, KindText),
+		opt("host", KindText), opt("stdin", KindText), ruled(envName, KindDict, envRule),
+		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
 	}
 }
@@ -352,7 +366,7 @@ func commandParams() []Param {
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
 func writeParams() []Param {
 	return []Param{
-		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled("env", KindDict, envRule),
+		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled(envName, KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
 		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule),
 	}
@@ -378,12 +392,15 @@ func slotClass() Param { return Param{Name: slotsKeyword, Kind: KindText, AsValu
 // valueSignatures holds the builtins that return text or a struct of facts and start nothing.
 func valueSignatures() map[string][]Param {
 	return map[string][]Param{
-		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
+		envName:   {{Name: nameKeyword, Kind: KindText, Required: true, Rule: envReadRule}, {Name: "default", Kind: KindText, AsValue: true}},
 		"now":     {},
 		factsName: {},
-		// The two matchers judge text and run no step. They read the dialect of the agent scope and the grammar of the merge guard.
+		// patched records a marker of DBOS and no step of its own. Its name is the name of the patch.
+		patchedName: {{Name: nameKeyword, Kind: KindText, Required: true, Rule: patchNameRule, Why: "The name is the name of the patch, such as \"plan-first\"."}},
+		// The three matchers judge text and run no step. They read the dialect of the agent scope, the grammar of the merge guard and the owner line that keeps issues.
 		pathsOutsideName:      {{Name: "allow", Kind: KindList, Required: true, Rule: pathsOutsideRule}, {Name: "paths", Kind: KindList, Required: true, Rule: wordsRule("paths")}},
 		closingReferencesName: {req("text", KindText)},
+		keepIssuesName:        {req("text", KindText)},
 	}
 }
 
@@ -402,8 +419,18 @@ func stepSignatures() map[string][]Param {
 		waitName:         waitParams(),
 		sleepName:        {{Name: "duration", Kind: KindText, Required: true, Rule: deadlineRule("duration"), Why: "The duration is how long the run sleeps, such as \"90s\" or \"10m\"."}, label},
 		earlierCallsName: {req("call", KindText), label},
+		earlierReadsName: earlierReadsParams(),
 		hostTeardownName: {opt("host", KindText), label},
 		hostUpName:       {opt("host", KindText), label},
+	}
+}
+
+// earlierReadsParams are the parameters of earlier_reads. The name is required, because it selects the steps to read.
+func earlierReadsParams() []Param {
+	return []Param{
+		req("kind", KindText),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name is the name of the steps to read, such as the name of the pr_closing calls of an earlier run."},
+		opt(itemKeyword, KindText), opt("own_run", KindBool),
 	}
 }
 
@@ -412,29 +439,54 @@ func swarmSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
 
 	return map[string][]Param{
-		mergeName: {
-			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule, Members: true},
-			filled("base"), filled("repo"), opt("hold", KindText), ruled("own", KindDict, ownRule),
-			forbidText(), words("gate_run"), opt("integration", KindInt), opt("hand_off", KindBool),
-			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
-		},
+		mergeName:   mergeParams(),
+		handOffName: handOffParams(),
 		gatherName: {
 			req("runs", KindAny), one(failKeyword, FailModes()),
 			ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), one(OnTimeoutKeyword, OnTimeoutModes()), label,
 		},
 		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
 		cancelName:  {req("run", KindAny), label},
-		spawnName:   {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
-		queueName:   {label, opt("hold", KindText), opt("label", KindText)},
+		spawnName:   {{Name: ItemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(ItemsKeyword)}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule), one(OnOpenKeyword, OnOpenModes())},
+	}
+}
+
+// mergeParams are the parameters of merge: the members of one union in landing order, and the gate that an earlier call of the run recorded on that union.
+func mergeParams() []Param {
+	return []Param{
+		{Name: "members", Kind: KindList, Rule: membersRule, Members: true},
+		filled("base"), filled("repo"),
+		{Name: gateName, Kind: KindAny, AsValue: true},
+		opt(holdKeyword, KindText), ruled("own", KindDict, ownRule), forbidText(),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
+	}
+}
+
+// handOffParams are the parameters of hand_off: the keywords of a list of merge that a hand-off reads.
+func handOffParams() []Param {
+	return []Param{
+		{Name: "prs", Kind: KindList, Required: true, Rule: prsRule, Members: true},
+		filled("base"), filled("repo"),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 	}
 }
 
 // readSignatures holds the builtins that read the tracker, the forge or the item folder.
 func readSignatures() map[string][]Param {
 	return map[string][]Param{
-		itemReadName:  {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
-		prStateName:   {req("pr", KindInt), opt(nameKeyword, KindText)},
-		prHistoryName: {opt(nameKeyword, KindText)},
+		itemReadName:       {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)},
+		prStateName:        {req("pr", KindInt), opt(nameKeyword, KindText)},
+		prClosingName:      {opt(itemKeyword, KindText), opt("pr", KindInt), opt(nameKeyword, KindText)},
+		baseTipName:        {filled("base"), opt(nameKeyword, KindText)},
+		landingProofName:   {filled("base"), req("start", KindAny), req("end", KindAny), req("landed", KindList), opt(nameKeyword, KindText)},
+		issueStateName:     {req("number", KindInt), opt(nameKeyword, KindText)},
+		prHistoryName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
+		prReadName:         {opt("id", KindText), opt(nameKeyword, KindText)},
+		issueAssigneesName: {opt("repo", KindText), req("number", KindInt), opt(nameKeyword, KindText)},
+		itemStopName:       {filled("step"), req("code", KindInt), filled("reason"), opt("id", KindText), opt(nameKeyword, KindText)},
+		itemListName:       {opt("label", KindText), opt(nameKeyword, KindText)},
+		prListName:         {opt("base", KindText), opt(nameKeyword, KindText)},
+		runReadName:        {{Name: ItemsKeyword, Kind: KindList, Required: true, Rule: wordsRule(ItemsKeyword)}, opt(nameKeyword, KindText)},
 	}
 }
 
@@ -448,10 +500,27 @@ func itemSignatures() map[string][]Param {
 			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), opt("severity", KindText), opt("operator", KindBool), forbidText(), opt("shared", KindBool), label,
 		},
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
-		prCommentName:  {filled("text"), filled("key"), forbidText(), opt("integration", KindBool), label},
-		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), forbidText(), opt("integration", KindBool), label},
-		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), {Name: "own_draft", Kind: KindInt, AsValue: true, Rule: ownDraftRule}, label},
+		prCommentName:  {filled("text"), filled("key"), forbidText(), label},
+		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("parent", KindText), forbidText(), label},
+		preflightName:  {opt("head", KindText), opt("base", KindText), opt("id", KindText), label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
+	}
+}
+
+// TakeSteps lists the steps of pr_take: the notice that asks the author for an answer, and the take after the grace period.
+func TakeSteps() []string { return []string{"apply", "take"} }
+
+// roundSignatures holds the builtins that write the forge for a round.
+func roundSignatures() map[string][]Param {
+	label := opt(nameKeyword, KindText)
+
+	return map[string][]Param{
+		roundSyncName:        {filled("base"), filled("trunk"), label},
+		roundLandName:        {req("pr", KindInt), filled("head"), filled("base_tip"), label},
+		roundCutName:         {filled("old"), filled("new"), req("pr", KindInt), filled("trunk"), label},
+		roundIntegrationName: {filled("base"), filled("into"), opt("pr", KindInt), label},
+		boardCardName:        {req("board", KindInt), filled("status"), opt("owner", KindText), opt("pr", KindInt), opt("issue", KindInt), label},
+		prTakeName:           {req("pr", KindInt), filled("me"), filled("idle"), filled("grace"), {Name: "step", Kind: KindText, Required: true, Values: TakeSteps()}, label},
 	}
 }
 
@@ -605,8 +674,6 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.retrying(call, builtin, params)
 	case waitName:
 		g.asking(call, params)
-	case mergeName:
-		g.handingOff(call, params)
 	case gatherName:
 		g.deadlineMode(call, params)
 	case firstOfName:
@@ -618,7 +685,39 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 func (g *graph) commandPairs(call *syntax.CallExpr, params []Param) {
 	g.hostWithCap(call, params)
 	g.hostWithSlots(call, params)
+	g.sandboxPairs(call, params)
 	g.retrying(call, commandName, params)
+}
+
+// sandboxPairs checks the sandbox keyword of a command call against host, stdin and max_new_processes with the rule of the run. A value that is not a literal is left to the run.
+func (g *graph) sandboxPairs(call *syntax.CallExpr, params []Param) {
+	box := paramArg(call, params, sandboxKeyword)
+	if box == nil || isNone(box) {
+		return
+	}
+
+	host, _ := hostText(paramArg(call, params, "host"))
+
+	var stdin string
+	if arg := paramArg(call, params, "stdin"); arg != nil {
+		stdin, _ = literal(arg)
+	}
+
+	processes := 0
+	if _, isLiteral := capLiteral(paramArg(call, params, "max_new_processes")); isLiteral {
+		processes = 1
+	}
+
+	if err := SandboxWith(host, stdin, processes); err != nil {
+		g.report(placeOf(syntax.Start(box)), commandName+": "+err.Error()+".")
+	}
+}
+
+// isNone reports whether expr is the name None.
+func isNone(expr syntax.Expr) bool {
+	name, ok := expr.(*syntax.Ident)
+
+	return ok && name.Name == noneName
 }
 
 // deadlineMode refuses a gather call that names on_timeout and no timeout, as the run does.
@@ -627,22 +726,6 @@ func (g *graph) deadlineMode(call *syntax.CallExpr, params []Param) {
 
 	if err := DeadlineMode(paramArg(call, params, timeoutKeyword) != nil, mode != nil); err != nil {
 		g.report(placeOf(syntax.Start(mode)), gatherName+": "+err.Error()+".")
-	}
-}
-
-// handingOff refuses a keyword of a landing on a merge call whose hand_off is the literal True, as the run does. A flag that only the run knows is left to the run.
-func (g *graph) handingOff(call *syntax.CallExpr, params []Param) {
-	flag, isName := paramArg(call, params, "hand_off").(*syntax.Ident)
-	if !isName || flag.Name != trueName {
-		return
-	}
-
-	for _, keyword := range HandOffLanding() {
-		if paramArg(call, params, keyword) != nil {
-			g.reportRule(call, HandOffTakes(keyword))
-
-			return
-		}
 	}
 }
 
@@ -864,7 +947,7 @@ func (g *graph) closedSet(value syntax.Expr, got Kind, param Param) {
 // with computed members is checked on its literal members, because each rule of a collection judges its members one by one. A value that is
 // not a literal, and a collection with no literal member, is left to the run.
 func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
-	if param.Rule == nil {
+	if param.Rule == nil || (param.Name == envName && g.agentKey(builtin, value)) {
 		return
 	}
 
@@ -881,6 +964,30 @@ func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
 	if err := param.Rule(v); err != nil {
 		g.report(placeOf(syntax.Start(value)), builtin+": "+err.Error()+".")
 	}
+}
+
+// agentKey reports the env dict that names the variable of the SSH agent as a literal key, whatever its value. It returns true when it reported.
+func (g *graph) agentKey(builtin string, value syntax.Expr) bool {
+	for paren, isParen := value.(*syntax.ParenExpr); isParen; paren, isParen = value.(*syntax.ParenExpr) {
+		value = paren.X
+	}
+
+	dict, isDict := value.(*syntax.DictExpr)
+	if !isDict {
+		return false
+	}
+
+	for _, entry := range dict.List {
+		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
+
+		if name, ok := literal(pair.Key); ok && name == model.SSHAgentVar {
+			g.report(placeOf(syntax.Start(value)), builtin+": "+agentSocketError(name).Error()+".")
+
+			return true
+		}
+	}
+
+	return false
 }
 
 // literalValue is the Starlark value of an expression made of literals only: text, numbers, True, False, None, and lists, tuples and dicts of them.

@@ -82,7 +82,7 @@ func runPipeline(engine *Engine, file string) (ItemResult, error) {
 
 // runPipelineOf is runPipeline for the item `item`.
 func runPipelineOf(engine *Engine, item, file string) (ItemResult, error) {
-	in, err := pinnedInput(item, testProject, file)
+	in, err := pinnedInput(item, testProject, file, modeOff())
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -98,6 +98,7 @@ type childValue struct {
 	Head     string `json:"head"`
 	Approved bool   `json:"approved"`
 	Reason   string `json:"reason"`
+	Closes   []int  `json:"closes"`
 }
 
 // childOf reads the value that the entry pipeline returned.
@@ -158,7 +159,7 @@ func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review 
 	rig := newAgentRig(t)
 	rig.h.mutation = exampleMutationCommand
 	rig.h.slots = func(_, _, class string) (SlotGrant, error) {
-		return SlotGrant{Host: "box", Count: map[string]int{"mutation": 1}[class]}, nil
+		return SlotGrant{Host: "box", Count: map[string]int{"mutation": 1, model.DefaultClass: 1}[class]}, nil
 	}
 	rig.project = exampleProject()
 	rig.h.facts = func(string) model.Project { return rig.project }
@@ -195,12 +196,12 @@ func (rig *agentRig) answerLikeTheExample(skill string, verdicts, findings, mech
 			// review writes no output, so the run fails at once and the test reports it as an assertion, not as a timeout.
 			path := promptOutput(request.Prompt)
 			if verdict := verdicts(reviews); verdict != "" && reviews <= limit {
-				mechanism := ""
+				outputs := map[string]string{"verdict": verdict, "regressions": "0", "open": openOf(findings(reviews)), "findings": findings(reviews)}
 				if mechanisms != nil {
-					mechanism = `"mechanism":"` + mechanisms(reviews) + `",`
+					outputs["mechanism"] = mechanisms(reviews)
 				}
 
-				rig.put(path, `{"verdict":"`+verdict+`",`+mechanism+`"regressions":"0","open":"`+openOf(findings(reviews))+`","findings":`+findings(reviews)+`}`)
+				rig.putOutputs(path, outputs)
 			}
 		}
 
@@ -245,7 +246,7 @@ func laneKind(request AgentRequest) string {
 // The file holds no value for any other name, so the engine runs the step again on the missing output while output_tries allows,
 // then fails the run, until this table knows it.
 func (rig *agentRig) putDeclared(request AgentRequest) {
-	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "report": cleanLaneReport(laneKind(request))}
+	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "resolved": "[]", "wontfix": "[]", "report": cleanLaneReport(laneKind(request))}
 	answer := map[string]string{}
 
 	for _, name := range request.Outputs {
@@ -367,7 +368,7 @@ func TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 		if review == 1 {
-			return `[{"class":"minor","text":"rename x"}]`
+			return `[{"id":"","severity":"minor","path":"a.go","text":"rename x"}]`
 		}
 
 		return "[]"
@@ -397,7 +398,7 @@ func TestReviewFix_FixRoundThreeResumesTheImplementerOnSonnetAndRoundFourStartsF
 	loop := strings.Replace(libraryLoop(rig.head, ", rounds = 5"), `session = ""`, `session = "implement-session"`, 1)
 	require.NoError(t, os.WriteFile(file, []byte(loop), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	tiers := map[string][]string{}
@@ -426,7 +427,7 @@ func TestReviewFix_TheFirstScopedReviewOfACleanImplementerJudgesTheDiffOfTheImpl
 	rig, file := exampleRig(t, func(int) string { return "approve" })
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, "")), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	require.Len(t, rig.h.agents.requests, 2, "the scoped review and the full review of the one candidate")
@@ -474,7 +475,7 @@ func TestReviewFix_AViolationOfTheLastScopedReviewKeepsTheFullReviewFromACleanAp
 		return result
 	}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// Candidate 1: the scoped review of the implementer, two scoped fixes and reviews, the full review. Its approve is not clean, so candidate 2
@@ -515,7 +516,7 @@ func TestReviewFix_TheFindingsThatTheLastScopedReviewLeftOpenGoToTheFixAfterARed
 		return result
 	}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// The scoped review of the implementer, two scoped fixes and reviews, the red gate, then the fix of candidate 2, its scoped review and its full review.
@@ -536,7 +537,7 @@ func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t
 	} {
 		rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 			if review == 1 {
-				return `[{"class":"deferred","text":"later"}]`
+				return `[{"id":"","severity":"deferred","path":"a.go","text":"later"}]`
 			}
 
 			return "[]"
@@ -544,7 +545,7 @@ func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t
 		require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, extra)), 0o600))
 
 		loopEngine := rig.h.engine(t)
-		_, err := loopEngine.RunFile(testItem, testProject, file)
+		_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 		require.NoError(t, err, extra)
 		assert.Equal(t, want, rig.models(), extra)
@@ -556,7 +557,7 @@ func TestReviewFix_TheStatusShowsTheLabelOfTheLastReviewWithItsRoundAgainstTheCa
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 		if review == 1 {
-			return `[{"class":"deferred","text":"later"}]`
+			return `[{"id":"","severity":"deferred","path":"a.go","text":"later"}]`
 		}
 
 		return "[]"
@@ -564,7 +565,7 @@ func TestReviewFix_TheStatusShowsTheLabelOfTheLastReviewWithItsRoundAgainstTheCa
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, `, follow_ups = "forbid", rounds = 4`)), 0o600))
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	info := onlyRun(t, rig.h.client(t, testVersion))
@@ -622,11 +623,13 @@ func TestExample_AGateThatCannotRunEndsTheRunBeforeTheFullReviewOrAnyFix(t *test
 
 // packageGate runs the real gate package on a local project whose gate command is killed by a signal on the first run and exits 0 on the next.
 type packageGate struct {
+	cleanTree
+
 	head, tree string
 	runs       *int
 }
 
-func (packageGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (packageGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
@@ -679,11 +682,13 @@ func (diedThenDoneHost) WorkRoot(context.Context) (string, error) { return "/hom
 
 // hostDiedGate runs the real gate package on a project with a build host. The job of the first run died; the job of the next run succeeds.
 type hostDiedGate struct {
+	cleanTree
+
 	head, tree string
 	waits      *int
 }
 
-func (hostDiedGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (hostDiedGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
@@ -710,11 +715,13 @@ func (g hostDiedGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateR
 // zeroTestGate runs the real gate package on a local project that sets test_report. The gate command exits 0 and writes a report with no test.
 // The first run writes a report with 0 tests; every later run writes one with 3.
 type zeroTestGate struct {
+	cleanTree
+
 	head, tree, dir string
 	runs            *int
 }
 
-func (zeroTestGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (zeroTestGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
@@ -943,7 +950,7 @@ func runInBackground2(engine *Engine, file string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

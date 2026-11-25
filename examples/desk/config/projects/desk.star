@@ -4,5 +4,6 @@ project(
     source = "~/desk",
     base_branch = "main",
     gate = "true",
+    sandbox = "on",  # the clerk and the judge read the case that the workflow passes and reach no host
     test_report = "reports/*.xml",
 )

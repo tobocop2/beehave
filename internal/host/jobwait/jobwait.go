@@ -6,8 +6,13 @@ package jobwait
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/config"
@@ -23,20 +28,84 @@ const (
 	diedGrace    = time.Minute // the time an empty record repeats before it reads as died: the accounting record can come late
 )
 
-// Job is what the job id of an adapter holds: the id that the scheduler made and the nonce that Submit made for the slot of the job.
+// Job is what the job id of an adapter holds: the id that the scheduler made, the nonce that Submit made for the slot of the job,
+// and the folder that the job works in. An empty Folder means the job banks the whole work root.
 type Job struct {
-	ID    string
-	Nonce string
+	ID     string
+	Nonce  string
+	Folder string
 }
 
-// String is the job id that Submit returns. The adapter parses it back.
-// A job with no slot has no nonce, and its id is the whole text.
-func (j Job) String() string {
+// keyDigestBytes is the number of bytes of the key digest. The digest is twice as many hex digits.
+const keyDigestBytes = 16
+
+// KeyDigest is a name of hex digits that depends on key and on nothing else. A provider names the job of a keyed Submit with it,
+// so the same key finds the same job.
+func KeyDigest(key string) string {
+	sum := sha256.Sum256([]byte(key))
+
+	return hex.EncodeToString(sum[:keyDigestBytes])
+}
+
+// folderMark starts the folder in the text of a job id. The folder is written in URL-safe base64, which holds no tilde.
+const folderMark = "~"
+
+// ErrBadFolder is the refusal of a job id whose folder is not the base64 of an absolute path.
+var ErrBadFolder = errors.New("the folder of the job id is not an absolute path")
+
+// Key is the id of the job and its nonce, without the folder. A file that ends the slot of the job takes its name from it.
+// A job with no slot has no nonce, and its key is the id.
+func (j Job) Key() string {
 	if j.Nonce == "" {
 		return j.ID
 	}
 
 	return j.ID + "-" + j.Nonce
+}
+
+// String is the job id that Submit returns. The adapter parses it back. The folder follows the key, so any handle that gets the id also gets the folder.
+func (j Job) String() string {
+	if j.Folder == "" {
+		return j.Key()
+	}
+
+	return j.Key() + folderMark + base64.RawURLEncoding.EncodeToString([]byte(j.Folder))
+}
+
+// SplitFolder cuts the folder from the text of a job id. It returns the key text and the folder, which is empty when the id has none.
+// A folder that is not an absolute path, or that holds a line break or a NUL, is refused, so no other text reaches a command line.
+func SplitFolder(id string) (key, folder string, err error) {
+	key, encoded, found := strings.Cut(id, folderMark)
+	if !found {
+		return id, "", nil
+	}
+
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || CheckFolder(string(raw)) != nil {
+		return "", "", fmt.Errorf("%w: got %q", ErrBadFolder, id)
+	}
+
+	return key, string(raw), nil
+}
+
+// CheckFolder refuses a folder that is not an absolute path, or that holds a line break or a NUL. An empty folder is fine: the job has none.
+func CheckFolder(folder string) error {
+	if folder != "" && (!path.IsAbs(folder) || strings.ContainsAny(folder, "\x00\r\n")) {
+		return fmt.Errorf("%w: got %q", ErrBadFolder, folder)
+	}
+
+	return nil
+}
+
+// ScopedBank returns the bank of an engine. A job with a folder banks that folder. A job with none banks the whole work root.
+func ScopedBank(root func(ctx context.Context) error, folder func(ctx context.Context, folder string) error) func(ctx context.Context, folder string) error {
+	return func(ctx context.Context, dir string) error {
+		if dir == "" {
+			return root(ctx)
+		}
+
+		return folder(ctx, dir)
+	}
 }
 
 // Scheduler is what an adapter gives the engine. A read that the ssh link drops returns an error that wraps link.ErrDropped.
@@ -60,7 +129,7 @@ type Engine struct {
 	sched   Scheduler
 	release func(ctx context.Context, job Job) error
 	clock   Clock
-	bank    func(ctx context.Context) error
+	bank    func(ctx context.Context, folder string) error
 	stale   time.Duration
 	limits  Limits
 }
@@ -73,9 +142,9 @@ type Limits struct {
 	StopLimit time.Duration
 }
 
-// New returns the engine of a scheduler. bank banks the work of the host. release ends the slot of a job after the bank.
+// New returns the engine of a scheduler. bank banks the work of a job: the folder of the job, or the whole work root when the folder is empty. release ends the slot of a job after the bank.
 // stale is the time a running job may keep its log still; zero means the default.
-func New(sched Scheduler, release func(ctx context.Context, job Job) error, clock Clock, bank func(ctx context.Context) error, stale time.Duration, limits Limits) *Engine {
+func New(sched Scheduler, release func(ctx context.Context, job Job) error, clock Clock, bank func(ctx context.Context, folder string) error, stale time.Duration, limits Limits) *Engine {
 	if stale <= 0 {
 		stale = defaultStale
 	}
@@ -229,7 +298,7 @@ func (e *Engine) stopStale(ctx context.Context, job Job) (model.JobState, error)
 func (e *Engine) banked(ctx context.Context, job Job, state model.JobState) (model.JobState, error) {
 	id := job.ID
 
-	if err := e.bank(ctx); err != nil && !errors.Is(err, host.ErrNoRepos) {
+	if err := e.bank(ctx, job.Folder); err != nil && !errors.Is(err, host.ErrNoRepos) {
 		return state, fmt.Errorf("job %s is %s but the host holds work that is not banked: %w", id, state, err)
 	}
 

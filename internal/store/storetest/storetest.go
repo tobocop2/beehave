@@ -40,6 +40,9 @@ func TestTracker(t *testing.T, make TrackerFactory) {
 	t.Run("item_returns_the_declared_fields", func(t *testing.T) {
 		CheckItem(t, make(t, false))
 	})
+	t.Run("item_list_returns_the_items_of_a_label", func(t *testing.T) {
+		CheckItemList(t, make(t, false))
+	})
 	t.Run("a_failed_command_is_an_error_everywhere", func(t *testing.T) {
 		CheckTrackerFails(t, make(t, true))
 	})
@@ -239,6 +242,81 @@ func checkDeclared(r Reporter, got map[string]string, declared []string) {
 	}
 }
 
+// noSuchLabel is a label that no item of any tracker carries.
+const noSuchLabel = "no-item-carries-this-label"
+
+// CheckItemList checks the typed list read on a tracker that serves the item ItemID. No label lists every open item, including ItemID.
+// A label lists, in the same order, the items of that list that carry it, and a label that no item carries lists none. The check runs the list of each label that the items carry.
+func CheckItemList(r Reporter, tracker store.Tracker) {
+	r.Helper()
+
+	all, err := tracker.ItemList(context.Background(), "")
+	if err != nil {
+		r.Errorf("ItemList: unexpected error: %v", err)
+
+		return
+	}
+
+	if !slices.Contains(itemIDs(all), ItemID) {
+		r.Errorf("ItemList of no label: want the item %q among %v", ItemID, itemIDs(all))
+	}
+
+	for _, name := range append(labelsOf(all), noSuchLabel) {
+		checkItemLabel(r, tracker, all, name)
+	}
+}
+
+// labelsOf lists each label that an item of the list carries, once, in the order of the list.
+func labelsOf(items []model.Item) []string {
+	var labels []string
+
+	for _, one := range items {
+		for _, name := range one.Labels {
+			if !slices.Contains(labels, name) {
+				labels = append(labels, name)
+			}
+		}
+	}
+
+	return labels
+}
+
+// checkItemLabel checks that the list of a label is the items of the list of no label that carry it, in the same order.
+func checkItemLabel(r Reporter, tracker store.Tracker, all []model.Item, name string) {
+	r.Helper()
+
+	got, err := tracker.ItemList(context.Background(), name)
+	if err != nil {
+		r.Errorf("ItemList: unexpected error: %v", err)
+
+		return
+	}
+
+	want := itemIDs(slices.DeleteFunc(slices.Clone(all), func(one model.Item) bool { return !slices.Contains(one.Labels, name) }))
+
+	if !slices.Equal(itemIDs(got), want) {
+		r.Errorf("ItemList of %s: got %v, want %v", describeLabel(name), itemIDs(got), want)
+	}
+}
+
+// describeLabel names a label in a failure: the label, or the fact that no item carries it.
+func describeLabel(name string) string {
+	if name == noSuchLabel {
+		return "a label that no item carries"
+	}
+
+	return "the label " + name
+}
+
+func itemIDs(items []model.Item) []string {
+	ids := make([]string, len(items))
+	for i, one := range items {
+		ids[i] = one.ID
+	}
+
+	return ids
+}
+
 // CheckTrackerFails runs every method of a tracker whose commands all fail. Each must return an error and never a guess.
 func CheckTrackerFails(r Reporter, tracker store.Tracker) {
 	r.Helper()
@@ -248,9 +326,37 @@ func CheckTrackerFails(r Reporter, tracker store.Tracker) {
 
 func trackerCalls(tracker store.Tracker) []call {
 	return []call{
-		{"OpenItems", func(ctx context.Context) error { _, err := tracker.OpenItems(ctx); return err }},
+		{"ItemList", func(ctx context.Context) error { _, err := tracker.ItemList(ctx, ""); return err }},
 		{"Item", func(ctx context.Context) error { _, err := tracker.Item(ctx, item); return err }},
 	}
+}
+
+// CheckReaderFails runs both methods of a reader whose commands all fail. Each must return an error and never an empty list or an empty parent.
+func CheckReaderFails(r Reporter, reader store.Reader) {
+	r.Helper()
+
+	check{r: r}.allFail(readerCalls(reader))
+}
+
+func readerCalls(reader store.Reader) []call {
+	return []call{
+		{"Comments", func(ctx context.Context) error { _, err := reader.Comments(ctx, item); return err }},
+		{"Parent", func(ctx context.Context) error { _, err := reader.Parent(ctx, item); return err }},
+	}
+}
+
+// FailedCommandMethods names every method of store.Tracker, store.Reader, store.ClaimRows and store.Writer that the failed-command cases run.
+// A method of those interfaces that is not in the list has no failed-command case.
+func FailedCommandMethods() []string {
+	var names []string
+
+	for _, calls := range [][]call{trackerCalls(nil), readerCalls(nil), rowCalls(nil), writerCalls(nil)} {
+		for _, one := range calls {
+			names = append(names, one.name)
+		}
+	}
+
+	return names
 }
 
 // CheckClaimRowsFail runs every method of claim rows whose commands all fail. Each must return an error and never a guess.

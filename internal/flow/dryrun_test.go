@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/exectest"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	trackerstore "github.com/tobocop2/beehave/internal/store"
 )
@@ -132,10 +133,16 @@ func TestDryRun_AStepThatTheDryRunDoesNotFakeIsNotRunAndIsNotAnError(t *testing.
 	t.Parallel()
 
 	for name, tc := range map[string]struct{ body, want string }{
-		"host":  {body: "host_teardown(name = \"stop\")", want: "not run in a dry run: stop the build host"},
-		"queue": {body: "queue(name = \"q\")", want: "not run in a dry run: read the open work of the project"},
-		"state": {body: "pr_state(pr = 41, name = \"s\")", want: "not run in a dry run: read the state of a pull request"},
-		"batch": {body: "merge(prs = [struct(item = \"1\", head = \"h\")], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
+		"host":    {body: "host_teardown(name = \"stop\")", want: "not run in a dry run: stop the build host"},
+		"items":   {body: "item_list(name = \"q\")", want: "not run in a dry run: read the open items of the project"},
+		"pulls":   {body: "pr_list(name = \"q\")", want: "not run in a dry run: read the open pull requests of the project"},
+		"state":   {body: "pr_state(pr = 41, name = \"s\")", want: "not run in a dry run: read the state of a pull request"},
+		"issue":   {body: "issue_state(number = 7, name = \"i\")", want: "not run in a dry run: read the state of an issue"},
+		"tip":     {body: "base_tip(base = \"main\", name = \"t\")", want: "not run in a dry run: read the tip of a base"},
+		"proof":   {body: "landing_proof(base = \"main\", start = struct(commit = \"c\", tree = \"t\"), end = struct(commit = \"c\", tree = \"t\"), landed = [], name = \"p\")", want: "not run in a dry run: prove a landing"},
+		"closing": {body: "pr_closing(pr = 41, name = \"c\")", want: "not run in a dry run: read the issues that a pull request closes"},
+		"one":     {body: "merge(members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
+		"hand":    {body: "hand_off(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -204,7 +211,7 @@ func TestDryRun_ARedGateRunEndsAWorkflowThatStopsAtARedGateWithAnError(t *testin
 
 	var out bytes.Buffer
 
-	err := DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out, WithRedGate())
+	err := DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out, WithFixture(fixtureOf(t, `{"gate:check": [{"passed": false}]}`)))
 
 	require.Error(t, err)
 	assert.Contains(t, out.String(), "the gate is red")
@@ -217,7 +224,7 @@ func TestDryRun_TheFirstGateIsRedAndTheRunWalksAFixRoundBeforeTheGatePasses(t *t
 
 	const text = "def main(item):\n    g = gate(name = \"check\")\n    if not g.passed:\n        agent(name = \"fix\", prompt = \"p.md\", model = \"sonnet\")\n        gate(name = \"check\")\n"
 
-	require.NoError(t, DryRun(t.Context(), dryFileWithPrompt(t, text), "12", nil, &out, WithRedGate()), out.String())
+	require.NoError(t, DryRun(t.Context(), dryFileWithPrompt(t, text), "12", nil, &out, WithFixture(fixtureOf(t, `{"gate:check": [{"passed": false}, {"passed": true}], "agent:fix": {}}`))), out.String())
 
 	got := out.String()
 	fix := strings.Index(got, "agent:fix")
@@ -242,10 +249,26 @@ func dryFileWithPrompt(t *testing.T, text string) string {
 	return flow
 }
 
-func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testing.T) {
+func TestDryGate_StateIsTheHeadOfTheDryRunAndItsTree(t *testing.T) {
 	t.Parallel()
 
-	gate := newDryGate(t.TempDir(), "h", false)
+	rig := newBatchRig(t)
+	head := rig.repo.must(t, "rev-parse", "HEAD")
+
+	dir, state, err := newDryGate(rig.repo.dir, head, nil).State(t.Context(), "p", "i")
+
+	require.NoError(t, err)
+	assert.Equal(t, rig.repo.dir, dir)
+	assert.Equal(t, gatepkg.State{Head: head, Tree: rig.repo.must(t, "rev-parse", "HEAD^{tree}"), Clean: true}, state)
+
+	_, _, err = newDryGate(t.TempDir(), head, nil).State(t.Context(), "p", "i")
+	require.Error(t, err, "a folder with no repository has no tree")
+}
+
+func TestDryGate_EveryRunPassesWithAPassedStepWhenNoFixtureScriptsIt(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate(t.TempDir(), "h", nil)
 
 	for range 2 {
 		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
@@ -255,21 +278,60 @@ func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testin
 	}
 }
 
-func TestDryGate_WithTheRedGateTheFirstRunIsRedWithAFailedStepAndEveryLaterRunPasses(t *testing.T) {
+func TestDryGate_AScriptedGateGivesRedThenGreen(t *testing.T) {
 	t.Parallel()
 
-	gate := newDryGate(t.TempDir(), "h", true)
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:check": [{"passed": false}, {"passed": true}]}`).start())
+	job := GateJob{Call: "gate:check"}
 
-	red, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+	red, err := gate.Run(t.Context(), "p", "i", "", job)
 	require.NoError(t, err)
 	assert.False(t, red.Passed)
 	assert.Equal(t, []GateStep{{Name: "command", Status: "fail"}}, red.Steps)
 
+	green, err := gate.Run(t.Context(), "p", "i", "", job)
+	require.NoError(t, err)
+	assert.True(t, green.Passed)
+	assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
+
+	_, err = gate.Run(t.Context(), "p", "i", "", job)
+	require.ErrorContains(t, err, "gate:check call 3")
+}
+
+func TestDryGate_AGateCallWithNoNameIsNotScriptedAndPassesWithoutCountingACall(t *testing.T) {
+	t.Parallel()
+
+	script := fixtureOf(t, `{"gate:check": [{"passed": false}]}`).start()
+	gate := newDryGate(t.TempDir(), "h", script)
+
+	green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+
+	require.NoError(t, err)
+	assert.True(t, green.Passed)
+	require.ErrorContains(t, script.leftover(), "gate:check")
+}
+
+func TestDryGate_AGateCallWhoseKeyTheFileDoesNotListIsRefusedWithTheKeysOfTheFile(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:other": {}}`).start())
+
+	_, err := gate.Run(t.Context(), "p", "i", "", GateJob{Call: "gate:check"})
+
+	require.ErrorContains(t, err, "gate:check has no entry")
+	require.ErrorContains(t, err, "[gate:other]")
+	require.ErrorContains(t, err, "add the key gate:check to the fixture file")
+}
+
+func TestDryGate_AnObjectGateResultWithNoFieldPassesEveryCall(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate(t.TempDir(), "h", fixtureOf(t, `{"gate:check": {}}`).start())
+
 	for range 2 {
-		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
+		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{Call: "gate:check"})
 		require.NoError(t, err)
 		assert.True(t, green.Passed)
-		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
 	}
 }
 
@@ -299,38 +361,45 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"origin", "claim", "item", "facts#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
-		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
-		"preflight:before-scoped-review-1#2",
+		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1", "earlier_reads:scope#1", "pr_closing:scope#1",
+		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
-		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:candidate-gate#1", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
-		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
+		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3", "pr_read:before-review-1#3",
 		"agent:candidate-review#5/render", "agent:candidate-review#5/clear1", "phase", "DBOS.getResult", "agent:candidate-review#5/read1", "pr_comment:approved#1",
 		"worktree", "release",
 	}, remediationStepNames(t))
 }
 
+// remediationRedGate scripts the pipeline of the remediation example: the gate of the candidate is red once, and every agent call takes the base result.
+const remediationRedGate = `{
+  "gate:candidate-gate": [{"passed": false}, {"passed": true}],
+  "agent:plan": {}, "agent:implement": {}, "agent:implement-sweep": {}, "agent:scoped-review-implement": {},
+  "agent:fix-scoped-1": {}, "agent:scoped-review-1": {}, "agent:candidate-review": {}
+}`
+
 func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{
-		"claim", "item", "facts#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
+		"origin", "claim", "item", "facts#1", "preflight:intake#1", "pr_read:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
 		"agent:implement#2/start", "agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement#2/commit",
-		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1",
-		"preflight:before-scoped-review-1#2",
+		"agent:implement-sweep#3/start", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "agent:implement-sweep#3/commit", "push:push-implement#1", "pr_open:draft#1", "earlier_reads:scope#1", "pr_closing:scope#1",
+		"preflight:before-scoped-review-1#2", "pr_read:before-scoped-review-1#2",
 		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
-		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:candidate-gate#1", "gate:candidate-gate#1", "preflight:before-fix-2#3",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#1", "preflight:before-fix-2#3", "pr_read:before-fix-2#3",
 		"agent:fix-scoped-1#5/start", "agent:fix-scoped-1#5/render", "agent:fix-scoped-1#5/clear1", "phase", "DBOS.getResult", "agent:fix-scoped-1#5/read1", "agent:fix-scoped-1#5/commit", "push:push-fix-1#2",
-		"preflight:before-scoped-review-2#4",
+		"preflight:before-scoped-review-2#4", "pr_read:before-scoped-review-2#4",
 		"agent:scoped-review-1#6/render", "agent:scoped-review-1#6/clear1", "phase", "DBOS.getResult", "agent:scoped-review-1#6/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#2", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
-		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5",
+		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5", "pr_read:before-review-2#5",
 		"agent:candidate-review#7/render", "agent:candidate-review#7/clear1", "phase", "DBOS.getResult", "agent:candidate-review#7/read1", "pr_comment:approved#1",
 		"worktree", "release",
-	}, remediationStepNames(t, WithRedGate()))
+	}, remediationStepNames(t, WithFixture(fixtureOf(t, remediationRedGate))))
 }
 
 func TestPrintDrySteps_FailsWhenTheStoreCannotOpenAndWhenTheClientIsClosed(t *testing.T) {
@@ -412,12 +481,12 @@ func TestDryFailure_AnAbsentErrorJoinedWithARealErrorIsAFailureAndPrintsBoth(t *
 
 	var out bytes.Buffer
 
-	err := dryFailure(&out, "step 3 x", fmt.Errorf("gather: %w", errors.Join(errNoQueue, errors.New("the child failed for real"))))
+	err := dryFailure(&out, "step 3 x", fmt.Errorf("gather: %w", errors.Join(errNoItemList, errors.New("the child failed for real"))))
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrDryRunEndedEarly)
 	assert.Contains(t, out.String(), "the child failed for real")
-	assert.Contains(t, out.String(), errNoQueue.Error())
+	assert.Contains(t, out.String(), errNoItemList.Error())
 	assert.Contains(t, out.String(), "the run stopped after step 3 x")
 	assert.NotContains(t, out.String(), "not run in a dry run")
 }
@@ -427,7 +496,7 @@ func TestDryFailure_SeveralAbsentErrorsAndNothingElseIsAPartialRun(t *testing.T)
 
 	var out bytes.Buffer
 
-	err := dryFailure(&out, "step 3 x", errors.Join(errNoQueue, errNoHosts))
+	err := dryFailure(&out, "step 3 x", errors.Join(errNoItemList, errNoHosts))
 
 	require.ErrorIs(t, err, ErrDryRunEndedEarly)
 	assert.Contains(t, out.String(), "the dry run ended early at a step it does not fake: ")
@@ -540,9 +609,9 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 	head, err := dryRepo(t.Context(), dir, t.TempDir())
 	require.NoError(t, err)
 
-	gate := newDryGate(dir, head, false)
+	gate := newDryGate(dir, head, nil)
 
-	job, err := gate.Submit(t.Context(), "p", "i", "", "integration", "")
+	job, err := gate.Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.NoError(t, err)
 	assert.Equal(t, "integration", job.Plan.Base)
 
@@ -552,11 +621,11 @@ func TestDryGate_ASubmitWithABasePointsTheRemoteBranchOfTheBaseAtTheParentOfTheH
 	require.NoError(t, err)
 	assert.Equal(t, parent, base)
 
-	landing, err := newDryGate(filepath.Join(dir, "none"), head, false).Submit(t.Context(), "p", "i", "", "", "")
+	landing, err := newDryGate(filepath.Join(dir, "none"), head, nil).Submit(t.Context(), "p", "i", "", "", "", "", model.Slot{})
 	require.NoError(t, err, "a gate with no base touches no repository")
 	assert.Empty(t, landing.Plan.Base)
 
-	_, err = newDryGate(dir, "no-such-commit", false).Submit(t.Context(), "p", "i", "", "integration", "")
+	_, err = newDryGate(dir, "no-such-commit", nil).Submit(t.Context(), "p", "i", "", "integration", "", "", model.Slot{})
 	require.ErrorContains(t, err, "git exited")
 }
 
@@ -601,6 +670,19 @@ func TestDryAgents_TheUncausedOutputIsAnEmptyList(t *testing.T) {
 	raw, err := os.ReadFile(file) //nolint:gosec // the test names its own output file
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"report":"0","uncaused":"[]"}`, string(raw), "the text 0 is no JSON list, so a dry run would refuse in the filing of the workflow")
+}
+
+func TestDryAgents_TheOutputsOfTheReviewLedgerAreEmptyLists(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "out.json")
+
+	_, err := dryAgents{}.Run(t.Context(), AgentRequest{OutputFile: file, Outputs: []string{"findings", "resolved", "wontfix"}})
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(file) //nolint:gosec // the test names its own output file
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"findings":"[]","resolved":"[]","wontfix":"[]"}`, string(raw), "the text 0 is no JSON list, so a dry run of a loop with a ledger would stop the item")
 }
 
 func TestDryAgents_WriteNoFileForACallWithNoDeclaredOutputs(t *testing.T) {
@@ -656,7 +738,7 @@ func TestDryRun_ARoundRunsWithNoEnvironmentVariables(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 	assert.Contains(t, out.String(), "host_up:round-host#1")
-	assert.Contains(t, out.String(), "not run in a dry run: read the open work of the project")
+	assert.Contains(t, out.String(), "not run in a dry run: read the open items of the project")
 	assert.NotContains(t, out.String(), "agent:queue-audit-1#1")
 	assert.NotContains(t, out.String(), "FAILED")
 	assert.NotContains(t, out.String(), "env:")
@@ -674,7 +756,7 @@ func TestDryRun_TheSwarmExampleFilesItsBacklogAndChecksTheStopFileThenEndsEarlyA
 
 	assert.Contains(t, out.String(), "item_create:create-1")
 	assert.Contains(t, out.String(), "command:stop-0")
-	assert.Contains(t, out.String(), "not run in a dry run: read the open work of the project")
+	assert.Contains(t, out.String(), "not run in a dry run: read the open items of the project")
 }
 
 func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
@@ -682,7 +764,7 @@ func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
 
 	var out bytes.Buffer
 
-	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "queue", "workflow.star"), "12", map[string]string{}, &out)
+	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "queue", "workflow.star"), "12", map[string]string{"BASE": "main"}, &out)
 	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 }
 
@@ -753,10 +835,10 @@ func countStep(names []string, prefix string) int {
 	return n
 }
 
-func TestDryRun_WithSendBackTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
+func TestDryRun_AFixtureThatRejectsTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
 	t.Parallel()
 
-	names := reviewStepNames(t, WithSendBack())
+	names := reviewStepNames(t, WithFixture(fixtureOf(t, `{"agent:review": [{"outputs": {"verdict": "changes"}}, {"outputs": {"verdict": "approve"}}], "agent:fix": {}}`)))
 
 	assert.Equal(t, 2, countStep(names, "agent:review"), names)
 	assert.Equal(t, 1, countStep(names, "agent:fix"), names)
@@ -781,7 +863,7 @@ func reviewStepNames(t *testing.T, options ...DryOption) []string {
 	return names
 }
 
-func TestDryRun_WithoutSendBackTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
+func TestDryRun_WithNoFixtureTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
 	t.Parallel()
 
 	names := reviewStepNames(t)
@@ -813,18 +895,6 @@ func TestDryRun_AProjectWithNoReviewSkillInItsVarsReportsNoSkillAndTheExampleRef
 	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryPipeline, WithVars(vars))
 
 	require.ErrorContains(t, err, "vars.review_skill")
-}
-
-func TestDryRun_ASleepPrintsItsStepAfterTheDuration(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-
-	started := time.Now()
-
-	require.NoError(t, DryRun(t.Context(), dryFile(t, "def main(item):\n    sleep(\"200ms\", name = \"nap\")\n"), "12", map[string]string{}, &out), out.String())
-	assert.Contains(t, out.String(), "sleep:nap#1")
-	assert.GreaterOrEqual(t, time.Since(started), 200*time.Millisecond)
 }
 
 func TestDryRun_ASkillThatTheProjectNamesIsOneOfTheSkillsThatTheFakeAgentReports(t *testing.T) {

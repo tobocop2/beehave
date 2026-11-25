@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These tests call foreign_followup of the example file directly. No entry of the file reaches it while the engine refuses every foreign pull request,
+// These tests call foreign_followup of the example file directly. No entry of the file reaches it yet (#438),
 // so a test adds the entry `followup` to its own copy. The entry passes the value that a foreign review recorded for the pull request 41.
 const followupEntry = `
 
@@ -23,7 +23,7 @@ def followup(item):
 const foreignPull = 41
 
 // foreignFindings are the two findings that the foreign review recorded as open.
-const foreignFindings = `[{"class":"blocking","text":"the retry never stops"},{"class":"should-fix","text":"the log names the token"}]`
+const foreignFindings = `[{"id":"f-1","severity":"blocking","path":"a.go","text":"the retry never stops"},{"id":"f-2","severity":"should-fix","path":"b.go","text":"the log names the token"}]`
 
 // foreignIssue is the issue that the follow-up files for the pull request 41 of the repository o/r with foreignFindings: project|key|title|body|parent.
 const foreignIssue = testProject + "|foreign:o/r:41|Open review findings of the merged pull request #41|" +
@@ -58,7 +58,7 @@ func runFollowup(t *testing.T, rig *agentRig, file, recorded string) (ItemResult
 
 	rig.h.items.fields = map[string]string{"recorded": recorded}
 
-	return rig.h.engine(t).runEntry(testItem, testProject, file, "followup")
+	return rig.h.engine(t).runEntry(testItem, testProject, file, "followup", modeOff())
 }
 
 // recordedValue is the value that a foreign review of the pull request 41 records, with the findings `findings` (a JSON list).
@@ -90,7 +90,7 @@ func TestExampleForeign_TwoPullRequestsOfOneRepositoryFileTwoIssues(t *testing.T
 
 	for _, pr := range []int{foreignPull, other} {
 		rig.h.items.fields = map[string]string{"recorded": recordedOf(pr, foreignFindings)}
-		_, err := engine.runEntry(testItem, testProject, file, "followup")
+		_, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 		require.NoError(t, err)
 	}
 
@@ -106,7 +106,7 @@ func TestExampleForeign_OnePullRequestNumberInTwoRepositoriesFilesTwoIssues(t *t
 
 	for _, repo := range []string{"o/r", "o2/r"} {
 		rig.project.Repo = repo
-		_, err := engine.runEntry(testItem, testProject, file, "followup")
+		_, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 		require.NoError(t, err)
 	}
 
@@ -122,7 +122,7 @@ func TestExampleForeign_TheFollowUpReadsTheRecordedPullRequestAndFilesOneIssue(t
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{foreignPull}, fakes.queue.stateAsked, "the step reads the state of the recorded number, once")
-	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "one issue, keyed by the repository and the number, lists each finding by its class")
+	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "one issue, keyed by the repository and the number, lists each finding by its severity")
 	assert.Empty(t, rig.h.forge.opened, "the follow-up opens no pull request of its own")
 	assert.Empty(t, fakes.preflight.asked, "the follow-up does not look the pull request up again")
 
@@ -140,10 +140,10 @@ func TestExampleForeign_ASecondRunForTheSamePullRequestFilesNoSecondIssue(t *tes
 	rig.h.items.fields = map[string]string{"recorded": recordedValue(foreignFindings)}
 	engine := rig.h.engine(t)
 
-	first, err := engine.runEntry(testItem, testProject, file, "followup")
+	first, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 	require.NoError(t, err)
 
-	second, err := engine.runEntry(testItem, testProject, file, "followup")
+	second, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "two runs file one issue")
@@ -155,7 +155,7 @@ func TestExampleForeign_AFindingWithAnAttributionLineIsRefusedBeforeThePost(t *t
 
 	rig, fakes, file := foreignRig(t, "MERGED")
 
-	_, err := runFollowup(t, rig, file, recordedValue(`[{"class":"nit","text":"Co-Authored-By: Claude"}]`))
+	_, err := runFollowup(t, rig, file, recordedValue(`[{"id":"f-1","severity":"nit","path":"a.go","text":"Co-Authored-By: Claude"}]`))
 
 	require.Error(t, err)
 	assert.Empty(t, fakes.writer.created, "the follow-up posts no attribution line")

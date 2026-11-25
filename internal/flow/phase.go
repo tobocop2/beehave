@@ -42,6 +42,9 @@ type PhaseInput struct {
 	// MaxBudget is the max_budget_usd of the step. It is left out of a recorded phase for a step that sets none.
 	MaxBudget float64 `json:"max_budget_usd,omitempty"`
 
+	// MaxContextPercent is the max_context_percent of the step. It is left out of a recorded phase for a step that sets none.
+	MaxContextPercent int `json:"max_context_percent,omitempty"`
+
 	// NoEdits is true for a step with edits = False. Such a step runs on the review queue. It is left out of a recorded phase for a step that may edit, so a stored phase keeps its form.
 	NoEdits bool `json:"no_edits,omitempty"`
 
@@ -125,23 +128,12 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 	return e.agentStep(ctx, claim, holder, in, cmp.Or(lost, in.Limited))
 }
 
-// agentStep runs the agent of the phase as a step, under the claim of the attempt holder. A failed step returns no output, so it leaves the cost of the failed run
-// in an event that the queuing run reads. lost is the lost or limited run that the start follows, or nil.
+// agentStep runs the agent of the phase as a step, under the claim of the attempt holder. The record of a failed step holds its output and its error, so the cost of the failed run is in the record.
+// lost is the lost or limited run that the start follows, or nil.
 func (e *Engine) agentStep(ctx dbos.Context, claim context.Context, holder *attempt, in PhaseInput, lost *LostRun) (PhaseOutput, error) { //nolint:revive // ctx of the workflow first, then the context of the claim
-	var spent agent.Spend
-
-	out, err := runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
-		ran, runErr := e.runAgent(c, claim, holder, in, lost)
-		spent = ran.Spend
-
-		return ran, runErr
+	return runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
+		return e.runAgent(c, claim, holder, in, lost)
 	})
-
-	if err != nil && spent != (agent.Spend{}) {
-		return out, errors.Join(err, dbos.SetEvent(ctx, costEvent, spent)) // Join drops a nil error
-	}
-
-	return out, err
 }
 
 // runAgent starts the agent of one phase under the context of the claim of its run, and waits for it. The agent dies with its process group when
@@ -185,6 +177,8 @@ func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Res
 		return out, err
 	}
 
+	e.signalLimit(out)
+
 	return out, phaseEnd(in, out, e.deps.Clock.wall())
 }
 
@@ -192,9 +186,9 @@ func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Res
 // and named receives each new session id that the agent names. said receives each message text and tool call.
 func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInput, data string, lost *LostRun, named func(session string), said func(agent.Said)) AgentRequest {
 	return AgentRequest{
-		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Redact: e.redact, Lost: lost,
+		Run: in.Run, Call: in.Call, Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Redact: e.redact, Lost: lost,
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
+		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, MaxContextPercent: in.MaxContextPercent, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
 		DataFile: data,
 	}
 }
@@ -404,26 +398,7 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
 
-	out, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
-	// A stopped wait leaves the reading goroutine running, and it shares the step counter of the workflow: a stopped run, or a run of a stopped engine, reads no cost.
-	if err != nil && ctx.Err() == nil && e.ctx.Err() == nil {
-		out.Spend = failedCost(ctx, handle.GetWorkflowID())
-	}
-
-	return out, err
-}
-
-// costEvent is the key of the event in which a failed phase leaves the cost of its run. A failed workflow returns no output, and an event outlives the failure.
-const costEvent = "spend"
-
-// failedCost reads the cost that a failed phase left in its event, marks included. A phase that left none, or whose event cannot be read, cost 0.
-func failedCost(ctx dbos.Context, phaseID string) agent.Spend {
-	spend, err := dbos.GetEvent[agent.Spend](ctx, phaseID, costEvent, 0)
-	if err != nil {
-		return agent.Spend{}
-	}
-
-	return spend
+	return awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
 }
 
 // childResult is how a child workflow ended.
@@ -489,7 +464,7 @@ func phaseEnd(in PhaseInput, out PhaseOutput, now time.Time) error {
 		return limitEnd(in, *out.Limit, now)
 	}
 
-	if out.Outcome == agent.OutcomeTurnCap || out.Outcome == agent.OutcomeBudgetCap {
+	if out.Outcome == agent.OutcomeTurnCap || out.Outcome == agent.OutcomeBudgetCap || out.Outcome == agent.OutcomeContextCap {
 		return nil
 	}
 

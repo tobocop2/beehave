@@ -36,6 +36,8 @@ type cancels struct {
 	runs map[string]*attempt
 	// releasing holds the attempts whose give-back is under way, so no second give-back starts for one run.
 	releasing map[*attempt]bool
+	// stopped holds the attempts that a cut stopped and whose workflow function may still run, so a reopen of the run can wait for their end.
+	stopped map[*attempt]bool
 }
 
 // begin marks the give-back of a canceled run that this process neither executes nor releases, and reports whether the caller must release it.
@@ -91,6 +93,38 @@ func (c *cancels) add(a *attempt) {
 	}
 
 	c.runs[a.id] = a
+
+	c.running("")
+}
+
+// stop cuts the attempt that this process lists under the run id and returns it with every earlier cut attempt of that run whose workflow function has not returned.
+func (c *cancels) stop(id string) []*attempt {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if a, listed := c.runs[id]; listed {
+		c.cut(a)
+	}
+
+	return c.running(id)
+}
+
+// running drops the cut attempts whose workflow function has returned and lists the others of the run id. The caller holds the lock.
+func (c *cancels) running(id string) []*attempt {
+	var list []*attempt
+
+	for a := range c.stopped {
+		select {
+		case <-a.ended:
+			delete(c.stopped, a)
+		default:
+			if a.id == id {
+				list = append(list, a)
+			}
+		}
+	}
+
+	return list
 }
 
 // attempts lists the attempts this process executes.
@@ -158,6 +192,12 @@ func (c *cancels) cancel(list []*attempt) []*attempt {
 func (c *cancels) cut(a *attempt) {
 	a.cancel()
 	delete(c.runs, a.id)
+
+	if c.stopped == nil {
+		c.stopped = map[*attempt]bool{}
+	}
+
+	c.stopped[a] = true
 
 	if !a.gate {
 		c.markReleasing(a)
@@ -296,7 +336,7 @@ func (e *Engine) canceledRows(local []*attempt) (map[string]bool, error) {
 		ids = append(ids, a.id)
 	}
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusCancelled), dbos.WithFilterWorkflowIDs(ids...))
+	rows, err := e.store().List(dbos.WithFilterStatus(dbos.WorkflowStatusCancelled), dbos.WithFilterWorkflowIDs(ids...))
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +372,7 @@ func (e *Engine) giveBack(ctx context.Context, a *attempt) {
 func (e *Engine) giveBackClaim(ctx context.Context, a *attempt) {
 	owner, err := releaseOwner(e.ctx, a)
 	if err == nil {
-		err = ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.giveBack(ctx, e.logger, a.in.Project, a.in.Item, owner)
+		err = e.asClient().giveOwned(ctx, a, owner)
 	}
 
 	if err != nil && !errors.Is(err, errNoOwner) {

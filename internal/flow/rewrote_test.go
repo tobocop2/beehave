@@ -173,7 +173,7 @@ func TestAgentStep_AReplayKeepsTheStartThatTheRenderStepRecorded(t *testing.T) {
 
 	rig.crashAfterThePhaseEnded(t, file)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Len(t, rig.h.agents.seen(), 1, "the agent does not run again")

@@ -3,6 +3,7 @@
 package workflow
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -38,7 +39,7 @@ type PinnedFile struct {
 
 // Builtins returns the names that the engine predeclares in every workflow file. All are steps or helpers except json, the module of the Starlark library.
 func Builtins() []string {
-	return []string{agentName, cancelName, closingReferencesName, commandName, earlierCallsName, "env", factsName, firstOfName, gateName, gatherName, hostTeardownName, hostUpName, itemCommentName, itemCreateName, itemReadName, itemStatusName, "json", mergeName, "now", pathsOutsideName, prCommentName, prHistoryName, prOpenName, prStateName, preflightName, progressName, publishName, pushName, queueName, recvName, sandboxName, sendName, sleepName, spawnName, streamName, "struct", waitName, writeName}
+	return []string{agentName, baseTipName, boardCardName, cancelName, closingReferencesName, commandName, earlierCallsName, earlierReadsName, envName, factsName, firstOfName, gateName, gatherName, handOffName, hostTeardownName, hostUpName, roundIntegrationName, issueAssigneesName, issueStateName, itemCommentName, itemCreateName, itemListName, itemReadName, itemStatusName, itemStopName, "json", keepIssuesName, landingProofName, mergeName, "now", patchedName, pathsOutsideName, prClosingName, prCommentName, prHistoryName, prListName, prOpenName, prReadName, prStateName, prTakeName, preflightName, progressName, publishName, pushName, recvName, roundCutName, roundLandName, roundSyncName, runReadName, sandboxName, sendName, sleepName, spawnName, streamName, "struct", waitName, writeName}
 }
 
 // resolveModule turns the argument of a load into a file name: a path in the folder of the workflow, or a library in the binary.
@@ -61,6 +62,10 @@ func resolveModule(module string) (string, error) {
 
 // readFile reads a pinned file by its name: from the folder, or from the binary.
 func readFile(dir, name string) ([]byte, error) {
+	if abs, ok := strings.CutPrefix(name, outsidePrefix); ok {
+		return fs.ReadFile(os.DirFS(filepath.Dir(abs)), filepath.Base(abs))
+	}
+
 	if script, ok := strings.CutPrefix(name, scriptPrefix); ok {
 		return fs.ReadFile(os.DirFS(repoRoot(dir)), script)
 	}
@@ -112,10 +117,10 @@ func (g *graph) failure() error {
 	return errors.Join(errs...)
 }
 
-// pinScripts returns the hashes of the scripts of the repository that the command calls of the workflow run.
+// pinScripts returns the hashes of the scripts that the command calls of the workflow run, in the repository and outside it.
 func (g *graph) pinScripts() ([]PinnedFile, error) {
-	inside, _ := g.scripts()
-	pinned := make([]PinnedFile, 0, len(inside))
+	inside, outside := g.scripts()
+	pinned := make([]PinnedFile, 0, len(inside)+len(outside))
 
 	for _, name := range inside {
 		data, err := readFile(g.dir, scriptPrefix+name)
@@ -126,7 +131,24 @@ func (g *graph) pinScripts() ([]PinnedFile, error) {
 		pinned = append(pinned, PinnedFile{Path: scriptPrefix + name, SHA256: hashOf(data)})
 	}
 
-	return pinned, nil
+	return append(pinned, pinOutside(outside)...), nil
+}
+
+// pinOutside returns the hashes of the files outside the repository that start with a shebang line. A compiled program, such as a system tool,
+// is not a script of the workflow and can change with the system. A file that does not read is left to the run, as before.
+func pinOutside(paths []string) []PinnedFile {
+	var pinned []PinnedFile
+
+	for _, abs := range paths {
+		data, err := readFile("", outsidePrefix+abs)
+		if err != nil || !bytes.HasPrefix(data, []byte(shebang)) {
+			continue
+		}
+
+		pinned = append(pinned, PinnedFile{Path: outsidePrefix + abs, SHA256: hashOf(data)})
+	}
+
+	return pinned
 }
 
 // Sources holds the bytes of the files that a run pinned. A run executes these bytes and no others.
@@ -139,13 +161,15 @@ type Sources struct {
 
 // readPinned reads a pinned file and compares its hash with the pin.
 func readPinned(dir string, p PinnedFile) ([]byte, error) {
+	shown := strings.TrimPrefix(p.Path, outsidePrefix)
+
 	data, err := readFile(dir, p.Path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w. Restore the file, or cancel the run and start again", p.Path, err)
+		return nil, fmt.Errorf("read %s: %w. Restore the file, or cancel the run and start again", shown, err)
 	}
 
 	if got := hashOf(data); got != p.SHA256 {
-		return nil, fmt.Errorf("%s changed since the run started: it had hash %s and has hash %s. Restore the file, or cancel the run and start again", p.Path, p.SHA256, got)
+		return nil, fmt.Errorf("%s changed since the run started: it had hash %s and has hash %s. Restore the file, or cancel the run and start again", shown, p.SHA256, got)
 	}
 
 	return data, nil

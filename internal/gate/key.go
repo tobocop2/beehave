@@ -5,13 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Key names the gate that a request would run: the project (name, repository and the whole host definition), the tree it judges, the command, the test report,
-// the build host, the pin file and, for a local gate, the version that each pinned tool reports on this machine.
+// the build host, the pin file, the base commit that the engine read and, for a local gate, the version that each pinned tool reports on this machine.
 // Two requests with the same ID run the same gate on the same tree, so a pass of one is a pass of the other.
 // Head and Tree are the commit of the tree and its tree id. An empty ID means that no earlier pass may stand in for this gate.
 type Key struct {
@@ -39,7 +40,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, pinned)
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, stepsKey(project.GateSteps), project.TestReport, hostName(project), project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
 
 	return key, nil
 }
@@ -59,6 +60,16 @@ func (g Gate) pinned(ctx context.Context, request Request) (string, bool) {
 // host is the whole host definition of the project, so that two projects with the same host name but another machine never share a key.
 func host(project model.Project) string {
 	return fmt.Sprintf("%+v", project.Host)
+}
+
+// hostName is the build host that the key holds: the name of the host, or for a project that declares more than one host the whole list.
+// The engine places a gate on any declared host, so a pass on one host stands for the same tree on another.
+func hostName(project model.Project) string {
+	if len(project.BuildHosts) > 1 {
+		return fmt.Sprintf("%q", project.BuildHosts)
+	}
+
+	return project.BuildHost
 }
 
 // tools reads the version that each pinned tool reports on this machine, which is what the pin check of a local gate reads.
@@ -94,6 +105,24 @@ func (g Gate) versions(ctx context.Context, dir string, pins []Pin) (string, boo
 }
 
 // digest hashes the parts with their lengths, so that two lists of parts never give the same text.
+// stepsKey is the text of the gate list in the key: each step as its quoted name and command, and its timeout only when it has one, so a list
+// with no timeouts keeps the text, and so the key, that it had before steps had timeouts.
+func stepsKey(steps []model.GateSpec) string {
+	parts := make([]string, 0, len(steps))
+
+	for _, spec := range steps {
+		if spec.Timeout == 0 {
+			parts = append(parts, fmt.Sprintf("%q", struct{ Name, Command string }{spec.Name, spec.Command}))
+
+			continue
+		}
+
+		parts = append(parts, fmt.Sprintf("%q", struct{ Name, Command, Timeout string }{spec.Name, spec.Command, spec.Timeout.String()}))
+	}
+
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
 func digest(parts ...string) string {
 	sum := sha256.New()
 	for _, part := range parts {
@@ -110,7 +139,7 @@ func (g Gate) pins(ctx context.Context, request Request) (string, bool) {
 		return "", true
 	}
 
-	data, code := g.shell(ctx, request.Dir, "git show "+model.ShellQuote("origin/"+request.pinBase()+":"+file))
+	data, code := g.pinText(ctx, request, file)
 
 	return data, code == 0
 }

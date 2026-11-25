@@ -124,7 +124,7 @@ func TestNotify_AResumedWaitRunsTheCommandZeroMoreTimes(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, file)
+		_, runErr := first.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -143,7 +143,7 @@ func TestNotify_AResumedWaitRunsTheCommandZeroMoreTimes(t *testing.T) {
 	resumed := make(chan error, 1)
 
 	go func() {
-		_, runErr := next.RunFile(testItem, testProject, file)
+		_, runErr := next.RunFile(testItem, testProject, file, modeOff())
 		resumed <- runErr
 	}()
 
@@ -258,7 +258,7 @@ func resumedAfterTheConfigChanges(t *testing.T, opened, resumed func(string) mod
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, file)
+		_, runErr := first.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -279,7 +279,7 @@ func resumedAfterTheConfigChanges(t *testing.T, opened, resumed func(string) mod
 	done := make(chan error, 1)
 
 	go func() {
-		_, runErr := next.RunFile(testItem, testProject, file)
+		_, runErr := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runErr
 	}()
 

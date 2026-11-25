@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/store"
 )
 
@@ -408,6 +408,7 @@ func TestHostOutput_ADiedOrStaleJobSaysWhatAPersonCanDo(t *testing.T) {
 		{model.JobDied, "scheduler holds no record"},
 		{model.JobStale, "host.stale_minutes"},
 		{model.JobTimedOut, "host.max_run"},
+		{model.JobDiskFull, "host.disk_floor_gb"},
 		{model.JobCanceled, "the state is canceled"},
 	}
 
@@ -508,7 +509,7 @@ func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *tes
 	t.Parallel()
 
 	state := t.TempDir()
-	trees := newWorktrees(nil, flow.Options{StateDir: state}, nil)
+	trees := newWorktrees(nil, flow.Options{StateDir: state}, nil, nil)
 
 	assert.Equal(t, filepath.Join(state, "trees"), trees.root)
 	assert.Equal(t, filepath.Join(state, "repos"), trees.repos)
@@ -520,14 +521,20 @@ func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *tes
 }
 
 func TestNewWorktrees_EveryGitCallRefusesToPromptForCredentials(t *testing.T) {
-	t.Parallel()
+	state := evaluated(t, t.TempDir())
+	clone := filepath.Join(state, "repos", "p")
+	require.NoError(t, os.MkdirAll(filepath.Join(clone, ".git"), 0o700))
 
-	trees := newWorktrees(nil, flow.Options{StateDir: t.TempDir()}, nil)
+	bin := t.TempDir()
+	seen := filepath.Join(bin, "seen")
+	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), "#!/bin/sh\necho \"prompt=${GIT_TERMINAL_PROMPT-unset}\" >> "+seen+"\n"))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin:/bin")
 
-	runner, ok := trees.git(t.TempDir()).(gitexec.Runner)
+	newWorktrees(nil, flow.Options{StateDir: state}, nil, nil).git(clone).Run(t.Context(), []string{"status"})
 
-	require.True(t, ok)
-	assert.Contains(t, runner.Env, "GIT_TERMINAL_PROMPT=0")
+	data, err := os.ReadFile(seen) //nolint:gosec // a file of the test
+	require.NoError(t, err)
+	assert.Equal(t, "prompt=0\nprompt=0\n", string(data), "the listing of the settings and the call")
 }
 
 // fakeTracker is a store.Tracker that returns fixed fields for an item.

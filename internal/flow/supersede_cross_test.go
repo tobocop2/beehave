@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
@@ -183,13 +184,17 @@ func TestSuperseded_AGateWhoseReadOfTheHeadIsOldNeverStopsTheGateOfTheCurrentHea
 }
 
 // passThenHold passes the first gate and holds every later gate until its context ends.
-type passThenHold struct{ runs atomic.Int32 }
+type passThenHold struct {
+	cleanTree
+
+	runs atomic.Int32
+}
 
 func (g *passThenHold) Key(context.Context, string, string, string, string, string) (GateKey, error) {
 	return GateKey{}, nil
 }
 
-func (*passThenHold) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (*passThenHold) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
@@ -235,7 +240,7 @@ func TestSuperseded_AReplayReadsTheHeadAndCancelsTheGatesNoMore(t *testing.T) {
 	}})
 
 	require.NoError(t, receive(t, done).err)
-	assert.Len(t, h.forge.asked, reads, "the replay reads the recorded head and asks the forge nothing more")
+	assert.Len(t, h.forge.asked, reads+1, "the replay reads the recorded head and asks the forge nothing more; the start of the engine reads the pull request of the one queued gate once, for its place")
 
 	older, err := dbos.RetrieveWorkflow[any](engine.ctx, "older-gate")
 	require.NoError(t, err)

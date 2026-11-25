@@ -8,7 +8,13 @@ The rule for every decision here: a rule that the forge or the operating system 
 
 This page is the design. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
 
-Not built yet: the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the new environment of an agent step and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
+Built: the `credentials` key with the `writer` role, the `file` and `command` loaders, the empty `GH_CONFIG_DIR` and `GH_PROMPT_DISABLED=1` of each `gh` call, the credential helper of each git call to the remote, the redactor prefixes and the start probe. The `git` calls that reach a remote (clone, fetch, ls-remote and push) run as the `writer` of a project that has `credentials`. A project with `credentials` starts only when its `source` is empty or an `https://` address, because the token serves https only. The credential helper of a git call answers for the https protocol and the host of the address of that call, and gives nothing for any other host. The client commands that reach the remote (`cancel`, `resume`, `answer` and `send`) refuse a git call to the remote of a project with `credentials`, because they do not load the token. A project with no `credentials` key keeps the login of the owner, and its git calls to the remote read no git config at all. The system and global config files are off, and no `GIT_*` variable of the process reaches the call. A `core.sshCommand`, a `url.insteadOf`, a `core.hooksPath` or a `credential.helper` in those files does not run and does not redirect a clone, a fetch or a push, whenever an agent wrote it. The call keeps the network names `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, the proxy variables and `PATH`. For an https remote, the engine reads the token with `gh auth token --hostname <host>` when it starts, before any agent step. The token goes to git through the helper that answers only for the https protocol and that host. The client commands read the token when they start. The `gh` config is data and runs no program for that command. If the owner has no `gh` login for the host, the engine refuses the call and the error names the host and says `gh auth login`. For a host that is not GitHub, declare `credentials`. The engine holds a token that it read and does not hold a failed read, so the next call after `gh auth login` reads the token again and needs no restart. An ssh remote reads no git config either, and the call keeps `SSH_AUTH_SOCK` and `HOME` for the SSH agent and `~/.ssh`. An `ssh` setting in `~/.ssh/config`, such as `ProxyCommand`, is not a git setting. This rule does not cover it, and a process of the same user can write that file when the sandbox is off. The push repository of a project is a bare repository in the state folder. Before each call that reaches the remote from it, the engine checks its config against the allow list of the clones and refuses the call when it holds another key, so a `core.sshCommand` there does not run. The helper of the owner needs the variables of the engine process, and the call keeps `PATH`, `HOME`, `TMPDIR`, `XDG_CONFIG_HOME`, `GH_TOKEN`, `GITHUB_TOKEN` and `GH_CONFIG_DIR`. An ssh remote needs no git config: `ssh` reads `~/.ssh`, and the call keeps `SSH_AUTH_SOCK` for the SSH agent. An `ssh` setting in `~/.ssh/config` is not a git setting, and this rule does not cover it. The engine commits in an item worktree are unsigned. The engine's own git calls start with no global config, so the `commit.gpgsign`, `gpg.program` and `user.signingkey` of the owner do not apply. A signing program named in a config that an agent can write is the same hole as a `core.fsmonitor` command. If a project requires signed commits on its branches, the engine commits fail that rule. The start probe checks the environment of an agent step and a command step. A command step that does not set `sandbox` still runs as the owner.
+
+Also built: the engine `push` step, the base program of the local gate (see [gate.md](gate.md)), and the environment of an agent step in the section "An agent step holds no forge credential": no `SSH_AUTH_SOCK`, and for a sandboxed shell a new empty `HOME`, `GIT_CONFIG_GLOBAL=/dev/null` and the git identity of the engine. The agent steps of the `local`, `queue` and `remediation` examples list no network host: the engine pushes, opens the pull request and, for the sync resolve and the take-over review, fetches what the agent reads before it starts. The owner command `beehave gate --own-program` posts the `beehave/gate` status of its head: `success` for a pass and `failure` for a red gate.
+
+The engine `push` step of a project with a `source` and no forge pushes to that `source`. With no `credentials`, git runs that push under the login of the owner; with a writer credential, it runs as the writer. The branch is the one that the workflow names, and an empty `expect` pushes with no lease, so git takes only a new branch or a fast forward.
+
+This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `Login` forge method, the `reviewer` role and the `login` field of `credential`, the `As(role)` forge calls, the status posts of a `gate` step of a workflow (only the batch `merge` and the owner command post a status; see [merge.md](merge.md#commit-statuses)), and the network lists of the `swarm` example, whose agent steps still push and open pull requests themselves. The sandbox default and the ledger lift are also design only. Of the claim lease, the push with a lease on an expected head, the merge pinned to the head and `claim_stop` are built; the fence head in `round_items`, and an empty `expect` that refuses a branch that exists, are not. The ruleset in this page is not posted.
 
 ## The threat model
 
@@ -20,7 +26,7 @@ There are three trust levels. Each decision below names the level that it protec
 | Agent | Every agent step, ours or a model's | A worktree, a network allow-list, the model token of its CLI | Edit files and commit in its worktree. Nothing on the forge. |
 | Outside | Issue text, a foreign pull request, the code of its head | Nothing | Reach an agent prompt as data, and a sandboxed review step on a host with no credential. |
 
-The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can merge. No merge happens without the required statuses at the head.
+The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can push to `integration/**` or merge. No merge happens without the required statuses at the head.
 
 An agent step that runs without the sandbox runs as the user id of the owner. It can read any file and the login keychain of that user. No scrub of the environment changes that. So an unsandboxed agent step is never a trust boundary, and no part of this design relies on one.
 
@@ -30,7 +36,7 @@ beehave needs no second account. The engine holds one credential, `writer`, and 
 
 | Mode | Credentials | What the forge requires |
 |---|---|---|
-| Default | `writer` only: a fine-grained token of the owner's own account | `beehave/review` and `beehave/gate` at the head, plus CI. No approval. |
+| Default | `writer` only: a fine-grained token of the owner's own account | `beehave/review` and `beehave/gate` at the head. A pull request into `main` also needs its CI run to pass. A pull request into an integration branch has no Actions check. No approval. |
 | Optional | `writer` and `reviewer`: one bot account | The same, plus one native approval from a non-author. |
 
 In the default mode the independent review verdict is the commit status `beehave/review`. The engine posts it at the reviewed head. The owner is the author of the pull request, so the owner cannot approve it. The owner posts `beehave/review` by hand when needed.
@@ -53,11 +59,11 @@ project(
 )
 ```
 
-- `credential(file?, env?, command?, login?, ci_locked?)` takes exactly one of `file`, `env` and `command`.
+- `credential(file?, command?, login?, ci_locked?)` takes exactly one of `file` and `command`. There is no `env` source: the start block of the environment of the engine stays readable by `ps eww` and `/proc/<pid>/environ` (see "Platform gaps"), even after the engine removes the variable.
 - `file`: a path inside `~/.config/beehave/credentials/`, mode 0600, in a folder of mode 0700. The loader refuses any other mode and path.
-- `env`: the name of a variable that the engine reads once and then removes from its own environment, so no child process inherits it.
-- `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`.
-- `login`: optional. The engine reads the login of the token at start and refuses when it differs.
+- `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`. The token of a `gh` login usually has the `workflow` scope, and the start check refuses such a token (see "The CI lock").
+- `ci_locked`: optional, `True` or `False`, default `False`. The owner states that the token has no Workflows permission. Set it for a fine-grained token, whose permissions the engine cannot read.
+- `login`: optional. The engine reads the login of the token at start with the forge method `Login` and refuses when it differs.
 - A workflow that pushes, posts or merges needs `writer`. Without it, `beehave check workflow` refuses.
 
 The recommended `writer` token on GitHub is a fine-grained token of the owner's account. It covers the project repository only. It has Contents, Pull requests, Issues and Commit statuses at read and write, Metadata at read, and no Workflows permission.
@@ -78,7 +84,31 @@ The recommended `writer` token on GitHub is a fine-grained token of the owner's 
 3. The CLI process of an agent step keeps the `HOME` of the owner, so that its login works. The shell of a sandboxed step gets a `HOME` that is a new, empty folder of that step, in a temporary folder that the engine makes for the step and removes when the step ends. The shell of a sandboxed step also gets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`. It sets `GIT_AUTHOR_*` and `GIT_COMMITTER_*` to the git identity of the engine for the work folder, so its commits carry that identity. No agent code sets `GH_CONFIG_DIR`: an agent step holds no forge credential in its environment, and the sandbox denies the `gh` config of the owner.
 4. The sandbox denies `~/` and the credential list. No network list names `github.com`, so `git push` over HTTPS has no host.
 5. The engine pushes, not the agent. A `push` step runs with `--force-with-lease=refs/heads/<branch>:<expect>`. It is a recorded step, so a replay does not push again. The prompts contain no push line.
-6. A `command` step gets no forge token. A workflow cannot ask for one.
+6. A `command` step gets no forge token. A workflow cannot ask for one. It gets the same environment as an agent step, so it has no `SSH_AUTH_SOCK`.
+
+### Command steps
+
+A `command` step runs code that an agent wrote (`make`, tests, the gate program), and it runs as the user id of the owner. So an unsandboxed `command` step is not a trust boundary. It can read the `gh` config, the keychain and any file by its absolute path. A new empty `HOME` does not close that: a keychain login and an absolute path stay open, and an empty home breaks `go`, the git identity and `bd`.
+
+Two rules close it.
+
+- A forge write is not a `command` step. The round writes (`pr_take`, `round_sync`, `round_land`, `integration_pull`, `round_cut`, `board_card`) are engine builtins that run as `writer`. The `remedy` step that stays (`report`) and `beehave check gate-list` only read.
+- A `command` step that runs agent-written code sets `sandbox = sandbox()` (see [`sandbox` of `command`](workflow-files.md#sandbox)). It reuses the enforcer of the gate (`cmd/beehave/gatesandbox.go`), and its plan is the plan of the gate: the system folders, the work folder and the `sandbox_read` and `gate_allow_write` paths of the project. The Go folders come only from those two keys, and the home folder of the owner is never granted. A step that leaves `sandbox` out keeps today's behavior.
+
+An unsandboxed `command` step that is left is a limit. Until the sandbox covers it, the ruleset stays unposted while such a step can run agent code.
+
+### Limits
+
+| Channel | Mechanism or limit |
+|---|---|
+| `SSH_AUTH_SOCK` variable | No allow-list (agent, `command`, usage reader) holds it, `env` refuses the name in a `command` or `write` call, and a sandboxed gate drops it. Keys that the agent holds are out of reach. A step keeps `HOME`, so `ssh` still finds a key file in `~/.ssh`. That is a limit for an unsandboxed step. A sandboxed step denies `~/.ssh`. |
+| The agent socket, a file | A sandboxed step: the engine adds the path of its own `SSH_AUTH_SOCK` to the deny list of the plan, with the target when the socket is a link, and `~/.ssh` is denied. Whether the deny of a file also stops a connect to a Unix socket is not measured (`make smoke-sandbox` is owed). An unsandboxed step can find the socket. This is a limit. The sandbox default closes it, because a project with the sandbox on refuses an unsandboxed step. |
+| The gate step | A gate under the sandbox of the project gets no `SSH_AUTH_SOCK`, and the plan refuses a read or write path that holds the socket. A gate with no sandbox keeps the variable and runs as the owner. That is a limit. |
+| The OpenCode launch | It has the same `HOME` as the Claude launch (`internal/agent/opencode/guard.go`) and the same allow-list, so it has the same channels. They are not measured. |
+| The Go module download | Just before the CLI of a sandboxed step starts, the engine runs `go mod download all` on copies of the `go.mod`, `go.sum`, `go.work` and `go.work.sum` files that the agent can write. This adds network reach for the engine: it asks `proxy.golang.org` and `sum.golang.org` for the module paths and versions in those files. A module path names a host, and the proxy fetches a module it does not hold from that host. So an agent can send data that it chooses, in a module path, to a host that it chooses, through the proxy. The download runs in a fixed environment with an empty `HOME`, `GOENV=off`, no `direct` fallback and `GOTOOLCHAIN=local`. So it sends no token and no file of the owner, runs no git, and downloads no toolchain. The go command runs no code of a module at download (go.dev/blog/supply-chain). The go command runs in a folder of the engine, never in the worktree. The engine copies only regular files: a link in a module file path, or a `use` or local `replace` path outside the worktree, stops the download. It writes the new `go.sum` lines back as a new file that replaces the old one. It makes that file with an exclusive create and no execute bit, so no write follows a link or reuses an entry that the agent planted, and an entry at its name stops the write-back. The step reads the cache of its own project and cannot write it. The network allow list of the step is unchanged. Private modules are not served. |
+| The token file of the `file` source | An unsandboxed step can read it. This is a limit, closed the same way. The sandbox denies `~/.config/beehave`. |
+| The git credential helper of the owner | An unsandboxed step reads `~/.gitconfig`. The engine sets `GIT_CONFIG_GLOBAL=/dev/null` for its own git calls in a clone or a worktree and for its forge calls of a project with credentials. The token of a call is readable by the same user while the call runs (`ps eww`). This is a limit. |
+| The start check | It sees the environment that the engine builds. It cannot see files, so it checks the environment channel only. |
 
 ### The CI lock
 
@@ -87,13 +117,15 @@ The CI of a head runs with the workflow files of that head. A workflow that an a
 - The `writer` token has no Workflows permission. GitHub refuses a push that creates or updates a workflow file with such a token. The forge enforces this, not beehave.
 - `ci.yaml` has `permissions: contents: read`, so the code that `check` and `test` run cannot post a status.
 
-A lane that must change a workflow file is held for the owner. The owner lands that change by hand.
+A lane that must change a workflow file is held for the owner. The owner lands that change by hand. In a project with `credentials`, `merge` refuses a pull request that changes `.github/workflows/` with exit code 3 and reads nothing from the forge.
 
-The start check asks the forge adapter whether an agent can write CI. It has three answers.
+At start, for each project with a `writer`, the engine asks the forge adapter, as the writer, whether the token can change CI files. The check runs once for `run`, `serve` and the owner command, before any step. A read that fails refuses the start. A project with no forge has no one to ask, so its answer is `unknown`. The answers:
 
 - `no`: the engine starts.
 - `yes`: the engine refuses to start, whatever `ci_locked` says. On GitHub, a classic token whose scopes hold `workflow` gives `yes`.
 - `unknown`: the engine starts only when the `writer` entry sets `ci_locked = True`. A fine-grained token gives `unknown`, because the engine cannot read its permissions. `ci_locked` is the statement of the owner that the token has no Workflows permission.
+
+On GitHub the answer is the `scopes` field of the active account on github.com in `gh auth status --active --hostname github.com --json hosts`. The engine reads the JSON only, never the text. Scopes that hold `workflow`, in any case, are `yes`, and scopes without it are `no`. GitHub shows scopes only for a classic or an OAuth token, so an account with no scopes is `unknown`. These answers are a read that failed: a failed exit, JSON that the engine cannot read, no active account on github.com, and a login that GitHub did not accept. A gh older than the `--json` flag of `auth status` fails the read. Use gh 2.101 or newer.
 
 ## The forge enforces the merge
 
@@ -105,7 +137,7 @@ The owner posts the ruleset in [`trust/integration-ruleset.json`](trust/integrat
 gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integration-ruleset.json
 ```
 
-It protects `integration/**`. It requires a pull request, resolved review threads, the checks `check` and `test` from GitHub Actions, and the statuses `beehave/review` and `beehave/gate`. It requires 0 approvals and has no bypass actor.
+It protects `integration/**`. It requires a pull request, resolved review threads, and the statuses `beehave/review` and `beehave/gate`. GitHub CI runs on pull requests into `main` only, so the ruleset names no GitHub Actions check. It requires 0 approvals and has no bypass actor.
 
 - `beehave/review` and `beehave/gate` name no source. A status that a user token posts has no App to name. GitHub shows the author of each status in the merge box. Without an App, the ruleset cannot restrict the source of these two statuses. The CI lock and the empty credential list of agents take its place.
 - Who can post a status: users with push access, and an Actions token with `statuses: write`. Here that is the owner, the engine with the token of the owner, and an installed App with Commit statuses write (owner step 4). The CI lock rules out the Actions token.
@@ -133,7 +165,7 @@ With a `reviewer` credential, the owner posts [`trust/integration-ruleset.review
 
 ### The merge checks no flag
 
-The merge request carries no `Approved` flag. The forge refuses a merge without the required statuses at the head. The engine merges pinned with `--match-head-commit`. The engine still reads the protection of the branch at the start of a round, and reports which required context is missing when the forge refuses.
+The merge request carries no `Approved` flag. The forge refuses a merge without the required statuses at the head. The engine merges pinned with `--match-head-commit`. Before any write, `merge` reads the rules of the base and names what the base does not require (the protection guard in [merge.md](merge.md)). The base of a round is a value of the workflow, so the engine does not read it at start.
 
 ### The forge capability methods
 
@@ -146,7 +178,8 @@ Each adapter maps these methods to its forge. A forge that cannot do one returns
 | Post a status | `POST repos/{repo}/statuses/{sha}` | external status check response | `POST repos/{repo}/statuses/{sha}` |
 | Post a review | `POST pulls/{n}/reviews` with `commit_id` | approve at the head SHA | `POST pulls/{n}/reviews` with `commit_id` |
 | Read the protection | rules for the branch | approval rules and status checks | branch protection |
-| Can an agent write CI | `yes` for a classic token with the `workflow` scope, `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
+| Login | `gh api user` | `GET /user` | `GET /user` |
+| Can the `writer` change CI files | `yes` for a classic token with the `workflow` scope, `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
 
 The default mode on GitLab needs external status checks, which is an Ultimate feature. On a lower tier the adapter reports the capability missing and the engine refuses. On Forgejo, branch protection takes a status context pattern and refuses a merge until it succeeds.
 
@@ -154,21 +187,25 @@ The default mode on GitLab needs external status checks, which is an Ultimate fe
 
 `tobocop2/beehave` is a public repository of a user account on the free plan. GitHub offers a merge queue for public repositories of an organization, or for private repositories on Enterprise Cloud. So this repository cannot use one.
 
-`merge` is the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: the required statuses, the checks and the resolved threads.
+`merge` is the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: the required statuses and the resolved threads.
 
 A project of an organization can use a merge queue instead. That variant is not built. To get one, the owner moves the repository to an organization. That changes the URLs and the repository access of the token, so it is a decision of the owner.
 
 ## The sandbox is on by default
 
-An unset `sandbox` in a project gives `on`. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
+An unset `sandbox` in a project gives `on`, and `beehave check config` prints one note for each project with no key. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
 
 A step with `sandbox = None` in a project with the sandbox on is refused by `beehave check workflow` and does not start. A step that needs `docker` runs as a `command` step.
+
+The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it runs with the mode off.
 
 The step fails closed: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
 
 A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
+A foreign item refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. An item is foreign when another account wrote its issue or its pull request. Only the account that the forge reports as `OWNER` is the owner: a member or a collaborator of the repository is another account. The engine reads who wrote the item at a recorded step named `origin`, before the claim. A refused item takes no claim and starts no agent. The engine checks again at each later `pr_read` and `preflight` of the item of the run, because a pull request can open after the start. A read names the item of the run when its `id` is left out, is the same text, or names the same item in the tracker. Only a `github` tracker keys two spellings as one item: there, in a run of `0412`, the id `412` names issue 412. The `local` and `beads` trackers key an item by its exact text, so `0412` and `412` are two items. Both calls refuse an `id` that is not an item id, such as `#412`, before they read. A read whose tracker cannot answer whether the `id` names the item of the run fails and ends the run. Each of these reads finds the pull request once and reads its author on that same pull request, so the check and the result never name two pull requests. A `pr_read` or a `preflight` of another item reads the pull request of that item and not its author, so it cannot fail on that read. A read that fails counts as foreign. When the tracker is `github`, the engine reads the author of the issue through the GitHub access of the tracker, also when the project has no `forge` key. A project with no `forge` key reads no pull request, and a project whose tracker keeps no GitHub issues and that has no `forge` key reads nothing.
+
+The key `credentials = "none"` is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check runs `ssh -G` with the ssh options of the link of the host, so a `Match` block on the address applies. It refuses any `forwardagent` or `forwardx11` value but `no`, a `gssapidelegatecredentials yes`, any `sendenv` but `LANG` and `LC_*`, a `setenv` with a secret name, and any `proxyjump` or `proxycommand`, because the check cannot see what ssh gives a jump host. Every ssh call to such a host also passes `ForwardAgent=no`, `ClearAllForwardings=yes`, `ForwardX11=no`, `ForwardX11Trusted=no`, `ControlMaster=no`, `ControlPath=none` and `GSSAPIDelegateCredentials=no`, so no call joins a connection opened earlier with the agent. Only the `ssh` and `slurm` providers accept the key. The `skypilot` provider refuses it, because `sky launch` can forward the agent of the owner and copies the cloud credentials of the owner to the cluster, and beehave cannot stop either. The key and the check are described in [hosts](hosts.md#the-host-block).
 
 ### Platform gaps
 
@@ -190,7 +227,7 @@ The review step posts `beehave/review` the same way, with the run id in the desc
 
 A head can weaken the program behind the gate: `make check` and its scripts. The owner is the author of the pull requests and cannot approve them. So a code-owner rule would block every change to those files, and beehave adds no `CODEOWNERS` file.
 
-Instead, the project key `gate_program` lists repository paths. For beehave they are `Makefile`, `scripts/` and `.golangci.yml`. The host gate checks out the head, then runs `git checkout <base> -- <paths>`. The gate runs the program of the base, so a head that weakens `make check` is gated by the `make check` of the base.
+Instead, the project key `gate_program` lists repository paths. For beehave they are `Makefile`, `scripts/` and `.golangci.yml`. The host gate clones the head, refuses a head that changed a listed path, removes the listed paths and restores them from the base commit, and compares them with the base after the last step. The gate runs the program of the base, so a head that weakens `make check` is gated by the `make check` of the base. See `gate.md`.
 
 A head whose code needs a new gate program fails the base gate. The owner then lands it by hand. The CI lock stops a head from rewriting the workflow.
 
@@ -219,9 +256,9 @@ The package `internal/ledger` owns `<state folder>/ledger.db`, a SQLite file wit
 
 - `rounds`: one row per round with its status, last pass, integration pull request and the version of the build with the version of each step module.
 - `round_items`: one row per item with its attempt, run id, branch, pull request, the head that the engine last pushed (the fence) and its state.
-- `spend`: one row per agent execution with its tree, run, step, session, item, pull request, call name and cost. A `NULL` cost means unknown.
+- `spend`: one row per agent execution, keyed by an execution id that the agent step makes. It holds the tree, run, step, session, item, pull request, call name and cost. A `NULL` cost means unknown.
 
-An agent step writes its `spend` row with `INSERT OR IGNORE` after the agent exits and before the step returns. A replay of a finished step does not run the body. The fix cap counts the `fix` rows of a pull request. The tree budget sums the cost by tree, and any unknown cost fails the check.
+An agent step inserts its `spend` row with plain SQL when the agent starts, with a `NULL` cost. It sets the cost when the agent exits. A run id and a step number repeat across a rewind, so only the execution id gives a row its identity. The fix cap counts the `fix` rows of a pull request. The tree budget sums the cost by tree, and any unknown cost fails the check.
 
 ### The round is a chain of short workflows
 
@@ -239,7 +276,7 @@ A fencing token works only when the resource checks it. Neither `bd` nor GitHub 
 - `merge` pins with `--match-head-commit`.
 - A stale worker that lost its claim fails at its next push or merge, at the forge.
 - Inside one state folder, the DBOS workflow id `item-<n>-r<k>` dedupes a second start.
-- Across engines, preflight reads the assignee and the linked pull requests. An own open pull request that `round_items` does not hold stops the item as `HELD`.
+- Across engines, the library function `claim_stop` reads the assignee and the linked pull requests. An own open pull request that `round_items` does not hold stops the item as `HELD`.
 
 The `bd` lease stays for hand-run lanes as the `claims = "beads"` adapter. It is unfenced and is not called on the round path.
 

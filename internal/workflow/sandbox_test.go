@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -58,6 +59,68 @@ func TestCheck_ReportsASandboxValueThatIsNotASandboxCallOrNone(t *testing.T) {
 		require.Len(t, got, 1, value)
 		assert.Contains(t, got[0], "sandbox must be sandbox(...) or None, not", value)
 	}
+}
+
+func TestCheck_AcceptsTheSandboxKeywordOfACommandCall(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`command(run = ["a"], sandbox = sandbox())`,
+		`command(run = ["a"], sandbox = sandbox(network = ["proxy.golang.org"]))`,
+		`command(run = ["a"], sandbox = None, stdin = "x", max_new_processes = 5)`,
+		`command(run = ["a"], sandbox = None, host = "box")`,
+		`command(run = ["a"], sandbox = sandbox(), stdin = str(item))`,
+		`command(run = ["a"], sandbox = sandbox(), host = str(item))`,
+		`command(run = ["a"], sandbox = sandbox(), stdin = "")`,
+	} {
+		assert.Empty(t, problemsOf(t, body), body)
+	}
+}
+
+func TestCheck_ReportsACommandSandboxValueThatIsNotASandboxCallOrNone(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{`"on"`, `True`, `["api.example.org"]`} {
+		got := problemsOf(t, `command(run = ["a"], sandbox = `+value+`)`)
+
+		require.Len(t, got, 1, value)
+		assert.Contains(t, got[0], "sandbox must be sandbox(...) or None, not", value)
+	}
+}
+
+func TestCheck_ReportsACommandSandboxWithAHostAStdinOrAProcessCap(t *testing.T) {
+	t.Parallel()
+
+	for setting, want := range map[string]string{
+		`host = "box"`:             "sandbox cannot be used together with host",
+		`stdin = "x"`:              "sandbox cannot be used together with stdin",
+		`max_new_processes = 5`:    "sandbox cannot be used together with max_new_processes",
+		`host = "box", stdin = ""`: "sandbox cannot be used together with host",
+	} {
+		got := problemsOf(t, `command(run = ["a"], sandbox = sandbox(), `+setting+`)`)
+
+		require.Len(t, got, 1, setting)
+		assert.Contains(t, got[0], want, setting)
+	}
+}
+
+func TestCheck_NotesACommandWithNoSandbox(t *testing.T) {
+	t.Parallel()
+
+	got := notesOf(t, `command(run = ["a"], sandbox = None)`)
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "sandbox is None")
+	assert.Empty(t, notesOf(t, `command(run = ["a"], sandbox = sandbox())`))
+}
+
+func TestSandboxWith_RefusesEachSettingAloneAndAcceptsNone(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, workflow.SandboxWith("", "", 0))
+	require.ErrorContains(t, workflow.SandboxWith("box", "", 0), "host")
+	require.ErrorContains(t, workflow.SandboxWith("", "in", 0), "stdin")
+	require.ErrorContains(t, workflow.SandboxWith("", "", 3), "max_new_processes")
 }
 
 func TestCheck_LeavesANonLiteralSandboxListAndASplatCallToTheRun(t *testing.T) {
@@ -166,4 +229,37 @@ func TestSignature_TheSandboxBuiltinTakesOnlyTheNetwork(t *testing.T) {
 	require.Len(t, box, 1)
 	assert.Equal(t, "network", box[0].Name)
 	assert.Contains(t, problemsOf(t, `sandbox(skills = ["review"])`)[0], "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill")
+}
+
+func TestCheckSandboxNone_AProjectWithTheSandboxOnGetsOneProblemForEachLiteralNoneInTheOrderOfTheFile(t *testing.T) {
+	t.Parallel()
+
+	file := folder(t, map[string]string{"workflow.star": sandboxHead + `agent(prompt = "p", model = "m", sandbox = None)` + "\n    " + `agent(prompt = "q", model = "m", sandbox = None)` + "\n"}, "workflow.star")
+
+	found := workflow.CheckSandboxNone(file, "desk", model.SandboxOn)
+
+	require.Len(t, found, 2)
+	assert.Equal(t, 2, found[0].Line)
+	assert.Equal(t, 3, found[1].Line)
+	assert.Contains(t, found[0].Text, "project desk has the sandbox on")
+	assert.Contains(t, found[0].Text, `sandbox = "off"`)
+}
+
+func TestCheckSandboxNone_AProjectWithTheSandboxOffOrUnsetGetsNoProblem(t *testing.T) {
+	t.Parallel()
+
+	file := folder(t, map[string]string{"workflow.star": sandboxHead + `agent(prompt = "p", model = "m", sandbox = None)` + "\n"}, "workflow.star")
+
+	assert.Empty(t, workflow.CheckSandboxNone(file, "desk", model.SandboxOff))
+	assert.Empty(t, workflow.CheckSandboxNone(file, "desk", ""))
+}
+
+func TestCheckSandboxNone_AStepWithABoxOrAComputedValueOrNoKeywordGetsNoProblem(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{`agent(prompt = "p", model = "m", sandbox = sandbox(network = ["a.example.org"]))`, `agent(prompt = "p", model = "m")`, "off = None\n    " + `agent(prompt = "p", model = "m", sandbox = off)`} {
+		file := folder(t, map[string]string{"workflow.star": sandboxHead + body + "\n"}, "workflow.star")
+
+		assert.Empty(t, workflow.CheckSandboxNone(file, "desk", model.SandboxOn), body)
+	}
 }

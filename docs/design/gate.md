@@ -24,7 +24,7 @@ The gate must judge the commit that beehave sends on, so it refuses a tree with 
 |---|---|
 | The tree has uncommitted changes | Refused |
 | The head or the tree changes during the run | Refused |
-| A host job died, went stale or ran past `host.max_run` | Void: every step is `unknown`, and the report says why |
+| A host job died, went stale, ran past `host.max_run`, or was stopped because the host ran under `host.disk_floor_gb` | Void: every step is `unknown`, and the report says why. A disk stop is a problem of the host, not a failed gate |
 | A host job in any state other than succeeded or failed | `ErrNoVerdict`; it never counts as a pass |
 | A clone or checkout on the host fails (for example, a head that is not pushed) | A failed gate, never a pass |
 | A host request without a `CloneURL` | Refused |
@@ -54,17 +54,31 @@ The engine calls `Submit`, records the `Job`, and then calls `Run` with that `Jo
 
 The exclusive queue runs one gate or merge for each project.
 
-A gate on a build host also runs its build job as a child run on the queue `hosts`, under the key `host:` and the host name. Each key runs one job at a time. So the gates of all projects on one host take turns, and the gates of two hosts run together.
+A gate on a build host also runs its build job as a child run on the slot queue of the class `gate`, named `slots:gate:<count>`, under the key `host:` and the host name. The count is `host.gate_slots`, with the default 1. Each key runs at most that many jobs at once. So the gates of all projects on one host share its gate slots, and the gates of two hosts run together.
 
 - The gate keeps its slot in the exclusive queue while the job waits, so a merge of the project still waits for the gate.
-- The queues cannot deadlock. A job queues nothing, so no job on the host queue waits for a slot of the exclusive queue.
+- The queues cannot deadlock. A job queues nothing, so no job on the slot queue waits for a slot of the exclusive queue.
 - A cancel of a gate, by a newer head or with its item, cancels the build job too. DBOS cancels each level of runs before it lists the children of that level. A child start checks in its own transaction that its parent still has an owner, and the cancel clears that owner. So a job that starts during the cancel is listed and canceled, or its start is refused. Until a DBOS release has this order, `go.mod` pins a fork commit that has it. The wait of the gate never cancels the job by its id, so a stop that ends late cannot cancel a job that a resume reopened.
 - DBOS commits each level of a cancel in its own transaction. A cancel that fails after the gate level leaves the gate canceled and its job running. The gate of a later head lists a canceled old gate whose job is still queued or running, and cancels it again with its children. `beehave cancel` of the item does the same. A cancel of a canceled run lists the open runs under it first. If there are none, it says the run has nothing to cancel and exits non-zero. Otherwise it cancels them and names them on stderr.
-- The cap is 1. A cap above 1 is not built.
+- The exclusive queue still keeps one gate for each project. With `gate_slots` above 1, the gates of different projects on one host run together, and two gates of one project never do.
+- The place of a gate in a queue is set when the gate is queued. `beehave gate priority <item> <level>` changes it for a gate that waits. The level is P0, P1, P2 or P3. The command sets the place of the gate on the queue of its project and of its build job on the slot queue of its host. A gate that leaves the queue of its project queues its job with the place that the store holds then, so a raise made while the gate waited reaches the job. The command refuses an item with no open gate and a gate that runs. The workflow library has no call that changes the place of a queued run, so the command writes the `priority` column of the run in the store, and only for a run in the status `ENQUEUED`.
+- `beehave gate hold <item>` parks a running gate and stops its build job on a host. The command moves the gate to the queue `gate_held`, which no engine serves, and then cancels the job. The tick of the engine stops the job through the stop path of a cancel, so the job frees its slot on the host. The gate leaves the queue of its project, so another gate of the same project starts. The run that waits for the gate stays open: the gate is queued, not canceled, so the run does not end as superseded. A canceled gate cancels its job too, and that is a stop: the run that waits for it ends as superseded. The park clears the owner of the gate row, so the old run of the gate cannot record its wait for the canceled job, and it ends. The store drops the end of that run.
+- `beehave gate release <item>` moves the held gate to the queue of its project. The row of the gate keeps its place, its priority and the time of its first queue, so the gate starts before the gates that were queued after it. The new run of the gate replays its recorded steps, finds its canceled job, and reopens the job on the slot queue under the same key. The job keeps its place too. The reopen is two recorded steps of the run, and only a run that records its wait for the job as canceled takes them. The first step cuts the earlier run of the job on this engine and waits for it to end, for at most five minutes. A program that does not stop in that time fails the gate and the job stays canceled. The error tells the user to stop the program on the host and then run `beehave resume` for the item. The second step resumes the job. DBOS runs a resume inside a run in one transaction with the record of the step, and the record checks that the run still owns the gate row. A cancel and a hold clear that owner, and a release gives the row to a new run, so the step of a canceled, held or replaced run is refused and opens no job. A replay after a restart finds both steps recorded and does not reopen the job again. A move rewinds a canceled gate from its first failed step, which is the recorded wait for the canceled job, so the gate waits for the job that the move reopened and does not resume it a second time. A move of the item keeps a held gate held: the gate goes back to the queue `gate_held` and its job stays canceled. A restart of the engine keeps the hold, because the hold is the queue name of the gate in the store, and the place of the project stays free. Both commands refuse an item with no open gate. `hold` refuses a gate that waits, a gate that is held, and a gate that runs on this machine. `release` refuses a gate that is not held.
+- When the engine starts, each gate and each build job of a gate that waits in a queue gets its place again from the current rules (severity of its item, and a person who waits on its pull request). This runs before the queues start. A gate that runs keeps its place. A place that a person set with `beehave gate priority` stays: the command marks the run in the store, and the start skips a marked run and the build job under a marked gate. `beehave resume` and a queued phase or item run do not get a new place. The place is one write for both commands, because the workflow library keeps the place of a queued run and has no call to change it.
+- The class `gate` is reserved. `host.slots` cannot name it, and a `command` call cannot use it.
+- Two projects that declare one host must give the same `gate_slots`. The config load refuses different counts, and the refusal names the class `gate` and both counts.
 
-The host of a gate is the cluster that `host_up` recorded, else the default `build_host` of the project. The engine reads it once, when the gate is queued, and keeps it in the input of the gate. So a replay uses the same host after the project file changes.
+The host of a gate is the cluster that `host_up` recorded. A project that declares one host, or a run that called `host_up`, keeps that host. The engine reads it once, when the gate is queued, and keeps it and the count in the input of the gate. So a replay uses the same host after the project file changes, and a reopened job goes back to the queue of its count.
 
-A gate on a build host checks for a pass to reuse in the step `gate:reuse` before it takes its place on the host queue. So a gate that needs no build never waits for a host.
+A project that declares more than one host in `build_host`, with a run that called no `host_up`, places the gate on a host when the gate leaves the exclusive queue, in the recorded step `gate:place`. The step drops each host that is not up or is under `disk_floor_gb`, and a host that cannot be read. Then it picks the host with the most free gate slots: the count of `gate_slots` minus the build jobs that wait or run on that host. A negative number is a backlog, so when every host is full the shortest backlog wins. A tie goes to the host declared first. If no host is ready, the gate goes to the first declared host, as it did before. A program gate, a gate on this machine and a gate of a project with one host are not placed. A replay reads the record and asks no host, so a restart or a change of the project file never moves a gate.
+
+A lock covers the read of the free slots and the queueing of the job, so two gates never see the same free slot. One engine owns one state folder, so the lock does not reach a second engine with another state folder: two such engines can fill one host. A gate that queued on a host stays there, even if another host frees first.
+
+The key of a gate holds the list of declared hosts and not the host that ran it, so a pass of one tree on one declared host stands for the same tree on another. Every host in one list must match in architecture and toolchain.
+
+Each job works in its own folder on the host, `beehave-gate-<project>-<head>` under the work root. The job id that the host returns holds that folder. When the job ends, the wait banks the work in that folder only, so the bank of one job never reads the clone of another job. A job with no folder banks the whole work root.
+
+A gate on a build host checks for a pass to reuse in the step `gate:reuse` before it takes its place on the slot queue. So a gate that needs no build never waits for a host.
 
 ### Recorded steps
 
@@ -77,7 +91,7 @@ When the wait of `gate` ends as `lost`, the steps `gate:lost-start` and `gate:lo
 
 The workflow library cannot record from inside a step, so the id needs a step of its own. After a crash between the two steps, the replay finds the id on record and the wait reads the same job: the host gets one job. A crash inside `gate:job`, after the host accepted the job and before the step is recorded, can still submit a second job.
 
-The project gate of `merge` has the same two steps, `batch_gate:job` and `batch_gate`. After a lost job with a proof, the batch gates the same commit once more. See "A lost batch gate job" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`, and a `merge` with `gate_run` is one step, `batch_gate`.
+The batch library gates each union with this `gate` call, so it has the same two steps. After a lost job with a proof, `batch_merge` gates the same union once more, and a second loss in one call ends the call. See "The batch library" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`.
 
 ### Gate steps
 
@@ -86,7 +100,10 @@ A project sets either `gate` (one command line) or `gate_steps` (a dict of step 
 With `gate_steps`, the gate runs each command in the dict order and gives one result for each name. So a recipe that exits 0 without its work cannot hide behind another step.
 
 - A failed step does not stop the later steps.
-- A signal or the time limit stops the later steps and makes every step `unknown`.
+- A signal or the time limit of the whole gate (`host.max_run` on a build host) stops the later steps and makes every step `unknown`.
+- A step can have its own `timeout`. Write the value as a dict: `"build": {"command": "make build", "timeout": "10m"}`. The `timeout` is a duration of at least one second. A step that runs past its `timeout` is killed and is `unknown` with the reason "timeout" in the report. The later steps still run. The limit of the whole gate stays the outer bound.
+- On a build host, `timeout` ends the step with exit status 124. A step that ignores the TERM signal gets a KILL signal 3 seconds later and ends with exit status 137. For a step that has a `timeout`, a marker line with `rc=124` or `rc=137` reads as a timeout. A step with no `timeout` that exits 124 or 137 on its own is a failure.
+- The gate key holds the `timeout` of a step only when the step has one, so a gate list with no timeouts keeps its key.
 
 A job on a build host runs each command in the same way and writes the line `beehave-gate-step <name> rc=<code>` after it. The gate reads these lines from the log of a failed job:
 
@@ -150,7 +167,7 @@ beehave reads no clock. So a file with a future timestamp, a coarse timestamp or
 
 A `gate` call with `base` submits the job of a candidate head. A `gate` call without `base` is a sync head or a landing gate: it runs the gate command only, with no secret scan and no new-tests check. A candidate gate never reuses an earlier pass, because a reused pass holds no checks.
 
-The job of a candidate runs its steps apart, each in its own subshell, and a failed step never stops a later one. Each step writes the line `beehave-gate-step <name> rc=<code>`. The step names `head-gate`, `secret-scan`, `base-suite` and `revert-run` are reserved, and `gate_steps` refuses them. The job exits with the exit code of `head-gate`.
+The job of a candidate runs its steps apart, each in its own subshell, and a failed step never stops a later one. Each step writes the line `beehave-gate-step <name> rc=<code>`. The step names `head-gate`, `secret-scan`, `base-suite`, `revert-run` and `gate-program` are reserved, and `gate_steps` refuses them. The job exits with the exit code of `head-gate`, and with a failure when the final check of the gate program failed.
 
 | Step | What it does |
 |---|---|
@@ -159,7 +176,7 @@ The job of a candidate runs its steps apart, each in its own subshell, and a fai
 | `base-suite` | Runs `test_command` on the merge base when the host has no cached report for that commit. |
 | `revert-run` | Runs the new tests on the base code, when the head has new tests. See "The revert run". |
 
-The merge base is the merge base of the head and `origin/<base>`. The host keeps one parsed base report for each merge base commit, in a folder outside the clone. The job writes each file under a temporary name and renames it, so no reader sees a partial file.
+The merge base is the merge base of the head and the base commit that the engine read for the gate. The host keeps one parsed base report for each merge base commit, in a folder outside the clone. The job writes each file under a temporary name and renames it, so no reader sees a partial file.
 
 After the steps, the job compares the head report with the base report per test, by `classname` and `name`. A subtest is its own test. The reader is `awk` only. The job prints:
 
@@ -192,18 +209,53 @@ The secret scan needs gitleaks 8.30.1, which `make setup` and the CI `test` job 
 
 A gate with no failed step and at least one `unknown` step is void, not red.
 
-- A batch gate stops the batch and blames no member (`ErrGateVoid`).
+- `batch_merge` of the batch library ends the call with "the gate gave no result" and blames no member.
 - The review loop of one item starts no fix agent for it. The loop reruns a void gate twice in the same run. Each rerun is a new recorded gate step, because a resume replays a recorded result and never runs a recorded step again.
 - After the reruns, the loop asks the owner, and an answer runs the gate again. After three answers it refuses and names the steps with no result.
 - The loop of `examples/local` still reads a void gate as red.
 
 Three states, one owner: `internal/gate` sets `pass`, `fail` and `unknown`.
 
+### Gate program
+
+The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate takes its program from the base commit and its code from the head. See `configuration.md` for the rules that the config checks.
+
+A gate on a build host with `gate_program` set runs these words, in this order, in a new clone of the head. The clone holds no untracked file, and the job runs no `git submodule update`.
+
+1. Snapshot. Before any head command, the job fetches the base commit into a private bare repository and copies the bytes and the mode of each listed path into a folder of the job. The job also keeps a digest, a mode and a link target for each file in shell variables. The final check reads only these variables, never the folder. Git reads the private repository with no replace refs and no config of the machine. The one exception is the fetch of the base commit from the clone URL when the clone itself lacks it: that fetch reads the config of the machine, which holds the credentials.
+2. Refusal. If the head changed a listed path since the merge base with the base commit, the job fails with the line `beehave-gate-program` and the changed paths. The gate result then has the step `gate-program` in the state `fail`.
+3. Overlay. The job removes each listed path from the clone and restores it from the snapshot. A path that the base lacks stays absent, so a head cannot add `GNUmakefile`.
+4. Final check. After the last head command, the job compares each listed path with the values that the job kept in shell variables, by the digest of the bytes, the execute bit and the kind of file. Head code cannot change a shell variable of the job. The job resolves git, env, find, sort, readlink, cat and the digest tool to absolute paths before any head command, so a tool that the head puts first on the PATH is not used. The check uses no git word, because the head writes the git config. A changed, added or missing file, a link that points elsewhere and a file that is not regular, a link or a folder all fail the job.
+
+The base commit is the one that the engine read once for the gate. A gate with `gate_program` and no base commit starts no job. The gate key holds the list.
+
+A local gate with `gate_program` set runs the same words. The gate makes a new folder, and the job clones the worktree of the item into it with `git clone --no-local`. The copy holds its own object files, so it shares no file with the worktree, its git folder or the source. The job then removes the `origin` remote, so the git config of the copy holds no path of them. The job reads the base commit from the source of the project when the copy lacks it.
+
+Every git call of a local job goes through one shell function, the clone, the checkout and the report check included. The function starts the git that the engine resolved through `env -i`, so the call gets no variable of the caller except `PATH`, `HOME` and `TMPDIR`: no `GIT_TEMPLATE_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS` or other `GIT_` variable. It sets `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `XDG_CONFIG_HOME` to an empty folder of the job, `GIT_NO_REPLACE_OBJECTS=1` and `GIT_TERMINAL_PROMPT=0`, and it passes `-c core.hooksPath=/dev/null`. Each repository that the job makes, the copy and the snapshot, takes the empty folder as its template, so it holds no hook. The template is the defense that holds on every git: Apple Git 2.39 still runs a hook of the repository in `git remote remove` with `core.hooksPath` set. So no config file or attributes file of the user or the machine reaches these calls, with the sandbox on or off, and no hook, template hook or `core.fsmonitor` command runs. The fetch of the base commit from the source has no exception here.
+
+This has a cost for a private repository. A local project with no `source` reads the base from the forge. When the copy lacks the base commit, the job fetches it from the forge with no credential helper and no prompt, the fetch fails, and the gate fails closed. A local `source` folder, or a copy that holds the base commit, does not need the fetch. A host job runs its clone and that fetch with the config of the host, because that config holds the credentials of the forge. Its checkout and the other git calls of the gate program run as in a local job.
+
+The engine finds git, env, find, sort, readlink, cat and the digest tool once, when it starts, and gives these absolute paths to the job. A tool that an agent step puts first on the PATH after the engine starts is not used by the words of the gate program. A tool that is first on the PATH before the engine starts is used. An agent step of an earlier run can put a fake tool there, and the gate does not see it. Only the sandbox of #438 closes this.
+
+With the sandbox on, the job runs under the enforcer in that folder. The plan lets it read the worktree, its shared git folders and a source that is a local folder. With the sandbox off, head code runs as the user and can write any path that it can name. This includes any tool in a folder that the user can write, and the seven tools above when they live there, as in `/opt/homebrew/bin`. The gate keeps head code from the paths that it finds in the copy, and no more. A job that fails keeps its log in the report. A job that fails with a log line `beehave-gate-program` gives the step `gate-program` in the state `fail`. The limits of an unsandboxed gate stay: head code can still write the tools of the host, `go.work` and the git config of the copy, and the final check does not see them.
+
+#### The owner command
+
+A pull request that changes a listed path fails the refusal by design. The owner runs `beehave gate --own-program <pull request> [project]` on a terminal. The command refuses to start when its input or output is not a terminal. It prints the diff of the pull request and runs nothing until the owner types the number of the pull request. The printed diff shows each control character except the line break and the tab, each format character (such as a bidi override or a zero-width space) and each line or paragraph separator as an escape such as `<U+202E>`. The command runs the gate of the project with `gate_program` empty, so the head runs its own program with no overlay and no refusal. Then it posts `beehave/gate` on the head with the description "gate program changed, run by owner command" and the gate key. The status is `success` for a pass and `failure` for a fail. The status goes through the writer role of the project.
+
+The command refuses a pull request on the branch of an item. The engine names the branch of an item for the item, with one rule for the worktree, the branch lookup, the pull request lookup and the pull request it opens. The push step pushes to the branch that the workflow names. The command reads the items from two places: the runs of the project, and the open items that the tracker of the project lists, through the same tracker read as the queue. When the tracker cannot list its items, the command stops before it reads any path. The command takes the head branch without the spaces around it and without a `refs/`, `heads/` or `refs/heads/` prefix, and compares it with each item id, ignoring case. It refuses the branch when the branch is the item id, or starts with the item id and then a character that is not a letter or a digit, such as `bh-12-gate` or `bh-12/x`. It admits a branch that holds the item id elsewhere, such as `fix/bh-12`, and a branch whose prefix only looks like the id, such as `bh-123`.
+
+The command refuses a pull request whose base is not the base branch of the project. A status stands for the commit on every pull request, so a pull request into another branch would bless the commit for the base branch. It also refuses a head that is behind the base branch, so the gate never judges code that the base has since changed. It reads the tip of the base branch once, and the paths, the diff and the ancestor check all use that tip. After the gate, it reads the head of the pull request and the tip again. When either moved, it posts nothing. A move in the short time between that read and the post is not seen; a ruleset that requires an up-to-date branch closes it.
+
+The command refuses a pull request that changes a path that `gate_program` does not list, and a pull request that changes a submodule. It reads the changed paths with git, against the tip of the base branch. A rename shows as a delete of the old path and an add of the new path, so a rename and a long file list cannot hide a path. A project with no `gate_program` lists no path, so the command refuses every change.
+
+The command is not a barrier. The terminal and the diff stop a script by mistake. An agent step that is not in a sandbox can still push a branch under another name and run the command. Only the sandbox closes that.
+
 ### Pinned tools
 
 A gate that passes with the wrong tool proves nothing about the pinned tool. The optional project key `pin_file` names a file in the format of `.tool-versions`: one tool and its exact version on each line. A `#` starts a comment. The path is relative and has no `..`. The config refuses any other path.
 
-beehave reads the file at the base commit, `origin/<base_branch>` (`git show`), not in the work tree of the lane. So a lane cannot edit its own pins. A gate call with a `base`, the branch that the head merges into, reads the file at `origin/<base>` instead, so a child of a round gates with the pins of its round base. The gate key holds the pin text that it read.
+beehave reads the file at the base commit (`git show <commit>:<file>`), not in the work tree of the lane. So a lane cannot edit its own pins. The engine reads the base commit once for each gate: the tip of the base branch at the source of the project (`git ls-remote` in the push repository of the project, as the writer of a project with `credentials`, so no setting of the clone config reaches it). The key of the gate reads the tip, and the host job takes that same commit from the key, so a push to the base between the two changes neither. The commit goes into the plan of the gate and into the host job, and every later read of the base uses it, never the branch name. The tip must be a full commit id of 40 hexadecimal digits. If the clone lacks the commit, the engine fetches that commit by its id from the source into the push repository, then into the clone over the file transport. A source that speaks git protocol version 2 serves a commit by its id. A plan that an earlier build stored with a pin file and no base commit is void: run the gate again. A lane can move `origin/<base_branch>` in the clone, and it cannot move the source. A gate call with a `base`, the branch that the head merges into, reads the tip of that branch instead, so a child of a round gates with the pins of its round base. If the engine cannot read the base commit, the gate fails and the error names the base branch. The gate key holds the base commit and the pin text that it read.
 
 A gate call with a `pin_base` reads the file at `origin/<pin_base>` and turns on no candidate check: `base` does both, and `pin_base` only the first. A call with both reads the file at `pin_base` and runs the checks of `base`. The sync gate of a round sets `pin_base` to the round base. The landing gate of a `merge` call reads the file at the `base` of the call, with no candidate check. So a round that changes a pinned tool on its round base gates its sync head and its landing union with the new tools, as its children do.
 

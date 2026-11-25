@@ -35,7 +35,7 @@ func TestSendToItem_AReplayAfterTheTargetStepSendsOnceToTheRecordedRun(t *testin
 	engine := crashAtSend(t, h)
 	waiting := waitingItem(t, engine, "21", testProject)
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 	require.Error(t, err, "the crash ends the sender")
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -57,7 +57,7 @@ func TestSendToItem_AReplayDoesNotLookTheItemUpAgain(t *testing.T) {
 	engine := crashAtSend(t, h)
 	waiting := waitingItem(t, engine, "21", testProject)
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 	require.Error(t, err, "the crash ends the sender")
 
 	require.NoError(t, h.client(t, testVersion).Cancel("21"), "the target ends between the target step and the send")
@@ -78,7 +78,7 @@ func builtSendFlow(t *testing.T, id string) string {
 func TestSendToItem_AnIdOfALiteralTargetThatIsNotAnItemIdIsRefusedBeforeTheRunStarts(t *testing.T) {
 	t.Parallel()
 
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:not an item"))
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:not an item"), modeOff())
 
 	require.ErrorContains(t, err, `to is "item:not an item"`)
 	require.NotErrorIs(t, err, ErrBadItem)
@@ -101,7 +101,7 @@ func TestSendToItem_AnItemMaySendToItsOwnOpenRun(t *testing.T) {
 
 	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(`send(to = "item:12", topic = "landed", value = "me", name = "self")
 m = recv("landed", timeout = "1m", name = "got")
-command(name = "got", run = ["got", m.value])`)))
+command(name = "got", run = ["got", m.value])`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"got me"}, h.commands.ranBy(testItem))
@@ -114,7 +114,7 @@ func TestSendToItem_ARunWhoseInputCannotBeReadIsAnError(t *testing.T) {
 	engine := h.engine(t)
 	enqueueRun(t, h.client(t, testVersion), runID("21", 1), "not an item input", engine.version)
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 
 	require.ErrorContains(t, err, "read the input of run item-21-r1")
 }
@@ -130,7 +130,7 @@ func TestSendToItem_ARunOfAnotherBuildIsStranded(t *testing.T) {
 	_, err := sqlOf(t, h).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = 'v0+core1' WHERE workflow_uuid = 'item-21-r1'")
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err = engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 
 	require.ErrorIs(t, err, errStranded)
 }

@@ -1,7 +1,11 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
-load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix")
+load("@beehave//batch.star", "batch_merge")
+load("@beehave//claims.star", "claim_stop")
+load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
+load("@beehave//scope.star", "fix_scope", "hold_scope")
+load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
 # fix runs the fix rounds up to vars.round.escalate_after, and fix_late runs the rounds after them.
@@ -22,46 +26,19 @@ STEP_DEFAULTS = {
 # The steps that review_fix takes. The other steps of STEP_DEFAULTS are agent calls of this file.
 LOOP_STEPS = ["implement", "review", "fix", "fix_late", "design"]
 
-# A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the tool as flags.
+# A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the step pr_take.
 IDLE_HOURS = "1"
 GRACE_HOURS = "1"
-
-# The severities in the order of the queue, most severe first. A severity that is not in the list sorts last.
-SEVERITIES = ["P0", "P1", "P2", "P3", "P4"]
 
 # The attribution patterns, each case-insensitive. No line of a pull request body, a commit message, an issue, a comment or a pull request title may match them.
 # The merge adds the pattern of the tracker id of each item (id_patterns); the posting steps use only this list, because their text names the item.
 ATTRIBUTION = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"]
 
+# The closing keywords of GitHub, as one pattern for a line of text: a keyword, an optional colon and an issue as #N, owner/repo#N or an issue URL. A pull request into a branch other than the trunk may not close an issue.
+CLOSING_KEYWORDS = ["(?i)\\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?\\s+(([a-z0-9_.-]+/[a-z0-9_.-]+)?#[0-9]+|https?://github\\.com/[a-z0-9_.-]+/[a-z0-9_.-]+/issues/[0-9]+)"]
+
 # A line of the mutation output is a finding only when it starts with this text. The log of the tool prints other lines, such as the line of a killed mutant that gremlins writes as KILLED TYPE at file:line:col.
 FINDING_PREFIX = "finding: "
-
-def _severity(row):
-    if row.severity in SEVERITIES:
-        return SEVERITIES.index(row.severity)
-
-    return len(SEVERITIES)
-
-def _group(row, me):
-    # The work of others is a pull request whose author is not `me`. A review request does not decide it. It stays first whatever its review state is, so a pull request of another author with requested changes is here and not in group 1.
-    if row.pr > 0 and row.author != "" and row.author != me:
-        return 0
-
-    if row.changes_requested:
-        return 1
-
-    if row.pr > 0:
-        return 2
-
-    return 3
-
-def rank(rows, me):
-    """Returns the ready rows in the order of work: first the pull requests of other authors than `me` (the work of others, whatever their review state),
-    then our pull requests with requested changes, then our other work in flight (an open pull request), then the new rows.
-    Inside each group, the rows of a container come before the loose rows, then the rows go by severity, then by item id. A row that is not ready is not offered.
-    Two rows with the same keys keep the order of their item ids, so the input order does not change the result."""
-    ready = [r for r in rows if r.state == "ready"]
-    return sorted(ready, key = lambda r: (_group(r, me), 0 if r.parent != "" else 1, _severity(r), r.item))
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
@@ -501,6 +478,51 @@ def lane_report(lane):
 
     return "The report of the lane has a defect. Each line is one finding:\n" + done.stdout.strip()
 
+def issue_number(id):
+    """Returns the number of the GitHub issue that an item id names, or 0 for an id that is not a plain issue number."""
+    if id.isdigit() and int(id) > 0:
+        return int(id)
+
+    return 0
+
+def stacked_on_open_parent(parent):
+    """Reports whether the item has a parent whose pull request is open. The engine bases the pull request of such an item on the branch of its parent, so its base is not the base of the round."""
+    if parent.id == "":
+        return False
+
+    for pull in pr_history(name = "parent-history", item = parent.id).pulls:
+        if pull["state"] == "OPEN":
+            return True
+
+    return False
+
+def closing_line(project, base, id, stacked):
+    """Returns the closing line of the body of a pull request for the item `id`: Closes when the pull request goes into the trunk, Addresses for any other branch (the branch of an open parent included), so a pull request into a branch never closes an issue before the trunk gets it. An id that is no issue number gets no line."""
+    number = issue_number(id)
+    if number == 0:
+        return ""
+
+    return ("Closes" if base == project.base_branch and not stacked else "Addresses") + " #%d" % number
+
+def with_line(text, line):
+    """Returns the text with the line after it, one blank line between them. An empty line leaves the text as it is."""
+    if line == "":
+        return text
+
+    return line if text == "" else text + "\n\n" + line
+
+def closes_of(project, base, id, stacked):
+    """Returns the issues that the pull request of the item `id` closes. It follows closing_line: the issue of the item when the body says Closes, and none otherwise."""
+    number = issue_number(id)
+    if number == 0 or base != project.base_branch or stacked:
+        return []
+
+    return [number]
+
+def hand_to_owner(prs, base, repo, name):
+    """Marks the pull requests ready and waits until the owner merges them. The round calls it when the owner merges."""
+    return hand_off(prs = prs, base = base, repo = repo, name = name)
+
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
     A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""
@@ -626,7 +648,7 @@ def file_parked(parked, output = "parked"):
             forbid_text = ATTRIBUTION,
         )
 
-def land(approved, project, round_settings, n):
+def land(approved, project, round_settings, n, run):
     """Lands the approved items of a pass as one batch named round-land-<n>: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `approved` has an item id, the full SHA that the review approved, and the verdict of the child run (`approved`). Each member of the batch carries that verdict, so our own pull request
     lands only on the approval of its own review, and the approval of one member never reaches another. The setting vars.round.merge, the stops before the work and the guards are those of the pipeline of one item.
@@ -648,7 +670,9 @@ def land(approved, project, round_settings, n):
         # The pull request of an approved item is still the draft that its run opened: the merge marks it ready, after this call. The number of that draft is no stop.
         # A child value with no draft number keeps the stop.
         own_draft = {"own_draft": entry.pr} if entry.pr else {}
-        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
+        check = preflight(name = "intake-" + id, id = id, head = head, base = base)
+        if check.ok:
+            check = claim_stop(name = "intake-" + id, id = id, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
         if not check.ok:
             stopped.append(struct(item = id, reason = check.reason))
             continue
@@ -660,20 +684,31 @@ def land(approved, project, round_settings, n):
             continue
 
         # The merge accepts the draft that the run opened, and marks it ready after its guards. The hand-off call reads no draft.
-        prs.append(struct(item = id, head = head, approved = entry.approved, **own_draft))
+        # The pull request closes the issues that its child returned: the body that pr_open wrote says the same, because the child chose both from the base of the pull request.
+        prs.append(struct(item = id, head = head, approved = entry.approved, closes = entry.closes, **own_draft))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
         item_status(name = "stop-hold-" + skipped.item, id = skipped.item, status = "hold")
 
+    # The scope check: a pull request that closes an issue that is new since its first review waits for the owner. The owner answers the run `run` with "keep #N", and any other answer rejects the member here.
+    # A rejected member gets the reason as a comment and the hold status, as a member that the merge rejects does. The check runs before the merge, so before the union gate.
+    # A hand-off round lands nothing itself: the owner merges each pull request, so the round asks no scope question.
+    held = struct(prs = prs, rejected = []) if round_settings["hand_off"] else hold_scope(name = "round-scope-%d" % n, prs = prs, run = run)
+    prs = held.prs
+
+    for refused in held.rejected:
+        item_comment(name = "scope-no-" + refused.item, id = refused.item, key = "rejected", text = refused.reason, forbid_text = ATTRIBUTION)
+        item_status(name = "scope-hold-" + refused.item, id = refused.item, status = "hold")
+
     if len(prs) == 0:
-        return struct(host_losses = 0, moved = len(stopped) > 0)
+        return struct(host_losses = 0, moved = len(stopped) > 0 or len(held.rejected) > 0)
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
-        out = merge(name = "round-land-%d" % n, prs = prs, base = base, repo = project.repo, hand_off = True)
+        out = hand_to_owner(prs = prs, base = base, repo = project.repo, name = "round-land-%d" % n)
     else:
-        out = merge(
+        out = batch_merge(
             name = "round-land-%d" % n,
             prs = prs,
             base = base,
@@ -681,7 +716,7 @@ def land(approved, project, round_settings, n):
             hold = "hold",
             own = {"logins": [round_settings["owner"]], "emails": [round_settings["owner_email"]]},
             gate_run = round_settings["union_gate"],
-            forbid_text = ATTRIBUTION + id_patterns([pr.item for pr in prs]),
+            forbid_text = (ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS) + id_patterns([pr.item for pr in prs]),
             integration = round_settings["integration_pr"],
         )
 
@@ -715,17 +750,22 @@ def land(approved, project, round_settings, n):
         if not accepted.passed:
             fail("REFUSE: the batch landed, but the acceptance script %s failed on %s. Read its output, then fix the round branch by hand:\n%s" % (round_settings["acceptance"], base, accepted.report))
 
-    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
+    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(held.rejected) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
-    No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands. `author` is the author of the pull request, from the queue row.
+    No entry calls it yet (#438). The engine starts a foreign item only in the sandbox on a build host declared credentials = "none". `author` is the author of the pull request, from the queue row.
     1. A review agent posts the findings as a changes-requested review. The notice is refused until the review is on the pull request.
-    2. The tool posts the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
+    2. The engine step pr_take posts, as the writer, the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
     3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take.
-    4. The tool takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the tool, and a person reads the replies.
-    The run of the item holds the claim, so the take writes none. A refusal of the tool (exit code 2) ends the item with the lines it printed."""
-    base = ["remedy", "take", pr, "--me", round_settings["owner"], "--idle", IDLE_HOURS, "--grace", GRACE_HOURS, "--item", item.id]
+    4. The step pr_take takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the step, and a person reads the replies.
+    The run of the item holds the claim, so the take writes none. A refusal of the step (code 2) ends the item with the lines it showed."""
+
+    # The round fetches the head of the pull request into the folder, so the review agent reads it there and reaches no host. GitHub keeps that head under refs/pull for a fork too.
+    # No entry calls this function yet, so no open run recorded the review without this step, and the step needs no patched.
+    fetch = command(name = "take-fetch", run = ["git", "fetch", "origin", "+refs/pull/%s/head:refs/remotes/origin/pr-%s" % (pr, pr)])
+    if fetch.rc != 0:
+        fail("REFUSE: the step take-fetch could not fetch the head of pull request %s into the folder. Check the folder and the pull request. %s" % (pr, fetch.stderr.strip()))
 
     agent(
         name = "take-review",
@@ -734,11 +774,11 @@ def take_over(item, pr, author, project, round_settings):
         runner = _runner(round_settings, "take_review"),
         edits = False,
         label = "take review",
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        sandbox = sandbox(),
         inputs = {"item": item, "pr": pr, "facts": project},
     )
 
-    command(name = "take-notice", run = base + ["--apply"], stop_on_rc = [2])
+    pr_take(name = "take-notice", pr = int(pr), me = round_settings["owner"], idle = IDLE_HOURS, grace = GRACE_HOURS, step = "apply")
 
     grace = wait(
         "The notice is on pull request %s. Answer KEEP to keep it, or RELEASE to hand it over. With no answer in %s hours, it is taken." % (pr, GRACE_HOURS),
@@ -751,12 +791,20 @@ def take_over(item, pr, author, project, round_settings):
     if grace.answer == "KEEP":
         return
 
-    command(name = "take-claim", run = base + ["--take"], stop_on_rc = [2])
+    pr_take(name = "take-claim", pr = int(pr), me = round_settings["owner"], idle = IDLE_HOURS, grace = GRACE_HOURS, step = "take")
+
+def wontfix_text(ledger, heading):
+    """The findings of the review ledger in the state wontfix, one line each with the id, the path, the text and the reason, after `heading`. It returns "" when there is none."""
+    lines = ["- %s (%s): %s. Reason: %s" % (entry["id"], entry["path"], entry["text"], entry["reason"]) for entry in ledger if entry["state"] == "wontfix"]
+    if len(lines) == 0:
+        return ""
+
+    return heading + "\n".join(lines)
 
 def foreign_followup(recorded, project):
     """Files one follow-up issue for the findings that a foreign review left open, once the reviewed pull request merged, and returns its id. It returns "" when it files nothing.
-    No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands (#438), and that change wires it in.
-    `recorded` is the value of the foreign review run: `pr` is the number that the intake preflight gave, and `findings` the open findings of the review, each with a `class` and a `text`.
+    No entry calls it yet (#438). The engine starts a foreign item only in the sandbox on a build host declared credentials = "none".
+    `recorded` is the value of the foreign review run: `pr` is the number that the intake preflight gave, and `findings` the open findings of the review, each with an `id`, a `severity`, a `path` and a `text`.
     `project` is the value of facts().
     The step reads the state of that number. It does not look the pull request up again, so a branch that is not the item id and a base that is not vars.round.base change nothing.
     A review with no open findings files nothing, and so does a pull request that is still open or closed without a merge.
@@ -770,7 +818,7 @@ def foreign_followup(recorded, project):
     if pr_state(name = "foreign-state", pr = pr).state != "MERGED":
         return ""
 
-    lines = ["- %s: %s" % (finding["class"], finding["text"]) for finding in findings]
+    lines = ["- %s: %s" % (finding["severity"], finding["text"]) for finding in findings]
     return item_create(
         name = "foreign-followup",
         key = "foreign:%s:%d" % (project.repo, pr),
@@ -793,18 +841,7 @@ def record_merge(id, head, base):
     )
     item_status(name = "closed-" + id, id = id, status = "closed")
 
-def line_fields(text):
-    """Returns the `name=value` words of the line of a tool as a dict. A word with no `=` is left out."""
-    fields = {}
-    for word in text.split():
-        pair = word.split("=", 1)
-        if len(pair) == 2:
-            fields[pair[0]] = pair[1]
-
-    return fields
-
-# The fields that each state of a line of `remedy sync` must carry. The round acts on these states only.
-# A line with no state reads as current: the tool prints a state on every exit 0, and a dry run prints nothing.
+# The fields that each state of a result of round_sync must carry. The round acts on these states only.
 SYNC_FIELDS = {
     "current": [],
     "synced": ["branch", "pr", "head", "base_tip"],
@@ -812,7 +849,7 @@ SYNC_FIELDS = {
     "refused": [],
 }
 
-# The states of `remedy sync land` after which the pass goes on. A moved base or a moved head lands nothing, and the next pass syncs again.
+# The states of round_land after which the pass goes on. A moved base or a moved head lands nothing, and the next pass syncs again.
 SYNC_LAND_STATES = ["landed", "stale", "head-moved"]
 
 # Each reason that ends a pass before its queue audit, with what the owner does before the answer CONTINUE.
@@ -828,23 +865,19 @@ def sync_end(reason, host_losses = 0):
     """The end of a sync: the reason that holds the round, or an empty text, and the highest host_losses that a gate of the sync read."""
     return struct(reason = reason, host_losses = host_losses)
 
-def sync_check(name, run):
-    """Runs one check of `remedy sync` as the command step `name` and returns the fields of its line, with the state set.
-    Exit code 2 (a forge failure or a bad argument) stops the round with the line of the tool. Any other exit code but 0, a state the round does not know, or a field that its state needs and lacks, stops the run."""
-    out = command(name = name, run = run, stop_on_rc = [2])
-    if out.rc != 0:
-        fail("REFUSE: the check %s ended with the exit code %d and the line %r. Check the remedy tool of the round, then run the round again." % (name, out.rc, out.stdout))
-
-    fields = line_fields(out.stdout)
-    state = fields.get("state", "current")
+def sync_check(name, round_settings, project):
+    """Runs one check of the trunk with the engine step round_sync `name`, as the writer, and returns the fields of its result as a dict, with the state set.
+    A forge failure ends the run with the error of the step. A state the round does not know, or a field that its state needs and lacks, stops the run."""
+    out = round_sync(name = name, base = round_settings["base"], trunk = project.base_branch)
+    fields = {"state": out.state, "branch": out.branch, "source": out.source, "pr": str(out.number) if out.number else "", "head": out.head, "base_tip": out.base_tip}
+    state = fields["state"]
     if state not in SYNC_FIELDS:
-        fail("REFUSE: the line of %s has the state %r, which the round does not know. Check the remedy tool of the round, then run the round again." % (name, state))
+        fail("REFUSE: the result of %s has the state %r, which the round does not know. Check the round, then run it again." % (name, state))
 
     missing = [key for key in SYNC_FIELDS[state] if fields.get(key, "") == ""]
     if missing:
-        fail("REFUSE: the %s line of %s has no %s. The fields are %r. Check the remedy tool of the round, then run the round again." % (state, name, ", ".join(missing), fields))
+        fail("REFUSE: the %s result of %s has no %s. The fields are %r. Check the round, then run it again." % (state, name, ", ".join(missing), fields))
 
-    fields["state"] = state
     return fields
 
 def sync_land(item, project, round_settings, line, n):
@@ -884,29 +917,35 @@ def sync_land(item, project, round_settings, line, n):
         output_tries = 2,
         forbid_commands = FORBID + ["git-write"],
         protect_paths = protected(round_settings),
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        # The folder is at the head of the sync, so the review reads local commits and reaches no host.
+        sandbox = sandbox(),
         inputs = {"pr": line["pr"], "branch": line["branch"], "head": head, "base": round_settings["base"], "facts": project},
     )
     capped(review, "sync-review", item)
     if review.verdict != "approve":
         return sync_end("sync-review", losses)
 
-    landed = line_fields(command(name = "sync-land-%d" % n, run = ["remedy", "sync", "land", "--pr", line["pr"], "--head", head, "--base-tip", line["base_tip"]]).stdout)
-    if landed.get("state", "") not in SYNC_LAND_STATES:
-        fail("REFUSE: the landing of the sync pull request %s gave the fields %r. Read the pull request. %s" % (line["pr"], landed, restart_steps(item)))
+    landed = round_land(name = "sync-land-%d" % n, pr = int(line["pr"]), head = head, base_tip = line["base_tip"])
+    if landed.state not in SYNC_LAND_STATES:
+        fail("REFUSE: the landing of the sync pull request %s gave the state %r. Read the pull request. %s" % (line["pr"], landed.state, restart_steps(item)))
 
-    if landed["state"] == "landed":
+    if landed.state == "landed":
         round_integration(project, round_settings, "round-integration-sync-%d" % n)
 
     return sync_end("", losses)
 
 def sync_trunk(item, project, round_settings, n):
     """Merges a moved trunk into the round branch at the start of pass `n`, before its queue audit. Returns sync_end: a reason of SYNC_REASONS that ends the pass, or an empty reason, and the host_losses that its gate read.
-    A conflict gets one agent step, sync-resolve-<n>, on the sync branch, the push of its head by the engine, and then one more check. The tool merges the forge side and writes no checkout."""
-    run = ["remedy", "sync", "--base", round_settings["base"], "--trunk", project.base_branch]
-    line = sync_check("sync-%d" % n, run)
+    A conflict gets the fetch of both branches, sync-resolve-fetch-<n>, one agent step, sync-resolve-<n>, on the sync branch, the push of its head by the engine, and then one more check. The tool merges the forge side and writes no checkout."""
+    line = sync_check("sync-%d" % n, round_settings, project)
 
     if line["state"] == "conflict":
+        # The round fetches both sides of the merge into the folder of the round, so the agent reaches no host.
+        # The fetch sits behind patched. An open run that recorded the start of the resolve agent before the fetch step existed replays it with no fetch, so its agent works on what the folder already holds and reaches no host.
+        fetch = "sync-resolve-fetch-%d" % n
+        if patched(fetch) and command(name = fetch, run = ["git", "fetch", "origin", line["branch"], line["source"]]).rc != 0:
+            fail("REFUSE: the step %s could not fetch %s and %s into the folder of the round. Check the folder of the round. %s" % (fetch, line["branch"], line["source"], restart_steps(item)))
+
         resolve = agent(
             name = "sync-resolve-%d" % n,
             prompt = "prompts/sync.md",
@@ -914,7 +953,7 @@ def sync_trunk(item, project, round_settings, n):
             runner = _runner(round_settings, "sync_resolve"),
             forbid_commands = FORBID,
             protect_paths = protected(round_settings),
-            sandbox = sandbox(network = ["github.com", "api.github.com"]),
+            sandbox = sandbox(),
             inputs = {"branch": line["branch"], "source": line["source"], "base": round_settings["base"], "facts": project},
         )
         capped(resolve, "sync-resolve", item)
@@ -923,7 +962,7 @@ def sync_trunk(item, project, round_settings, n):
         # A resolve that made no commit ends on the head it started on, which is not a commit of the sync branch, so a push of it would move the branch off its commits.
         if resolve.committed:
             push(name = "push-sync-%d" % n, branch = line["branch"], head = resolve.head_sha, expect = "")
-        line = sync_check("sync-again-%d" % n, run)
+        line = sync_check("sync-again-%d" % n, round_settings, project)
 
     state = line["state"]
     if state == "conflict":
@@ -956,29 +995,19 @@ def round_question(reason, seen, idle):
 
 def round_integration(project, round_settings, name = "round-integration"):
     """Finds or creates the integration pull request from the round branch into the trunk, and returns its number and state. `name` is the name of the step.
-    The tool `remedy integration` uses vars.round.integration_pr when it is not 0, and prints `pr=<n> state=<state>`. The tool makes the whole body again from the pull requests merged into the round branch, so a merge of an item or of a sync is never missing from it.
+    The engine step integration_pull, run as the writer, uses vars.round.integration_pr when it is not 0, and returns `number` and `state`. The step makes the whole body again from the pull requests merged into the round branch, so a merge of an item or of a sync is never missing from it.
     The round runs it after each landing of items (round-integration-land-<n>), after each landing of a sync (round-integration-sync-<n>) and when the round has nothing to move."""
-    out = command(
-        name = name,
-        run = ["remedy", "integration", "--base", round_settings["base"], "--into", project.base_branch, "--pr", str(round_settings["integration_pr"])],
-        stop_on_rc = [2],
-    )
-    fields = line_fields(out.stdout)
+    out = integration_pull(name = name, base = round_settings["base"], into = project.base_branch, pr = int(round_settings["integration_pr"]))
+    if out.number <= 0:
+        fail("REFUSE: the step %s gave no pull request number. The state is %r" % (name, out.state))
 
-    if not fields.get("pr", "").isdigit():
-        fail("REFUSE: the line of round-integration has no `pr=<n>` figure. The line is %r" % out.stdout)
-
-    return struct(pr = int(fields["pr"]), merged = fields.get("state", "") == "MERGED")
+    return struct(pr = out.number, merged = out.state == "MERGED")
 
 def next_round(project, round_settings, pr):
     """Cuts the next round after the integration pull request `pr` of the old round merged. vars.round.next_base names the new round branch. vars.round.base is the old one.
     `pr` is the number that round_integration returned, so a round with vars.round.integration_pr 0 cuts with the pull request that the tool found.
-    The cut tool refuses while the integration pull request is not merged (exit code 2), so no round starts before the one before it ended."""
-    command(
-        name = "round-cut",
-        run = ["remedy", "cut", "--old", round_settings["base"], "--new", round_settings["next_base"], "--pr", str(pr), "--trunk", project.base_branch],
-        stop_on_rc = [2],
-    )
+    The engine step round_cut, run as the writer, refuses while the integration pull request is not merged and ends the item with its lines, so no round starts before the one before it ended."""
+    round_cut(name = "round-cut", old = round_settings["base"], new = round_settings["next_base"], pr = int(pr), trunk = project.base_branch)
 
 def record_base_reds(round_settings):
     """Writes the one record of the known base reds: the reds of vars.round.base_reds, the time and the tip of the base. Each new write replaces the file, so the file holds one record.
@@ -999,7 +1028,7 @@ def record_base_reds(round_settings):
 
 def derive_gate_list(project):
     """Derives the gate list of the round from the CI workflow files of vars.gate_files, and holds gate_steps to it by vars.gate_map. A project with no gate_files derives nothing.
-    `remedy gatelist` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
+    `beehave check gate-list` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
     See the gate list section of docs/design/agent-runs.md."""
     files = project.vars.get("gate_files", [])
 
@@ -1013,7 +1042,7 @@ def derive_gate_list(project):
     for name in project.gate_steps:
         steps += ["--steps", name]
 
-    command(name = "gate-list", run = ["remedy", "gatelist"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
+    command(name = "gate-list", run = ["beehave", "check", "gate-list"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
 
 # A bound for the loop of the round, because Starlark has no while. A pass ends one run or starts one, so the bound is far above the work of any real round.
 MAX_PASSES = 500
@@ -1053,7 +1082,7 @@ def approved_runs(q, round_settings):
     for r in listed_rows(q, round_settings):
         value = r.value
         if type(value) == "dict" and value.get("approved") == True and value.get("head", "") != "":
-            found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0)))
+            found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0), closes = value.get("closes", [])))
 
     return found
 
@@ -1129,7 +1158,7 @@ def round(item):
             # The round lands from the queue only: the last run of a done row is the one record, whoever started that run. A child lands in the pass after it ended.
             approved = approved_runs(q, round_settings)
             if len(approved) > 0:
-                landing = land(approved, project, round_settings, n)
+                landing = land(approved, project, round_settings, n, item.id)
                 seen = max(seen, landing.host_losses)
                 landed = landing.moved
                 round_integration(project, round_settings, "round-integration-land-%d" % n)
@@ -1193,24 +1222,23 @@ def finish(item):
 def _move_card(project, stage, pr = 0, issue = 0):
     """Moves the card to the column that `vars.board` of the project names for `stage` ("started" or "merged"), and reads it back.
     `issue` names the issue card of a landed item, and `pr` the pull request of the item of the run. A project with no `vars.board` makes no call.
-    The `remedy board` command puts the card on the board, sets the column and reads the card back. Exit code 2 (a refusal, or a read-back that shows another column) stops the run."""
+    The engine step board_card, run as the writer, puts the card on the board, sets the column and reads the card back. A read-back that shows another column stops the run."""
     board = project.vars.get("board")
     if board == None:
         return
 
-    card = ["--issue", str(issue)] if issue != 0 else ["--pr", str(pr)]
-    owner = ["--owner", board["owner"]] if board.get("owner", "") != "" else []
+    owner = board.get("owner", "")
+    name = "board-" + stage + ("-" + str(issue) if issue != 0 else "")
 
-    command(
-        name = "board-" + stage + ("-" + str(issue) if issue != 0 else ""),
-        run = ["remedy", "board", "--board", str(board["number"]), "--status", board[stage]] + owner + card,
-        stop_on_rc = [2],
-    )
+    if issue != 0:
+        board_card(name = name, board = int(board["number"]), status = board[stage], owner = owner, issue = issue)
+    else:
+        board_card(name = name, board = int(board["number"]), status = board[stage], owner = owner, pr = pr)
 
-def item_value(item, head, approved, reason, host_losses, pr = 0):
+def item_value(item, head, approved, reason, host_losses, pr = 0, closes = []):
     """The value that a child run returns to the round: the item, the head it reached, whether the review approved it, why not when it did not,
-    the highest host_losses that a gate of the child read, and the number of the draft that the child opened (0 when it opened none)."""
-    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr}
+    the highest host_losses that a gate of the child read, the number of the draft that the child opened (0 when it opened none), and the issues that the body of the draft closes."""
+    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr, "closes": closes}
 
 def sweep(project):
     """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane).
@@ -1254,7 +1282,9 @@ def _lane(item, project, round_settings):
     # no hold label, not a draft, and the base vars.round.base.
     # A stop is a result: the run ends here and starts no agent. The result of the run holds the stop as `stopped`: the step, the exit code and the reason.
     # An item with no pull request yet passes. An open pull request by a login that is not in `own` claims the item: somebody else is on it, and no agent starts.
-    intake = preflight(name = "intake", head = "", base = base, hold = "hold", own = {"logins": [round_settings["owner"]]})
+    intake = preflight(name = "intake", head = "", base = base)
+    if intake.ok:
+        intake = claim_stop(name = "intake", hold = "hold", own = {"logins": [round_settings["owner"]]})
     if not intake.ok:
         return item_value(item, "", False, "stopped", 0)
 
@@ -1297,8 +1327,8 @@ def _lane(item, project, round_settings):
     # The implementer, each fix and each review read the known base reds of the round from the data file that the engine writes, not from the record of the owner.
     lane_data = {"base_reds": round_settings["base_reds"], "base": base}
 
-    # The implement step and its sweep share one sandbox: the forge is the only host that they reach.
-    lane_box = sandbox(network = ["github.com", "api.github.com"])
+    # The implement step and its sweep share one sandbox with no network: the engine pushes their head, and their forge data comes from the data file.
+    lane_box = sandbox()
 
     implement = agent(
         name = "implement",
@@ -1315,7 +1345,7 @@ def _lane(item, project, round_settings):
         **scope
     )
 
-    # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
+    # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
     capped(implement, "implement", item)
     kept_history(implement, "implement", item)
 
@@ -1344,25 +1374,27 @@ def _lane(item, project, round_settings):
 
     # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the engine pushed.
     # The engine opens the draft pull request of the item once (a resume finds the open one) and,
-    # when the item has a parent, links it into the native stack of the pull request of that item. The call owns only the closing line of the body:
-    # `Closes #N` when the base is the default branch and `Addresses #N` on any other. An item id that is not an issue number gets no line, and a body that exists is kept.
-    # The body is the text of the item. Only the pull request into the trunk may close an issue, so a closing keyword in the text is allowed when the round branch is the trunk (integration)
-    # and the call refuses it when the base is another branch.
-    trunk = base == project.base_branch
+    # when the item has a parent, links it into the native stack of the pull request of that item. The call writes the body as given, and a pull request that exists is kept.
+    # The body is the text of the item and its closing line: `Closes #N` when the pull request goes into the trunk and `Addresses #N` on any other branch, the branch of an open parent included.
+    # The call writes the body once, so the child returns the issues it closes, and the round audits the merge against that list. An item id that is not an issue number gets no line.
+    # Only the pull request into the trunk may close an issue, so forbid_text holds the closing keywords for any other base.
+    stacked = stacked_on_open_parent(parent)
     draft = pr_open(
         name = "draft",
         title = item.title,
-        body = item.body,
-        integration = trunk,
+        body = with_line(item.body, closing_line(project, base, item.id, stacked)),
         base = base,
-        issue = int(item.id) if item.id.isdigit() else 0,
         parent = parent.id,
-        forbid_text = ATTRIBUTION,
+        forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
     )
 
     # The board is a project choice: the key `board` of the project vars. With none, the run makes no board call.
     # With one, the card of the item moves to the started column now and to the merged column after the merge, and each call reads the card back.
     _move_card(project, "started", pr = draft.number)
+
+    # The first review fixes the scope: the issues that the pull request closes now. The merge of the round holds a pull request that closes another issue at the landing.
+    # A run of the item that follows an earlier run keeps the scope of the first one. A project with no forge has no scope, and the check is off.
+    fix_scope(name = "scope")
 
     # Five fix rounds need six candidates: the sixth checks the fifth fix. A candidate gets the gate on the base, the checks before review, the mutation run and a full review once.
     # Between candidates, scoped fixes and scoped reviews run with no gate. Each reviewer starts fresh and judges the commit it is pinned to.
@@ -1371,8 +1403,7 @@ def _lane(item, project, round_settings):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head of the worktree, the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     # The loop accepts the draft that this run opened (own_draft is its number) and stops at any other draft.
-    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}
-    # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
+    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}    # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
     def rise_after_review(review):
         return regression_rise(plan.regressions, review.regressions)
 
@@ -1425,13 +1456,13 @@ def _lane(item, project, round_settings):
     # After the last round, no fix lane starts. A person rules on each open finding, and the settle step applies the ruling once: it is the only edit after the last round, no review follows it, and nothing merges.
     if loop.exhausted:
         ruling = wait(
-            "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",
+            "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong." + wontfix_text(loop.ledger, "\n\nThe fix lane declared these findings wontfix:\n"),
             name = "adjudicate",
         )
 
         # The ruling can take days. The settle agent is a dispatch like the others, so the pull request is read again first, with the head that the loop judged last.
         # A run that got no candidate has no gate: its head is the head of the sweep.
-        if not preflight(name = "before-settle", id = item.id, head = loop.head, **guard).ok:
+        if stopped_before(item, "before-settle", loop.head, guard):
             return item_value(item, loop.head, False, "stopped", loop.host_losses)
 
         settle = agent(
@@ -1440,6 +1471,8 @@ def _lane(item, project, round_settings):
             model = _model(round_settings, "settle"),
             runner = _runner(round_settings, "settle"),
             outputs = ["parked"],
+            # The settle step edits the item worktree and calls no host: the engine pushes its head.
+            sandbox = sandbox(),
             inputs = {"ruling": ruling.answer, "facts": project},
             **scope
         )
@@ -1466,9 +1499,8 @@ def _lane(item, project, round_settings):
         pr_comment(
             name = "approved",
             key = "approved",
-            text = "The review approved the head %s.\n\nThe plan:\n\n%s" % (loop.gate.head, plan.text),
-            integration = trunk,
-            forbid_text = ATTRIBUTION,
+            text = "The review approved the head %s.\n\nThe plan:\n\n%s%s" % (loop.gate.head, plan.text, wontfix_text(loop.ledger, "\n\nThe review accepted these findings as wontfix:\n")),
+            forbid_text = ATTRIBUTION if base == project.base_branch else ATTRIBUTION + CLOSING_KEYWORDS,
         )
 
-    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number)
+    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number, closes = closes_of(project, base, item.id, stacked))

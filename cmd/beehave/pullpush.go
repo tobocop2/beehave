@@ -21,7 +21,7 @@ var errNoCloneToPush = errors.New("the project has no clone to push from")
 // the project, which only the engine writes, by git upload-pack under the sandbox enforcer of the project with read on the clone folder and the system folders. The push then
 // runs in that repository, with the hooks off, to the address that the engine read from the project file or the forge, never a remote name.
 // With expect, the push carries a lease on the branch; with no expect, git takes only a new branch or a fast forward. Git checks no lease when the branch
-// is already at head and exits 0, so a replay after the push landed passes. A project with no forge is an error, as for Open: such a project pushes nothing.
+// is already at head and exits 0, so a replay after the push landed passes. A project with no source and no forge is an error: such a project pushes nothing.
 func (p pulls) Push(ctx context.Context, project, item, branch, head, expect string) error {
 	remote, err := p.pushRemote(project)
 	if err != nil {
@@ -33,7 +33,7 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		return fmt.Errorf("push %s to the branch %s for item %s: %w", head, branch, item, err)
 	}
 
-	out := pushGit(dir).Run(ctx, pushArgs(remote, branch, head, expect))
+	out := p.pusher(project, dir, remote).Run(ctx, pushArgs(remote, branch, head, expect))
 	if out.ExitCode == 0 {
 		return nil
 	}
@@ -42,14 +42,41 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		head, branch, remote, item, out.ExitCode, strings.TrimSpace(out.Stderr))
 }
 
-// pushRemote returns the address that the clone of the project came from. A project with no forge is an error.
+// pusher returns the git runner that pushes from the push repository dir to the address remote: the writer of the project when it has credentials, else the
+// runner of the owner (see writers.git).
+func (p pulls) pusher(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
+	return checkedPush{git: p.writers.git(p.projects, project, dir, remote, nil, pushEnv(dir), "GIT_DIR="+dir), dir: dir, check: p.trees.pushCheck}
+}
+
+// checkedPush runs a call from the push repository dir only when check accepts the config of that repository; a nil check refuses a key outside the allow list.
+type checkedPush struct {
+	git   proc.Runner
+	dir   string
+	check func(ctx context.Context, dir string) error
+}
+
+// Run refuses the call when the config of the push repository holds a setting outside the allow list, and runs it otherwise.
+func (c checkedPush) Run(ctx context.Context, args []string) model.CommandResult {
+	check := c.check
+	if check == nil {
+		check = func(ctx context.Context, dir string) error { return gitexec.CheckBare(ctx, dir, proc.DefaultTimeout) }
+	}
+
+	if err := check(ctx, c.dir); err != nil {
+		return model.CommandResult{ExitCode: 1, Stderr: err.Error(), SetupErr: err}
+	}
+
+	return c.git.Run(ctx, args)
+}
+
+// pushRemote returns the address that the clone of the project came from: its source, or else the clone address of its forge. A project with neither is an error.
 func (p pulls) pushRemote(project string) (string, error) {
-	// forgeOf refuses a project that the config lacks, so the lookup below finds it.
-	if _, err := p.forgeOf(project); err != nil {
+	found, err := p.projectOf(project)
+	if err != nil {
 		return "", err
 	}
 
-	return cloneSource(p.projects[project].Project, p.forge)
+	return cloneSource(found.Project, p.forge)
 }
 
 // headCopy is what the copy of a head needs: the enforcer that a sandbox_enforcer value names, and the path of this program, which git runs as upload-pack.
@@ -119,11 +146,12 @@ func openPushRepository(ctx context.Context, git proc.Runner, root, dir string) 
 
 // fetchHead opens the push repository dir in root and fetches head from the clone folder onto refs/heads/branch with program as git upload-pack.
 func fetchHead(ctx context.Context, root, dir, folder, program, branch, head string) error {
-	if err := openPushRepository(ctx, pushGit(dir), root, dir); err != nil {
+	git := pushLocal(dir)
+	if err := openPushRepository(ctx, git, root, dir); err != nil {
 		return err
 	}
 
-	out := pushGit(dir).Run(ctx, []string{"fetch", "-q", "--no-tags", "--no-write-fetch-head", "--upload-pack=" + program, folder, "+" + head + ":refs/heads/" + branch})
+	out := git.Run(ctx, []string{"fetch", "-q", "--no-tags", "--no-write-fetch-head", "--upload-pack=" + program, folder, "+" + head + ":refs/heads/" + branch})
 	if out.ExitCode != 0 {
 		return fmt.Errorf("copy %s from the clone: git exited with code %d: %s. The copy reads only the clone folder, so a head that needs an object from outside the clone, "+
 			"through a list of other object stores or a link, is refused", head, out.ExitCode, strings.TrimSpace(out.Stderr))
@@ -132,11 +160,16 @@ func fetchHead(ctx context.Context, root, dir, folder, program, branch, head str
 	return nil
 }
 
-// pushGit runs git in the push repository dir, with the hooks off and no prompt for a password. GIT_DIR names the repository, so git does not look for
-// one in a parent folder. Only the engine writes the push repository, so its runner reaches the remote.
-func pushGit(dir string) proc.Runner { //nolint:ireturn // the runner of the worktrees is the same interface
-	runner := gitexec.NewRemote(dir, proc.DefaultTimeout)
-	runner.Env = []string{"GIT_TERMINAL_PROMPT=0", "GIT_DIR=" + dir}
+// pushEnv returns the environment of a git call in the push repository dir: no prompt for a password, and GIT_DIR names the repository, so git does not
+// look for one in a parent folder.
+func pushEnv(dir string) []string {
+	return []string{noPromptEnv, "GIT_DIR=" + dir}
+}
+
+// pushLocal runs git in the push repository dir with the hooks off and the file transport only: the copy of a head reads the clone folder and no remote.
+func pushLocal(dir string) gitexec.Runner {
+	runner := gitexec.New(dir, proc.DefaultTimeout)
+	runner.Env = pushEnv(dir)
 
 	return runner
 }

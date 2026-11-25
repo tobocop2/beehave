@@ -62,7 +62,7 @@ func TestRound_ARoundKilledAfterItsSpawnAndResumedSpawnsNothingAgain(t *testing.
 
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, rig.file)
+	_, err := engine.RunFile(testItem, testProject, rig.file, modeOff())
 	require.Error(t, err, "the cancel ends the first run of the round")
 
 	handle := resumeRun(t, engine, client)

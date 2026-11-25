@@ -371,34 +371,75 @@ func (w *whole) Unpack(v starlark.Value) error {
 
 // blockBuilt unpacks the arguments of one adapter block against the schema that the adapter declared, and returns the typed block.
 func blockBuilt(at syntax.Position, declared Block, kwargs []starlark.Tuple) (*model.Block, error) {
-	texts := make([]text, len(declared.Args))
-	wholes := make([]whole, len(declared.Args))
-	dests := make([]any, len(declared.Args))
+	args := newBlockGiven(len(declared.Args))
 
-	for i, arg := range declared.Args {
-		dests[i] = &texts[i]
-		if arg.Kind == WholeArg {
-			dests[i] = &wholes[i]
-		}
-	}
-
-	if err := declared.spec().unpack(at, kwargs, dests...); err != nil {
+	if err := declared.spec().unpack(at, kwargs, args.dests(declared)...); err != nil {
 		return nil, err
 	}
 
-	return model.NewBlock(at.String(), blockEntries(declared, texts, wholes)), nil
+	return model.NewBlock(at.String(), args.entries(declared)), nil
 }
 
-// blockEntries returns the entries of the arguments that the call gave, in the order of the schema.
-func blockEntries(declared Block, texts []text, wholes []whole) []model.BlockEntry {
+// blockGiven holds what a call gave for each argument of a block, by position: one slot of each kind, and the kind of the argument says which slot is read.
+type blockGiven struct {
+	texts  []text
+	wholes []whole
+	truths []truth
+}
+
+// newBlockGiven returns the empty slots for a block of count arguments.
+func newBlockGiven(count int) blockGiven {
+	return blockGiven{texts: make([]text, count), wholes: make([]whole, count), truths: make([]truth, count)}
+}
+
+// dests returns the destination of each argument of the block, by its kind.
+func (a blockGiven) dests(declared Block) []any {
+	dests := make([]any, len(declared.Args))
+
+	for i, arg := range declared.Args {
+		switch arg.Kind {
+		case WholeArg:
+			dests[i] = &a.wholes[i]
+		case BoolArg:
+			dests[i] = &a.truths[i]
+		case TextArg:
+			dests[i] = &a.texts[i]
+		}
+	}
+
+	return dests
+}
+
+// truth is a True or False argument of an adapter block that records whether the call gave it.
+type truth struct {
+	Value bool
+	Set   bool
+}
+
+// Unpack stores True or False. It refuses any other value, a string or a number included.
+func (t *truth) Unpack(v starlark.Value) error {
+	value, ok := v.(starlark.Bool)
+	if !ok {
+		return fmt.Errorf("got %s, want True or False", v.Type())
+	}
+
+	t.Value, t.Set = bool(value), true
+
+	return nil
+}
+
+// entries returns the entries of the arguments that the call gave, in the order of the schema.
+func (a blockGiven) entries(declared Block) []model.BlockEntry {
 	entries := make([]model.BlockEntry, 0, len(declared.Args))
 
 	for i, arg := range declared.Args {
 		switch {
-		case arg.Kind == WholeArg && wholes[i].Set:
-			entries = append(entries, model.WholeEntry(arg.Key, wholes[i].Value))
-		case arg.Kind == TextArg && texts[i].Set:
-			entries = append(entries, model.TextEntry(arg.Key, texts[i].Value))
+		case arg.Kind == BoolArg && a.truths[i].Set:
+			entries = append(entries, model.BoolEntry(arg.Key, a.truths[i].Value))
+		case arg.Kind == WholeArg && a.wholes[i].Set:
+			entries = append(entries, model.WholeEntry(arg.Key, a.wholes[i].Value))
+		case arg.Kind == TextArg && a.texts[i].Set:
+			entries = append(entries, model.TextEntry(arg.Key, a.texts[i].Value))
 		}
 	}
 

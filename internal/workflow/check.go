@@ -41,9 +41,6 @@ const (
 // reservedEnvPrefixes lists the prefixes of the variable names that a workflow never sets or reads. The engine and DBOS own these names.
 func reservedEnvPrefixes() []string { return []string{"DBOS__", "BEEHAVE_"} }
 
-// secretWords lists the words that mark the name of a secret. The env builtin refuses such a name.
-func secretWords() []string { return []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"} }
-
 // ReservedEnvName reports whether name starts with a prefix that a workflow never sets or reads.
 func ReservedEnvName(name string) bool {
 	return slices.ContainsFunc(reservedEnvPrefixes(), func(prefix string) bool { return strings.HasPrefix(name, prefix) })
@@ -54,23 +51,6 @@ func ReservedEnvAdvice() string {
 	return "Names that start with " + strings.Join(reservedEnvPrefixes(), " or ") + " belong to the engine. Use another name."
 }
 
-// secretSuffixes lists the last parts of a name that mark a secret. A name ends in one of them after an underscore, so PATH and AUTHOR do not match.
-func secretSuffixes() []string { return []string{"KEY", "PAT", "DSN", "AUTH"} }
-
-// secretWholeNames lists the names that mark a secret when they are the whole name.
-func secretWholeNames() []string { return []string{"PAT", "AUTH", "DSN"} }
-
-// SecretEnvName reports whether name looks like the name of a secret, in any case.
-// A name marks a secret when it ends in a secret suffix, is a whole secret name, holds PAT as a part (GH_PAT_OLD), or holds a secret word.
-func SecretEnvName(name string) bool {
-	upper := strings.ToUpper(name)
-
-	return slices.Contains(secretWholeNames(), upper) ||
-		strings.Contains(upper, "_PAT_") ||
-		slices.ContainsFunc(secretSuffixes(), func(part string) bool { return strings.HasSuffix(upper, "_"+part) }) ||
-		slices.ContainsFunc(secretWords(), func(word string) bool { return strings.Contains(upper, word) })
-}
-
 // urlPassword matches scheme://user:password@ with a non-empty password. The password can hold any character but white space and @.
 var urlPassword = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]*:[^\s@]+@`)
 
@@ -79,7 +59,7 @@ var urlPassword = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]*:[^\s@]
 func SecretEnvValue(value string) bool { return urlPassword.MatchString(value) }
 
 // SecretEnv reports whether the name or the value of a variable marks a secret. The env builtin and the redactor of the run both ask it.
-func SecretEnv(name, value string) bool { return SecretEnvName(name) || SecretEnvValue(value) }
+func SecretEnv(name, value string) bool { return model.SecretEnvName(name) || SecretEnvValue(value) }
 
 // The smallest and the largest value of max_new_processes in a command call.
 const (
@@ -103,6 +83,8 @@ type graph struct {
 	unparsed bool
 	// notes are the facts for Notes: no problem, and no effect on the exit code.
 	notes []Diagnostic
+	// noneSandboxes are the agent calls with the literal sandbox = None, at the keyword value.
+	noneSandboxes []Diagnostic
 	// entries are the literal entries of the spawn calls, and mainNames the functions that the workflow file binds at the top level.
 	entries   []entryRef
 	mainNames []string
@@ -272,11 +254,20 @@ func (g *graph) problems(err error) {
 		g.report(placeOf(syntaxed.Pos), sentence(syntaxed.Msg))
 	case errors.As(err, &resolved):
 		for _, one := range resolved {
-			g.report(placeOf(one.Pos), sentence(one.Msg))
+			g.report(placeOf(one.Pos), sentence(one.Msg)+removedHint(one.Msg))
 		}
 	default:
 		g.report(Diagnostic{}, err.Error())
 	}
+}
+
+// removedHint names the library that replaces the queue builtin, which a file that still calls it does not define.
+func removedHint(msg string) string {
+	if msg != "undefined: queue" {
+		return ""
+	}
+
+	return ` Load the library function: load("@beehave//queue.star", "queue").`
 }
 
 func placeOf(pos syntax.Position) Diagnostic {
@@ -287,7 +278,7 @@ func sentence(text string) string { return strings.TrimRight(text, ".") + "." }
 
 // repositoryBuiltins are the builtins that read git or a forge. A project with no repository cannot call them.
 func repositoryBuiltins() []string {
-	return []string{gateName, mergeName, preflightName}
+	return []string{gateName, handOffName, issueAssigneesName, mergeName, preflightName, prReadName}
 }
 
 // repositoryCalls lists the calls of repositoryBuiltins in a parsed file. A name that the file defines is not the builtin.
@@ -353,7 +344,7 @@ func emptyLiteral(expr syntax.Expr) bool {
 	return false
 }
 
-// CheckNoRepository returns one diagnostic for each call of gate, merge or preflight in the workflow file and the files it loads.
+// CheckNoRepository returns one diagnostic for each call of gate, merge, preflight, pr_read or issue_assignees in the workflow file and the files it loads.
 // The project has no repository, and these builtins refuse it at run time. A gate call that names run is not one of them: it runs its own program.
 // It runs no workflow code.
 func CheckNoRepository(file, project string) []Diagnostic {
@@ -398,7 +389,7 @@ type hereGate struct {
 	program bool
 }
 
-// gateCalls lists the calls in a parsed file that run a gate on this machine: each merge, each gate without a program and each gate with a program and no host.
+// gateCalls lists the calls in a parsed file that run a gate on this machine: each gate without a program and each gate with a program and no host.
 // A name that the file defines is not the builtin.
 func gateCalls(file string, parsed *syntax.File) []hereGate {
 	shadowed := definedNames(parsed)
@@ -424,18 +415,15 @@ func gateCalls(file string, parsed *syntax.File) []hereGate {
 }
 
 // runsHere reports whether the call runs a gate on this machine, and whether that gate is a program that the call names.
-// A merge always does. A gate does unless it names both a program and a host.
+// A gate does unless it names both a program and a host.
 func runsHere(call *syntax.CallExpr) (program, here bool) {
-	switch callee(call) {
-	case mergeName:
-		return namesKeyword(call, "gate_run"), true
-	case gateName:
-		program = namesKeyword(call, "run")
-
-		return program, !program || !namesHost(call)
+	if callee(call) != gateName {
+		return false, false
 	}
 
-	return false, false
+	program = namesKeyword(call, "run")
+
+	return program, !program || !namesHost(call)
 }
 
 // namesHost reports whether a call passes a host keyword that is not the literal empty text.

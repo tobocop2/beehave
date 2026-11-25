@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -12,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -28,7 +30,7 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 	c := commandRaw{failure: string(workflow.FailureRaise)}
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, slotsKeyword: &c.slots, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, slotsKeyword: &c.slots, "stop_on_rc": &c.codes, string(sandboxKeyword): &c.sandbox, nameKeyword: &c.label,
 		retriesKeyword: &c.retries, backoffKeyword: &c.backoff, failureKeyword: &c.failure,
 	})
 	if err != nil {
@@ -73,6 +75,8 @@ type commandRaw struct {
 	processes starlark.Value
 	// slots is the slot class as the file wrote it. It stays a value so that an empty text and None are refused with their own message.
 	slots starlark.Value
+	// sandbox is the sandbox keyword as the file wrote it.
+	sandbox starlark.Value
 }
 
 // commandRequest checks the arguments of a command call and makes its request and its stop codes.
@@ -88,13 +92,35 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 		return request, nil, err
 	}
 
-	if request.Env, err = s.environment(request, c.own); err != nil {
+	if err = s.confine(&request, c); err != nil {
 		return request, nil, err
 	}
 
 	stops, err := workflow.StopCodes(c.codes)
 
 	return request, stops, err
+}
+
+// confine sets the environment and the sandbox of the request from the arguments of the call.
+func (s *script) confine(request *CommandRequest, c commandRaw) (err error) {
+	if request.Env, err = s.environment(*request, c.own); err != nil {
+		return err
+	}
+
+	request.Sandbox, err = sandboxOf(c.sandbox, *request)
+
+	return err
+}
+
+// sandboxOf reads the sandbox keyword of a command call. A call that leaves it out, or gives None, runs with no sandbox: the project default of the sandbox
+// is for agent steps. A sandbox value cannot go with a host, stdin or a process cap.
+func sandboxOf(value starlark.Value, request CommandRequest) (*model.Sandbox, error) {
+	choice, err := readSandbox(value)
+	if err != nil || choice.box == nil {
+		return nil, err
+	}
+
+	return choice.box, workflow.SandboxWith(request.Host, request.Stdin, request.MaxNewProcesses)
 }
 
 // limitsOf reads the two settings that limit a call: the cap of its processes and the slot class of its host job. Each one refuses the other host rule on its own.
@@ -148,6 +174,8 @@ func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 		return nil, err
 	}
 
+	s.defaultSlot(&plan)
+
 	if plan.request.SlotClass != "" {
 		return s.slotCommand(plan)
 	}
@@ -155,6 +183,14 @@ func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 	return s.durableRetried("command", plan.label, plan.tries.policy, func(ctx context.Context, name string) (stepResult, error) {
 		return s.runCommand(ctx, name, plan)
 	})
+}
+
+// defaultSlot puts a host job that names no slot class in the default class, so it waits at the cap of the host like any other job. A library build with no
+// slots resolver leaves it free, and a call with retries stays one step: a step cannot wait on a queue.
+func (s *script) defaultSlot(plan *commandPlan) {
+	if plan.request.Host != "" && plan.request.SlotClass == "" && plan.tries.policy.Retries == 0 && s.e.deps.Slots != nil {
+		plan.request.SlotClass = model.DefaultClass
+	}
 }
 
 // slotCommand runs a command call that names a slot class as a job on the queue of the class, then records its output as the step of the call.
@@ -180,7 +216,7 @@ func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolin
 func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) (stepResult, error) {
 	plan.tries.start()
 
-	out, err := s.writes().Run(ctx, plan.request)
+	out, err := s.writes().Run(attemptKey(ctx, plan.tries.n), plan.request)
 
 	switch {
 	case err != nil && plan.tries.returned(ctx, err, s.e.retryable):
@@ -192,6 +228,18 @@ func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) 
 	}
 
 	return commandRecord(name, out, plan.stops, plan.tries.n), nil
+}
+
+// attemptKey gives try n of a retried step a job key of its own, so a host that holds the failed job of try 1 starts a new job for try 2.
+// A step that runs again after a crash counts its tries from 1 again. On Slurm that finds the job of the try that the crash cut short, because accounting keeps ended jobs.
+// On ssh, Wait released the unit of try 1, so a crash during try 2 runs try 1 again. A context with no key stays as it is.
+func attemptKey(ctx context.Context, n int) context.Context {
+	key := host.JobKey(ctx)
+	if key == "" {
+		return ctx
+	}
+
+	return withJobKey(ctx, key+":"+strconv.Itoa(n))
 }
 
 // commandRecord is the record of a command step: the output, and the stop when the exit code is one of stops.
@@ -238,19 +286,26 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	if err := s.fixScope(label); err != nil {
-		return nil, err
+	return s.recordGate(label, outputs)
+}
+
+// scriptKey is the key of a call for the fixture of a dry run. A real run has no fixture, so its key is empty and its records and gate jobs stay as they were.
+func (s *script) scriptKey(builtin, label string) string {
+	if s.e.deps.Waits == nil {
+		return ""
 	}
 
-	return s.recordGate(label, outputs)
+	return callKey(builtin, label)
 }
 
 // exclusiveGate runs the gate of a call as a child workflow on the exclusive queue, so no merge of the repository starts while it runs,
 // and returns its outputs. The gate call records them as its own step, so a replay reads them and runs no gate again.
 func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[string]any, error) {
-	in := ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
+	in := ExclusiveInput{Kind: kindGate, Call: s.scriptKey(kindGate, label), Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)}
 
 	ran, err := s.e.queueExclusive(s.ctx, in)
+	s.noteGateHost(ran)
+
 	if err != nil {
 		return nil, fmt.Errorf("gate %q could not run: %w", label, err)
 	}
@@ -265,10 +320,12 @@ func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[
 }
 
 // programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.
-func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+// It records the head and the tree of the worktree of the item that the program ran on, and never the head keyword of the call.
+func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, slot model.Slot) (map[string]any, error) {
 	request.Gate = true
+	request.SlotClass, request.SlotCount = slot.Class, slot.Count
 
-	out, err := e.deps.Commands.Run(ctx, request)
+	state, out, err := e.programOnTree(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +335,50 @@ func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest,
 		status = failStatus
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}, e.requiredSteps(request.Project), nil), nil
+	return gateOutputs(out.RC == 0, state.Head, state.Tree, out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}, e.requiredSteps(request.Project), nil), nil
+}
+
+// programOnTree reads the worktree of the item before and after the program, as the project gate does. A worktree with changes that are not committed
+// is refused before the program, and a head or a tree that changes while the program runs is refused after it. A project with no repository has no
+// worktree: the program runs, and the state it returns has no head and no tree.
+func (e *Engine) programOnTree(ctx context.Context, request CommandRequest) (gatepkg.State, CommandOutput, error) {
+	if !e.hasRepository(request.Project) {
+		out, err := e.deps.Commands.Run(ctx, request)
+
+		return gatepkg.State{}, out, err
+	}
+
+	dir, before, err := e.cleanTree(ctx, request)
+	if err != nil {
+		return gatepkg.State{}, CommandOutput{}, err
+	}
+
+	out, err := e.deps.Commands.Run(ctx, request)
+	if err != nil {
+		return gatepkg.State{}, out, err
+	}
+
+	return before, out, e.sameTree(ctx, request, dir, before)
+}
+
+// sameTree reads the worktree of the item again after the program and refuses a head or a tree that is not the one before it.
+func (e *Engine) sameTree(ctx context.Context, request CommandRequest, dir string, before gatepkg.State) error {
+	_, after, err := e.deps.Gate.State(ctx, request.Project, request.Item)
+	if err != nil {
+		return err
+	}
+
+	return gatepkg.RequireSame(dir, before, after)
+}
+
+// cleanTree reads the worktree of the item and refuses one with changes that are not committed.
+func (e *Engine) cleanTree(ctx context.Context, request CommandRequest) (string, gatepkg.State, error) {
+	dir, state, err := e.deps.Gate.State(ctx, request.Project, request.Item)
+	if err == nil {
+		err = gatepkg.RequireClean(dir, state)
+	}
+
+	return dir, state, err
 }
 
 // gateStart is what the first step of a project gate records: the pass of an earlier gate that the key reuses, or the host job that the gate submitted.
@@ -316,13 +416,13 @@ func (e *Engine) reuseProjectGate(ctx context.Context, request CommandRequest) (
 }
 
 // startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
-func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
+func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest, slot model.Slot) (gateStart, error) {
 	start, err := e.reuseProjectGate(ctx, request)
 	if err != nil || start.Reused != nil {
 		return start, err
 	}
 
-	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase)
+	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase, start.Key.BaseSHA, slot)
 	start.Required = e.requiredOf(start.Job, request.Project)
 
 	return start, err
@@ -347,7 +447,10 @@ func (e *Engine) finishProjectGate(ctx context.Context, in ExclusiveInput, start
 		return gateFinish{}, "", err
 	}
 
-	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, start.Job)
+	job := start.Job
+	job.Call = in.Call
+
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, job)
 	if errors.Is(err, host.ErrLost) && ctx.Err() == nil {
 		return gateFinish{Lost: lostJobOf(in, start, err)}, "", nil
 	}
@@ -497,19 +600,33 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	heard, err := s.listen(plan)
+	got, err := s.hearAnswer(plan)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.durableWith("wait", plan.label, waitZeros(), func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: answerOutputs(heard.answer, heard.answers, heard.timedOut)}, nil
+		return stepResult{Outputs: answerOutputs(got.answer, got.answers, got.timedOut)}, nil
 	})
+}
+
+// hearAnswer takes the answer of a wait. A build with Waits asks it, after the record of the deadline, and asks no one; any other build listens for the owner.
+func (s *script) hearAnswer(plan waitPlan) (heard, error) {
+	if s.e.deps.Waits == nil {
+		return s.listen(plan)
+	}
+
+	_, err := s.e.endOf(s.ctx, plan.deadline)
+	answer, askErr := s.e.deps.Waits.Wait(plan.label, plan.deadline > 0)
+
+	return answer, errors.Join(err, askErr)
 }
 
 // refuseEnv returns an error for a variable that a file cannot read: one of the engine, or a secret by its name or its value.
 func (e *Engine) refuseEnv(name string) error {
 	switch {
+	case workflow.AgentSocketRead(name) != nil:
+		return workflow.AgentSocketRead(name)
 	case workflow.ReservedEnvName(name):
 		return fmt.Errorf("env cannot read `%s`. %s", name, workflow.ReservedEnvAdvice())
 	case workflow.SecretEnv(name, e.env[name]):

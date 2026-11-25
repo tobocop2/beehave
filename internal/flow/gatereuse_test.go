@@ -67,6 +67,23 @@ func TestGateReuse_AnotherKeyRunsTheGate(t *testing.T) {
 	assert.Equal(t, 2, h.gate.calls)
 }
 
+func TestGateReuse_TheJobOfAGateIsSubmittedWithTheBaseCommitThatItsKeyRead(t *testing.T) {
+	t.Parallel()
+
+	const read = "1111111111111111111111111111111111111111"
+
+	key := gateKey("k", gatedHead)
+	key.BaseSHA = read
+
+	h := reuseHarness(t, []GateResult{{Passed: true, Head: gatedHead, Tree: "tree-1", Steps: stepsPass}}, []GateKey{key})
+
+	_, err := walkText(t, h, bodyFlow(twoGates))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, h.gate.baseSHAs)
+	assert.Equal(t, read, h.gate.baseSHAs[0], "Submit takes the commit of the key and reads no tip of its own")
+}
+
 func TestGateReuse_ARedGateIsNeverReusedSoARedNeverBecomesGreen(t *testing.T) {
 	t.Parallel()
 

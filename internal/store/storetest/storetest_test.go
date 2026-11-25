@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/ifacetest"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/storetest"
@@ -43,6 +46,11 @@ type memTracker struct {
 	dropped     string
 	extra       bool
 	wrongID     bool
+	// ignoresLabel makes ItemList answer every item whatever label it is asked for. noItem leaves the item ItemID out of the list.
+	ignoresLabel bool
+	noItem       bool
+	// failsOnLabel makes ItemList fail when it is asked for a label.
+	failsOnLabel bool
 }
 
 func newMem() *memTracker {
@@ -116,7 +124,30 @@ func (m *memTracker) Free(_ context.Context, row model.ClaimRow) error {
 	return m.err()
 }
 
-func (m *memTracker) OpenItems(context.Context) ([]model.Item, error) { return nil, m.err() }
+// ItemList serves item 5 with the label round and item 6 with none.
+func (m *memTracker) ItemList(_ context.Context, label string) ([]model.Item, error) {
+	if err := m.err(); err != nil {
+		return nil, err
+	}
+
+	if label != "" && m.failsOnLabel {
+		return nil, errDown
+	}
+
+	var kept []model.Item
+
+	for _, one := range []model.Item{{ID: storetest.ItemID, Labels: []string{"round"}}, {ID: "6"}} {
+		if one.ID == storetest.ItemID && m.noItem {
+			continue
+		}
+
+		if label == "" || m.ignoresLabel || slices.Contains(one.Labels, label) {
+			kept = append(kept, one)
+		}
+	}
+
+	return kept, nil
+}
 
 func (m *memTracker) ItemFields() []string {
 	if m.fields != nil {
@@ -149,6 +180,45 @@ func (m *memTracker) Item(context.Context, string) (map[string]string, error) {
 	}
 
 	return got, nil
+}
+
+func TestItemList_ReturnsTheItemsOfALabel(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckItemList(r, newMem())
+	assert.Empty(t, r.failures)
+
+	mem := newMem()
+	mem.ignoresLabel = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{
+		"ItemList of the label round: got [5 6], want [5]",
+		"ItemList of a label that no item carries: got [5 6], want []",
+	}, r.failures)
+
+	mem = newMem()
+	mem.noItem = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{`ItemList of no label: want the item "5" among [6]`}, r.failures)
+
+	mem = newMem()
+	mem.down = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{"ItemList: unexpected error: down"}, r.failures)
+
+	mem = newMem()
+	mem.failsOnLabel = true
+
+	r = &recorder{}
+	storetest.CheckItemList(r, mem)
+	assert.Equal(t, []string{"ItemList: unexpected error: down", "ItemList: unexpected error: down"}, r.failures)
 }
 
 func TestCheckItem_AcceptsATrackerThatReturnsTheDeclaredFields(t *testing.T) {
@@ -312,7 +382,7 @@ func TestCheckTrackerFails_FailsATrackerThatAnswersAfterAFailure(t *testing.T) {
 
 	r := &recorder{}
 	storetest.CheckTrackerFails(r, newMem())
-	assert.Contains(t, r.failures, "OpenItems: want an error from a failed command, got none")
+	assert.Contains(t, r.failures, "ItemList: want an error from a failed command, got none")
 }
 
 func TestCheckClaimRowsFail_AcceptsRowsThatErrorEverywhere(t *testing.T) {
@@ -358,4 +428,61 @@ func TestTestClaimRows_RunsTheSuiteOnAFactory(t *testing.T) {
 
 		return mem
 	})
+}
+
+// memReader serves the reader rules. empty answers an empty list and an empty parent and no error.
+type memReader struct{ empty bool }
+
+func (m memReader) Comments(context.Context, string) ([]string, error) {
+	if m.empty {
+		return nil, nil
+	}
+
+	return nil, errDown
+}
+
+func (m memReader) Parent(context.Context, string) (string, error) {
+	if m.empty {
+		return "", nil
+	}
+
+	return "", errDown
+}
+
+func TestCheckReaderFails_AcceptsAReaderThatErrorsAndFailsOneThatReadsAnErrorAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	storetest.CheckReaderFails(rec, memReader{})
+	assert.Empty(t, rec.failures)
+
+	rec = &recorder{}
+	storetest.CheckReaderFails(rec, memReader{empty: true})
+	assert.Equal(t, []string{
+		"Comments: want an error from a failed command, got none",
+		"Parent: want an error from a failed command, got none",
+	}, rec.failures)
+}
+
+// TestFailedCommandMethods_CoverEveryMethodOfTheStoreInterfaces fails when a method of the store interfaces has no failed-command case.
+func TestFailedCommandMethods_CoverEveryMethodOfTheStoreInterfaces(t *testing.T) {
+	t.Parallel()
+
+	ran := map[string]bool{}
+	for _, name := range storetest.FailedCommandMethods() {
+		ran[name] = true
+	}
+
+	declared, err := ifacetest.Methods([]string{"../tracker.go", "../writer.go"}, "Tracker", "Reader", "ClaimRows", "Writer")
+	require.NoError(t, err)
+
+	for _, name := range declared {
+		if name != "ItemFields" {
+			assert.True(t, ran[name], "store method %s has no failed-command case", name)
+		}
+	}
+
+	for name := range ran {
+		assert.Contains(t, declared, name, "a failed-command case runs %s, which no store interface has", name)
+	}
 }

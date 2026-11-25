@@ -5,6 +5,7 @@ import (
 
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -24,12 +25,18 @@ type MergeSettings struct {
 	// OwnDraft is the number of the draft that the run opened for the member. The draft guard of the merge accepts that pull request.
 	OwnDraft int
 	Retarget bool
+	// Closes are the issues that the pull request must close, and no others. Empty means it closes none.
+	Closes []int
 	// GatedTree is the tree id that the gate recorded for the head. When it is set, the merge compares the tree of the base tip with it.
 	GatedTree string
 	// Intent is the record that merge wrote before the merge. It lets a pull request that is already merged count as done.
 	Intent *merge.Intent
 	// Kept are the issues that the owner kept by an answer at the scope check. A closing keyword in a commit message may name them.
-	Kept []int
+	Kept []model.IssueRef
+	// Closing is the set of closing issues that the scope check read for the member. The merge refuses a pull request whose set differs. Nil pins no set.
+	Closing []model.IssueRef
+	// Statuses are the commit statuses that the merge posts on the head after every guard passed and right before the merge call. Empty posts none.
+	Statuses []model.CommitStatus
 }
 
 // The statuses of a gate step, as the gate package names them.

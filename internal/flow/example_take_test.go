@@ -27,7 +27,7 @@ func runTake(engine *Engine, file string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		in, err := pinnedInput(testItem, testProject, file)
+		in, err := pinnedInput(testItem, testProject, file, modeOff())
 		if err != nil {
 			done <- runOutcome{err: err}
 
@@ -170,10 +170,9 @@ func TestExampleTake_ARefusalOfTheTakeForRepliesWithNoTokenHoldsTheItem(t *testi
 	require.NotNil(t, outcome.result.Stopped)
 	assert.Equal(t, 2, outcome.result.Stopped.RC)
 	assert.Contains(t, outcome.result.Stopped.Output, "none used KEEP or RELEASE")
-	assert.NotContains(t, rig.h.commands.requests[1].Run, "--reply-read", "no step of the workflow says the replies were read")
 }
 
-func TestExampleTake_TheIdleAndGraceHoursAreOneAndTheItemIsPassedToTheTool(t *testing.T) {
+func TestExampleTake_TheIdleAndGraceHoursAreOne(t *testing.T) {
 	t.Parallel()
 
 	rig, file := takeRig(t)
@@ -182,17 +181,23 @@ func TestExampleTake_TheIdleAndGraceHoursAreOneAndTheItemIsPassedToTheTool(t *te
 	answerTheGrace(t, rig, "RELEASE")
 	require.NoError(t, receive(t, done).err)
 
-	first := strings.Join(rig.h.commands.requests[0].Run, " ")
-	assert.Equal(t, "remedy take 7 --me owner --idle 1 --grace 1 --item "+testItem+" --apply", first)
-	assert.True(t, strings.HasSuffix(strings.Join(rig.h.commands.requests[1].Run, " "), "--take"), "the take is the last word of the call")
+	// The first command is the fetch of the head of the pull request; the notice and the take follow it.
+	require.Len(t, rig.h.commands.requests, 3)
+	first := strings.Join(rig.h.commands.requests[1].Run, " ")
+	assert.Equal(t, "pr_take 7 --me owner --idle 1 --grace 1 --apply", first)
+	assert.True(t, strings.HasSuffix(strings.Join(rig.h.commands.requests[2].Run, " "), "--take"), "the take is the last word of the call")
 }
 
 func TestExampleTake_ARefusedNoticeEndsTheItemBeforeTheGraceQuestion(t *testing.T) {
 	t.Parallel()
 
 	rig, file := takeRig(t)
-	rig.h.commands.reply = func(CommandRequest) (CommandOutput, error) {
-		return CommandOutput{RC: 2, Stdout: "REFUSE: not stale"}, nil
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if slices.Contains(request.Run, "--apply") {
+			return CommandOutput{RC: 2, Stdout: "REFUSE: not stale"}, nil
+		}
+
+		return CommandOutput{}, nil
 	}
 
 	outcome := receive(t, runTake(rig.h.engine(t), file))
@@ -200,5 +205,43 @@ func TestExampleTake_ARefusedNoticeEndsTheItemBeforeTheGraceQuestion(t *testing.
 	require.NoError(t, outcome.err)
 	require.NotNil(t, outcome.result.Stopped)
 	assert.Equal(t, 2, outcome.result.Stopped.RC)
-	assert.Len(t, rig.h.commands.requests, 1, "a refused notice means no take is tried")
+	assert.Equal(t, []string{"--apply"}, flagsOf(rig.h.commands.requests), "a refused notice means no take is tried")
+}
+
+func TestExampleTake_TheRoundFetchesTheHeadOfThePullRequestBeforeTheReviewAgent(t *testing.T) {
+	t.Parallel()
+
+	for name, fails := range map[string]bool{"fetched": false, "fetch_fails": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig, file := takeRig(t)
+			fetch := "git fetch origin +refs/pull/7/head:refs/remotes/origin/pr-7"
+			rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+				if fails && strings.Join(request.Run, " ") == fetch {
+					return CommandOutput{RC: 1, Stderr: "no such ref"}, nil
+				}
+
+				return CommandOutput{}, nil
+			}
+
+			done := runTake(rig.h.engine(t), file)
+			if fails {
+				outcome := receive(t, done)
+				require.ErrorContains(t, outcome.err, "the step take-fetch could not fetch the head of pull request 7")
+				assert.Empty(t, rig.h.agents.seen(), "no review agent starts on a folder without the head")
+
+				return
+			}
+
+			waitOn(t, ownerAsks(t, rig.h))
+			require.NotEmpty(t, rig.h.commands.requests)
+			assert.Equal(t, fetch, strings.Join(rig.h.commands.requests[0].Run, " "), "the fetch is the first command")
+			require.Len(t, rig.h.agents.seen(), 1)
+			assert.Contains(t, rig.h.agents.seen()[0].Prompt, "origin/pr-7", "the prompt names the fetched head")
+
+			answerTheGrace(t, rig, "KEEP")
+			require.NoError(t, receive(t, done).err)
+		})
+	}
 }

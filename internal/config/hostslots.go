@@ -3,15 +3,13 @@ package config
 import (
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
-)
 
-// className is the name of a slot class. It is a plain word, because the engine names the queue of the class with it.
-var className = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	"github.com/tobocop2/beehave/internal/model"
+)
 
 // slotTable is the slots argument of the host block: a dict of slot class names to counts. The range of the counts is checked later, with the position of the block.
 type slotTable map[string]starlark.Int
@@ -61,8 +59,8 @@ func slotsOf(at syntax.Position, table slotTable) (map[string]int, error) {
 	slots := make(map[string]int, len(table))
 
 	for _, class := range slices.Sorted(maps.Keys(table)) {
-		if !className.MatchString(class) {
-			return nil, refuseAt(at, "`host.slots` has the class %q. Use letters, digits, dot, underscore and hyphen, and start with a letter or a digit.", class)
+		if err := checkClass(at, class); err != nil {
+			return nil, err
 		}
 
 		count, fits := table[class].Int64()
@@ -76,6 +74,19 @@ func slotsOf(at syntax.Position, table slotTable) (map[string]int, error) {
 	return slots, nil
 }
 
+// checkClass refuses the name of the class of the gates and a name that is not a plain word.
+func checkClass(at syntax.Position, class string) error {
+	if class == model.GateClass {
+		return refuseAt(at, "`host.slots` has the class %q, which belongs to the gates. Set the number of gates in `host.gate_slots`.", class)
+	}
+
+	if !model.SlotClassPattern.MatchString(class) {
+		return refuseAt(at, "`host.slots` has the class %q. Use letters, digits, dot, underscore and hyphen, and start with a letter or a digit.", class)
+	}
+
+	return nil
+}
+
 // SlotCount returns the number of jobs of one slot class that a build host runs at once, and whether any project names the class on the host.
 // Projects share a host by name. The config load refuses two projects that give different counts for one class on one host, so every project that names the class gives the same count.
 func SlotCount(projects map[string]Project, cluster, class string) (int, bool) {
@@ -85,8 +96,8 @@ func SlotCount(projects map[string]Project, cluster, class string) (int, bool) {
 			continue
 		}
 
-		if _, err := project.HostFor(cluster); err == nil && project.Host.Slots[class] > 0 {
-			return project.Host.Slots[class], true
+		if _, err := project.HostFor(cluster); err == nil && withGate(project.Host)[class] > 0 {
+			return withGate(project.Host)[class], true
 		}
 	}
 
@@ -107,11 +118,31 @@ func (c Config) slotProblems() Problems {
 		}
 
 		for _, host := range declaredOrDefault(project) {
-			problems = append(problems, claimSlots(seen, name, host, project.Host.Slots)...)
+			problems = append(problems, claimSlots(seen, name, host, withGate(project.Host))...)
 		}
 	}
 
 	return problems
+}
+
+// withGate is the slot counts of a host block with the gate slots added under the reserved class, and the default class added when the block does not name it.
+// A block with no gate slots adds none.
+func withGate(host *model.HostConfig) map[string]int {
+	counts := maps.Clone(host.Slots)
+
+	if counts == nil {
+		counts = map[string]int{}
+	}
+
+	if counts[model.DefaultClass] < 1 {
+		counts[model.DefaultClass] = model.DefaultSlots
+	}
+
+	if host.GateSlots >= 1 {
+		counts[model.GateClass] = host.GateSlots
+	}
+
+	return counts
 }
 
 // declaredOrDefault is every build host that a project declares: its list, or its one host.

@@ -111,34 +111,6 @@ func TestAdd_OwnerAddIsNotAFixLane(t *testing.T) {
 	assert.Equal(t, 0, prior)
 }
 
-func TestOwnerAdds_ReturnsTheIssuesOfTheKeyOnly(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-
-	for _, row := range []struct{ key, issue string }{{"792", "795"}, {"792", "800"}, {"793", "801"}} {
-		_, err := h.approve(row.key, row.issue, "ok")
-		require.NoError(t, err)
-	}
-
-	h.add("792", "795", ledger.KindFix, "") // a fix lane named like an issue is no approval
-
-	got, err := h.ledger.OwnerAdds("792")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"795", "800"}, got)
-
-	none, err := h.ledger.OwnerAdds("794")
-	require.NoError(t, err)
-	assert.Empty(t, none)
-}
-
-func TestOwnerAdds_RefusesAKeyThatIsNotAToken(t *testing.T) {
-	t.Parallel()
-
-	_, err := newHarness(t).ledger.OwnerAdds("a b")
-	require.Error(t, err)
-}
-
 func TestClosingNumbers_ListsEachIssueOnceInNumericOrder(t *testing.T) {
 	t.Parallel()
 

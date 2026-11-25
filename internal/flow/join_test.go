@@ -33,7 +33,7 @@ func TestJoinRun_AnEngineThatHoldsTheStateRunsTheEnqueuedItem(t *testing.T) {
 	harness.engine(t)
 	client := harness.client(t, testVersion)
 
-	result, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)))
+	result, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, testItem, result.Item)
@@ -53,7 +53,7 @@ func TestJoinRun_TwoJoinsOfOneItemMakeOneRun(t *testing.T) {
 	client := harness.client(t, testVersion)
 	file := writeFlow(t, bodyFlow("wait(name = \"ask\", question = \"What now?\")\n"))
 
-	in, err := pinnedInput(testItem, testProject, file)
+	in, err := pinnedInput(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// The run waits for an answer, so it is open while both joins plan. The second join cannot see a finished run and start attempt 2.
@@ -91,7 +91,7 @@ func TestJoinRun_AStatusThatCannotBeReadStopsTheWait(t *testing.T) {
 
 	file := writeFlow(t, bodyFlow("wait(name = \"ask\", question = \"What now?\")\n"))
 
-	in, err := pinnedInput(testItem, testProject, file)
+	in, err := pinnedInput(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	handle, err := client.planAndHandle(t.Context(), in)
@@ -119,7 +119,7 @@ func TestJoinRun_ACancelledCallerLeavesNoPollerBehind(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := client.JoinRun(ctx, testItem, testProject, file)
+		_, err := client.JoinRun(ctx, testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -172,7 +172,7 @@ func TestJoinRun_AnOpenRunIsJoinedAndNotEnqueuedAgain(t *testing.T) {
 	started := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		started <- err
 	}()
 
@@ -181,7 +181,7 @@ func TestJoinRun_AnOpenRunIsJoinedAndNotEnqueuedAgain(t *testing.T) {
 	joined := make(chan error, 1)
 
 	go func() {
-		_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		_, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 		joined <- err
 	}()
 
@@ -212,7 +212,7 @@ func TestJoinRun_AFailedRunIsRefusedWithTheTextOfRun(t *testing.T) {
 	require.ErrorContains(t, err, "fake failure")
 
 	_, want := engine.Run(testItem, testProject)
-	_, err = client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, defaultFlow))
+	_, err = client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, defaultFlow), modeOff())
 
 	require.ErrorIs(t, err, errRunFailed)
 	require.EqualError(t, err, want.Error())
@@ -226,7 +226,7 @@ func TestJoinRun_ABuildThatTheEngineDoesNotRunIsRefusedAndEnqueuesNothing(t *tes
 	harness.engine(t)
 	client := harness.client(t, "v2")
 
-	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)))
+	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)), modeOff())
 
 	require.ErrorIs(t, err, errOtherBuild)
 	require.ErrorContains(t, err, "restart beehave serve")
@@ -240,13 +240,13 @@ func TestJoinRun_ABadItemAndAMissingFileAreRefusedBeforeAnyRowIsWritten(t *testi
 	harness.engine(t)
 	client := harness.client(t, testVersion)
 
-	_, err := client.JoinRun(t.Context(), "not an item", testProject, writeFlow(t, defaultFlow))
+	_, err := client.JoinRun(t.Context(), "not an item", testProject, writeFlow(t, defaultFlow), modeOff())
 	require.ErrorIs(t, err, ErrBadItem)
 
-	_, err = client.JoinRun(t.Context(), testItem, "", writeFlow(t, defaultFlow))
+	_, err = client.JoinRun(t.Context(), testItem, "", writeFlow(t, defaultFlow), modeOff())
 	require.ErrorIs(t, err, errNoProject)
 
-	_, err = client.JoinRun(t.Context(), testItem, testProject, "/no/such/workflow.star")
+	_, err = client.JoinRun(t.Context(), testItem, testProject, "/no/such/workflow.star", modeOff())
 	require.Error(t, err)
 	assert.Empty(t, rowsOf(t, client, testItem))
 }
@@ -262,13 +262,13 @@ func TestJoinRun_AnOpenRunOfAnotherProjectIsRefused(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- err
 	}()
 
 	waitOn(t, conditionOf(runOfClient(t, client), func() bool { return len(rowsOf(t, client, testItem)) == 1 }))
 
-	_, err := client.JoinRun(t.Context(), testItem, "other", file)
+	_, err := client.JoinRun(t.Context(), testItem, "other", file, modeOff())
 
 	require.ErrorIs(t, err, errProjectConflict)
 }
@@ -288,7 +288,7 @@ func TestJoinRun_AnEngineOfAnotherBuildThatTakesTheFolderDuringTheGraceRefusesTh
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		_, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -316,7 +316,7 @@ func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheJoinReturnsEngineGone(
 	// Stop the engine's workers from taking the run: hold it with a full queue before the engine goes away.
 	require.NoError(t, engine.Shutdown())
 
-	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)))
+	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)), modeOff())
 
 	require.ErrorIs(t, err, ErrEngineGone)
 
@@ -338,7 +338,7 @@ func TestJoinRun_ACancelledCallerStopsWaitingAndTheRunStays(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := client.JoinRun(ctx, testItem, testProject, file)
+		_, err := client.JoinRun(ctx, testItem, testProject, file, modeOff())
 		done <- err
 	}()
 

@@ -167,19 +167,25 @@ func TestProjectGate_KeyNamesTheHeadAndTheTreeAndStartsNoGate(t *testing.T) {
 func TestProjectGate_KeyReadsThePinFileAtTheBaseOfTheCallAndAtTheBaseOfTheProjectWhenTheCallHasNone(t *testing.T) {
 	t.Parallel()
 
-	for base, want := range map[string]string{"integration/s1": "git show origin/integration/s1:.tool-versions", "": "git show origin/main:.tool-versions"} {
+	for base, branch := range map[string]string{"integration/s1": "integration/s1", "": "main"} {
 		calls := &gateCalls{}
 		projects := localProject()
 		pinned := projects["p"]
-		pinned.BaseBranch, pinned.PinFile = "main", ".tool-versions"
+		pinned.Source, pinned.BaseBranch, pinned.PinFile = "/src", "main", ".tool-versions"
 		projects["p"] = pinned
 
-		gate := projectGate{projects: projects, programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "gofake 1.0\n"})}}
+		var branches []string
+
+		gate := projectGate{
+			projects: projects, tip: recordingTip(&branches, anchorOld),
+			programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "gofake 1.0\n"})},
+		}
 
 		_, err := gate.Key(t.Context(), "p", "1", "", base, "")
 
 		require.NoError(t, err)
-		assert.Contains(t, calls.args, []string{"-c", want}, "base %q", base)
+		assert.Equal(t, []string{branch}, branches, "base %q", base)
+		assert.Contains(t, calls.args, []string{"-c", "git show " + anchorOld + ":.tool-versions"}, "the pin file is read at the commit, not at a branch name: base %q", base)
 	}
 }
 
@@ -328,7 +334,7 @@ func TestProjectGate_ASubmittedHostJobIsWaitedOnByItsIDAndNotSubmittedAgain(t *t
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "", "", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "", "", "", "", model.Slot{})
 
 	require.NoError(t, err)
 	assert.Equal(t, flow.GateJob{ID: "job-1", Head: "abc123", Plan: igate.Plan{Gate: "make check", BuildHost: "cluster", Pins: &igate.PinCheck{}}}, job)
@@ -357,10 +363,10 @@ func TestProjectGate_SubmitRefusesAProjectItCannotFindAndAHostThatRefusesTheJob(
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "unknown", "1", "", "", "")
+	_, err := gate.Submit(t.Context(), "unknown", "1", "", "", "", "", model.Slot{})
 	require.ErrorIs(t, err, errUnknownProject)
 
-	_, err = gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err = gate.Submit(t.Context(), "p", "1", "", "", "", "", model.Slot{})
 	require.ErrorIs(t, err, errFake)
 }
 
@@ -381,6 +387,7 @@ func TestProjectGate_TheCloneURLIsTheSourceOfTheProjectAndTheForgeIsNotAsked(t *
 			hosts: func(string, string) (host.Host, error) { return hosted, nil },
 		},
 		forge: func(model.Project) (forge.Forge, error) { return nil, errFake },
+		tip:   fixedTip(anchorOld, nil),
 	}
 
 	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
@@ -484,7 +491,7 @@ func TestProjectGate_APinBaseNamesTheBranchThatKeyAndSubmitReadThePinFileAt(t *t
 
 	projects := localProject()
 	pinned := projects["p"]
-	pinned.BaseBranch, pinned.PinFile = "main", ".tool-versions"
+	pinned.Source, pinned.BaseBranch, pinned.PinFile = "/src", "main", ".tool-versions"
 	projects["p"] = pinned
 
 	keyCalls, submitCalls := &gateCalls{}, &gateCalls{}
@@ -492,14 +499,16 @@ func TestProjectGate_APinBaseNamesTheBranchThatKeyAndSubmitReadThePinFileAt(t *t
 		return programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "gofake 1.0\n"})}
 	}
 
-	_, err := projectGate{projects: projects, programs: programsOf(keyCalls)}.Key(t.Context(), "p", "1", "", "", "integration/s1")
+	var keyBranches, submitBranches []string
+
+	_, err := projectGate{projects: projects, programs: programsOf(keyCalls), tip: recordingTip(&keyBranches, anchorOld)}.Key(t.Context(), "p", "1", "", "", "integration/s1")
 	require.NoError(t, err)
 
-	_, err = projectGate{projects: projects, programs: programsOf(submitCalls)}.Submit(t.Context(), "p", "1", "", "", "integration/s1")
+	_, err = projectGate{projects: projects, programs: programsOf(submitCalls), tip: recordingTip(&submitBranches, anchorOld)}.Submit(t.Context(), "p", "1", "", "", "integration/s1", "", model.Slot{})
 	require.NoError(t, err)
 
-	want := []string{"-c", "git show origin/integration/s1:.tool-versions"}
-	assert.Contains(t, keyCalls.args, want, "the key reads the pin file at the pin base")
-	assert.Contains(t, submitCalls.args, want, "the job reads the pin file at the pin base")
-	assert.NotContains(t, submitCalls.args, []string{"-c", "git show origin/main:.tool-versions"})
+	assert.Equal(t, []string{"integration/s1"}, keyBranches, "the key reads the tip of the pin base")
+	assert.Equal(t, []string{"integration/s1"}, submitBranches, "the job reads the tip of the pin base")
+	assert.Contains(t, keyCalls.args, []string{"-c", "git show " + anchorOld + ":.tool-versions"})
+	assert.Contains(t, submitCalls.args, []string{"-c", "git show " + anchorOld + ":.tool-versions"})
 }

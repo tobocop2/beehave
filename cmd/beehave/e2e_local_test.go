@@ -44,8 +44,9 @@ func e2eTools() []string {
 // e2eOptionalTools are the programs that only some scripts need. A machine without one still runs the other scripts, and a script that needs one
 // starts with the condition [!exec:name] skip. The desk example needs jq for its gateway and eval scripts, and a SHA-256 tool for its mask:
 // sha256sum on Linux and shasum on macOS. The approvals example also needs ssh-keygen for the signatures, sqlite3 for the ledger and flock for its lock.
+// The maintenance tick takes its lock through perl, which macOS and Linux both have.
 func e2eOptionalTools() []string {
-	return []string{"jq", "sha256sum", "shasum", "ssh-keygen", "sqlite3", "flock"}
+	return []string{"jq", "sha256sum", "shasum", "ssh-keygen", "sqlite3", "flock", "perl"}
 }
 
 // e2eReal is the beehavereal command of the scripts.
@@ -69,58 +70,46 @@ func e2eReal() {
 // cmdExample is "example <path> [<to>]": it copies examples/<path> of the repository to <to> (default <path>) in the work folder.
 // The script then runs the file that users copy, not a second version of it.
 func cmdExample(ts *testscript.TestScript, _ bool, args []string) {
+	copyIntoWork(ts, "example", filepath.Join("..", ".."), "examples", args)
+}
+
+// cmdFixture is "fixture <path> [<to>]": it copies testdata/fixtures/<path> to <to> (default <path>) in the work folder.
+// The fixture is a file of this package that stays valid for the engine; it does not follow a file of the examples folder.
+func cmdFixture(ts *testscript.TestScript, _ bool, args []string) {
+	copyIntoWork(ts, "fixture", "testdata", "fixtures", args)
+}
+
+// copyIntoWork copies the file args[0] of the folder parent/folder to args[1] (default args[0]) in the work folder, for the command name.
+func copyIntoWork(ts *testscript.TestScript, name, parent, folder string, args []string) {
 	if len(args) < 1 || len(args) > 2 {
-		ts.Fatalf("usage: example <path> [<to>]")
+		ts.Fatalf("usage: %s <path> [<to>]", name)
 	}
 
 	to := args[len(args)-1]
 
-	examples := openRoot(ts, filepath.Join("..", ".."), "examples")
-	defer examples.Close()
+	source := openRoot(ts, parent, folder)
+	defer source.Close()
 
 	work := openRoot(ts, ts.Getenv("WORK"), "")
 	defer work.Close()
 
-	text, err := examples.ReadFile(args[0])
+	text, err := source.ReadFile(args[0])
 	if err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 
 	if err := work.MkdirAll(filepath.Dir(to), e2eFolderMode); err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 
 	if err := work.WriteFile(to, text, e2eFileMode); err != nil {
-		ts.Fatalf("example: %v", err)
+		ts.Fatalf("%s: %v", name, err)
 	}
 }
 
-// cmdScript is "script <name> [<to>]": it copies scripts/<name> of the repository to the path <to> in the work folder (default: <name>).
+// cmdScript is "script <path> [<to>]": it copies scripts/<path> of the repository to <to> (default <path>) in the work folder.
 func cmdScript(ts *testscript.TestScript, _ bool, args []string) {
-	if len(args) < 1 || len(args) > 2 {
-		ts.Fatalf("usage: script <name> [<to>]")
-	}
-
-	to := args[len(args)-1]
-
-	scripts := openRoot(ts, filepath.Join("..", ".."), "scripts")
-	defer scripts.Close()
-
-	work := openRoot(ts, ts.Getenv("WORK"), "")
-	defer work.Close()
-
-	text, err := scripts.ReadFile(args[0])
-	if err != nil {
-		ts.Fatalf("script: %v", err)
-	}
-
-	if err := work.MkdirAll(filepath.Dir(to), e2eFolderMode); err != nil {
-		ts.Fatalf("script: %v", err)
-	}
-
-	if err := work.WriteFile(to, text, e2eFileMode); err != nil {
-		ts.Fatalf("script: %v", err)
-	}
+	copyIntoWork(ts, "script", filepath.Join("..", ".."), "scripts", args)
 }
 
 // cmdReplace is "replace <file> <old> <new>": it replaces the one text old in the file, and fails when the file does not hold it.
@@ -157,8 +146,104 @@ func openRoot(ts *testscript.TestScript, parent, folder string) *os.Root {
 }
 
 // writeFake writes a fake program of the script into its work folder, with the work folder in place of the marker.
+// A fake named claude also models the sandbox of the real CLI (see withSandboxModel).
 func writeFake(ts *testscript.TestScript, name string, text []byte) error {
-	return exectest.Write(filepath.Join(ts.Getenv("WORK"), name), strings.ReplaceAll(string(text), e2eWorkMarker, ts.Getenv("WORK")))
+	body := string(text)
+
+	if filepath.Base(name) == "claude" {
+		body = withSandboxModel(body)
+	}
+
+	return exectest.Write(filepath.Join(ts.Getenv("WORK"), name), strings.ReplaceAll(body, e2eWorkMarker, ts.Getenv("WORK")))
+}
+
+// fakeClaudeSandbox is the start of a fake claude. It answers --version as a CLI that is new enough for the sandbox. It logs one line to sandbox.log for each call:
+// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the sandbox block that Sandbox of the Claude adapter builds, every key and value
+// in place and only the path and domain lists free, and "open" when the settings hold no sandbox. Any other sandbox fails the call.
+const fakeClaudeSandbox = `sandbox_model() {
+  sources=unset mcp= tools= settings=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --setting-sources) sources=x$2 ;;
+      --strict-mcp-config) mcp=yes ;;
+      --disallowedTools) tools="$2 $3" ;;
+      --settings) settings=$2 ;;
+    esac
+    shift
+  done
+  case $settings in *'"sandbox":'*) ;; *) echo open >> @WORK@/sandbox.log; return ;; esac
+  block='"sandbox":\{"enabled":true,"failIfUnavailable":true,"allowUnsandboxedCommands":false,"filesystem":\{"denyRead":\["~/"[^]]*\],"allowRead":\[[^]]*\],"denyWrite":\[[^]]*\]\},"network":\{"allowedDomains":\[[^]]*\],"strictAllowlist":true\}\},"permissions":\{"blockReadsOutsideWorkingDirectories":true,.*"deny":\["WebFetch","WebSearch"'
+  if [ "$sources" = x ] && [ "$mcp" = yes ] && [ "$tools" = "WebFetch WebSearch" ] && printf '%s' "$settings" | grep -Eq "$block"; then
+    echo "sandboxed domains=$(printf '%s' "$settings" | sed -n 's/.*"allowedDomains":\[\([^]]*\)\].*/\1/p')" >> @WORK@/sandbox.log
+    return
+  fi
+  echo "the fake claude: the sandbox settings differ from the ones of the Claude adapter: $settings" >&2
+  exit 1
+}
+if [ "$1" = --version ]; then echo "2.1.290 (Claude Code)"; exit 0; fi
+sandbox_model "$@"
+`
+
+// withSandboxModel returns the text of a fake program with fakeClaudeSandbox after its first line.
+func withSandboxModel(text string) string {
+	first, rest, _ := strings.Cut(text, "\n")
+
+	return first + "\n" + fakeClaudeSandbox + rest
+}
+
+// cmdClaudeModel is "claudemodel <file>": it gives a fake claude that the script wrote itself the sandbox model and the sandbox home, as writeFake does.
+func cmdClaudeModel(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: claudemodel <file>")
+	}
+
+	work := openRoot(ts, ts.Getenv("WORK"), "")
+	defer work.Close()
+
+	text, err := work.ReadFile(args[0])
+	if err != nil {
+		ts.Fatalf("claudemodel: %v", err)
+	}
+
+	if err := work.WriteFile(args[0], []byte(withSandboxModel(string(text))), e2eFileMode); err != nil {
+		ts.Fatalf("claudemodel: %v", err)
+	}
+
+	sandboxHome(ts)
+}
+
+// sandboxHome gives the script what a sandboxed step needs of a user machine: a home folder with a global git identity, as the sandbox refuses to start without
+// one, and a login folder for the runners that is not the work folder, because the login folder is a credential path and the state folder lies in the work folder.
+func sandboxHome(ts *testscript.TestScript) {
+	work := ts.Getenv("WORK")
+	home, login := filepath.Join(work, "home"), filepath.Join(work, "login")
+
+	for _, folder := range []string{home, login} {
+		if err := os.MkdirAll(folder, e2eFolderMode); err != nil {
+			ts.Fatalf("sandbox home: %v", err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[user]\n\tname = e2e\n\temail = e2e@example.com\n"), e2eFileMode); err != nil {
+		ts.Fatalf("sandbox home: %v", err)
+	}
+
+	ts.Setenv("HOME", home)
+
+	root := openRoot(ts, work, "")
+	defer root.Close()
+
+	runners := filepath.Join("config", "runners.star")
+
+	text, err := root.ReadFile(runners)
+	if err != nil {
+		return // a script that writes its runners later names the login folder itself
+	}
+
+	moved := strings.ReplaceAll(string(text), `config_dir = "`+work+`"`, `config_dir = "`+login+`"`)
+	if err := root.WriteFile(runners, []byte(moved), e2eFileMode); err != nil {
+		ts.Fatalf("sandbox home: %v", err)
+	}
 }
 
 // cmdSubst is "subst <file>...": it replaces @WORK@ in each file with the work folder of the script.
@@ -199,14 +284,19 @@ func writeTools(t *testing.T) string {
 
 		require.NoError(t, err)
 
-		wrapper := "#!/bin/sh\nexec " + found + " \"$@\"\n"
-		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapper))
+		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapperText(found)))
 	}
 
 	return tools
 }
 
-// cmdIsolate sets PATH to the fake claude of the script (the folder fake), the beehave commands and the wrappers in tools.
+// wrapperText is the script of a wrapper: it runs the program at found, by its full path, with the arguments of the caller.
+func wrapperText(found string) string {
+	return "#!/bin/sh\nexec \"" + found + "\" \"$@\"\n"
+}
+
+// cmdIsolate sets PATH to the fake claude of the script (the folder fake), the beehave commands and the wrappers in tools, and TOOLS to the folder of the wrappers.
+// A script that turns the sandbox on lists $TOOLS in the sandbox_read of its project file, so that the sandbox can start the wrappers.
 // A wrapper runs the program of the machine by its full path, so the script sees git and sh and no other tool of the machine.
 func cmdIsolate(ts *testscript.TestScript, tools string) {
 	work := ts.Getenv("WORK")
@@ -226,6 +316,7 @@ func cmdIsolate(ts *testscript.TestScript, tools string) {
 	}
 
 	ts.Setenv("PATH", strings.Join([]string{filepath.Join(work, "fake"), commands, tools}, string(os.PathListSeparator)))
+	ts.Setenv("TOOLS", tools)
 }
 
 // cmdExitCode is "exitcode <code> <command> [args...]": it runs the command and fails unless it exits with the code.

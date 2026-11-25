@@ -36,8 +36,8 @@ func (a oddMinimum) Profile() agent.Profile {
 	return profile
 }
 
-func seen(version string) func(context.Context, string, []string) (string, error) {
-	return func(context.Context, string, []string) (string, error) { return version, nil }
+func seen(version string) func(context.Context, []string, []string) (string, error) {
+	return func(context.Context, []string, []string) (string, error) { return version, nil }
 }
 
 func boxed(t *testing.T) *fixture {
@@ -138,7 +138,8 @@ func TestRunner_RefusesASandboxOnAnAdapterWithoutOne(t *testing.T) { //nolint:pa
 
 	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 	assert.Contains(t, got.Note, "claude has no sandbox, so a step with the sandbox on does not start")
-	assert.Contains(t, got.Note, "sandbox = None")
+	assert.Contains(t, got.Note, `Set sandbox = "off" in the project, or use a Claude runner for the step.`)
+	assert.NotContains(t, got.Note, "sandbox = None")
 }
 
 func TestRunner_RefusesASandboxOnWindows(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -216,7 +217,7 @@ func TestRunner_RefusesASandboxWhenTheVersionCannotBeRead(t *testing.T) { //noli
 	f := boxed(t)
 
 	unreadable := agent.Runner{Version: seen("no number here")}.Run(context.Background(), f.spec)
-	failing := agent.Runner{Version: func(context.Context, string, []string) (string, error) { return "", errors.New("boom") }}.Run(context.Background(), f.spec)
+	failing := agent.Runner{Version: func(context.Context, []string, []string) (string, error) { return "", errors.New("boom") }}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeNotStarted, unreadable.Outcome)
 	assert.Contains(t, unreadable.Note, "is not readable")

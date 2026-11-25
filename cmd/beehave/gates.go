@@ -13,7 +13,9 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
@@ -33,6 +35,97 @@ type projectGate struct {
 	forge    func(model.Project) (forge.Forge, error)
 	// timeout is the time that a local gate command may run. Zero means gateTimeout.
 	timeout time.Duration
+	// tools are the programs that the job of a gate_program uses, resolved when the engine starts. toolsErr is the reason when one is missing:
+	// a local gate_program job then does not start.
+	tools    gate.Tools
+	toolsErr error
+	// tip reads the commit that a branch names at the address of a project. fetch brings a commit of that address into the clone by its id. Both
+	// reach the address from the push repository of the project, never from the clone, whose config an agent can write.
+	tip   func(ctx context.Context, project, remote, branch string) (string, error)
+	fetch func(ctx context.Context, project, remote, sha string) error
+}
+
+// withTools returns the gate with the tools of the gate_program job found in the folders of path. The engine calls it at its start, before any agent step runs.
+func (g projectGate) withTools(path string) projectGate {
+	g.tools, g.toolsErr = resolveGateTools(path)
+
+	return g
+}
+
+// resolveGateTools finds git and the tools of the final compare of a gate program in the folders of path. The digest tool is sha256sum, else shasum.
+func resolveGateTools(path string) (gate.Tools, error) {
+	var found []string
+
+	for _, names := range [][]string{{model.ToolGit}, {"env"}, {"find"}, {"sort"}, {"readlink"}, {"cat"}, {"sha256sum", "shasum"}} {
+		binary, err := lookFirst(names, path)
+		if err != nil {
+			return gate.Tools{}, fmt.Errorf("find the tool %s for the gate program: %w", strings.Join(names, " or "), err)
+		}
+
+		found = append(found, binary)
+	}
+
+	return gate.Tools{Git: found[0], Env: found[1], Find: found[2], Sort: found[3], Readlink: found[4], Cat: found[5], Digest: found[6]}, nil
+}
+
+// lookFirst returns the first of the programs names that the folders of path hold.
+func lookFirst(names []string, path string) (string, error) {
+	var err error
+
+	for _, name := range names {
+		var binary string
+
+		if binary, err = proc.LookPath(name, path); err == nil {
+			return binary, nil
+		}
+	}
+
+	return "", err
+}
+
+// anchor reads, once, the commit that the base branch names at the source of the project, and makes sure that the clone of the item holds it.
+// The source is the repository that the project names, which no agent has a worktree in, and not a ref of the clone, which an agent can move.
+// A project with no repository has no base commit. A base branch that has no commit, or a commit that the clone cannot hold, is an error that names the base.
+func (g projectGate) anchor(ctx context.Context, project model.Project, dir, branch string) (string, error) {
+	if !project.HasRepository() {
+		return "", nil
+	}
+
+	remote, err := cloneSource(project, g.forge)
+	if err != nil {
+		return "", fmt.Errorf("find the repository of project %s: %w", project.Name, err)
+	}
+
+	sha, err := g.tip(ctx, project.Name, remote, branch)
+	if err != nil {
+		return "", fmt.Errorf("read the base branch %q of project %s: %w", branch, project.Name, err)
+	}
+
+	if err := g.hold(ctx, project.Name, dir, remote, sha); err != nil {
+		return "", fmt.Errorf("the base branch %q of project %s is at %s: %w", branch, project.Name, sha, err)
+	}
+
+	return sha, nil
+}
+
+// hold makes sure that the clone of dir holds the commit sha. When the commit is missing, it fetches that commit by its id from the remote that gave it, once.
+func (g projectGate) hold(ctx context.Context, project, dir, remote, sha string) error {
+	has := func() error {
+		_, err := g.programs.git(ctx, project, dir, gateTimeout, "git cat-file", "cat-file", "-e", sha+"^{commit}")
+
+		return err
+	}
+
+	err := has()
+	if err == nil {
+		return nil
+	}
+
+	if err := g.fetch(ctx, project, remote, sha); err != nil {
+		return fmt.Errorf("fetch the commit: %w", err)
+	}
+
+	return has()
 }
 
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
@@ -44,7 +137,14 @@ func (g projectGate) Run(ctx context.Context, project, item, cluster string, job
 		return flow.GateResult{}, err
 	}
 
-	request.Resume, request.ResumeHead, request.Plan = model.JobID(job.ID), job.Head, job.Plan
+	request.Resume, request.ResumeHead, request.Plan, request.JobKey = model.JobID(job.ID), job.Head, job.Plan, host.JobKey(ctx)
+
+	// A plan that holds no pin check was made by no Submit, so this Run reads the pin file and reads the base commit for it. Any other plan holds the commit.
+	if job.Plan.Pins == nil {
+		if request.BaseSHA, err = g.anchor(ctx, request.Project, request.Dir, request.Project.BaseBranch); err != nil {
+			return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
+		}
+	}
 
 	result, err := g.gate(project).Run(ctx, request)
 	if err != nil {
@@ -70,13 +170,14 @@ func gateChecks(checks *gate.Checks) *flow.GateChecks {
 
 // Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
 // A project that builds here has no host job, and its job is empty.
-func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateJob, error) {
-	request, err := g.request(ctx, project, item, cluster)
+// A baseSHA that Key read is the base commit of the job: Submit reads no tip then, so the key and the job of one gate name the same commit.
+func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase, baseSHA string, slot model.Slot) (flow.GateJob, error) {
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase, baseSHA)
 	if err != nil {
 		return flow.GateJob{}, err
 	}
 
-	request.Base, request.PinBase = base, pinBase
+	request.Slot, request.JobKey = slot, host.JobKey(ctx)
 
 	job, err := g.gate(project).Submit(ctx, request)
 	if err != nil {
@@ -87,14 +188,32 @@ func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, p
 }
 
 func (g projectGate) gate(project string) gate.Gate {
-	return gate.New(g.shellFor(project), g.treeOf(project), func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) })
+	hosts := func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) }
+
+	return gate.New(g.shellFor(project), g.treeOf(project), hosts).WithProgramShell(g.programShellFor(project)).WithTools(g.tools)
+}
+
+// programShellFor returns the function that runs the job of a gate_program in the new folder root: under the sandbox when the project has it on, else as before.
+// Under the sandbox the job may also read the repository at from, its shared git folders and the source of the project, because it clones the head from there.
+func (g projectGate) programShellFor(project string) gate.ProgramShell {
+	return func(ctx context.Context, from, root, command string) (string, int) {
+		if g.toolsErr != nil {
+			return g.toolsErr.Error() + "\n", 1
+		}
+
+		if !g.programs.sandbox.applies(project, false) {
+			return g.shell(ctx, project, root, command)
+		}
+
+		return g.programs.sandbox.runJob(ctx, project, from, root, []string{"sh", "-c", command}, cmp.Or(g.timeout, gateTimeout))
+	}
 }
 
 // shellFor returns the function that runs the gate command of the project: under the sandbox when the project has it on and builds here, else as before.
 func (g projectGate) shellFor(project string) func(context.Context, string, string) (string, int) {
 	return func(ctx context.Context, dir, command string) (string, int) {
 		if g.programs.sandbox.applies(project, false) {
-			return g.programs.sandbox.run(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
+			return g.programs.sandbox.runGate(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
 		}
 
 		return g.shell(ctx, project, dir, command)
@@ -122,19 +241,17 @@ func gateRefusal(projects map[string]config.Project, refusal cli.GateRefusal) fu
 
 // Key reads the key of the gate that Run would start on the worktree of the item.
 func (g projectGate) Key(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateKey, error) {
-	request, err := g.request(ctx, project, item, cluster)
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase, "")
 	if err != nil {
 		return flow.GateKey{}, err
 	}
-
-	request.Base, request.PinBase = base, pinBase
 
 	key, err := gate.New(g.shellFor(project), g.treeOf(project), nil).Key(ctx, request)
 	if err != nil {
 		return flow.GateKey{}, fmt.Errorf("read the gate key of item %s: %w", item, err)
 	}
 
-	return flow.GateKey{ID: key.ID, Head: key.Head, Tree: key.Tree}, nil
+	return flow.GateKey{ID: key.ID, Head: key.Head, Tree: key.Tree, BaseSHA: request.BaseSHA}, nil
 }
 
 // gateSteps gives the steps of a gate result to the engine.
@@ -173,6 +290,28 @@ func (g projectGate) request(ctx context.Context, project, item, cluster string)
 	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
 }
 
+// requestAt is request for a gate of a head with a base. It reads the commit of the base branch here, and the request carries it: the gate never
+// reads the base by its name. A known commit (the one that Key read for this gate) is used and no tip is read. The pin file is read from PinBase
+// when it is set, else from Base, else from the base branch of the project.
+func (g projectGate) requestAt(ctx context.Context, project, item, cluster, base, pinBase, known string) (gate.Request, error) {
+	request, err := g.request(ctx, project, item, cluster)
+	if err != nil {
+		return gate.Request{}, err
+	}
+
+	request.Base, request.PinBase, request.BaseSHA = base, pinBase, known
+	if known != "" {
+		return request, nil
+	}
+
+	request.BaseSHA, err = g.anchor(ctx, request.Project, request.Dir, cmp.Or(pinBase, base, request.Project.BaseBranch))
+	if err != nil {
+		return gate.Request{}, err
+	}
+
+	return request, nil
+}
+
 // onCluster returns the project with the cluster of the run as its build host.
 func (g projectGate) onCluster(project, cluster string) (config.Project, error) {
 	found, ok := g.projects[project]
@@ -190,9 +329,9 @@ func (g projectGate) onCluster(project, cluster string) (config.Project, error) 
 	return found, nil
 }
 
-// cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none.
+// cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none, unless it has a gate_program: its gate reads the base commit from there.
 func (g projectGate) cloneURL(project config.Project) (string, error) {
-	if project.BuildHost == config.LocalHost {
+	if project.BuildHost == config.LocalHost && len(project.GateProgram) == 0 {
 		return "", nil
 	}
 
@@ -214,6 +353,22 @@ func (g projectGate) shell(ctx context.Context, project, dir, command string) (s
 	}
 
 	return result.Stdout + result.Stderr, result.ExitCode
+}
+
+// State reads the worktree of the item with the reader of the project gate: the folder, the head, the tree of the head and whether it is clean.
+func (g projectGate) State(ctx context.Context, project, item string) (string, gate.State, error) {
+	dir, err := g.programs.trees.Path(ctx, project, item)
+	if err != nil {
+		return "", gate.State{}, fmt.Errorf("find the folder of item %s: %w", item, err)
+	}
+
+	if dir == "" {
+		return "", gate.State{}, fmt.Errorf("item %s of project %s has no worktree, so the gate cannot read the commit its program judges. Make the worktree of the item first", item, project)
+	}
+
+	state, err := g.tree(ctx, project, dir)
+
+	return dir, state, err
 }
 
 // treeOf returns the reader of the worktree of an item of the project, which runs the git of the project.

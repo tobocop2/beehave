@@ -31,12 +31,15 @@ const (
 	noAnswer       = "the CLI ended without answering get_usage"
 	noPlanLimits   = "the reply has no Claude plan limits (rate_limits_available is false)"
 	maxPercent     = 100.0
-	maxOutputBytes = 4 << 20
-	readChunk      = 64 << 10
-	maxStderrBytes = 64 << 10
-	maxFloatBits   = 64
-	bytesPerMiB    = 1 << 20
-	resetLayout    = "2006-01-02T15:04:05"
+	// defaultFiveHourMax and defaultSevenDayMax are the default caps of the two windows.
+	defaultFiveHourMax = 90.0
+	defaultSevenDayMax = 95.0
+	maxOutputBytes     = 4 << 20
+	readChunk          = 64 << 10
+	maxStderrBytes     = 64 << 10
+	maxFloatBits       = 64
+	bytesPerMiB        = 1 << 20
+	resetLayout        = "2006-01-02T15:04:05"
 )
 
 var errReadTimeout = errors.New("read timeout")

@@ -244,7 +244,7 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 
 	err := client.Reply(testItem, Reply{Text: "go on"})
 
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "asks no question")
 
 	release()
@@ -294,7 +294,7 @@ func TestRun_TheLoginIsPickedAtTheFirstAgentStepNotInTheInput(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 
@@ -378,7 +378,7 @@ func TestResume_AnAgentThatResumesASessionRunsOnTheLoginThatOwnsIt(t *testing.T)
 	assert.Equal(t, []string{"alice", "alice", "alice"}, harness.agents.logins(), "the resumed step keeps the login of the run")
 	assert.Equal(t, 1, logins.count(), "the resume picks nothing, though the pool would now pick bob")
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 

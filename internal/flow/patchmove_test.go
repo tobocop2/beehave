@@ -2,6 +2,9 @@ package flow
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,7 +56,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderRunWhenNoModuleChanged(t 
 	require.NoError(t, outcome.err, "the modules are equal, so run moves the open run of the older release build and finishes it")
 	assert.Equal(t, []string{"old", "old", "new"}, seen.all(), "call 1 replays its old step, and call 2 is new code")
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, engine.version, last.Status.ApplicationVersion, "the run is stored under this build")
@@ -78,7 +81,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderServeWhenNoModuleChanged(
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		result, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -90,6 +93,92 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderServeWhenNoModuleChanged(
 
 	require.NoError(t, outcome.err, "a client that joins the engine of this build moves the open run of the older release build")
 	assert.Equal(t, []string{"old", "old", "new"}, seen.all())
+}
+
+func TestPatch_AWaitDoesNotTakeTheCancelOfAMoveForTheEndOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	run := runOfClient(t, client)
+
+	// The move takes the fresh claim after the cancel and before the rewind, so the claim holds the move between the two.
+	paused, resume := make(chan struct{}), make(chan struct{})
+
+	var once sync.Once
+
+	h.life.onClaim = func() { once.Do(func() { close(paused); <-resume }) }
+
+	moved := make(chan error, 1)
+
+	go func() {
+		moved <- client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
+	}()
+
+	select {
+	case <-paused:
+	case err := <-moved:
+		t.Fatalf("the move ended before it took the claim: %v", err)
+	}
+
+	held, err := client.store().Exact(dbos.WithFilterWorkflowIDs(testRun))
+	require.NoError(t, err)
+	require.Equal(t, dbos.WorkflowStatusCancelled, held[0].Status, "the move canceled the run and has not rewound it yet")
+	assert.Empty(t, run.stalled(time.Now()), "the move holds probe.lock, so the wait does not take its cancel for the end of the run")
+
+	close(resume)
+	require.NoError(t, receive(t, moved))
+	assert.Empty(t, run.stalled(time.Now()), "the moved run is open on this build")
+
+	require.NoError(t, client.Cancel(testItem))
+	assert.Contains(t, run.stalled(time.Now()), "ended with status "+string(dbos.WorkflowStatusCancelled), "a cancel that no move follows is the end of the run")
+}
+
+func TestPatch_AWaitDoesNotTakeTheOpenRunOfAnotherBuildForOneThatParks(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	run := runOfClient(t, client)
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	require.NotEqual(t, otherBuild, last.Status.ApplicationVersion, "the run is open on the older build, and no move has put it on this build")
+	require.NotEmpty(t, run.parked(time.Now()), "the run sits in a receive window that ends after the bound")
+
+	assert.Empty(t, run.stalled(time.Now()), "the run takes no answer until a move, so the wait does not take it for a stall")
+
+	owner := runOfClient(t, h.client(t, testVersion))
+	assert.Contains(t, owner.stalled(time.Now()), "waits in step", "a wait on the build that started the run still sees it park")
+
+	require.NoError(t, client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem))
+	assert.Empty(t, run.stalled(time.Now()), "the moved run is open on this build")
+}
+
+func TestResumeOnThisBuild_ReadsNoCanceledRunBetweenTheCancelAndTheReopen(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+
+	// The cancel releases the claim of the run at its end. The release replaces probe.lock with a folder, which no process can lock.
+	// A move that frees probe.lock after the cancel and takes it again for the reopen fails at the second take, and leaves the run canceled.
+	var once sync.Once
+
+	h.life.onRelease = func() {
+		once.Do(func() {
+			path := filepath.Join(client.dir, probeLockName)
+			assert.NoError(t, os.Remove(path))
+			assert.NoError(t, os.Mkdir(path, 0o700))
+		})
+	}
+
+	require.NoError(t, client.ResumeOnThisBuild(testItem), "the move holds probe.lock from the cancel to the rewind, so it takes the lock once")
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	assert.Equal(t, client.version, last.Status.ApplicationVersion)
+	assert.False(t, last.terminal(), "the run is open on this build: %s", last.Status.Status)
 }
 
 func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByRunAndNamesTheModuleThatChanged(t *testing.T) {
@@ -137,7 +226,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByServeAndNamesTheModuleTh
 	h.opts.Version = otherBuild
 	h.engine(t)
 
-	_, err = h.client(t, otherBuild).JoinRun(t.Context(), testItem, testProject, file)
+	_, err = h.client(t, otherBuild).JoinRun(t.Context(), testItem, testProject, file, modeOff())
 
 	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, "core module at version")
@@ -181,7 +270,7 @@ func TestPatch_ARunThatHoldsAMarkerMovesToAnotherReleaseBuild(t *testing.T) {
 	engine := h.engine(t)
 	client := h.client(t, otherBuild)
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 
@@ -215,7 +304,7 @@ func TestPatch_AFailedRunRewoundByResumeAfterTheChangeKeepsItsOldCallAndTakesThe
 	file := writeFlow(t, failFlow)
 	first := h.engine(t)
 
-	_, err := first.RunFile(testItem, testProject, file)
+	_, err := first.RunFile(testItem, testProject, file, modeOff())
 	require.Error(t, err, "the second call of the old build fails")
 	require.NoError(t, first.Shutdown())
 

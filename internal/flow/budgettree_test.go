@@ -161,12 +161,12 @@ func TestBudget_TheTreeSumReachesAGrandchildAndTheCapStopsTheTree(t *testing.T) 
 	engine := deepTree(t, rig)
 
 	// A step of the grandchild asks for the sum of its tree. The climb from the grandchild passes the child and ends at the root.
-	root, err := rootRun(engine.ctx, runID("3", 1))
+	root, err := rootRun(viewOf(engine.ctx, engine.dir), runID("3", 1))
 	require.NoError(t, err)
 	assert.Equal(t, runID("1", 1), root)
 
 	// Only the cost of the grandchild takes the sum from 4 to 6, past the cap of 5.
-	spent, err := runAndBelowSpend(engine.ctx, root)
+	spent, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), root)
 	require.NoError(t, err)
 	assert.InDelta(t, 6.0, spent.Cost, 0, "the sum holds the root, the child and the grandchild")
 
@@ -176,7 +176,7 @@ func TestBudget_TheTreeSumReachesAGrandchildAndTheCapStopsTheTree(t *testing.T) 
 	assert.Equal(t, scopeTree, stop.Scope)
 	assert.InDelta(t, 6.0, stop.Spent, 0)
 
-	child, err := runAndBelowSpend(engine.ctx, runID("2", 1))
+	child, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), runID("2", 1))
 	require.NoError(t, err)
 	assert.InDelta(t, 4.0, child.Cost, 0, "a run sums itself and every run below it")
 }
@@ -195,7 +195,7 @@ func unreadableChild(t *testing.T) (*Engine, agent.Spend) {
 		return spendOutputs(agent.Spend{Cost: 2})
 	})
 
-	spent, err := runAndBelowSpend(engine.ctx, runID("1", 1))
+	spent, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), runID("1", 1))
 	require.NoError(t, err)
 
 	return engine, spent

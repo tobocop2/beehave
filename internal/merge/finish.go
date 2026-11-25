@@ -1,10 +1,7 @@
 package merge
 
 import (
-	"errors"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -24,13 +21,32 @@ func (a *attempt) conclude() *refusal {
 		return a.landed(a.merged())
 	}
 
-	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.mergeNow} {
+	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.post, a.mergeNow} {
 		if stop := step(); stop != nil {
 			return stop
 		}
 	}
 
 	return a.landed(a.merged())
+}
+
+// post posts the commit statuses of the pull request. A post that fails stops the run before the merge call; the cause can pass, so the caller defers.
+// A post that was skipped says why and the merge goes on.
+func (a *attempt) post() *refusal {
+	if a.req.Post == nil {
+		return nil
+	}
+
+	skipped, err := a.req.Post.Post(a.ctx)
+	if err != nil {
+		return transient("REFUSE: " + err.Error())
+	}
+
+	if skipped != "" {
+		a.say("WARN: " + skipped)
+	}
+
+	return nil
 }
 
 // mergeNow queues the merge of a pull request in a native stack and returns Queued, which ends the run. Any other pull request moves its children, then merges directly.
@@ -93,12 +109,12 @@ func (a *attempt) ancestor() *refusal {
 // unmoved refuses a pull request that is no longer open, or is a draft, or whose head moved since the gate, and a base whose tip moved since the start of the run.
 // It reads the pull request again right before the merge call.
 func (a *attempt) unmoved() *refusal {
-	again, err := a.forge.PRView(a.ctx, a.req.PR, "headRefOid", "state", "isDraft")
+	again, draft, err := a.readAgain()
 	if err != nil {
 		return transient(fmt.Sprintf("REFUSE: cannot read the head of #%d again", a.req.PR))
 	}
 
-	if stop := a.unchanged(again); stop != nil {
+	if stop := a.unchanged(again, draft); stop != nil {
 		return stop
 	}
 
@@ -114,17 +130,29 @@ func (a *attempt) unmoved() *refusal {
 	return nil
 }
 
-// unchanged refuses a read whose head is not the gated head, whose state is not open, or which is a draft.
-func (a *attempt) unchanged(again model.PullRequest) *refusal {
-	if head := model.Deref(again.HeadRefOid); head != a.req.Gated {
-		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", head))
+// readAgain makes the typed read of the state and the head, and the view of the draft flag, right before the merge call.
+func (a *attempt) readAgain() (model.PullFacts, model.PullRequest, error) {
+	again, err := pins(a.ctx, a.forge, a.req.PR)
+	if err != nil {
+		return again, model.PullRequest{}, err
 	}
 
-	if stop := a.stillOpen(again); stop != nil {
+	draft, err := a.forge.PRView(a.ctx, a.req.PR, "isDraft")
+
+	return again, draft, err
+}
+
+// unchanged refuses a read whose head is not the gated head, whose state is not open, or which is a draft.
+func (a *attempt) unchanged(again model.PullFacts, draft model.PullRequest) *refusal {
+	if again.Head != a.req.Gated {
+		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", again.Head))
+	}
+
+	if stop := a.stillOpen(again.State); stop != nil {
 		return stop
 	}
 
-	if again.IsDraft != nil && *again.IsDraft {
+	if draft.IsDraft != nil && *draft.IsDraft {
 		return refuse(fmt.Sprintf("REFUSE: #%d turned into a draft while preparing.", a.req.PR))
 	}
 
@@ -132,8 +160,8 @@ func (a *attempt) unchanged(again model.PullRequest) *refusal {
 }
 
 // stillOpen refuses a read whose state is not OPEN. A state the read does not hold counts as not open: an unknown state is not a passing one.
-func (a *attempt) stillOpen(view model.PullRequest) *refusal {
-	if state := model.Deref(view.State); state != stateOpen {
+func (a *attempt) stillOpen(state string) *refusal {
+	if state != stateOpen {
 		return refuse(fmt.Sprintf("REFUSE: #%d is %s now, so nothing more is done to it.", a.req.PR, state))
 	}
 
@@ -213,12 +241,12 @@ func (a *attempt) readyNow() *refusal {
 
 // openBeforeReady reads the state of the pull request again right before it is marked ready.
 func (a *attempt) openBeforeReady() *refusal {
-	before, err := a.forge.PRView(a.ctx, a.req.PR, "state")
+	before, err := pins(a.ctx, a.forge, a.req.PR)
 	if err != nil {
 		return transient(fmt.Sprintf("REFUSE: cannot read the state of #%d before it is marked ready", a.req.PR))
 	}
 
-	return a.stillOpen(before)
+	return a.stillOpen(before.State)
 }
 
 // merged says the merge and the tip of the base after it, and returns the tip. A tip that cannot be read does not undo the merge: the result is empty.
@@ -234,37 +262,5 @@ func (a *attempt) merged() string {
 
 	a.say(fmt.Sprintf("MERGED #%d at %s; %s tip is now %s", a.req.PR, a.req.Gated, base, shown))
 
-	if a.req.IntegrationPR != 0 {
-		a.record()
-	}
-
 	return tip
-}
-
-// record adds the row of the merge to the integration pull request, under the lock of its body. A body that already holds the exact row, on a line of its own with either line ending, stays as it is, so a replay writes the row once. A row that cannot be written does not undo the merge.
-func (a *attempt) record() {
-	row := fmt.Sprintf("- #%d merged at %s", a.req.PR, a.req.Gated)
-	add := func(body string) string {
-		if slices.Contains(strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n"), row) {
-			return body
-		}
-
-		return strings.TrimRight(body, "\n") + "\n" + row
-	}
-
-	a.say(rowOutcome(a.req.IntegrationPR, EditBody(a.ctx, a.req.Dir, a.forge, a.req.IntegrationPR, add)))
-}
-
-// rowOutcome is the line of the step about the row: recorded, refused because the forge write found that the pull request is not the work of the owner, or not recorded.
-func rowOutcome(pr int, err error) string {
-	var refused *model.NotAuthorError
-
-	switch {
-	case err == nil:
-		return fmt.Sprintf("integration-row: recorded on #%d", pr)
-	case errors.As(err, &refused):
-		return fmt.Sprintf("REFUSE: integration-row not recorded on #%d: %s. Add the row by hand.", pr, refused.Reason)
-	}
-
-	return fmt.Sprintf("integration-row: not recorded on #%d: %s. Add the row by hand.", pr, err)
 }

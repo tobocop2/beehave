@@ -4,6 +4,7 @@
 project(
     source = "~/work/your-repo",  # the repository that gets the branch; a git URL or an absolute path
     base_branch = "main",
+    sandbox = "on",  # the shell of each agent step runs in the sandbox, and the gate runs under a sandbox enforcer. A project whose tests download modules sets "off".
     gate = "make check",
     test_report = "reports/*.xml",  # the JUnit XML files that the gate writes; a gate that exits 0 with no test fails. Ignore this folder in git: a report left untracked makes the tree unclean, and the gate refuses it
 )

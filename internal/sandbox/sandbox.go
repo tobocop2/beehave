@@ -18,11 +18,13 @@ var ErrUnavailable = errors.New("the sandbox enforcer cannot run here")
 // Plan is what one command may do. It is recorded with the step, so a replay reads the recorded plan.
 // A path outside Read and Write is closed. Network false closes every network connection; Network true opens only the allow-list proxy,
 // and the proxy lets through only Domains. A domain is a host name, or *.name for every subdomain of name.
+// Developer is the developer folder of Xcode or the Command Line Tools when Read holds it, or "" when no tool of Apple runs under the plan.
 type Plan struct {
-	Read    []string `json:"read"`
-	Write   []string `json:"write"`
-	Network bool     `json:"network"`
-	Domains []string `json:"domains"`
+	Read      []string `json:"read"`
+	Write     []string `json:"write"`
+	Network   bool     `json:"network"`
+	Domains   []string `json:"domains"`
+	Developer string   `json:"developer"`
 }
 
 // Command is one program to run: its words, its folder, its whole environment, what it reads on its standard input and where its output goes.

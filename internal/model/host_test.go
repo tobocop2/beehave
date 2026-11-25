@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -42,7 +43,7 @@ func TestJobState_Terminal(t *testing.T) {
 	for state, want := range map[model.JobState]bool{
 		model.JobPending: false, model.JobRunning: false, model.JobUnknown: false, "": false,
 		model.JobSucceeded: true, model.JobFailed: true, model.JobCanceled: true,
-		model.JobDied: true, model.JobStale: true, model.JobTimedOut: true, model.JobLost: false,
+		model.JobDied: true, model.JobStale: true, model.JobTimedOut: true, model.JobDiskFull: true, model.JobLost: false,
 	} {
 		assert.Equal(t, want, state.Terminal(), string(state))
 	}
@@ -73,5 +74,19 @@ func TestRemoteHasHost(t *testing.T) {
 
 	for remote, want := range cases {
 		assert.Equal(t, want, model.RemoteHasHost(remote), remote)
+	}
+}
+
+func TestParseHostCredentials_TakesOnlyNone(t *testing.T) {
+	t.Parallel()
+
+	got, err := model.ParseHostCredentials("none")
+	require.NoError(t, err)
+	assert.Equal(t, model.HostCredentialsNone, got)
+
+	for _, text := range []string{"some", "None", "", "owner"} {
+		_, err = model.ParseHostCredentials(text)
+		require.ErrorIs(t, err, model.ErrUnknownHostCredentials, text)
+		require.ErrorContains(t, err, `"none"`, text)
 	}
 }

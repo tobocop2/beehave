@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -37,6 +38,15 @@ type HostProvider string
 // MaxDiskFloorGB is the largest disk_floor_gb. It keeps the floor in bytes inside a 64-bit integer.
 const MaxDiskFloorGB = 1 << 20
 
+// GateClass is the slot class of the gates. It is reserved: `host.slots` cannot name it and a command call cannot use it.
+const GateClass = "gate"
+
+// DefaultClass is the slot class of a host job that names none. `host.slots` can set its count. A host that does not runs one job of the class at once.
+const DefaultClass = "default"
+
+// DefaultSlots is the count of the default slot class when `host.slots` does not name it.
+const DefaultSlots = 1
+
 // HostConfig is the [host] table of a project: the keys every provider shares, and the block of the chosen provider.
 type HostConfig struct {
 	Provider     HostProvider
@@ -56,8 +66,32 @@ type HostConfig struct {
 	PrivateRemote        string
 	// Slots is the number of jobs of each slot class that the host runs at once. A class that is not a key has no slot on the host. It is nil when the block names none.
 	Slots map[string]int
+	// GateSlots is the number of gates that the host builds at once. The loader always sets it, from 1 to 1048576, and 1 is the default.
+	GateSlots int
+	// SetupCommand is the command that runs once, in a clone of the project, when beehave creates the machine. Empty means no set-up. Only a provider that beehave creates takes it.
+	SetupCommand string
 	// Block is the config block of the chosen provider, when the provider declares one and the project gave it. The provider reads its keys once, in its constructor.
 	Block *Block
+	// Credentials is HostCredentialsNone when the owner declares that the host gets no credential of the owner. It is empty otherwise.
+	Credentials HostCredentials
+}
+
+// HostCredentials is what the owner declares about the credentials that a build host gets.
+type HostCredentials string
+
+// HostCredentialsNone declares that the host gets no credential of the owner: no agent, key, display, Kerberos credential or secret variable.
+const HostCredentialsNone HostCredentials = "none"
+
+// ErrUnknownHostCredentials is returned when text names no value of host.credentials.
+var ErrUnknownHostCredentials = errors.New(`unknown value: the only value is "none"`)
+
+// ParseHostCredentials returns the credentials value that text names.
+func ParseHostCredentials(text string) (HostCredentials, error) {
+	if text == string(HostCredentialsNone) {
+		return HostCredentialsNone, nil
+	}
+
+	return "", fmt.Errorf("%w; got %q", ErrUnknownHostCredentials, text)
 }
 
 // RunLimitSeconds is MaxRun in whole seconds, rounded up, so the limit that a host or a wrap writes is never shorter than MaxRun.
@@ -125,6 +159,42 @@ type JobID string
 type JobSpec struct {
 	Name    string
 	Command string
+	// Key names the call that submits the job. A Submit with the Key of a job that the host already holds returns that job and starts none.
+	// An empty Key starts a new job at each Submit.
+	Key string
+	// Folder is the absolute path of the folder that the job works in. Wait and Cancel bank only this folder, so a job never reads the clone of another job.
+	// Empty means the job has no folder of its own, and they bank the whole work root.
+	Folder string
+	// Slot is the limit that the job takes on the host: at most Slot.Count jobs of Slot.Class run on the host at once, for every engine that uses it. The zero Slot means no limit.
+	Slot Slot
+}
+
+// Slot is a slot class and its count. The zero value means no limit.
+type Slot struct {
+	Class string
+	Count int
+}
+
+// SlotClassPattern is the class name that the host block accepts. A provider writes the name in a folder name on the host.
+var SlotClassPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ErrBadSlot is the refusal of a job whose slot has no valid class or no count.
+var ErrBadSlot = errors.New("a job slot needs a class name of letters, digits, dots, dashes and underscores, and a count above zero")
+
+// Limited reports whether the slot limits the job.
+func (s Slot) Limited() bool { return s != Slot{} }
+
+// Check refuses a slot with a class that is not a plain name, or with a count below one. The zero Slot passes.
+func (s Slot) Check() error {
+	if !s.Limited() {
+		return nil
+	}
+
+	if !SlotClassPattern.MatchString(s.Class) || s.Count < 1 {
+		return fmt.Errorf("%w: got class %q and count %d", ErrBadSlot, s.Class, s.Count)
+	}
+
+	return nil
 }
 
 // JobState is where a job stands. The adapter reads it from the scheduler of the host.
@@ -144,13 +214,15 @@ const (
 	JobStale JobState = "stale"
 	// JobTimedOut means the run limit (host.max_run) stopped the job: `timeout` ended it with exit status 124, or the scheduler did. It has no result.
 	JobTimedOut JobState = "timed_out"
+	// JobDiskFull means the host fell under its free-space floor while the job ran, and the wait stopped the job. It has no result: it is a problem of the host.
+	JobDiskFull JobState = "disk_full"
 	// JobLost means the link to the host stayed down. The job may still run on the host. It is not a final state of the job.
 	JobLost JobState = "lost"
 )
 
 // Terminal reports whether the job has ended. A lost job has not: the wait cannot tell.
 func (s JobState) Terminal() bool {
-	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale || s == JobTimedOut
+	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale || s == JobTimedOut || s == JobDiskFull
 }
 
 // RemoteHasHost reports whether a git remote names a machine: a URL with a scheme other than file and a host, or a user@host:path address. A local path or a file URL names none.

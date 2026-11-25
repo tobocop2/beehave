@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
@@ -41,7 +42,13 @@ type fakeRunner struct {
 	mu                sync.Mutex
 	items             []string
 	files             []string
-	shutdowns         int
+	// sandboxes lists the sandbox mode that each RunFile call recorded.
+	sandboxes []model.SandboxMode
+	// onOpens lists the on_open word that each RunFile call recorded.
+	onOpens []string
+	// debounces lists the debounce window that each RunFile call recorded.
+	debounces []time.Duration
+	shutdowns int
 	// launched is closed by Launch. started is closed by the first Shutdown. slow holds Shutdown until it is closed.
 	launched, started, slow chan struct{}
 	// shutdownErr is what Shutdown returns.
@@ -56,8 +63,16 @@ func (r *fakeRunner) Launch() error {
 	return r.launchErr
 }
 
-func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error) {
+func (r *fakeRunner) RunFile(item, project, file string, options ...flow.RunOption) (flow.ItemResult, error) {
+	var in flow.ItemInput
+	for _, option := range options {
+		option(&in)
+	}
+
 	r.mu.Lock()
+	r.sandboxes = append(r.sandboxes, in.Sandbox)
+	r.onOpens = append(r.onOpens, string(in.OnOpen))
+	r.debounces = append(r.debounces, in.Debounce)
 	r.items = append(r.items, item+"@"+project)
 	r.files = append(r.files, item+"@"+project+" "+file)
 	r.mu.Unlock()
@@ -109,19 +124,40 @@ type fakeSteering struct {
 	// days and daysErr are what Days returns.
 	days    []flow.DayFigures
 	daysErr error
-	infos   []flow.RunInfo
-	view    flow.RunSteps
-	lanes   flow.ItemLanes
+	// agentsCap, agentsCapOn and agentsCapErr are what AgentsCap returns.
+	agentsCap    flow.AgentsCap
+	agentsCapOn  bool
+	agentsCapErr error
+	infos        []flow.RunInfo
+	view         flow.RunSteps
+	lanes        flow.ItemLanes
 	// published and publishedErr are what Published returns.
 	published    []flow.PublishedValue
 	publishedErr error
 	err          error
 	pinned       string
 	pinnedErr    error
-	calls        []string
-	closeOK      bool
+	// openMode, openRun and openErr are what OpenRun returns besides the pinned file.
+	openMode model.SandboxMode
+	openRun  bool
+	openErr  error
+	// openDelayed makes the open run one that waits in a debounce window.
+	openDelayed bool
+	calls       []string
+	closeOK     bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
+	// resumeErrs makes the resume of one item fail, whatever s.err holds.
+	resumeErrs map[string]error
+	// forkErr is what Fork returns as its error.
+	forkErr error
+	// failed and failedErr are what FailedRuns returns. filters lists the filter of each call.
+	failed    []flow.FailedRun
+	failedErr error
+	filters   []flow.FailedFilter
+	// unreadable is the second list that FailedRuns returns. resumedIDs holds the run that ResumeRun reports for an item that has a newer attempt than its failed run.
+	unreadable []flow.UnreadableRun
+	resumedIDs map[string]string
 	// running is what EngineRuns returns, and runningErr its error.
 	running    bool
 	runningErr error
@@ -132,6 +168,12 @@ type fakeSteering struct {
 	joinResult flow.ItemResult
 	joinErr    error
 	joined     []string
+	// joinedSandboxes lists the sandbox mode that each JoinRun call recorded.
+	joinedSandboxes []model.SandboxMode
+	// joinedOnOpens lists the on_open word that each JoinRun call recorded.
+	joinedOnOpens []string
+	// joinedDebounces lists the debounce window that each JoinRun call recorded.
+	joinedDebounces []time.Duration
 	// joinErrs are the errors of the first calls of JoinRun, one for each call, before joinErr applies.
 	joinErrs []error
 	// joinBlock holds JoinRun until the context ends.
@@ -153,7 +195,15 @@ func (s *fakeSteering) Engine() (flow.EngineInfo, bool, error) {
 	return s.engine, s.running, s.runningErr
 }
 
-func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error) {
+func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, options ...flow.RunOption) (flow.ItemResult, error) {
+	var in flow.ItemInput
+	for _, option := range options {
+		option(&in)
+	}
+
+	s.joinedSandboxes = append(s.joinedSandboxes, in.Sandbox)
+	s.joinedOnOpens = append(s.joinedOnOpens, string(in.OnOpen))
+	s.joinedDebounces = append(s.joinedDebounces, in.Debounce)
 	s.joined = append(s.joined, item+"@"+project+" "+file)
 
 	if s.joinBlock {
@@ -175,7 +225,18 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) 
 	return result, s.joinErr
 }
 
-func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
+// OpenRun returns the open run that the test set: a pinned file, or openRun with the stored mode openMode. The mode is the one that the real function gives.
+func (s *fakeSteering) OpenRun(_ string) (flow.OpenRun, error) {
+	if err := cmp.Or(s.pinnedErr, s.openErr); err != nil {
+		return flow.OpenRun{}, err
+	}
+
+	if !s.openRun && s.pinned == "" {
+		return flow.OpenRun{}, nil
+	}
+
+	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(), Delayed: s.openDelayed}, nil
+}
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
 
@@ -213,6 +274,10 @@ func (s *fakeSteering) Days(since time.Time) ([]flow.DayFigures, error) {
 	return s.days, s.daysErr
 }
 
+func (s *fakeSteering) AgentsCap() (flow.AgentsCap, bool, error) {
+	return s.agentsCap, s.agentsCapOn, s.agentsCapErr
+}
+
 func (s *fakeSteering) Schedules() ([]flow.ScheduleInfo, error) {
 	return s.schedules, s.schedulesErr
 }
@@ -241,7 +306,44 @@ func (s *fakeSteering) Send(item string, msg flow.Outgoing) (string, error) {
 func (s *fakeSteering) Resume(item string) error {
 	s.calls = append(s.calls, "resume "+item)
 
-	return s.err
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error) {
+	s.calls = append(s.calls, "failed-runs")
+	s.filters = append(s.filters, filter)
+
+	return s.failed, s.unreadable, s.failedErr
+}
+
+// ResumeRun resumes through the method that the two flags pick, and returns the id that resumedIDs holds for the item, or the id of its failed run.
+func (s *fakeSteering) ResumeRun(item string, onThisBuild, onThisFile bool) (string, error) {
+	resume := s.Resume
+
+	switch {
+	case onThisBuild && onThisFile:
+		resume = s.ResumeOnThisBuildAndFile
+	case onThisBuild:
+		resume = s.ResumeOnThisBuild
+	case onThisFile:
+		resume = s.ResumeOnThisFile
+	}
+
+	if err := resume(item); err != nil {
+		return "", err
+	}
+
+	if id, ok := s.resumedIDs[item]; ok {
+		return id, nil
+	}
+
+	for _, failed := range s.failed {
+		if failed.Item == item {
+			return failed.ID, nil
+		}
+	}
+
+	return "item-" + item + "-r1", nil
 }
 
 func (s *fakeSteering) Cancel(item string) error {
@@ -252,6 +354,24 @@ func (s *fakeSteering) Cancel(item string) error {
 
 func (s *fakeSteering) CancelRun(runID string) error {
 	s.calls = append(s.calls, "cancel-run "+runID)
+
+	return s.err
+}
+
+func (s *fakeSteering) SetGatePriority(item, level string) error {
+	s.calls = append(s.calls, "gate-priority "+item+" "+level)
+
+	return s.err
+}
+
+func (s *fakeSteering) HoldGate(item string) error {
+	s.calls = append(s.calls, "gate-hold "+item)
+
+	return s.err
+}
+
+func (s *fakeSteering) ReleaseGate(item string) error {
+	s.calls = append(s.calls, "gate-release "+item)
 
 	return s.err
 }
@@ -788,17 +908,18 @@ func TestOptions_TheReviewLookbackIsTheDefaultOfTheConfigAndTheWrittenValueOther
 	assert.Equal(t, 9, rig.options.ReviewLookbackDays)
 }
 
-func TestOptions_TheCapsOfTheRunAndOfTheTreeReachTheEngine(t *testing.T) {
+func TestOptions_TheCapsOfTheRunTheTreeAndTheWeekReachTheEngine(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	writeConfig(t, rig.dir, "runners.star", "agents(max_run_budget_usd = 20, max_tree_budget_usd = 60)\n"+validRunners)
+	writeConfig(t, rig.dir, "runners.star", "agents(max_run_budget_usd = 20, max_tree_budget_usd = 60, max_week_budget_usd = 250)\n"+validRunners)
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 	require.Equal(t, 0, code, stderr)
 	assert.InDelta(t, 20.0, rig.options.MaxRunBudget, 0)
 	assert.InDelta(t, 60.0, rig.options.MaxTreeBudget, 0)
+	assert.InDelta(t, 250.0, rig.options.MaxWeekBudget, 0)
 }
 
 func TestOptions_PerLoginIsTheOneOfTheConfigByDefaultAndTheWrittenValueOtherwise(t *testing.T) {
@@ -919,7 +1040,53 @@ func TestResumeCommand_TheOnThisBuildFlagMovesTheRunToThisBuild(t *testing.T) {
 func (s *fakeSteering) ResumeOnThisBuild(item string) error {
 	s.calls = append(s.calls, "resume-here "+item)
 
-	return s.err
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) ResumeOnThisFile(item string) error {
+	s.calls = append(s.calls, "resume-file "+item)
+
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) ResumeOnThisBuildAndFile(item string) error {
+	s.calls = append(s.calls, "resume-here-file "+item)
+
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func TestResumeCommand_TheOnThisFileFlagPutsTheRunOnTheFileAsItIsNow(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-file")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"resume-file 12"}, rig.steering.calls)
+}
+
+func TestResumeCommand_TheTwoFlagsTogetherMakeOneMove(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-build", "--on-this-file")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"resume-here-file 12"}, rig.steering.calls, "one call does both, so the run is canceled and rewound once")
+}
+
+func TestResumeCommand_TheOnThisFileRefusalOfTheRunReachesTheOwner(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.resumeErrs = map[string]error{"12": errors.New("item-12-r1 is done")}
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-file")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "item-12-r1 is done")
 }
 
 func TestFlowCommands_AreAbsentWithoutTheirFactories(t *testing.T) {

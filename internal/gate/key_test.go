@@ -16,7 +16,7 @@ import (
 func keyOf(t *testing.T, state gate.State, shell *fakeShell, p model.Project) gate.Key {
 	t.Helper()
 
-	key, err := build(shell, &fakeTree{states: []gate.State{state}}, &fakeRemote{}).Key(context.Background(), gate.Request{Project: p, Dir: "/w"})
+	key, err := build(shell, &fakeTree{states: []gate.State{state}}, &fakeRemote{}).Key(context.Background(), gate.Request{Project: p, Dir: "/w", BaseSHA: tipSHA})
 	require.NoError(t, err)
 
 	return key
@@ -93,7 +93,7 @@ func keyWith(t *testing.T, shell func(context.Context, string, string) (string, 
 	state := gate.State{Head: headA, Tree: "t1", Clean: true}
 	remote := &fakeRemote{}
 
-	key, err := gate.New(shell, (&fakeTree{states: []gate.State{state}}).read, func(model.Project) (gate.Remote, error) { return remote, nil }).Key(context.Background(), gate.Request{Project: p, Dir: "/w"})
+	key, err := gate.New(shell, (&fakeTree{states: []gate.State{state}}).read, func(model.Project) (gate.Remote, error) { return remote, nil }).Key(context.Background(), gate.Request{Project: p, Dir: "/w", BaseSHA: tipSHA})
 	require.NoError(t, err)
 
 	return key
@@ -164,6 +164,18 @@ func TestKey_ADifferentProjectNameRepoOrHostDefinitionGivesAnotherKey(t *testing
 	for _, other := range []model.Project{name, repo, host, none} {
 		assert.NotEqual(t, want, keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, other).ID)
 	}
+}
+
+func TestKey_ATreeGivesOneKeyOnEveryHostThatTheProjectDeclares(t *testing.T) {
+	t.Parallel()
+
+	state := gate.State{Head: headA, Tree: "t1", Clean: true}
+	onA, onB, otherList := project("a"), project("b"), project("a")
+	onA.BuildHosts, onB.BuildHosts, otherList.BuildHosts = []string{"a", "b"}, []string{"a", "b"}, []string{"a", "c"}
+
+	assert.Equal(t, keyOf(t, state, &fakeShell{}, onA).ID, keyOf(t, state, &fakeShell{}, onB).ID, "a pass on host b stands for the same tree on host a")
+	assert.NotEqual(t, keyOf(t, state, &fakeShell{}, onA).ID, keyOf(t, state, &fakeShell{}, otherList).ID, "another list of hosts is another gate")
+	assert.NotEqual(t, keyOf(t, state, &fakeShell{}, project("a")).ID, keyOf(t, state, &fakeShell{}, project("b")).ID, "two projects with one host each keep the host in the key")
 }
 
 func TestKey_TheHostBlockIsPartOfTheKeyByItsKeysAndNotByItsPosition(t *testing.T) {

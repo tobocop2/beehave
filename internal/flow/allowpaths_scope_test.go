@@ -75,7 +75,7 @@ func TestAgentStep_AllowPathsUsesTheRecordedStartWhenTheRunResumesAfterHeadMoved
 
 	rig.crashItemAfterThePhaseEndedArmedBy(t, testItem, file, func(a func()) { arm = a })
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "src/x.go", "the resume measures from the recorded start, not from the moved HEAD")
 }
@@ -149,7 +149,7 @@ func TestScope_AnIgnoredNewFileOutsideTheGlobsIsNamed(t *testing.T) {
 	bad, err := scopeOf(t, "papers/**").outside(t.Context(), engineGit(dir), start)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"build/", "x.log"}, bad)
+	assert.Equal(t, []string{"build/o", "x.log"}, bad)
 }
 
 func TestScope_EveryPathIsRelativeToTheRootWhenTheItemFolderIsASubdirectory(t *testing.T) {

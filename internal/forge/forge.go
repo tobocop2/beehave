@@ -11,6 +11,8 @@ import (
 // A failed command is an error. Only BranchRef tells a missing branch (found false, no error) from a failure.
 type Forge interface {
 	PullReads
+	PullFactsRead
+	OpenPullsRead
 	Activity
 	Lookup
 	Standing
@@ -38,10 +40,24 @@ type Syncer interface {
 	MergeBranch(ctx context.Context, base, head string) (string, error)
 }
 
+// Statuses is the optional side of a forge that posts commit statuses and reads what a branch requires. A forge that lacks it cannot post beehave/review or beehave/gate.
+// PostStatus sets one status on the commit that status.SHA names, a full 40-character commit id. The same status again changes nothing, and a later state replaces an earlier one.
+// Protection reads the pull request rule and the required status contexts that apply to a branch. A failed read is an error, never an empty protection.
+type Statuses interface {
+	PostStatus(ctx context.Context, status model.CommitStatus) error
+	Protection(ctx context.Context, branch string) (model.Protection, error)
+}
+
 // AssigneeReads is the optional side of a forge that reads who holds an issue. A forge that lacks it cannot serve the assignee watch of preflight.
 // IssueAssignees returns the logins that hold the issue. An empty repo is the repository of the forge, and any other repo is read on that repository. A failed read is an error, never an empty list.
 type AssigneeReads interface {
 	IssueAssignees(ctx context.Context, repo string, number int) ([]string, error)
+}
+
+// AssociationReads is the optional side of a forge that reads who wrote an issue or a pull request. A forge that lacks it cannot tell an item of the owner from a foreign one.
+// Association returns how the author of the issue or pull request with the number stands to the repository of the forge. A failed read or an unknown value is an error.
+type AssociationReads interface {
+	Association(ctx context.Context, number int) (model.Association, error)
 }
 
 // ReadyReads is the optional side of a forge that reads when a pull request was marked ready for review.
@@ -75,6 +91,24 @@ type Standing interface {
 	OwnPulls(ctx context.Context, author string) ([]model.OwnPull, error)
 }
 
+// PullFactsRead is the typed read of one pull request.
+// PullRead returns the number asked for, the state, head commit, base branch, author and assignees.
+// A read that lacks the state, the head or the base is a *model.IncompletePull, never a partial answer: the facts it holds are in the error.
+type PullFactsRead interface {
+	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
+}
+
+// OpenPullLimit is the limit of the search for the open pull requests. A list at the limit is refused, so a caller never reads a cut list.
+const OpenPullLimit = 500
+
+// OpenPullsRead is the typed list read of the open pull requests.
+// OpenPulls returns the open pull requests of the base branch, in the order of the forge, or every open pull request when base is empty. A base with none gives an empty list.
+// A pull request that lacks the number, the head branch or the base branch is a hole. The list still holds it, and the error joins one *model.IncompletePull for each hole.
+// A failed read returns no list. A list at the limit of the forge is a failed read.
+type OpenPullsRead interface {
+	OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error)
+}
+
 // PullReads are the reads of one pull request: its reviews, body, fields, checks, threads and overlap.
 type PullReads interface {
 	Reviews(ctx context.Context, pr int) ([]model.Review, error)
@@ -104,19 +138,20 @@ type Activity interface {
 }
 
 // Lookup finds items and branches: a search, the default branch and the tip of a branch.
-// TokenScopes lists the scopes of the token the forge command line uses.
+// CanWriteCI answers whether the token the forge command line uses can change CI files: yes, no or unknown. A read that fails is an error, never an answer.
 // PullCounts returns the forge's own count of the commits and changed files of a pull request. A list in PRView can be cut short, so a caller compares the count to the list.
 // Committers returns the committer of each commit of a pull request, in the order of the commits.
 type Lookup interface {
 	PullCounts(ctx context.Context, pr int) (commits, files int, err error)
 	Committers(ctx context.Context, pr int) ([]model.Committer, error)
-	TokenScopes(ctx context.Context) ([]string, error)
+	CanWriteCI(ctx context.Context) (model.CIWrite, error)
 	Search(ctx context.Context, req model.SearchRequest) ([]int, error)
 	DefaultBranch(ctx context.Context) (string, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 	Title(ctx context.Context, number int) (string, error)
 	CheckNotStarted(ctx context.Context, link string) (bool, error)
-	// ClosingRefs reads the issues that merging a pull request closes, as the forge lists them, with the base branch and the default branch.
+	// ClosingRefs reads the issues that merging a pull request closes, with the base branch and the default branch.
+	// For a base other than the default branch, where the forge lists none, the issues are the closing keywords of the body and the commit messages.
 	// A forge that cannot answer returns an error, never an empty list.
 	ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, error)
 	// IssueState reads the state of an issue: OPEN or CLOSED. A forge that cannot answer returns an error, never a state.

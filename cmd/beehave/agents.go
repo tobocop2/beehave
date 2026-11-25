@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -19,12 +21,21 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/fstree"
+	"github.com/tobocop2/beehave/internal/gomod"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // snippetRunes is the longest command text in one violation line.
 const snippetRunes = 160
+
+// The text that salts the hash of a run into a trace id and of a step into a span id, and the byte lengths that W3C Trace Context gives to the two ids.
+const (
+	traceSalt    = "beehave-trace:"
+	spanSalt     = "beehave-span:"
+	traceIDBytes = 16
+	spanIDBytes  = 8
+)
 
 // maxViolationLines is the most violation lines that a run records. One more line says how many the run left out.
 const maxViolationLines = 20
@@ -57,6 +68,12 @@ type agents struct {
 	maxRunBudget float64
 	// maxTreeBudget is agents.max_tree_budget_usd. 0 means no cap.
 	maxTreeBudget float64
+	// maxWeekBudget is agents.max_week_budget_usd. 0 means no cap.
+	maxWeekBudget float64
+	// traceParent is agents.trace_parent: each agent process gets a TRACEPARENT of its run and step.
+	traceParent bool
+	// contextWindow is agents.context_window_tokens, the window that the context percent of a step counts against. 0 means unknown: no context limit fires.
+	contextWindow int64
 	// prices is the price table that estimates the cost of a CLI that reports tokens and no dollars.
 	prices agent.Prices
 	// home returns the home folder of the owner, which a sandboxed step cannot read.
@@ -65,6 +82,15 @@ type agents struct {
 	identity func(ctx context.Context, git gitexec.Runner) agent.GitIdentity
 	// repos finds the repository of a worktree of a project with a repository, whose identity and hooks folder the git of the engine reads.
 	repos gitexec.Repositories
+	// modules names and fills the Go module cache of a project in a worktree.
+	modules moduleFill
+}
+
+// moduleFill names the Go module cache of a project in a worktree, or "" for a worktree that needs none, and fills it.
+// Fill returns the cache and the note of a fill that failed.
+type moduleFill interface {
+	Cache(project, dir string) string
+	Fill(ctx context.Context, project, dir string) (string, string)
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -84,10 +110,16 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		home:     os.UserHomeDir,
 		identity: gitIdentity,
 		repos:    repos,
-
-		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
+		modules:  moduleFiller(opts),
+		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
+		traceParent: cfg.Agents.TraceParent, contextWindow: int64(cfg.Agents.ContextWindowTokens),
 		prices: agent.DefaultPrices(),
 	}
+}
+
+// moduleFiller fills one Go module cache per project in the state folder, with the go command on the PATH of the engine.
+func moduleFiller(opts flow.Options) gomod.Filler {
+	return gomod.Filler{Root: filepath.Join(opts.StateDir, "gomodcache"), Path: opts.Env["PATH"]}
 }
 
 // guardCommand returns the shell command line that starts `beehave check command` from this binary, or "" when the path of the binary is unknown.
@@ -116,7 +148,8 @@ func protectionOf(protect []string, dir string) shell.Protection {
 }
 
 // guardFor returns the hook command of a run that forbids kinds, or "" when the run forbids none or has no guard.
-func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) string {
+// The command names the agent of the runner, so that it reads the hook format of that agent.
+func (a agents) guardFor(name model.Agent, forbid []model.FindingKind, protect shell.Protection) string {
 	if a.guard == "" || len(forbid) == 0 {
 		return ""
 	}
@@ -126,7 +159,7 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 		names = append(names, string(kind))
 	}
 
-	words := []string{a.guard, "--forbid", strings.Join(names, ",")}
+	words := []string{a.guard, "--agent", string(name), "--forbid", strings.Join(names, ",")}
 	for _, dir := range protect.Dirs {
 		words = append(words, "--protect", model.ShellQuote(dir))
 	}
@@ -144,8 +177,22 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env, Redact: request.Redact,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
+		MaxContextPercent: request.MaxContextPercent, ContextWindow: a.contextWindow,
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
+		Traceparent: a.traceparentOf(request),
 	}
+}
+
+// traceparentOf returns the W3C TRACEPARENT of the step, or "" when agents.trace_parent is off. The trace id is the first 16 bytes of the hash of the run, and the parent span id is the first 8 bytes of the hash of the run and the call, so a replay builds the same value.
+func (a agents) traceparentOf(request flow.AgentRequest) string {
+	if !a.traceParent {
+		return ""
+	}
+
+	trace := sha256.Sum256([]byte(traceSalt + request.Run))
+	span := sha256.Sum256([]byte(spanSalt + request.Run + "/" + request.Call))
+
+	return "00-" + hex.EncodeToString(trace[:traceIDBytes]) + "-" + hex.EncodeToString(span[:spanIDBytes]) + "-01"
 }
 
 // lowerCap returns the lower of two caps in dollars, where 0 means no cap. The cap of a step can lower the global cap and never raise it.
@@ -189,7 +236,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 // runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
-	guard := a.guardFor(request.Forbid, protect)
+	guard := a.guardFor(runner.Agent, request.Forbid, protect)
 
 	ready, note := a.readyOf(ctx, request, runner, dir, adapter, guard)
 	if note != "" {
@@ -200,12 +247,26 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	tap := a.tapOf(adapter, request)
 
 	spec := a.specOf(request, runner, dir, adapter, tap, guard, ready.box, ready.skills)
-	spec.ConfigFolder = ready.folder
+	spec.ConfigFolder, spec.BeforeStart = ready.folder, a.fillOf(request.Project, dir, ready.box)
 
 	result, err := endOf(adapter, ready.folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
 	return result, err
+}
+
+// fillOf returns the function that fills the Go module cache of a sandboxed step, or nil for a step with no cache. The runner calls it after every
+// check that can refuse the step, so a step that does not start runs no download.
+func (a agents) fillOf(project, dir string, box *agent.SandboxPlan) func(context.Context) string {
+	if box == nil || box.ModuleCache == "" {
+		return nil
+	}
+
+	return func(ctx context.Context) string {
+		_, note := a.modules.Fill(ctx, project, dir)
+
+		return note
+	}
 }
 
 // stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan and its skill folders.
@@ -216,12 +277,20 @@ type stepReady struct {
 }
 
 // readyOf returns what the step needs before it starts, or the reason why it cannot start: its config folder, its sandbox or its skills cannot be made.
+// The sandbox plan of a step that can start names the Go module cache of its project.
 func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (stepReady, string) {
 	folder, unknown := a.configFolder(runner, adapter)
 	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
 	skills, missing := a.skillsOf(request, folder)
 
-	return stepReady{folder: folder, box: box, skills: skills}, cmp.Or(note, unknown, missing)
+	ready := stepReady{folder: folder, box: box, skills: skills}
+	if note = cmp.Or(note, unknown, missing); note != "" || box == nil {
+		return ready, note
+	}
+
+	box.ModuleCache = a.modules.Cache(request.Project, dir)
+
+	return ready, ""
 }
 
 // tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
@@ -264,7 +333,7 @@ func (a agents) runCosted(ctx context.Context, tap *sessionTap, spec agent.Spec,
 // cost that beehave adds up after each run, and a model with no price gives no cost to add: the cap could not be checked, so the run does not start.
 // A CLI that reports the dollars of each step (Profile.StreamsCost) needs no price: the runner caps the sum of those dollars.
 func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest) string {
-	capped := a.maxRunBudget > 0 || a.maxTreeBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
+	capped := a.maxRunBudget > 0 || a.maxTreeBudget > 0 || a.maxWeekBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
 	if !capped || a.prices.Has(request.Model) {
 		return ""
 	}
@@ -279,7 +348,7 @@ func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest
 	}
 
 	return fmt.Sprintf("The run has a cost cap, but the agent CLI cannot cap dollars itself and %s has no price in the price table, so beehave cannot check the cap. "+
-		"The step did not start. Add a price for the model, or set agents.max_run_budget_usd, agents.max_tree_budget_usd and agents.max_budget_usd to 0.", name)
+		"The step did not start. Add a price for the model, or set agents.max_run_budget_usd, agents.max_tree_budget_usd, agents.max_week_budget_usd and agents.max_budget_usd to 0.", name)
 }
 
 // protection returns the paths that the step must not change, and whether the project is private.
@@ -485,7 +554,8 @@ func describe(adapter agent.Adapter, folder, dir string, tap *sessionTap, result
 	stop := tap.stopped()
 	// The runner ends a run as a budget cap when the dollars on the output pass the cap, or when a capped run reported none. The cap is an outcome: the run
 	// still produced a session, a message and commands, and the violations check must see them. The run may have been killed before it named a session.
-	budgetCap := result.Outcome == agent.OutcomeBudgetCap
+	// The context limit is an outcome of the runner in the same way, and the run may have been killed before it named a session.
+	budgetCap := result.Outcome == agent.OutcomeBudgetCap || result.Outcome == agent.OutcomeContextCap
 	// A provider limit is an outcome in the same way, whatever the exit code, and its error result is no failure of the agent.
 	result, limited := limitedBy(result, tap.limited())
 

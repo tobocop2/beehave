@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/fstree"
@@ -38,10 +41,35 @@ type gateSandbox struct {
 	clones cloneLock
 	// folders is the set of the folders that the engine made. The engine builds one set, and a second set on one root removes the live folders of the first.
 	folders *fstree.Folders
+	// ownGit is true for a command call: git reads the identity of the engine in place of the config file of the owner, which the plan closes.
+	ownGit bool
+	// developer is the developer folder of Apple that the engine found at start, or "" when it found none. A gate plan reads it, and the command env names it.
+	developer string
 }
 
 func newGateSandbox(projects map[string]config.Project, clones cloneLock, folders *fstree.Folders) gateSandbox {
-	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: folders}
+	environ := model.EnvPairs(config.ProcessEnv())
+
+	return gateSandbox{
+		projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: environ, clones: clones, folders: folders, developer: developerFolder(environ),
+	}
+}
+
+// asked returns the sandbox for a command call whose keyword is box: the network list of the call replaces gate_network of the project. A nil box
+// is a gate, which keeps the lists of the project.
+func (g gateSandbox) asked(project string, box *model.Sandbox) gateSandbox {
+	if box == nil {
+		return g
+	}
+
+	found := g.projects[project]
+	found.GateNetwork = slices.Clone(box.Network)
+
+	g.projects = maps.Clone(g.projects)
+	g.projects[project] = found
+	g.ownGit = true
+
+	return g
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.
@@ -55,11 +83,42 @@ func (g gateSandbox) run(ctx context.Context, project, dir string, argv, env []s
 	return g.runAt(ctx, project, folder{path: dir}, argv, env, limit)
 }
 
+// runGate is run for the command of the project gate: the files that the command writes below the test_report glob of the project in the copy of the work
+// folder are carried to the real folder, where the gate reads them.
+func (g gateSandbox) runGate(ctx context.Context, project, dir string, argv, env []string, limit time.Duration) (out string, code int) {
+	return g.runAt(ctx, project, folder{path: dir, report: g.projects[project].TestReport}, argv, env, limit)
+}
+
+// runJob is run for the job of a gate_program in the empty folder root that beehave made. The job clones the head from the repository at from, so the plan
+// also lets it read that repository, its shared git folders and the source of the project when that is a folder.
+func (g gateSandbox) runJob(ctx context.Context, project, from, root string, argv []string, limit time.Duration) (out string, code int) {
+	g.ownGit = true
+
+	return g.runAt(ctx, project, folder{path: root, own: true, readFrom: from}, argv, nil, limit)
+}
+
 // folder is the folder that a gate command works in. own is true for an empty folder that beehave made for the command: the command may write it. A folder
-// that is not own and has no .git is the real work folder of a project with no repository.
+// that is not own and has no .git is the real work folder of a project with no repository. report is the test_report glob to carry out of the copy, or empty.
+// readFrom is a repository that the command may also read, or empty.
 type folder struct {
-	path string
-	own  bool
+	path     string
+	own      bool
+	report   string
+	readFrom string
+}
+
+// readable returns the paths that the command may read besides its folder: the repository readFrom with its shared git folders, and the local source of the project.
+func (at folder) readable(project config.Project, git projectGit) []string {
+	if at.readFrom == "" {
+		return nil
+	}
+
+	paths := append([]string{at.readFrom}, sharedGitDirs(git.clones, at.readFrom)...)
+	if filepath.IsAbs(project.Source) {
+		paths = append(paths, project.Source)
+	}
+
+	return paths
 }
 
 // runOwn is run for a folder that beehave made for the command alone.
@@ -258,19 +317,68 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 
 	defer release()
 
+	return g.runCopied(ctx, enforcer, project, tmp, at, copied, clone, argv, env, limit)
+}
+
+// runCopied makes the plan for the work folder copied, runs the command there, and carries the test report back to the real folder of at.
+func (g gateSandbox) runCopied(ctx context.Context, enforcer sandbox.Enforcer, project config.Project, tmp string, at folder, copied gitexec.Repository, clone gateClone,
+	argv, env []string, limit time.Duration,
+) (string, int) {
+	dir := at.path
+
 	// A folder with no .git has no copy. The plan then never grants it for writing, unless beehave made it for the command: a write there would change the
 	// real folder, where a planted hook folder or agent setting runs later as the owner. A project with no repository still writes through gate_allow_write.
-	plan, note := g.plan(ctx, project, dir, copied, tmp, clone.git, copied.WorkTree == dir && !at.own)
+	plan, note := g.plan(ctx, project, cmp.Or(at.readFrom, dir), copied, tmp, clone.git, copied.WorkTree == dir && !at.own)
 	if note != "" {
 		return notStarted(note)
 	}
 
-	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: append(slices.Clone(g.envOf(env)), "TMPDIR="+tmp)}
+	plan.Read = append(plan.Read, at.readable(project, clone.git)...)
 
-	return execute(ctx, enforcer, plan, command, limit)
+	reports, err := startCarry(at.report, copied.WorkTree, dir)
+	if err != nil {
+		return notStarted(err.Error() + ". The gate did not run.")
+	}
+
+	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: g.commandEnv(ctx, env, tmp, clone.git.Runner(dir, proc.DefaultTimeout))}
+
+	// The gate reads the test report in the real work folder, and the command wrote it in the copy that beehave throws away.
+	return reports.settle(execute(ctx, enforcer, plan, command, limit))
 }
 
-// envOf returns env, or the environment that the sandbox was made with when env is nil.
+// commandEnv returns the environment of the command: env without the SSH agent, its temporary folder, and for a command call the git variables of the engine.
+func (g gateSandbox) commandEnv(ctx context.Context, env []string, tmp string, git gitexec.Runner) []string {
+	run := append(withoutSocket(g.envOf(env)), "TMPDIR="+tmp)
+	if g.ownGit {
+		run = append(run, gitVariables(gitIdentity(ctx, git))...)
+	}
+
+	return append(run, developerEnv(g.developer, tmp)...)
+}
+
+// gitVariables returns the variables that give git the identity of the engine and no config file of the owner: the plan closes ~/.gitconfig, so git would fail
+// on it. The identity goes by GIT_CONFIG_COUNT, which git reads as config values, so no file holds it and no quoting is needed. A value that is empty is left out.
+func gitVariables(identity agent.GitIdentity) []string {
+	vars := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+
+	var pairs [][2]string
+
+	for _, pair := range [][2]string{{"user.name", identity.Name}, {"user.email", identity.Email}} {
+		if pair[1] != "" {
+			pairs = append(pairs, pair)
+		}
+	}
+
+	vars = append(vars, "GIT_CONFIG_COUNT="+strconv.Itoa(len(pairs)))
+
+	for i, pair := range pairs {
+		vars = append(vars, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, pair[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, pair[1]))
+	}
+
+	return vars
+}
+
+// envOf returns env, or the environment that the sandbox was made with when env is nil. The caller drops the SSH agent from it.
 func (g gateSandbox) envOf(env []string) []string {
 	if env == nil {
 		return g.environ
@@ -325,7 +433,7 @@ func (g gateSandbox) plan(ctx context.Context, project config.Project, dir strin
 		return sandbox.Plan{}, "beehave cannot find the home folder, so the sandbox cannot deny it. The gate did not run."
 	}
 
-	deny := credentialPaths(home, "", project.SandboxDeny)
+	deny := withSocket(credentialPaths(home, "", project.SandboxDeny), socketOf(g.environ))
 	read := expandAll(project.SandboxRead, home)
 
 	if note := readNote(read, home, deny); note != "" {
@@ -339,7 +447,7 @@ func (g gateSandbox) plan(ctx context.Context, project config.Project, dir strin
 		return sandbox.Plan{}, strings.Replace(note, " The step did not start.", "", 1) + " The gate did not run."
 	}
 
-	return planOf(project.GateNetwork, copied.WorkTree, tmp, slices.Concat(commonOf(copied), read), write, readOnly), ""
+	return planOf(project.GateNetwork, copied.WorkTree, tmp, slices.Concat(commonOf(copied), read, developerReads(g.developer)), write, readOnly, g.developer), ""
 }
 
 // protected returns the paths that no gate_allow_write path may reach: the credential paths deny, the closed paths of dir and its shared git folders.
@@ -354,7 +462,7 @@ func protected(ctx context.Context, git projectGit, dir, home string, deny []str
 }
 
 // planOf joins the system paths, the work folder, the temporary folder and the lists of the project into one plan. The work folder is read-only when readOnly is true.
-func planOf(network []string, work, tmp string, read, write []string, readOnly bool) sandbox.Plan {
+func planOf(network []string, work, tmp string, read, write []string, readOnly bool, developer string) sandbox.Plan {
 	own := []string{work, tmp}
 	if readOnly {
 		own = []string{tmp}
@@ -365,5 +473,7 @@ func planOf(network []string, work, tmp string, read, write []string, readOnly b
 		Write:   slices.Concat(sandbox.SystemWrite(), own, write),
 		Network: len(network) > 0,
 		Domains: slices.Clone(network),
+		// The read list holds the developer folder, and the enforcer lets the shims of Apple run when this is set.
+		Developer: developer,
 	}
 }

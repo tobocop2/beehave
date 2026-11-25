@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -239,7 +241,7 @@ type servedOnce struct {
 	reads  int
 }
 
-func (s *servedOnce) OpenPulls(ctx context.Context, project string) ([]model.PullRequest, error) {
+func (s *servedOnce) OpenPulls(ctx context.Context, project, base string) ([]model.OpenPull, error) {
 	s.seenMu.Lock()
 	s.reads++
 	read := s.reads
@@ -247,11 +249,11 @@ func (s *servedOnce) OpenPulls(ctx context.Context, project string) ([]model.Pul
 
 	s.turns.queueRead(read)
 
-	return s.fakeQueue.OpenPulls(ctx, project)
+	return s.fakeQueue.OpenPulls(ctx, project, base)
 }
 
-func (s *servedOnce) OpenItems(ctx context.Context, project string) ([]model.Item, error) {
-	all, err := s.fakeQueue.OpenItems(ctx, project)
+func (s *servedOnce) ItemList(ctx context.Context, project, label string) ([]model.Item, error) {
+	all, err := s.fakeQueue.ItemList(ctx, project, label)
 
 	var open []model.Item
 
@@ -299,6 +301,8 @@ type roundRig struct {
 	project model.Project
 	answer  string   // the answer to the first wait of the round, STOP when empty
 	answers []string // the answers to the waits in order, which win over answer
+	// scopeAnswer is the answer to the question of the scope check, which names no people. The other waits get answer as before.
+	scopeAnswer string
 	// deadlines is the deadline of each wait that run answered, as the status showed it, in order.
 	deadlines []time.Time
 	// questions is the text of each wait that run answered, in order.
@@ -417,6 +421,19 @@ func listOf(words string) []any {
 	return list
 }
 
+// closedIssues reads the issue of each item id that is a number as CLOSED, as a merge that closes it leaves it, so the audit after a batch finds nothing.
+func closedIssues(ids []string) map[int]string {
+	closed := map[int]string{}
+
+	for _, id := range ids {
+		if number, err := strconv.Atoi(id); err == nil {
+			closed[number] = issueClosed
+		}
+	}
+
+	return closed
+}
+
 func newRoundRigOf(t *testing.T, items string) *roundRig {
 	t.Helper()
 
@@ -483,7 +500,7 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	r.writer = newFakeWriter()
 	rig.h.writer = r.writer
 
-	r.q = &fakeQueue{items: rows}
+	r.q = &fakeQueue{items: rows, issueStates: closedIssues(append(queued, slices.Collect(maps.Keys(rig.heads))...))}
 	rig.h.queue = &servedOnce{fakeQueue: r.q, turns: kids.turns, writer: r.writer}
 	kids.turns.ended = func(item string) bool { return itemEnded(r.last, item) }
 	rig.h.reader = &fakeReader{}
@@ -506,8 +523,10 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 
 	rig.h.preflight = r.remote
 
+	// The batch library of the round folds and checks out the union with git in the worktree of the round item, which is the repository of the rig.
+	rig.h.commands.git = rig.libraryGit
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 2 && request.Run[1] == "integration" {
+		if request.Run[0] == integrationProgram {
 			kids.atIntegration()
 
 			return CommandOutput{Stdout: "pr=9 state=OPEN\n"}, nil
@@ -536,7 +555,7 @@ func (r *roundRig) runOn(t *testing.T, engine *Engine) (ItemResult, error) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, r.file)
+		result, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -587,7 +606,12 @@ func (r *roundRig) answerOnce(t *testing.T, client *Client, owner *answering) {
 	r.deadlines = append(r.deadlines, view.Deadline)
 	r.questions = append(r.questions, infos[at].Question)
 
-	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: r.answerFor(owner.given)}))
+	reply := Reply{From: shipOwner, Text: r.answerFor(owner.given)}
+	if r.scopeAnswer != "" && strings.Contains(infos[at].Question, "at its first review") {
+		reply = Reply{Text: r.scopeAnswer}
+	}
+
+	require.NoError(t, client.Reply(testItem, reply))
 
 	owner.given++
 	owner.open = true

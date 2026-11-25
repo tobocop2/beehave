@@ -20,6 +20,7 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/pool"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // lineAdapter is an adapter whose output lines are "session=<id>" and "text=<message>".
@@ -155,8 +156,15 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 		trees:   treeAt("/work/tree"),
 		adapter: func(kind model.Agent) agent.Adapter { f.kind = kind; return lineAdapter{} },
 		env:     map[string]string{"PATH": "/bin"},
-		run: func(_ context.Context, spec agent.Spec) agent.Result {
+		modules: fakeModules{},
+		run: func(ctx context.Context, spec agent.Spec) agent.Result {
 			*f.spec = spec
+
+			out := result
+			if spec.BeforeStart != nil {
+				out = out.AddNote(spec.BeforeStart(ctx))
+			}
+
 			var lines strings.Builder
 
 			lines.WriteString(output + "skill=blast\nskill=oracle\n")
@@ -177,7 +185,7 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 				panic(err)
 			}
 
-			return result
+			return out
 		},
 		guard: "/bin/beehave check command",
 	}
@@ -212,7 +220,7 @@ func TestAgents_ACommitThatSetsAnAuthorIsAViolationOfTheKindGitAuthor(t *testing
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"git-author: git commit", "git-author: GIT_AUTHOR_NAME"}, got.Violations)
-	assert.Equal(t, "/bin/beehave check command --forbid git-author", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid git-author", f.spec.Guard)
 }
 
 func TestAgents_ACleanTranscriptHasNoViolations(t *testing.T) {
@@ -266,7 +274,7 @@ func TestAgents_AStepThatForbidsKindsRunsTheAgentWithTheHookOfThoseKinds(t *test
 	_, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/bin/beehave check command --forbid bulk-staging,local-delete", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid bulk-staging,local-delete", f.spec.Guard)
 }
 
 func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfTheStep(t *testing.T) {
@@ -280,16 +288,16 @@ func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfT
 	_, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, `/bin/beehave check command --forbid protected-path --protect '/own/it'\''s' --protect /work/sibling`, f.spec.Guard)
+	assert.Equal(t, `/bin/beehave check command --agent fake --forbid protected-path --protect '/own/it'\''s' --protect /work/sibling`, f.spec.Guard)
 }
 
 func TestAgents_OnlyAPrivateProjectPassesItsVisibilityToTheHookAndACopyToAnotherMachineIsAViolationOtherwise(t *testing.T) {
 	t.Parallel()
 
 	for visibility, want := range map[model.Visibility]string{
-		model.VisibilityPrivate: "/bin/beehave check command --forbid laptop-copy --visibility private",
-		model.VisibilityPublic:  "/bin/beehave check command --forbid laptop-copy",
-		"":                      "/bin/beehave check command --forbid laptop-copy",
+		model.VisibilityPrivate: "/bin/beehave check command --agent fake --forbid laptop-copy --visibility private",
+		model.VisibilityPublic:  "/bin/beehave check command --agent fake --forbid laptop-copy",
+		"":                      "/bin/beehave check command --agent fake --forbid laptop-copy",
 	} {
 		f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
 		f.bash = []string{"rsync -a src host:dst"}
@@ -317,7 +325,7 @@ func TestAgents_ARequestWhoseProjectIsNotInTheConfigGetsNoPrivateVisibilityAndAC
 	got, err := f.agents.Run(t.Context(), req)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/bin/beehave check command --forbid laptop-copy", f.spec.Guard)
+	assert.Equal(t, "/bin/beehave check command --agent fake --forbid laptop-copy", f.spec.Guard)
 	assert.Len(t, got.Violations, 1)
 }
 
@@ -604,6 +612,34 @@ func TestAgents_TheCapsOfTheConfigGoToTheSpecOfEveryRun(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 12, f.spec.MaxTurns)
 	assert.InDelta(t, 1.5, f.spec.MaxBudget, 0)
+}
+
+func TestAgents_TheContextLimitOfTheStepAndTheWindowOfTheConfigGoToTheSpec(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.agents.contextWindow = 200000
+	req := request()
+	req.MaxContextPercent = 75
+
+	_, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, 75, f.spec.MaxContextPercent)
+	assert.Equal(t, int64(200000), f.spec.ContextWindow)
+}
+
+func TestAgents_ARunThatTheContextLimitStoppedKeepsItsSessionAndTextAndIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\ntext=halfway\n", agent.Result{Outcome: agent.OutcomeContextCap, ExitCode: -1})
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeContextCap, got.Outcome)
+	assert.Equal(t, "s1", got.Session)
+	assert.Equal(t, "halfway", got.Text)
 }
 
 func TestAgents_TheCostOfTheResultLineIsTheCostOfTheRunWhetherOrNotACapStoppedIt(t *testing.T) {
@@ -1057,7 +1093,7 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 
 	cfg := config.Config{
 		Runners: []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
-		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:   claudePools(),
 	}
 	read := func(_ context.Context, runner model.Runner) model.Reading {
 		percent := 50.0
@@ -1065,7 +1101,7 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 			percent = 80
 		}
 
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+		return claudeUsage(model.Window{Percent: percent}, model.Window{Percent: percent})
 	}
 
 	got, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), []string{"a"})
@@ -1077,13 +1113,38 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 	assert.Equal(t, "a", got)
 }
 
+func TestPoolPick_ARunnerOverTheCapOfAWindowOfItsAgentIsNotPickedAndOverCapPicksIt(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Runners: []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
+		Pools:   claudePools(),
+	}
+	// Runner a has the lowest seven-day use but its five-hour use is over the cap.
+	read := func(_ context.Context, runner model.Runner) model.Reading {
+		if runner.Name == "a" {
+			return claudeUsage(model.Window{Percent: 95}, model.Window{Percent: 1})
+		}
+
+		return claudeUsage(model.Window{Percent: 10}, model.Window{Percent: 50})
+	}
+
+	got, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "b", got, "a is over the five_hour cap of 90")
+
+	got, err = poolPick(cfg, claude.Name, read, pool.SelectOverCap)(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "a", got, "the over-cap pick takes the lowest use whatever the caps say")
+}
+
 func TestPoolPick_AStepOfOneAgentKindNeverGetsARunnerOfAnotherKind(t *testing.T) {
 	t.Parallel()
 
 	other := model.Agent("other")
 	cfg := config.Config{
 		Runners: []model.Runner{{Name: "claude-1", Agent: claude.Name}, {Name: "other-1", Agent: other}},
-		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:   claudePools(),
 	}
 	// Both kinds report usage, and the runner of the other kind has the lower use, so an unfiltered pick would take it.
 	read := func(_ context.Context, runner model.Runner) model.Reading {
@@ -1092,7 +1153,7 @@ func TestPoolPick_AStepOfOneAgentKindNeverGetsARunnerOfAnotherKind(t *testing.T)
 			percent = 10
 		}
 
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+		return claudeUsage(model.Window{Percent: percent}, model.Window{Percent: percent})
 	}
 
 	for _, selectRunner := range []selector{pool.Select, pool.SelectOverCap} {
@@ -1145,7 +1206,7 @@ func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
 	cfg := config.Config{
 		Projects: map[string]config.Project{"p": {}},
 		Runners:  []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
-		Pool:     config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:    claudePools(),
 	}
 	read := func(_ context.Context, runner model.Runner) model.Reading {
 		percent := 99.0
@@ -1153,7 +1214,7 @@ func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
 			percent = 97
 		}
 
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+		return claudeUsage(model.Window{Percent: percent}, model.Window{Percent: percent})
 	}
 	picked := loginsReading(cfg, read)
 
@@ -1183,7 +1244,7 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
-		Pool: config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools: claudePools(),
 		Runners: []model.Runner{
 			{Name: "busy", Agent: claude.Name},
 			{Name: "free", Agent: claude.Name},
@@ -1195,7 +1256,7 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 			percent = 99
 		}
 
-		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+		return claudeUsage(model.Window{Percent: percent}, model.Window{Percent: percent})
 	}
 
 	got, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), nil)
@@ -1224,7 +1285,7 @@ func usageFixture(t *testing.T) (config.Config, flow.Options) {
 	require.NoError(t, exectest.Write(filepath.Join(tools, "claude"), "#!/bin/sh\necho fake-claude-ran >&2\nexit 7\n"))
 
 	cfg := config.Config{
-		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Pools:   claudePools(),
 		Runners: []model.Runner{{Name: "a", Agent: claude.Name, ConfigDir: t.TempDir()}},
 	}
 
@@ -1250,7 +1311,7 @@ func TestNewDeps_TheEnginePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfThe
 	cfg, opts := usageFixture(t)
 	cfg.Projects = map[string]config.Project{"p": {}}
 
-	_, err := newDeps(cfg, opts).Logins.Pick(t.Context(), "p", "1", nil, false)
+	_, err := newDeps(cfg, opts, newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)).Logins.Pick(t.Context(), "p", "1", nil, false)
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }

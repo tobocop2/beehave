@@ -31,8 +31,11 @@ func (s *script) push(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	}
 
 	return s.durable(pushKind, label, func(ctx context.Context, _ string) (stepResult, error) {
-		err := s.writes().Push(ctx, s.in.Project, s.in.Item, branch, head, expect)
+		err := s.forkMayPush(branch)
+		if err == nil {
+			err = s.writes().Push(ctx, s.in.Project, s.in.Item, branch, head, expect)
+		}
 
-		return stepResult{Outputs: pushOutputs(head)}, err
+		return stepResult{Outputs: pushOutputs(branch, head)}, err
 	})
 }

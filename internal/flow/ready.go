@@ -7,12 +7,11 @@ import (
 	"github.com/tobocop2/beehave/internal/review"
 )
 
-// OpenRequest is what the pr_open step asks of the forge. Issue is the issue number of the item, or 0 for none: the forge adds the closing line for it to the body.
+// OpenRequest is what the pr_open step asks of the forge. The forge writes Body as given.
 // Parent is the id of the item that this one depends on, or empty.
 type OpenRequest struct {
 	Title  string
 	Body   string
-	Issue  int
 	Base   string
 	Parent string
 }
@@ -27,8 +26,9 @@ type OpenResult struct {
 // forge reads and writes the pull request of an item. A failed read is an error, never an empty standing.
 type forge interface {
 	Pull(ctx context.Context, project, item string) (review.Standing, error)
-	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them. Found is false when the item has no pull request yet.
-	ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error)
+	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: "#N" for an issue of the repository of the pull request,
+	// "owner/repo#N" for an issue of another repository. Found is false when the item has no pull request yet. A project with no forge is an error that matches forge.ErrNoForge.
+	ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error)
 	// Comment adds a comment to the pull request of the item and returns its number. The same key on the same pull request adds one comment.
 	// An item with no pull request is an error. So is a project with no forge.
 	Comment(ctx context.Context, project, item, key, text string) (number int, err error)

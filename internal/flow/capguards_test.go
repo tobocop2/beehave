@@ -66,7 +66,7 @@ func answerLikeAnAgent(rig *agentRig, request AgentRequest) {
 	case strings.HasPrefix(match[0], "Write the summary"):
 		rig.put(match[1], `{"summary":"X is Y."}`)
 	default:
-		rig.put(match[1], `{"verdict":"changes","mechanism":"","open":"fix it","findings":[{"class":"blocking","text":"fix it"}]}`)
+		rig.put(match[1], `{"verdict":"changes","mechanism":"","open":"fix it","findings":"[{\"id\":\"\",\"severity\":\"blocking\",\"path\":\"a.go\",\"text\":\"fix it\"}]"}`)
 	}
 }
 
@@ -151,7 +151,7 @@ func TestExamples_ACappedAgentStepStopsTheItemWithARefuseThatNamesTheStepAndTheC
 
 			rig, count, file := guardRig(t, guard)
 
-			_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+			_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "REFUSE")
@@ -214,7 +214,7 @@ func TestReviewFix_ACappedReviewStopsTheLoopWithARefuseThatNamesTheCap(t *testin
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, "")), 0o600))
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "REFUSE")

@@ -24,7 +24,7 @@ func TestQueue_ALabelArgumentTakesOnlyTheReadyRowsWithTheLabel(t *testing.T) {
 
 	h, _ := queueHarness(t, selectorItems())
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", label = "beehave-round"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", label = "beehave-round"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:0", "free=2"}, seenBy(t, h), "a ready row without the label stays out of the queue")
@@ -35,7 +35,7 @@ func TestQueue_AnItemsArgumentIsNoArgumentOfTheCall(t *testing.T) {
 
 	h, _ := queueHarness(t, selectorItems())
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`**{"name": "q", "items": ["23"]}`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`**{"name": "q", "items": ["23"]}`)), modeOff())
 
 	require.ErrorContains(t, err, "items", "a workflow picks its items from the rows, so the call takes no list of items")
 }
@@ -45,7 +45,7 @@ func TestQueue_ACallWithNoSelectorQueuesEveryRow(t *testing.T) {
 
 	h, _ := queueHarness(t, selectorItems())
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:0", "22:ready:P1:0", "23:ready:P1:0", "free=2"}, seenBy(t, h))

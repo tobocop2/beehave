@@ -65,13 +65,19 @@ var hostGateRuns atomic.Int64
 
 // queueHostGate queues the project gate of an item that runs on the build host, as a run of a flow does, and returns the channel of its end.
 func queueHostGate(engine *Engine, project, item, head, host string) <-chan gateEnd {
+	return queueHostGateOf(engine, head, CommandRequest{Project: project, Item: item, BuildHost: host})
+}
+
+// queueHostGateOf queues the gate of a request as queueHostGate does. A request with a Run is a program gate.
+func queueHostGateOf(engine *Engine, head string, request CommandRequest) <-chan gateEnd {
+	project, item, host := request.Project, request.Item, request.BuildHost
 	ended := make(chan gateEnd, 1)
 	id := fmt.Sprintf("queue-host-gate-%d-%s-%s-%s-%s", hostGateRuns.Add(1), project, item, head, host)
 	gateEndsMu.Lock()
 	gateEnds[id] = ended
 	gateEndsMu.Unlock()
 
-	in := ExclusiveInput{Kind: kindGate, Project: project, Item: item, Head: head, Request: CommandRequest{Project: project, Item: item, BuildHost: host}}
+	in := ExclusiveInput{Kind: kindGate, Project: project, Item: item, Head: head, Request: request}
 
 	if _, err := dbos.RunWorkflow(engine.ctx, gateQueuer{engine}.queue, in, dbos.WithWorkflowID(id)); err != nil {
 		ended <- gateEnd{err: err}
@@ -227,17 +233,7 @@ func launchHostEngine(t *testing.T, h *harness, gate gate) *Engine {
 	return engine
 }
 
-func TestExclusiveHost_ReportsAHostQueueThatTheStoreRefuses(t *testing.T) {
-	t.Parallel()
-
-	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
-	require.NoError(t, err)
-	require.NoError(t, engine.Shutdown())
-
-	require.ErrorContains(t, engine.registerHostQueue(), "register the host queue")
-}
-
-func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
+func TestExclusiveHost_ReportsAGateSlotQueueThatTheStoreRefuses(t *testing.T) {
 	t.Parallel()
 
 	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
@@ -246,7 +242,23 @@ func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
 
 	var out ExclusiveOutput
 
-	err = engine.onHost(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box"}, &out)
+	err = engine.onHost(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box", SlotCount: 2}, &out)
+	require.ErrorContains(t, err, `register the queue of the slot class "gate"`)
+}
+
+func TestExclusiveHost_ReportsABuildJobThatTheStoreRefuses(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+
+	queue, err := engine.slotQueue("gate", 1)
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	var out ExclusiveOutput
+
+	err = engine.runJob(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", HostKey: hostKeyPrefix + "box"}, queue, &out)
 	require.ErrorContains(t, err, "queue the build job of item 12 on host box")
 }
 
@@ -308,7 +320,7 @@ func (w jobWaiter) wait(ctx dbos.Context, in ExclusiveInput) (string, error) {
 
 	var out ExclusiveOutput
 
-	return "", w.engine.runJob(run, in, w.engine.hostQueue, &out)
+	return "", w.engine.onHost(run, in, &out)
 }
 
 // A wait that stops writes nothing to its build job. Only a cancel of the gate in the store reaches the job, so the stop of a wait that ends after a resume
@@ -365,7 +377,7 @@ func TestExclusiveHost_AReopenReportsABuildJobThatIsGone(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -418,7 +430,7 @@ func TestExclusiveHost_ACancelWithNoEngineCancelsTheBuildJobOfTheGate(t *testing
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -538,7 +550,7 @@ func TestExclusiveHost_AReplayRunsOnTheHostTheFirstRunChoseWhenTheProjectNamesAn
 	assert.Equal(t, hostKeyPrefix+"box", job.HostKey)
 }
 
-// waitsOnHost is true when the host queue holds want build jobs that wait for the job that runs.
+// waitsOnHost is true when the gate slot queue holds want build jobs that wait for the job that runs.
 func waitsOnHost(engine *Engine, want int) func() bool {
 	return func() bool {
 		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued))
@@ -626,8 +638,6 @@ func TestExclusiveHost_TheHostOfAGateIsNamedOnlyWhenTheGateRunsThere(t *testing.
 		{"a_project_gate_on_this_machine", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{BuildHost: "local"}}, ""},
 		{"a_program_gate_on_a_host", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{Run: []string{"x"}, Host: "build", BuildHost: "box"}}, "box"},
 		{"a_program_gate_on_this_machine", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{Run: []string{"x"}, BuildHost: "box"}}, ""},
-		{"a_batch_gate_on_a_host", ExclusiveInput{Kind: kindBatchGate, Project: "p", BuildHost: "box"}, "box"},
-		{"a_batch_gate_with_a_program", ExclusiveInput{Kind: kindBatchGate, Project: "p", BuildHost: "box", GateRun: []string{"x"}}, ""},
 		{"a_merge", ExclusiveInput{Kind: kindMerge, Project: "p", Request: CommandRequest{BuildHost: "box"}}, ""},
 	}
 

@@ -19,7 +19,7 @@ func TestExampleRestarted_TheRoundLandsAnApprovedRunThatTheOwnerStartedWithBeeha
 	rig.last = engine
 
 	// The owner runs the listed item by hand, as beehave run <item> does: a run that the round did not start. The review approves it.
-	_, err := engine.RunFile("1", testProject, rig.file)
+	_, err := engine.RunFile("1", testProject, rig.file, modeOff())
 	require.NoError(t, err)
 	require.Empty(t, rig.merger.landed(), "the run of one item lands nothing: only the round lands")
 
@@ -39,7 +39,7 @@ func TestExampleRestarted_ARoundThatLandsNothingLandsNoRestartedRunEither(t *tes
 	engine := rig.engine(t)
 	rig.last = engine
 
-	_, err := engine.RunFile("1", testProject, rig.file)
+	_, err := engine.RunFile("1", testProject, rig.file, modeOff())
 	require.NoError(t, err)
 
 	_, err = rig.runOn(t, engine)
@@ -67,7 +67,7 @@ func TestExampleRestarted_ARunThatDoesNotApproveAHeadIsNotLanded(t *testing.T) {
 			rig.last = engine
 
 			flow := "def main(item):\n    return " + strings.ReplaceAll(body, "HEAD", rig.heads["1"]) + "\n"
-			_, err := engine.RunFile("1", testProject, writeFlow(t, flow))
+			_, err := engine.RunFile("1", testProject, writeFlow(t, flow), modeOff())
 			require.NoError(t, err)
 
 			_, err = rig.runOn(t, engine)
@@ -92,7 +92,7 @@ func TestExampleRestarted_AChildThatEndedInAPassLandsOnceInThePassAfter(t *testi
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.NotContains(t, joined, "round-land-1.", "the round lands from the queue read of the pass after the child ended, not from the gather of that pass")
-	assert.Contains(t, joined, "round-land-2.union#")
+	assert.Contains(t, joined, "gate:round-land-2.gate#")
 }
 
 func TestExampleRestarted_AnItemThatALandingRejectedIsOfferedOnce(t *testing.T) {

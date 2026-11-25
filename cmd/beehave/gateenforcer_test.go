@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,6 +30,7 @@ type fakeEnforcer struct {
 	port int
 	argv []string
 	dir  string
+	env  []string
 	code int
 	// during runs in the command, with its work folder.
 	during func(dir string)
@@ -37,7 +40,7 @@ func (*fakeEnforcer) Name() string { return "fake" }
 func (*fakeEnforcer) Check() error { return nil }
 
 func (f *fakeEnforcer) Run(_ context.Context, plan sandbox.Plan, port int, cmd sandbox.Command) (int, error) {
-	f.plan, f.port, f.argv, f.dir = plan, port, cmd.Argv, cmd.Dir
+	f.plan, f.port, f.argv, f.dir, f.env = plan, port, cmd.Argv, cmd.Dir, cmd.Env
 	if f.during != nil {
 		f.during(cmd.Dir)
 	}
@@ -87,6 +90,43 @@ func TestGateSandbox_NoEnforcerGivesTheReasonAndRunsNoCode(t *testing.T) {
 
 	assert.Equal(t, sandboxFailed, code)
 	assert.Contains(t, out, "beehave sandbox: not here")
+}
+
+func TestGateSandbox_TheCommandGetsNoSocketOfTheSSHAgentFromTheEngineOrTheRequest(t *testing.T) {
+	t.Parallel()
+
+	for name, env := range map[string][]string{"the engine environment": nil, "the environment of the request": {"A=1", "SSH_AUTH_SOCK=/tmp/agent.sock"}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := &fakeEnforcer{}
+			box := sandboxFor(t, fake, nil)
+			box.environ = []string{"PATH=/bin", "SSH_AUTH_SOCK=/tmp/agent.sock"}
+
+			_, code := box.run(t.Context(), "p", t.TempDir(), []string{"true"}, env, 0)
+
+			require.Equal(t, 0, code)
+			assert.NotEmpty(t, fake.env)
+			assert.NotContains(t, strings.Join(fake.env, "\n"), "SSH_AUTH_SOCK")
+		})
+	}
+}
+
+func TestGateSandbox_ASandboxReadPathThatHoldsTheSocketOfTheSSHAgentIsRefused(t *testing.T) {
+	t.Parallel()
+
+	box := sandboxFor(t, &fakeEnforcer{}, nil)
+	socket := filepath.Join(t.TempDir(), "agent.sock")
+	box.environ = []string{"SSH_AUTH_SOCK=" + socket}
+
+	found := box.projects["p"]
+	found.SandboxRead = []string{socket}
+	box.projects["p"] = found
+
+	out, code := box.run(t.Context(), "p", t.TempDir(), []string{"true"}, nil, 0)
+
+	assert.Equal(t, sandboxFailed, code)
+	assert.Contains(t, out, "overlaps the credential path "+socket)
 }
 
 func TestGateSandbox_ASandboxReadPathThatHoldsTheHomeFolderIsRefused(t *testing.T) {

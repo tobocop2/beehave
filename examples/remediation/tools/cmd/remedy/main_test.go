@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 }
 
 func scriptRemedy() {
-	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, func(string) (remedy.Forge, error) { return nil, errNoForge }, nil))
+	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, func(string) (remedy.Forge, error) { return nil, errNoForge }))
 }
 
 // scriptSetup makes the git folder `tree` in the work folder of a script, with one empty commit.

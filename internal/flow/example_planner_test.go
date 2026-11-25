@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestExamplePlanner_ThePlannerReadsTheProgressOfTheWorkersWhileTheyRun(t *te
 
 	rig, file := plannerRig(t)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 
@@ -70,7 +71,7 @@ func TestExamplePlanner_AWorkerThatPublishedLastShowsItsValueToStatus(t *testing
 
 	rig, file := plannerRig(t)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	got, err := rig.h.client(t, testVersion).Published("item-22-r1")
@@ -112,7 +113,7 @@ func runTicking(t *testing.T, h *harness, engine *Engine) error {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, plannerFile)
+		_, err := engine.RunFile(testItem, testProject, plannerFile, modeOff())
 		done <- err
 	}()
 
@@ -188,13 +189,45 @@ func TestExamplePlanner_TheDeadlineCancelsANewWorkerThatIsStillOpen(t *testing.T
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1s", "DEADLINE": "1s"}
-	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, 3*time.Second
+	h.opts.Env = map[string]string{"TASKS": "22", "CHECK_IN": "1h", "DEADLINE": "1h"}
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, time.Hour
+
+	// Two events of the test stand in for the clock of the planner. A stall message ends the check-in after the first worker published: a check-in on the real
+	// clock could cancel that worker before it started, and the report would show 22=none. The deadline of the gather reads a clock that the test moves past it
+	// after the new worker published: a deadline on the real clock could pass before that.
+	var ahead atomic.Int64
+
+	began := time.Now()
+	h.reading = func() time.Time { return began.Add(time.Since(began) + time.Duration(ahead.Load())) }
 
 	engine := h.engine(t)
-	err := runTicking(t, h, engine)
+	client := h.client(t, testVersion)
+	done := make(chan error, 1)
 
-	require.NoError(t, err)
+	go func() { done <- runTicking(t, h, engine) }()
+
+	// The first worker of 22 has published when its progress exists. The stall message goes only after that, so the final report reads its stage.
+	waitOn(t, waiting[struct{}]{what: "the stall message to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r1")
+		if err != nil || len(seen) == 0 {
+			return struct{}{}, false, nil
+		}
+
+		_, err = client.Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+
+		return struct{}{}, err == nil, nil
+	}})
+
+	// The new worker of 22 has published when its progress exists. The deadline passes only after that.
+	waitOn(t, waiting[struct{}]{what: "the new worker of 22 to publish", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r2")
+
+		return struct{}{}, err == nil && len(seen) > 0, nil
+	}})
+
+	ahead.Store(int64(2 * time.Hour))
+
+	require.NoError(t, receive(t, done))
 	assert.Equal(t, "echo when the workers ended: 22=started 22:deadline cost_usd=0.0", lastRan(t, h))
 	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, engine, "item-22-r2"), "the deadline canceled the new worker")
 }
@@ -341,7 +374,7 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 	ran := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, plannerFile)
+		_, runErr := first.RunFile(testItem, testProject, plannerFile, modeOff())
 		ran <- runErr
 	}()
 
@@ -373,7 +406,7 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, second, "item-22-r1"), "the message canceled the stalled worker")
 	assert.Equal(t, dbos.WorkflowStatusSuccess, statusOf(t, second, "item-22-r2"), "the task of the worker went to one new worker")
 
-	last, found, err := latestRun(second.ctx, "22")
+	last, found, err := latestRun(viewOf(second.ctx, second.dir), "22")
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, 2, last.Attempt, "the planner took the message once, so it gave the task of 22 to one new worker")

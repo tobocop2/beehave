@@ -3,6 +3,7 @@ package flow
 import (
 	"bytes"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,11 +77,12 @@ command(run = ["after"], stdin = "%r" % f.vars, name = "after")
 func TestFacts_TheVarsKeepTheirNumberTypesOnAReplayFromTheRecordedFacts(t *testing.T) {
 	t.Parallel()
 
+	// The vars of the project change once the first engine stops, so the replay must use the recorded facts and not read the project again.
+	var restarted atomic.Bool
+
 	h := newHarness(t)
-	calls := 0
 	h.facts = func(project string) model.Project {
-		calls++
-		if calls > 1 {
+		if restarted.Load() {
 			return model.Project{Name: project, Vars: map[string]any{"changed": json.Number("9")}}
 		}
 
@@ -89,13 +91,14 @@ func TestFacts_TheVarsKeepTheirNumberTypesOnAReplayFromTheRecordedFacts(t *testi
 
 	file := writeFlow(t, varsReplayFlow)
 	interrupted(t, h, file)
+	restarted.Store(true)
 
 	next := h.engine(t)
 	client := h.client(t, testVersion)
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

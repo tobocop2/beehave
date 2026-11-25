@@ -27,7 +27,8 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check/shell<br/>shell scan"]
-        policy["batch · gate · pool · preflight · review · merge<br/>lane policy"]
+        ci["ci · ci/githubactions<br/>gate steps from CI files"]
+        policy["batch · gate · landing · pool · preflight · review · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -46,6 +47,8 @@ flowchart TD
         link["host/link<br/>ssh command line"]
         jobwait["host/jobwait<br/>wait states"]
         sandbox["sandbox<br/>enforcer contract, allow-list proxy, Landlock enforcer"]
+        credential["credential<br/>forge token loader, role environment, start probe"]
+        reach["proc/gitexec/reach<br/>the git runner of a call that reaches a remote"]
     end
 
     subgraph L0["Layer 0: foundation"]
@@ -54,7 +57,10 @@ flowchart TD
         lockfile["lockfile<br/>file lock opener"]
         atomicfile["atomicfile<br/>whole-file writes"]
         fstree["fstree<br/>removes a tree with read-only folders"]
+        gotelemetry["gotelemetry<br/>turns go telemetry off in a home folder"]
+        closing["closing<br/>reads the closing keywords of a text"]
         exectest["exectest<br/>writes the programs that tests start"]
+        ifacetest["ifacetest<br/>lists the methods of an interface from its source"]
     end
 
     main --> cli
@@ -94,13 +100,23 @@ flowchart TD
     ghforge --> forge
     config --> model
     proc --> model
+    credential --> proc
+    credential --> model
+    ghforge --> credential
+    main --> credential
+    reach --> credential
+    reach --> proc
+    main --> reach
     store --> model
     store --> lockfile
     forge --> model
     agent --> model
     claim --> model
     check --> model
+    ci --> check
     cli --> model
+    cli --> ci
+    main --> ci
 
     main --> flow
     cli --> flow
@@ -131,7 +147,7 @@ Every package imports `model`. `model` imports no beehave package.
 
 Only `proc` starts a process. `forge` and `agent` call it. `store` reaches it through the runner that the composition root passes in.
 
-`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner.
+`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. The name of the git program and the hooks setting sit in `proc/gitexec/internal/gitbin`, which only `proc/gitexec` and the packages below it import. Code outside that tree gets the local runner from `gitexec.New`, or a runner from `proc/gitexec/reach`, and no exported name of `gitexec` builds any other git runner. The compiler cannot refuse a string, so a runner built with a `"git"` literal, with `model.ToolGit` or with `exec.Command` still compiles. A source test in `gitexec` fails on the first two as a runner `Binary`, in `NewExecRunner`, in `GroupCommand` and in `exec.Command`, also when a variable or a constant of the same folder holds the name. Review catches any other route, such as a path from `proc.LookPath`. The copy of a head in `cmd/beehave` finds the path of git with `proc.LookPath`, because the sandbox needs the file path to build the read set of upload-pack. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
 
 ### File locks and whole-file writes
 
@@ -223,6 +239,7 @@ For a project with no forge and no `source`:
 - `base_branch` and `gate` are optional.
 - `test_report` is required only when `gate` is set.
 - `pin_file` is refused.
+- `gate_program` is refused.
 
 Each item gets a plain folder under the state folder that beehave makes. Release keeps the folder and beehave never deletes it, so the state folder grows with each item.
 

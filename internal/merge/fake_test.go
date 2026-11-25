@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -30,17 +31,22 @@ var errDown = errors.New("down")
 // world is the fake forge. A name in fails makes the method of that name fail. writes lists every call that changes the forge.
 type world struct {
 	first, later *model.PullRequest
-	children     []model.PullRequest
-	checks       []model.Check
-	scopes       []string
-	requests     []model.ChangeRequest
-	threads      []model.ReviewThread
-	stacks       map[int]string
-	stackQueue   []string
-	tip          string
-	tipFound     bool
-	body         string
-	fails        map[string]bool
+	// facts is the answer of the typed read. Nil means the facts of the first view.
+	facts *model.PullFacts
+	// laterFacts is the answer of the typed read after the first read. Nil means the facts of the later view, or of the first.
+	laterFacts *model.PullFacts
+	// strict makes the typed read the one of the forge: the read of the first view that refuses a null list and a body link that is not an int.
+	strict     bool
+	children   []model.PullRequest
+	checks     []model.Check
+	ci         model.CIWrite
+	requests   []model.ChangeRequest
+	threads    []model.ReviewThread
+	stacks     map[int]string
+	stackQueue []string
+	tip        string
+	tipFound   bool
+	fails      map[string]bool
 	// down is the error of a method named in fails. Nil means errDown.
 	down   error
 	views  int
@@ -62,8 +68,6 @@ type world struct {
 	// behind makes the head not an ancestor of the base after the merge. ancestryErr makes that read fail.
 	behind      bool
 	ancestryErr bool
-	// authorOf is the author login of each pull request other than the merged one. A number not in the map has no author.
-	authorOf map[int]string
 	// failAt makes the read of that number fail, counted from 1 over all reads of the pull request. Zero fails none.
 	failAt int
 	// closingRefs is what the forge lists as closing references. Nil means the forge cannot read them, and the read fails.
@@ -148,8 +152,9 @@ func newWorld(t *testing.T) *world {
 	first := pullJSON(t, nil)
 
 	return &world{
-		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, scopes: []string{"repo", "workflow"},
-		stacks: map[int]string{}, tip: tipSHA, tipFound: true, body: "rows", fails: map[string]bool{},
+		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, ci: model.CIWriteYes,
+		stacks: map[int]string{}, tip: tipSHA, tipFound: true, fails: map[string]bool{},
+		closingRefs: &model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{}},
 	}
 }
 
@@ -178,7 +183,7 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 			return model.PullRequest{}, err
 		}
 
-		return model.PullRequest{Author: model.Account{Login: w.authorOf[number]}}, nil
+		return model.PullRequest{}, nil
 	}
 
 	w.views++
@@ -191,11 +196,52 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 		return model.PullRequest{}, err
 	}
 
-	if w.views > 1 && w.later != nil {
+	if w.views > firstReads && w.later != nil {
 		return *w.later, w.fail("PRView later")
 	}
 
 	return *w.first, nil
+}
+
+// firstReads is the count of reads that the first read of a run makes: the view and the typed read. A later read answers from the later view.
+const firstReads = 2
+
+// PullRead answers the typed read: the facts field when it is set, else the facts of the first view. A hole in the state, head or base is refused, as the contract says.
+func (w *world) PullRead(_ context.Context, number int) (model.PullFacts, error) {
+	w.calls = append(w.calls, fmt.Sprintf("PullRead %d", number))
+
+	w.views++
+
+	if w.views == w.failAt {
+		return model.PullFacts{}, fmt.Errorf("PullRead %d: %w", w.views, errDown)
+	}
+
+	if err := w.fail("PullRead"); err != nil {
+		return model.PullFacts{}, err
+	}
+
+	facts := w.first.Facts()
+
+	switch {
+	case w.views > firstReads && w.laterFacts != nil:
+		facts = *w.laterFacts
+	case w.views > firstReads && w.later != nil:
+		if err := w.fail("PRView later"); err != nil {
+			return model.PullFacts{}, err
+		}
+
+		facts = w.later.Facts()
+	case w.facts != nil:
+		facts = *w.facts
+	}
+
+	facts.Number = number
+
+	if w.strict {
+		return w.first.Read(number)
+	}
+
+	return facts, facts.Check()
 }
 
 func (w *world) PullCounts(context.Context, int) (commits, files int, err error) {
@@ -262,10 +308,10 @@ func (w *world) StackID(_ context.Context, number int) (string, error) {
 	return w.stacks[number], nil
 }
 
-func (w *world) TokenScopes(context.Context) ([]string, error) {
-	w.calls = append(w.calls, "TokenScopes")
+func (w *world) CanWriteCI(context.Context) (model.CIWrite, error) {
+	w.calls = append(w.calls, "CanWriteCI")
 
-	return w.scopes, w.fail("TokenScopes")
+	return w.ci, w.fail("CanWriteCI")
 }
 
 func (w *world) BranchRef(_ context.Context, branch string) (string, bool, error) {
@@ -319,36 +365,28 @@ func (w *world) MergePR(_ context.Context, number int, pin string) error {
 	return w.fail("MergePR")
 }
 
-func (w *world) PRBody(context.Context, int) (string, error) {
-	return w.body, w.fail("PRBody")
+// attributionPatterns is the forbidden text of the default request: four attribution marks, which the engine does not hold.
+func attributionPatterns() []string {
+	return []string{"(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"}
 }
 
-// SetBody is the write of the forge: like the GitHub forge, it refuses a pull request that the owner did not write and an author that cannot be read.
-func (w *world) SetBody(_ context.Context, number int, body string) error {
-	if w.fail("PRView other") != nil {
-		return &model.NotAuthorError{Reason: fmt.Sprintf("cannot read its author: %v", errDown)}
+// compiled compiles patterns that the check of the workflow already proved to be RE2.
+func compiled(patterns []string) []*regexp.Regexp {
+	rules := make([]*regexp.Regexp, len(patterns))
+
+	for i, pattern := range patterns {
+		rules[i] = regexp.MustCompile(pattern)
 	}
 
-	if author := w.authorOf[number]; !strings.EqualFold(author, me) {
-		return &model.NotAuthorError{Reason: fmt.Sprintf("its author is %q, not the owner", author)}
-	}
-
-	if err := w.fail("SetBody"); err != nil {
-		return err
-	}
-
-	w.writes = append(w.writes, fmt.Sprintf("SetBody %d", number))
-	w.body = body
-
-	return nil
+	return rules
 }
 
-// request is a merge request of the default shape. Its forbidden text is the `forbid_text` of the remediation example, so the engine holds no pattern of its own.
+// request is a merge request of the default shape.
 func request() merge.Request {
 	return merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
 		Repo: "owner/name", Base: "main", OwnLogins: []string{me}, OwnEmails: []string{meMail},
-		ForbidText: compiled(examplePatterns()),
+		ForbidText: compiled(attributionPatterns()),
 	}
 }
 

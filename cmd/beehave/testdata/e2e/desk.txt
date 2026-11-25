@@ -28,6 +28,10 @@ stdout 'item shift-1 finished'
 
 # The clerk ran once. The mask kept the address and the name out of its prompt.
 cmp calls.log expected-calls.log
+
+# The agent call started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep -count=1 '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
 grep 'M_EMAIL_' last-prompt.txt
 ! grep 'ann@example.com' last-prompt.txt
 ! grep 'Ann Smith' last-prompt.txt

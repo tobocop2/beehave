@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -16,27 +18,39 @@ func TestBlock_DeclaresThePlacementKeysAndOnlyOptionalOnes(t *testing.T) {
 
 	assert.Equal(t, "skypilot", declared.Name)
 
-	keys := make([]string, 0, len(declared.Args))
+	kinds := map[string]config.ArgKind{}
+
 	for _, arg := range declared.Args {
-		keys = append(keys, arg.Key)
+		kinds[arg.Key] = arg.Kind
 
 		assert.True(t, arg.Optional, arg.Key)
 	}
 
-	assert.ElementsMatch(t, []string{"cloud", "region", "instance_type"}, keys)
+	assert.Equal(t, map[string]config.ArgKind{
+		"cloud": config.TextArg, "region": config.TextArg, "instance_type": config.TextArg, "instance_sizes": config.TextArg,
+		"disk_size_gb": config.WholeArg, "spot": config.BoolArg,
+	}, kinds)
 }
 
 func TestDecodeBlock_ReadsEveryKeyTheBlockDeclares(t *testing.T) {
 	t.Parallel()
 
 	entries := make([]model.BlockEntry, 0, len(Block().Args))
+
 	for _, arg := range Block().Args {
-		entries = append(entries, model.TextEntry(arg.Key, arg.Key+"-value"))
+		switch arg.Kind {
+		case config.WholeArg:
+			entries = append(entries, model.WholeEntry(arg.Key, 100))
+		case config.BoolArg:
+			entries = append(entries, model.BoolEntry(arg.Key, true))
+		case config.TextArg:
+			entries = append(entries, model.TextEntry(arg.Key, arg.Key+"-value"))
+		}
 	}
 
 	got := decodeBlock(model.NewBlock("p.star:3:4", entries))
 
-	assert.Equal(t, block{cloud: "cloud-value", region: "region-value", instanceType: "instance_type-value"}, got)
+	assert.Equal(t, block{cloud: "cloud-value", region: "region-value", instanceType: "instance_type-value", instanceSizes: "instance_sizes-value", diskSizeGB: 100, diskSized: true, spot: true}, got)
 }
 
 func TestDecodeBlock_ANilBlockAndAnEmptyBlockLeaveEveryChoiceToSkyPilot(t *testing.T) {
@@ -71,4 +85,33 @@ func TestNew_RefusesAPlacementWordThatSkyCouldReadAsAnOptionAndNamesTheKey(t *te
 		require.ErrorIs(t, err, ErrConfig, name)
 		assert.Contains(t, err.Error(), tc.words, name)
 	}
+}
+
+func TestNew_RefusesADiskSizeOutsideTenToSixtyFiveThousandFiveHundredThirtySixAndNamesTheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range []int{-1, 5, 9, 65537} {
+		_, err := New("c", hostConfig(&placed{diskSizeGB: size}), nil, nil, nil)
+
+		require.ErrorIs(t, err, ErrConfig, size)
+		require.ErrorContains(t, err, "`host.skypilot.disk_size_gb` must be a whole number from 10 to 65536", size)
+	}
+
+	for _, size := range []int{10, 65536} {
+		_, err := New("c", hostConfig(&placed{diskSizeGB: size}), nil, nil, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} })
+
+		require.NoError(t, err, size)
+	}
+}
+
+func TestNew_ADiskSizeOfZeroThatTheProjectWroteIsRefused(t *testing.T) {
+	t.Parallel()
+
+	zero := hostConfig(nil)
+	zero.Block = model.NewBlock("p.star:1:1", []model.BlockEntry{model.WholeEntry(BlockDiskSizeGB, 0)})
+
+	_, err := New("c", zero, nil, nil, nil)
+
+	require.ErrorIs(t, err, ErrConfig)
+	assert.ErrorContains(t, err, "disk_size_gb")
 }

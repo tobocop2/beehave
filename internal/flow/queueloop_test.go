@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -50,20 +51,35 @@ func holdsItem21(engine func() *Engine) func(ctx context.Context, item string) e
 	}
 }
 
-// loopPreflight answers the preflight of each item. An item that is not in stops has no pull request that stops it.
+// loopPreflight answers the preflight of each item. An item that is not in pulls has no pull request that stops it.
 type loopPreflight struct {
+	noReads
+
 	mu    sync.Mutex
-	stops map[string]preflight.Result
+	pulls map[string]model.PullFacts
 	asked []string
 }
 
-func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request, _ string) (preflight.Result, error) {
+func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request, _ bool) (preflight.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.asked = append(p.asked, item)
 
-	return p.stops[item], nil
+	return preflight.Result{}, nil
+}
+
+// ReadPull gives the pull request of the item, if the test set one.
+func (p *loopPreflight) ReadPull(_ context.Context, _, item string, _ bool) (model.PullFacts, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.pulls[item], nil
+}
+
+// otherLogin is a pull request that an open pull request of a login outside the own logins makes: it claims the item.
+func otherLogin(number int) model.PullFacts {
+	return model.PullFacts{Number: number, State: "OPEN", Author: "dev"}
 }
 
 func (p *loopPreflight) askedItems() []string {
@@ -77,21 +93,64 @@ func TestQueueLoop_AnItemWithAnOpenPullRequestOfAnotherLoginStartsNoAgentAndIsHe
 	t.Parallel()
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
-	r.h.preflight = &loopPreflight{stops: map[string]preflight.Result{"22": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+	r.h.preflight = &loopPreflight{pulls: map[string]model.PullFacts{"22": otherLogin(5)}}
 
 	require.NoError(t, r.run(t))
 	assert.ElementsMatch(t, []string{"21", "23"}, r.agents.started())
 	assert.Zero(t, r.agents.callsOf("22"), "an item that another login holds starts no agent")
 	assert.Equal(t, []string{testProject + "|22|hold"}, r.w.statuses)
 	require.Len(t, r.w.notes, 1)
-	assert.Contains(t, r.w.notes[0], "claimed by another login")
+	assert.Contains(t, r.w.notes[0], "its author is 'dev', who is not on the list of own logins. The item is claimed.")
+}
+
+func TestQueueLoop_TheEnginePushesAndOpensThePullRequestOnlyForAnAgentThatCommitted(t *testing.T) {
+	t.Parallel()
+
+	for name, commits := range map[string]bool{"commits": true, "commits_nothing": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newLoopRig(t, queueItem("21", model.SeverityP1))
+			// The item 21 reads its own id, title and body, which differ from the default fields of the fake reader, so the branch shows that it is the id of the item.
+			r.h.items = &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}, byItem: map[string]map[string]string{"21": {"id": "21", "title": "title of 21", "body": "body of 21"}}}
+			r.agents.setAct(func(ctx context.Context, _ string) error {
+				if !commits {
+					return nil
+				}
+
+				commit := exec.CommandContext(ctx, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "work of 21")
+				commit.Dir = r.h.trees.dir
+
+				return commit.Run()
+			})
+
+			require.NoError(t, r.run(t))
+
+			r.h.forge.mu.Lock()
+			pushed, opened := slices.Clone(r.h.forge.pushed), slices.Clone(r.h.forge.opened)
+			r.h.forge.mu.Unlock()
+
+			if !commits {
+				assert.Empty(t, pushed, "a step with no commit pushes nothing")
+				assert.Empty(t, opened, "a step with no commit opens nothing")
+
+				return
+			}
+
+			require.Len(t, pushed, 1)
+			head := strings.TrimSpace(gitIn(t, r.h.trees.dir, "rev-parse", "HEAD"))
+			assert.Equal(t, testProject+"|21|21|"+head+"|", pushed[0], "the engine pushes the commit of the step to the branch named by the id of the item, with no lease")
+			require.Len(t, opened, 1)
+			assert.Equal(t, testProject+"|21|title of 21|body of 21|integration|", opened[0], "the pull request of the item goes to BASE")
+		})
+	}
 }
 
 func TestQueueLoop_APullRequestOpenedSinceTheLastPassStopsTheItemThatThePassReads(t *testing.T) {
 	t.Parallel()
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP1))
-	pf := &loopPreflight{stops: map[string]preflight.Result{"30": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+	pf := &loopPreflight{pulls: map[string]model.PullFacts{"30": otherLogin(6)}}
 	r.h.preflight = pf
 	r.agents.setAct(func(_ context.Context, item string) error {
 		if item == "21" {
@@ -227,7 +286,7 @@ func (r *loopRig) run(t *testing.T) error {
 	engine := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 
 	return err
 }
@@ -257,7 +316,7 @@ func TestQueueLoop_ReadyItemsStartInFreeSlotsWhileOneItemLoops(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, r.file)
+		_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- err
 	}()
 
@@ -297,7 +356,7 @@ func TestQueueLoop_TheRunEndsWhenNoWorkRemains(t *testing.T) {
 	engine := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -341,7 +400,7 @@ func TestQueueLoop_OnePassStartsNoMoreRunsThanFreeSlots(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, r.file)
+		_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- err
 	}()
 
@@ -353,7 +412,7 @@ func TestQueueLoop_OnePassStartsNoMoreRunsThanFreeSlots(t *testing.T) {
 	spawned := 0
 
 	for _, item := range []string{"21", "22", "23", "24"} {
-		if _, found, err := latestRun(engine.ctx, item); err == nil && found {
+		if _, found, err := latestRun(viewOf(engine.ctx, engine.dir), item); err == nil && found {
 			spawned++
 		}
 	}
@@ -380,7 +439,7 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 
 	first, stop := r.crashEngine(t)
 
-	go func() { _, _ = first.RunFile(testItem, testProject, r.file) }() //nolint:errcheck // the crash ends the run with an error
+	go func() { _, _ = first.RunFile(testItem, testProject, r.file, modeOff()) }() //nolint:errcheck // the crash ends the run with an error
 
 	waitOn(t, condition(func() bool { return len(r.agents.started()) == 2 }))
 	stop()
@@ -391,13 +450,13 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 	second := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	_, err := second.RunFile(testItem, testProject, r.file)
+	_, err := second.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started(), "every item started, and none has a second entry")
 
 	for _, item := range []string{"21", "22", "23"} {
-		last, found, lookErr := latestRun(second.ctx, item)
+		last, found, lookErr := latestRun(viewOf(second.ctx, second.dir), item)
 		require.NoError(t, lookErr)
 		require.True(t, found)
 		assert.Equal(t, 1, last.Attempt, "item %s kept its first attempt", item)
@@ -439,7 +498,7 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	ran := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, r.file)
+		_, runErr := first.RunFile(testItem, testProject, r.file, modeOff())
 		ran <- runErr
 	}()
 
@@ -483,7 +542,7 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	second := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	_, err = second.RunFile(testItem, testProject, r.file)
+	_, err = second.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -535,7 +594,7 @@ func TestQueueLoop_AFailedChildIsHeldAndTheLoopGoesOn(t *testing.T) {
 	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -563,7 +622,7 @@ func TestQueueLoop_AFailedPassWithNothingToStartDoesNotSleep(t *testing.T) {
 	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,10 +42,22 @@ type shipWorld struct {
 	committer model.Committer
 	checks    []model.Check
 	writes    []string
+	listed    []int // the issues the forge lists for the pull request: the merger of one call sets the ones the member names, and the round rig sets the issue of the item
 }
 
 func (w *shipWorld) PRView(context.Context, int, ...string) (model.PullRequest, error) {
 	return w.pull, nil
+}
+
+func (w *shipWorld) PullRead(_ context.Context, pr int) (model.PullFacts, error) {
+	facts := w.pull.Facts()
+	facts.Number = pr
+
+	if err := facts.Check(); err != nil {
+		return model.PullFacts{}, err
+	}
+
+	return facts, nil
 }
 
 func (w *shipWorld) PullCounts(context.Context, int) (commits, files int, err error) {
@@ -92,7 +105,7 @@ func (w *shipWorld) IssueAssignees(context.Context, string, int) ([]string, erro
 }
 
 func (w *shipWorld) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
-	return model.ClosingRefs{}, errFake
+	return model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: w.listed}, nil
 }
 
 func (*shipWorld) BranchRef(context.Context, string) (string, bool, error) {
@@ -158,8 +171,10 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 			return merge.Result{}, err
 		}
 
+		world.listed = settings.Closes
+
 		return merge.Run(ctx, world, merge.Request{
-			PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+			Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 			Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
 		}), nil
@@ -271,8 +286,9 @@ func (w *landWorld) git(ctx context.Context, args ...string) (string, error) {
 type forgeMerger struct {
 	worlds map[string]*landWorld
 
-	mu    sync.Mutex
-	lines map[string][]string // the lines of every verdict of the merge of each item
+	mu     sync.Mutex
+	lines  map[string][]string // the lines of every verdict of the merge of each item
+	closes map[string][]int    // the closes of the member of each item, as the merge got them
 }
 
 func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings MergeSettings) (merge.Result, error) {
@@ -282,7 +298,7 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 	}
 
 	got := merge.Run(ctx, m.worlds[item], merge.Request{
-		PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
+		Names: settings.Closes, Kept: settings.Kept, Pinned: settings.Closing, PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,
@@ -290,6 +306,12 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 
 	m.mu.Lock()
 	m.lines[item] = append(m.lines[item], got.Lines...)
+
+	if m.closes == nil {
+		m.closes = map[string][]int{}
+	}
+
+	m.closes[item] = settings.Closes
 	m.mu.Unlock()
 
 	return got, nil
@@ -312,11 +334,13 @@ func (*forgeMerger) Disarm(context.Context, string, string, string, MergeSetting
 }
 
 // landingRound is the round rig over items 1 and 3, with the real merge over a forge fake for each item. The pull request of item 1 has the keys of over replaced.
+// The pull request of item N closes issue N. The forge lists that issue to the scope check of the round and to the merge alike, as one forge does.
 func landingRound(t *testing.T, over map[string]any) (*roundRig, *forgeMerger) {
 	t.Helper()
 
 	rig := newRoundRig(t, "1 3")
 	worlds := map[string]*landWorld{}
+	rig.h.forge.closingOf = map[string][][]int{}
 
 	for _, item := range []string{"1", "3"} {
 		fields := map[string]any{"baseRefName": "main", "headRefName": item}
@@ -324,7 +348,11 @@ func landingRound(t *testing.T, over map[string]any) (*roundRig, *forgeMerger) {
 			maps.Copy(fields, over)
 		}
 
-		worlds[item] = &landWorld{shipWorld: &shipWorld{pull: shipPull(t, rig.heads[item], fields)}, repo: rig.repo}
+		issue, err := strconv.Atoi(item)
+		require.NoError(t, err)
+
+		rig.h.forge.closingOf[item] = [][]int{{issue}}
+		worlds[item] = &landWorld{shipWorld: &shipWorld{pull: shipPull(t, rig.heads[item], fields), listed: []int{issue}}, repo: rig.repo}
 	}
 
 	forge := &forgeMerger{worlds: worlds, lines: map[string][]string{}}
@@ -460,7 +488,7 @@ func TestExampleMerge_ABaseThatKeepsMovingMakesTheRoundWaitAfterOneLandingPass(t
 
 	lands := 0
 	for _, name := range stepNames(t, rig.last) {
-		if strings.HasPrefix(name, "command:round-integration-land-") {
+		if strings.HasPrefix(name, "integration_pull:round-integration-land-") {
 			lands++
 		}
 	}
@@ -479,13 +507,25 @@ func rejectReviewOf(t *testing.T, rig *roundRig, item string) {
 		result := inner(request)
 
 		if request.Item == item && strings.Contains(request.Prompt, reviewMarker) {
-			if err := os.WriteFile(promptOutput(request.Prompt), []byte(`{"verdict":"reject","mechanism":"","regressions":"0","open":"","findings":[]}`), 0o600); err != nil {
+			if err := os.WriteFile(promptOutput(request.Prompt), []byte(`{"verdict":"reject","mechanism":"","regressions":"0","open":"","findings":"[]"}`), 0o600); err != nil {
 				t.Errorf("write the reject verdict of item %s: %v", item, err)
 			}
 		}
 
 		return result
 	}
+}
+
+// The round lands each member with the issues that its child returned, and the child chose them from the base of its pull request.
+func TestExampleMerge_TheMemberOfEachChildCarriesTheIssuesThatItsChildReturned(t *testing.T) {
+	t.Parallel()
+
+	rig, forge := landingRound(t, nil)
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]int{"1": {1}, "3": {3}}, forge.closes, "a trunk round closes the issue of each item")
 }
 
 // The round sends a child to the batch only when its review approved it. The merger checks the approval only for own work,

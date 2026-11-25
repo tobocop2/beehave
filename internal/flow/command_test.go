@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var settingsFlow = bodyFlow(`command(
@@ -36,7 +38,7 @@ func TestWalk_ACommandWithNoSettingsGetsTheAllowedEnvironmentAndNoStdin(t *testi
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"HOME": "/home/me", "ANTHROPIC_API_KEY": "secret"}
+	h.opts.Env = map[string]string{"HOME": "/home/me", "ANTHROPIC_API_KEY": "secret", "SSH_AUTH_SOCK": "/tmp/agent.sock"}
 
 	_, err := walkBody(t, h, "command(run = [\"a\"])\n")
 
@@ -83,6 +85,62 @@ func TestWalk_ACommandCapReachesTheRunnerAndNoCapMeansZero(t *testing.T) {
 	require.Len(t, h.commands.requests, 2)
 	assert.Equal(t, 5, h.commands.requests[0].MaxNewProcesses)
 	assert.Zero(t, h.commands.requests[1].MaxNewProcesses, "a call with no cap is not capped")
+}
+
+func TestWalk_ACommandSandboxReachesTheRunnerWithItsNetworkListAndAnOmittedOrNoneSandboxIsNil(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	_, err := walkBody(t, h, "command(run = [\"a\"], sandbox = sandbox(network = [\"proxy.golang.org\"]), name = \"boxed\")\n"+
+		"command(run = [\"b\"], sandbox = sandbox(), name = \"closed\")\n"+
+		"command(run = [\"c\"], sandbox = None, name = \"none\")\n"+
+		"command(run = [\"d\"], name = \"left-out\")\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.requests, 4)
+	assert.Equal(t, &model.Sandbox{Network: []string{"proxy.golang.org"}}, h.commands.requests[0].Sandbox)
+	assert.Equal(t, &model.Sandbox{}, h.commands.requests[1].Sandbox, "a sandbox with no list is a sandbox with no network, and it is not nil")
+	assert.Nil(t, h.commands.requests[2].Sandbox)
+	assert.Nil(t, h.commands.requests[3].Sandbox, "the sandbox default of the project is for agent steps, so a call that leaves the keyword out runs as before")
+}
+
+func TestWalk_ACommandSandboxThatTheSandboxCannotApplyIsRefusedBeforeItRuns(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"a host":              `host = str("box"), sandbox = sandbox()`,
+		"stdin":               `stdin = str("x"), sandbox = sandbox()`,
+		"a process cap":       `max_new_processes = int("5"), sandbox = sandbox()`,
+		"a text":              `sandbox = str("on")`,
+		"a bool":              `sandbox = bool(1)`,
+		"a list of domains":   `sandbox = list(["proxy.golang.org"])`,
+		"a bad network entry": `sandbox = sandbox(network = [str("https://x.org")])`,
+	}
+
+	for name, setting := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+
+			_, err := walkBody(t, h, "command(run = [\"a\"], "+setting+")\n")
+
+			require.Error(t, err)
+			assert.Empty(t, h.commands.requests)
+		})
+	}
+}
+
+func TestWalk_ACommandWithNoneAndAHostIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	_, err := walkBody(t, h, "command(run = [\"a\"], host = \"box\", sandbox = None)\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.requests, 1)
+	assert.Nil(t, h.commands.requests[0].Sandbox)
 }
 
 func TestWalk_AGateGetsNoEnvironmentOfItsOwn(t *testing.T) {
@@ -133,7 +191,7 @@ func TestWalk_ASettingThatIsWrongFailsTheStepBeforeItRuns(t *testing.T) {
 				args = setting
 			}
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command("+args+")\n")))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command("+args+")\n")), modeOff())
 
 			require.Error(t, err)
 			assert.Empty(t, h.commands.requests, "the program did not start")
@@ -234,7 +292,7 @@ func TestWalk_AStepThatStoppedOnACodeStaysStoppedOnReplayAndRunsNoMoreThanOnce(t
 	engine := h.engine(t)
 
 	// The release after the last step fails, so the run fails with the record of the stopped step in its history.
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "release")
 
 	h.life.mu.Lock()
@@ -281,7 +339,7 @@ func TestWalk_AReplayBuildsTheSameStdinAndEnvFromTheRecordedResults(t *testing.T
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

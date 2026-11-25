@@ -617,6 +617,75 @@ func TestPRView(t *testing.T) {
 	require.ErrorContains(t, err, "cannot read pull request 6 (isDraft): cannot read the answer of `gh pr view`")
 }
 
+func TestPullRead_ReturnsStateHeadBaseAuthorAndAssignees(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, `{"number":6,"state":"OPEN","headRefOid":"abc","baseRefName":"main","author":{"login":"gz"},"assignees":[{"login":"a"},{"login":"b"}],"isDraft":false,"labels":[],"body":"","reviews":[],"reviewRequests":[]}`)
+
+	facts, err := f.PullRead(context.Background(), 6)
+
+	require.NoError(t, err)
+	assert.Equal(t, model.PullFacts{Number: 6, State: "OPEN", Head: "abc", Base: "main", Author: "gz", Assignees: []string{"a", "b"}}, facts)
+	assert.Equal(t, [][]string{{"pr", "view", "6", "--repo", repo, "--json", "number,state,headRefOid,baseRefName,author,assignees,isDraft,labels,body,reviews,reviewRequests"}}, run.Calls)
+}
+
+func TestPullRead_ReturnsDraftLabelsLinksAndReviewers(t *testing.T) {
+	t.Parallel()
+
+	f, _ := fixed(t, `{"number":6,"state":"OPEN","headRefOid":"abc","baseRefName":"main","author":{"login":"gz"},"assignees":[],"isDraft":true,`+
+		`"labels":[{"name":"hold"},{"name":""}],"body":"Closes #7 and part of acme/tools#9","reviews":[{"author":{"login":"rev"},"state":"COMMENTED"}],"reviewRequests":[{"login":"asked"}]}`)
+
+	facts, err := f.PullRead(context.Background(), 6)
+
+	require.NoError(t, err)
+	assert.True(t, facts.Draft)
+	assert.Equal(t, []string{"hold", "null"}, facts.Labels)
+	assert.Equal(t, []model.IssueLink{{Number: 7}, {Repo: "acme/tools", Number: 9}}, facts.Links)
+	assert.Equal(t, []string{"rev", "asked"}, facts.Reviewers)
+
+	f, _ = fixed(t, `{"state":"OPEN","headRefOid":"abc","baseRefName":"main","assignees":[],"isDraft":false,"labels":[],"body":"Closes #99999999999999999999","reviews":[],"reviewRequests":[]}`)
+
+	_, err = f.PullRead(context.Background(), 6)
+
+	require.ErrorContains(t, err, "cannot read the link #99999999999999999999 in the body")
+}
+
+func TestPullRead_RefusesAReadWithoutStateHeadOrBase(t *testing.T) {
+	t.Parallel()
+
+	const rest = `,"assignees":[],"isDraft":false,"labels":[]`
+
+	for name, answer := range map[string]string{
+		"state":     `{"state":null,"headRefOid":"abc","baseRefName":"main"` + rest + `}`,
+		"head":      `{"state":"OPEN","headRefOid":null,"baseRefName":"main"` + rest + `}`,
+		"base":      `{"state":"OPEN","headRefOid":"abc"` + rest + `}`,
+		"draft":     `{"state":"OPEN","headRefOid":"abc","baseRefName":"main","assignees":[],"labels":[]}`,
+		"labels":    `{"state":"OPEN","headRefOid":"abc","baseRefName":"main","assignees":[],"isDraft":false,"labels":null}`,
+		"assignees": `{"state":"OPEN","headRefOid":"abc","baseRefName":"main","assignees":null,"isDraft":false,"labels":[]}`,
+	} {
+		f, _ := fixed(t, answer)
+
+		_, err := f.PullRead(context.Background(), 6)
+
+		var hole *model.IncompletePull
+
+		require.ErrorAs(t, err, &hole, name)
+		assert.Equal(t, []string{name}, hole.Missing, name)
+		assert.Equal(t, "cannot read pull request 6: the read has no "+name, err.Error())
+		assert.Equal(t, 6, hole.Facts.Number, "the error holds the facts that the read did give")
+	}
+}
+
+func TestPullRead_FailsWhenTheReadFails(t *testing.T) {
+	t.Parallel()
+
+	f, _ := failing(t, "")
+
+	_, err := f.PullRead(context.Background(), 6)
+
+	require.ErrorContains(t, err, "cannot read pull request 6")
+}
+
 func TestNewExec_RunsTheGhBinaryOnPath(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho '[[{\"state\": \"APPROVED\"}]]'\n"

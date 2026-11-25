@@ -119,7 +119,7 @@ func TestLostJob_AProofEndsTheWaitAsAVoidGateWithTheHostLoss(t *testing.T) {
 	hosts.proofs = []model.LostProof{{Note: "the link is down"}, {Note: "the link is down"}, {Kind: model.LostStopped}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=job-1 report=the gate job was lost on gpu-b and the proof is stopped`)
 	assert.Equal(t, 3, hosts.proofReads(), "the third look proves")
@@ -148,7 +148,7 @@ func TestLostJob_AProvedLossOfAGateWithNoListGivesTheOneStepOfItsCommandAsUnknow
 	hosts.proofs = []model.LostProof{{Kind: model.LostGone}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown"] proof=gone host=gpu-b job=job-1`, "a gate with no list is still void, not red")
 }
@@ -194,6 +194,8 @@ func TestLostJob_TheLimitIsReadFromTheConfigAtTheTimeOfTheLook(t *testing.T) {
 
 // lostOnceGate loses the host job of its first gate and passes every later gate.
 type lostOnceGate struct {
+	cleanTree
+
 	submits atomic.Int32
 	runs    atomic.Int32
 }
@@ -202,7 +204,7 @@ func (*lostOnceGate) Key(context.Context, string, string, string, string, string
 	return GateKey{}, nil
 }
 
-func (g *lostOnceGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (g *lostOnceGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{ID: fmt.Sprintf("job-%d", g.submits.Add(1)), Head: gatedHead}, nil
 }
 
@@ -364,7 +366,7 @@ func TestLostJob_AProofReadThatFailsFailsTheGate(t *testing.T) {
 	h, hosts, _ := lostHarness(t, time.Hour)
 	hosts.proofErr = errors.New("the job id is not a unit of this host")
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, "read the proof that the lost job job-1 on host gpu-b can no longer run: the job id is not a unit of this host")
 	assert.Equal(t, 1, hosts.proofReads(), "a read that fails ends the wait")
@@ -582,7 +584,8 @@ func TestLostJob_EachAnswerReadsTheProofInTheNextNumberedStep(t *testing.T) {
 
 // goldenLostAskSteps are the steps of the item run of lostGateBody whose gate waited for the owner, and whose first answer came after the host came back.
 // The read of the proof after an answer and the record of the loss are sub-steps of the gate call, recorded before the gate call itself.
-var goldenLostAskSteps = []string{"host_up:start#1", "gate:tip", "exclusive", "wait:notify", "gate:check#1/lost-ask.0", "gate:check#1/host-loss", "scope:check#1", "gate:check#1"}
+// The gate call no longer records the step scope: its kind is retired in the round module at version 7.
+var goldenLostAskSteps = []string{"host_up:start#1", "gate:tip", "exclusive", "wait:notify", "gate:check#1/lost-ask.0", "gate:check#1/host-loss", "gate:check#1"}
 
 func TestLostJob_ContinueAfterTheHostCameBackReadsTheProofBeforeAnyRerun(t *testing.T) {
 	t.Parallel()

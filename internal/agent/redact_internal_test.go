@@ -17,6 +17,16 @@ func TestRedact_RemovesSecretsAndKeyShapedTokens(t *testing.T) {
 	assert.Equal(t, "plain", Redactor()("plain"))
 }
 
+func TestRedact_RemovesTheForgeTokenPrefixesWithNoSecretGiven(t *testing.T) {
+	t.Parallel()
+
+	for _, token := range []string{"ghp_abcdefgh12", "gho_abcdefgh12", "ghs_abcdefgh12", "github_pat_abcdefgh12_x", "glpat-abcdefgh12"} {
+		assert.Equal(t, "a [redacted] b", Redactor()("a "+token+" b"), token)
+	}
+
+	assert.Equal(t, "ghp_short", Redactor()("ghp_short"))
+}
+
 func TestRedact_KeepsAValueShorterThanTheFloor(t *testing.T) {
 	t.Parallel()
 
@@ -140,12 +150,12 @@ func TestLoginEnv_ALoginWithNoFolderLeavesTheConfigVariablesUnset(t *testing.T) 
 	assert.Equal(t, []string{"PATH=/bin"}, LoginEnv(base, p, ""), "the CLI then reads its default folder, and the variable of the owner never passes")
 }
 
-func TestLoginEnv_KeepsTheSocketOfTheSSHAgentAndNoGitOrTokenVariable(t *testing.T) {
+func TestLoginEnv_DropsTheSocketOfTheSSHAgentAndEveryGitOrTokenVariable(t *testing.T) {
 	t.Parallel()
 
 	base := map[string]string{"SSH_AUTH_SOCK": "/tmp/agent.sock", "GH_TOKEN": "x", "GITHUB_TOKEN": "x", "GIT_SSH_COMMAND": "ssh -i k"}
 
-	assert.Equal(t, []string{"SSH_AUTH_SOCK=/tmp/agent.sock"}, LoginEnv(base, Profile{}, ""))
+	assert.Empty(t, LoginEnv(base, Profile{}, ""))
 }
 
 type refusingWriter struct{}

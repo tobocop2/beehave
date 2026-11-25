@@ -6,10 +6,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 )
 
@@ -23,12 +25,13 @@ type turningPreflight struct {
 	over   map[string]any
 	gone   bool
 
-	mu    sync.Mutex
-	calls int
-	asked []preflight.Request
+	mu     sync.Mutex
+	calls  int
+	asked  []preflight.Request
+	pulled []string
 }
 
-func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+func (p *turningPreflight) Preflight(ctx context.Context, project, item string, req preflight.Request, author bool) (preflight.Result, error) {
 	p.mu.Lock()
 	p.calls++
 	p.asked = append(p.asked, req)
@@ -40,11 +43,32 @@ func (p *turningPreflight) Preflight(ctx context.Context, project, item string, 
 	p.mu.Unlock()
 
 	if turned && p.gone {
-		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req, hold)
+		return preflightOver{goneBranch{p.world}}.Preflight(ctx, project, item, req, author)
 	}
 
-	return preflightOver{p.world}.Preflight(ctx, project, item, req, hold)
+	return preflightOver{p.world}.Preflight(ctx, project, item, req, author)
 }
+
+func (p *turningPreflight) ReadPull(ctx context.Context, project, item string, author bool) (model.PullFacts, error) {
+	p.mu.Lock()
+	world := p.world
+	p.pulled = append(p.pulled, project+"/"+item)
+	p.mu.Unlock()
+
+	return preflightOver{world}.ReadPull(ctx, project, item, author)
+}
+
+func (p *turningPreflight) IssueAssignees(ctx context.Context, project, repo string, number int) ([]string, error) {
+	return preflightOver{p.world}.IssueAssignees(ctx, project, repo, number)
+}
+
+// IssueAuthor finds no issue.
+func (p *turningPreflight) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// SameItem keys items as their text.
+func (p *turningPreflight) SameItem(_, a, b string) (bool, error) { return a == b, nil }
 
 // stopLoopRig is the example rig with a review that asks for changes on every pass and a forge that turns at the call turnAt.
 func stopLoopRig(t *testing.T, turnAt int, over map[string]any, gone bool) (*agentRig, string, *turningPreflight) {
@@ -84,10 +108,30 @@ func TestExampleLoop_TheDraftThatTheRunOpenedIsNotAStopOfItsLoop(t *testing.T) {
 	assert.True(t, childOf(t, result).Approved, "the run reaches the first scoped review and the full review")
 	assert.NotEmpty(t, rig.models())
 	require.NotEmpty(t, spy.asked)
-	assert.Zero(t, spy.asked[0].OwnDraft, "the intake stops at every draft")
+	assert.Len(t, spy.pulled, len(spy.asked), "each check is followed by a read of the claims, and the loop accepts the draft that pr_open returned")
+}
 
-	for _, req := range spy.asked[1:] {
-		assert.Equal(t, testPull, req.OwnDraft, "the loop accepts the draft that pr_open returned")
+// stopLoopBound is the time that a run of a stop test has. A loop that does not stop runs on, so the bound turns that into a failure of the test and no hang.
+const stopLoopBound = 90 * time.Second
+
+// runPipelineWithin is runPipeline that fails the test when the run does not end within bound.
+func runPipelineWithin(t *testing.T, engine *Engine, file string, bound time.Duration) (ItemResult, error) {
+	t.Helper()
+
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := runPipeline(engine, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		return got.result, got.err
+	case <-time.After(bound):
+		t.Fatalf("the run did not end within %s: the loop did not stop at the stop", bound)
+
+		return ItemResult{}, nil
 	}
 }
 
@@ -103,7 +147,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 		gone   bool
 		models []string
 		step   string
-		stop   preflight.Stop
+		stop   codeOfStop
 		reason string
 	}{
 		"merged while the implementer works":                   {turnAt: 2, over: map[string]any{"state": "MERGED"}, models: []string{"opus", "sonnet"}, step: "preflight:before-scoped-review-1", stop: preflight.Merged, reason: "already MERGED"},
@@ -111,7 +155,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 		"closed while the first review runs":                   {turnAt: 3, over: map[string]any{"state": "CLOSED"}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Closed, reason: "CLOSED"},
 		"a push by the author while the review runs":           {turnAt: 3, over: map[string]any{shipHeadKey: moved}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.HeadMoved, reason: moved},
 		"the own draft and a moved head: the head is reported": {turnAt: 3, over: map[string]any{"isDraft": true, shipHeadKey: moved}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.HeadMoved, reason: moved},
-		"a hold on the own draft: the hold is reported":        {turnAt: 3, over: map[string]any{"isDraft": true, "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Held, reason: "hold"},
+		"a hold on the own draft: the hold is reported":        {turnAt: 3, over: map[string]any{"isDraft": true, "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "claim_stop:before-fix-1", stop: stopHeld, reason: "hold"},
 		"a merge and a hold: the merge is reported":            {turnAt: 3, over: map[string]any{"state": "MERGED", "labels": label}, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.Merged, reason: "already MERGED"},
 		"a gone branch and a moved head: the branch":           {turnAt: 3, over: map[string]any{shipHeadKey: moved}, gone: true, models: []string{"opus", "sonnet", "opus"}, step: "preflight:before-fix-1", stop: preflight.BranchGone, reason: "no longer exists"},
 	} {
@@ -120,7 +164,7 @@ func TestExampleLoop_AStopBeforeAnAgentOfTheReviewLoopStartsThatAgentNoMore(t *t
 
 			rig, file, _ := stopLoopRig(t, tc.turnAt, tc.over, tc.gone)
 
-			result, err := runPipeline(rig.h.engine(t), file)
+			result, err := runPipelineWithin(t, rig.h.engine(t), file, stopLoopBound)
 
 			require.NoError(t, err, "a stop is a result and not an error")
 			assert.Equal(t, tc.models, rig.models(), "no agent starts after the stop")
@@ -143,7 +187,7 @@ func TestReviewFix_ALoopWithNoGuardAsksTheForgeNothing(t *testing.T) {
 	rig.h.preflight = spy
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"opus", "opus"}, rig.models(), "the scoped review and the full review of the one candidate")
@@ -173,8 +217,9 @@ func TestExampleLoop_EveryDispatchOfTheLoopIsCheckedAgainstTheHeadOfTheWorktree(
 	for _, req := range spy.asked[1:] {
 		assert.Equal(t, rig.head, req.ExpectHead, "the head the gate ran on, read from the worktree")
 		assert.Equal(t, "integration", req.ExpectBase)
-		assert.Equal(t, []string{"owner"}, req.Own)
 	}
+
+	assert.Len(t, spy.pulled, 5, "each of the five checks is followed by a read of the claims")
 }
 
 func TestExampleLoop_AStopBeforeTheDesignStepStartsNoDesignAgent(t *testing.T) {
@@ -209,7 +254,7 @@ func TestExampleLoop_TheSettleAgentStartsAfterTheRulingWhileThePullRequestIsStil
 	require.NoError(t, outcome.err)
 	assert.Nil(t, outcome.result.Stopped, "the check before the settle agent accepts the draft that the run opened")
 	assert.Equal(t, append([]string{"opus", "sonnet"}, append(capModels(2), "sonnet")...), rig.models(), "the settle agent starts")
-	assert.Equal(t, testPull, spy.asked[len(spy.asked)-1].OwnDraft, "the last call is the check before the settle agent")
+	assert.Equal(t, "integration", spy.asked[len(spy.asked)-1].ExpectBase, "the last call is the check before the settle agent")
 }
 
 func TestExampleLoop_AStopDuringTheRulingOfTheOwnerStartsNoSettleAgent(t *testing.T) {

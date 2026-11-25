@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -89,6 +88,8 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 	}{
 		"skypilot": {skypilot.Name, skypilot.Block(), map[string]string{"cloud": "gcp", "region": "us-central1", "instance_type": "n2-standard-8"}, ", idle_minutes = 30"},
 		"ssh":      {ssh.Name, ssh.Block(), machine, ""},
+		// instance_sizes replaces instance_type: the host refuses both together.
+		"skypilot_sizes": {skypilot.Name, skypilot.Block(), map[string]string{"cloud": "gcp", "region": "us-central1", "instance_sizes": "3:n2-standard-4,n2-standard-16"}, ", idle_minutes = 30"},
 	} {
 		keys := everyKey(tc.declared, tc.values)
 
@@ -98,6 +99,10 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 		require.NotNil(t, project.Host.Block, name)
 
 		for _, arg := range tc.declared.Args {
+			if _, wanted := tc.values[arg.Key]; !wanted {
+				continue
+			}
+
 			if arg.Kind == config.WholeArg {
 				got, given := project.Host.Block.Whole(arg.Key)
 				assert.True(t, given, name+" "+arg.Key)
@@ -114,6 +119,33 @@ func TestHostBlocks_EachHostAdapterBlockRoundTripsEveryKeyItDeclaresAndTheTableB
 		_, err := newAdapters(nil, nil, nil).host(project.Project)
 
 		require.NoError(t, err, name+": the table builds the host from the block the loader held")
+	}
+}
+
+func TestHostBlocks_ABadSizeTableIsRefusedWhenTheTableBuildsTheHost(t *testing.T) {
+	t.Parallel()
+
+	for name, keys := range map[string]string{
+		"a_last_row_with_a_limit":      `instance_sizes = "3:a,9:b"`,
+		"a_table_and_an_instance_type": `instance_type = "a", instance_sizes = "3:a,b"`,
+	} {
+		project, problems := loadHostProject(t, hostProjectTail+fmt.Sprintf(`, host = host(provider = "skypilot", disk_floor_gb = 50, idle_minutes = 30, skypilot = skypilot(%s))`, keys))
+		require.Empty(t, problems, name+": the loader holds the text and the host judges it")
+
+		err := newAdapters(nil, nil, nil).check(t.Context(), project.Project)
+
+		require.ErrorContains(t, err, "host.skypilot.instance_", name+": the check that `beehave check config` runs for each project")
+	}
+}
+
+func TestHostBlocks_AProviderThatCannotSizeAHostRefusesTheSizeTableAtLoad(t *testing.T) {
+	t.Parallel()
+
+	for _, provider := range []string{"ssh", "slurm"} {
+		_, problems := loadHostProject(t, hostProjectTail+fmt.Sprintf(`, host = host(provider = %q, disk_floor_gb = 50, %s = %s(address = "box.example", instance_sizes = "3:a,b"))`, provider, provider, provider))
+
+		require.NotEmpty(t, problems, provider)
+		assert.Contains(t, fmt.Sprint(problems), "instance_sizes", provider)
 	}
 }
 
@@ -210,42 +242,6 @@ func TestHostBlocks_AProjectWithABeadsBlockAndAHostBlockHoldsAndReadsBoth(t *tes
 
 	require.NoError(t, err)
 	assert.NotNil(t, tracker)
-}
-
-// The remedy binary may not import the host packages, so it repeats their blocks. Its test reads the same files against its copy.
-// Here the files are read against the blocks of the real adapters, so a key that one side adds or drops fails one of the two tests.
-func TestHostBlocks_TheHostFilesOfTheRemedyBinaryHoldTheKeysOfEachRealBlock(t *testing.T) {
-	t.Parallel()
-
-	files := filepath.Join("..", "..", "examples", "remediation", "tools", "cmd", "remedy", "testdata", "hosts")
-
-	cfg, problems := config.LoadFolder(files, nil, newAdapters(beadstest.NewBd(t), nil, nil).registry())
-
-	require.Empty(t, problems)
-	require.Len(t, cfg.Projects, 3)
-
-	for name, project := range cfg.Projects {
-		declared := newAdapters(nil, nil, nil).registry().Hosts[project.Host.Provider].Block
-
-		var want []string
-
-		for _, arg := range declared.Args {
-			want = append(want, arg.Key)
-		}
-
-		slices.Sort(want)
-
-		var got []string
-
-		for _, part := range strings.Fields(strings.Trim(project.Host.Block.String(), "{}")) {
-			key, _, _ := strings.Cut(part, "=")
-			got = append(got, key)
-		}
-
-		slices.Sort(got)
-
-		assert.Equal(t, want, got, name)
-	}
 }
 
 func TestHostBlocks_TheRegistryDeclaresOneBlockForEachHostAdapter(t *testing.T) {

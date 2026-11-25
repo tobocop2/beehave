@@ -1,10 +1,12 @@
 package model_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -68,10 +70,58 @@ func TestOrNull(t *testing.T) {
 	assert.Equal(t, "x", model.OrNull("x"))
 }
 
+func TestPullRequest_FactsReadsStateHeadBaseAuthorAndAssigneesAndLeavesAnAbsentFieldEmpty(t *testing.T) {
+	t.Parallel()
+
+	state, head, base := "OPEN", "abc", "main"
+	view := model.PullRequest{Number: 4, State: &state, HeadRefOid: &head, BaseRefName: &base, Author: model.Account{Login: "dev"}, Assignees: []model.Account{{Login: "a"}, {Login: "b"}}}
+
+	assert.Equal(t, model.PullFacts{Number: 4, State: "OPEN", Head: "abc", Base: "main", Author: "dev", Assignees: []string{"a", "b"}}, view.Facts())
+	assert.Equal(t, model.PullFacts{}, model.PullRequest{}.Facts())
+}
+
+func TestPullFacts_CheckNamesEveryMissingFieldAndKeepsTheFactsItHas(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, model.PullFacts{State: "OPEN", Head: "abc", Base: "main"}.Check())
+
+	err := model.PullFacts{Number: 4, Head: "abc"}.Check()
+
+	var hole *model.IncompletePull
+
+	require.ErrorAs(t, err, &hole)
+	assert.Equal(t, []string{"state", "base"}, hole.Missing)
+	assert.Equal(t, model.PullFacts{Number: 4, Head: "abc"}, hole.Facts)
+	assert.Equal(t, "cannot read pull request 4: the read has no state, base", err.Error())
+}
+
 func TestIsRepoPart(t *testing.T) {
 	t.Parallel()
 
 	for text, want := range map[string]bool{"": false, ".": false, "..": false, "...": true, ".a": true, "a-b_c.1": true, "A9": true, "a b": false, "a/b": false, "é": false, "a;": false} {
 		assert.Equal(t, want, model.IsRepoPart(text), text)
 	}
+}
+
+func TestPullRequestOpen_ReadsTheFieldsOfTheList(t *testing.T) {
+	t.Parallel()
+
+	var full model.PullRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"number":7,"title":"t","isDraft":true,"baseRefName":"main","headRefName":"21","reviewDecision":"APPROVED","author":{"login":"ann"},"labels":[{"name":"hold"},{"name":"bug"}]}`), &full))
+
+	assert.Equal(t, model.OpenPull{Number: 7, Branch: "21", Base: "main", Author: "ann", Draft: true, Title: "t", Labels: []string{"hold", "bug"}, ReviewDecision: "APPROVED"}, full.Open())
+	assert.Equal(t, model.OpenPull{}, model.PullRequest{}.Open(), "a list that lacks the fields gives empty values")
+}
+
+func TestOpenPullCheck_NamesEachMissingField(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, model.OpenPull{Number: 1, Branch: "21", Base: "main"}.Check())
+
+	err := model.OpenPull{Number: 0}.Check()
+
+	var incomplete *model.IncompletePull
+
+	require.ErrorAs(t, err, &incomplete)
+	assert.Equal(t, []string{"number", "branch", "base"}, incomplete.Missing)
 }

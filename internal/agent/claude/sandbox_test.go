@@ -98,7 +98,12 @@ func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndTheHomeFolderAndNothingEl
 		"export GIT_CONFIG_GLOBAL=/dev/null\n" +
 		"export GIT_CONFIG_NOSYSTEM=1\n" +
 		"export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n" +
-		"mkdir -p \"$HOME\"\n"}, launch.Files, "the run folder holds only the env file, and the env file holds no other variable")
+		"mkdir -p \"$HOME\"\n" +
+		"export XDG_CONFIG_HOME=\"$HOME\"/.config\n" +
+		"mkdir -p \"$HOME\"/.config/go/telemetry\n" +
+		"printf %s 'off\n' > \"$HOME\"/.config/go/telemetry/mode\n" +
+		"mkdir -p \"$HOME\"/'Library/Application Support/go/telemetry'\n" +
+		"printf %s 'off\n' > \"$HOME\"/'Library/Application Support/go/telemetry/mode'\n"}, launch.Files, "the run folder holds only the env file, and the env file holds no other variable")
 }
 
 // shellHome sources the env file of a run in a POSIX shell whose temporary folder is tmp and returns the HOME that the shell holds afterwards.
@@ -130,7 +135,12 @@ func TestSandbox_TheShellGetsANewEmptyHomeFolderOfItsOwnNotTheHomeOfTheOwner(t *
 	for _, home := range []string{first, second} {
 		entries, err := os.ReadDir(home)
 		require.NoError(t, err, "the env file makes the folder before the shell runs a command")
-		assert.Empty(t, entries, "the folder starts empty")
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+
+		assert.Equal(t, []string{".config", "Library"}, names, "the folder starts with the config folders of the telemetry mode and nothing else")
 	}
 }
 

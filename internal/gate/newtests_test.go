@@ -76,7 +76,10 @@ func runCandidateOf(t *testing.T, project model.Project, root, repo, head string
 		require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), fmt.Sprintf("#!/bin/sh\nexit %d\n", scan)))
 	}
 
-	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main")
+	baseTip, err := exec.CommandContext(t.Context(), "git", "-C", repo, "rev-parse", "main").Output() //nolint:gosec // test helper
+	require.NoError(t, err)
+
+	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 
@@ -144,7 +147,7 @@ func TestBeforeReview_TheJobExitsWithTheExitOfTheHeadGate(t *testing.T) {
 	t.Parallel()
 
 	project := model.Project{Name: "demo", Gate: "false", TestReport: "r/*.xml"}
-	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehave-gate-demo-abc", "main")
+	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehave-gate-demo-abc", "main", "0123456789abcdef0123456789abcdef01234567")
 
 	require.Contains(t, command, `[ "$headrc" -eq 0 ]`)
 	require.Contains(t, command, stepMarker+" "+stepHeadGate+" rc=$headrc")
@@ -201,6 +204,35 @@ func TestBeforeReview_ATestNameWithATabIsRefusedWithAClearError(t *testing.T) {
 	require.False(t, checks.Complete, "a name that cannot be compared gives no end marker, so the check is cut")
 	require.Contains(t, checks.Problem, "holds a tab or a newline")
 	require.Empty(t, checks.NewTests)
+}
+
+func TestBeforeReview_AHeadWithNoMergeBaseWithTheBaseCommitNamesTheBaseBranchAndTheCommit(t *testing.T) {
+	t.Parallel()
+
+	repo, head := shellRepo(t, "pass a TestOld\n", "pass a TestOld\npass a TestNew\n")
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	absent := strings.Repeat("3", 40)
+
+	require.NoError(t, os.MkdirAll(bin, 0o750))
+	require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), "#!/bin/sh\nexit 0\n"))
+
+	project := model.Project{Name: "demo", Gate: "sh mkreport.sh", TestReport: "reports/*.xml", TestCommand: "sh mkreport.sh"}
+	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", absent)
+	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
+	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
+
+	out, err := job.CombinedOutput()
+	if err != nil {
+		var exit *exec.ExitError
+
+		require.ErrorAs(t, err, &exit, string(out))
+	}
+
+	checks := ReadChecks(string(out))
+
+	require.False(t, checks.Complete)
+	require.Contains(t, checks.Problem, "the head has no merge base with the commit "+absent+" of the base branch main")
 }
 
 func TestBeforeReview_ABaseReportWithATabNameIsNotCachedSoNoLaterRunReadsAPartialList(t *testing.T) {

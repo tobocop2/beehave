@@ -41,10 +41,13 @@ const (
 	defaultPoll    = 10 * time.Second
 	stopTimeout    = 30 // seconds that systemd waits for a unit after SIGTERM before SIGKILL
 	stopNotLoaded  = 5  // the exit status of systemctl stop for a unit that is not loaded
+	loadedState    = "loaded"
 	logTailBytes   = 16384
 	stateFolder    = ".beehave"
 	drainMarker    = "drain"
 	canceledSuffix = ".canceled"
+	waitingSuffix  = ".waiting"
+	slotsFolder    = "slots"
 	logSuffix      = ".log"
 )
 
@@ -92,11 +95,11 @@ func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option
 		return nil, err
 	}
 
-	h := &Host{config: config, values: values, link: l}
+	h := &Host{config: config, values: values, link: l.WithCredentials(config.Credentials)}
 	set := h.settingsOf(opts)
 
 	h.nonce, h.bank = set.nonce, set.bank
-	h.engine = jobwait.New(scheduler{h}, h.release, set.clock, set.bank, time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
+	h.engine = jobwait.New(scheduler{h}, h.release, set.clock, jobwait.ScopedBank(set.bank, h.bankFolder), time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
 
 	return h, nil
 }
@@ -148,26 +151,43 @@ func (h *Host) run(ctx context.Context, name string, words ...string) (string, e
 	return result.Stdout, nil
 }
 
+// CheckCredentials refuses a host declared credentials = "none" that ssh would give a credential of the owner. It connects to nothing.
+func (h *Host) CheckCredentials(ctx context.Context) error { return h.link.CheckCredentials(ctx) }
+
 // Up checks that the machine answers, that linger is on for the login user, that the user manager runs, that systemd is new enough,
 // and that the work root exists with the state folder in it. beehave never turns linger on: it is a setting of the owner of the machine.
+// A host declared credentials = "none" is checked first, before any call reaches it.
 func (h *Host) Up(ctx context.Context) error {
+	if err := h.CheckCredentials(ctx); err != nil {
+		return err
+	}
+
 	user, err := h.run(ctx, "id", "id", "-un")
 	if err != nil {
 		return fmt.Errorf("cannot reach the host. Check that `ssh %s` works from this computer: %w", h.target(), err)
 	}
 
 	user = model.FirstLine(user)
-	if err = h.checkLinger(ctx, user); err != nil {
-		return err
-	}
-
-	if err = h.checkSystemd(ctx); err != nil {
+	if err = h.checkTools(ctx, user); err != nil {
 		return err
 	}
 
 	_, err = h.stateDir(ctx)
 
 	return err
+}
+
+// checkTools checks what the host needs to run a job: linger for the user, systemd and flock.
+func (h *Host) checkTools(ctx context.Context, user string) error {
+	if err := h.checkLinger(ctx, user); err != nil {
+		return err
+	}
+
+	if err := h.checkSystemd(ctx); err != nil {
+		return err
+	}
+
+	return h.link.CheckFlock(ctx)
 }
 
 func (h *Host) target() string { return h.link.Target() }
@@ -197,7 +217,7 @@ func (h *Host) checkSystemd(ctx context.Context) error {
 	}
 
 	// A user manager with a failed unit reports degraded and exits non-zero. It still runs jobs.
-	if state := strings.TrimSpace(result.Stdout); state != "running" && state != "degraded" {
+	if state := strings.TrimSpace(result.Stdout); state != systemdRunning && state != "degraded" {
 		return fmt.Errorf("%w: `systemctl --user is-system-running` gave %q. Start the user manager of the login user", ErrSystemd, model.FirstLine(result.Stdout+result.Stderr))
 	}
 
@@ -316,6 +336,11 @@ func (h *Host) bankWork(ctx context.Context) error {
 	return host.BankAll(ctx, h.link.Runner("git"), h.link.Runner("find"), root, h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
+// bankFolder banks the work in one folder of the machine, the folder of a job. A folder that is gone holds no work.
+func (h *Host) bankFolder(ctx context.Context, folder string) error {
+	return host.BankFolder(ctx, h.link.Runner("git"), h.link.Runner("find"), h.link.Runner("test"), folder, h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
+}
+
 // WorkRoot is the absolute path where the repositories live: `host.ssh.work_root`, or the login folder of the machine.
 // A folder that starts with ~/ is read against the login folder. The folder must exist. The path is read once and is the same in every call.
 func (h *Host) WorkRoot(ctx context.Context) (string, error) {
@@ -384,8 +409,8 @@ func (h *Host) existing(ctx context.Context, root string) (string, error) {
 // The command travels as base64 and the unit runs it with eval, because systemd expands a dollar sign in a command line before the shell sees it.
 // --remain-after-exit keeps the finished unit loaded, so its result stays readable. A unit that is not kept reads as gone, like a lost one.
 func (h *Host) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error) {
-	if spec.Name == "" || spec.Command == "" {
-		return "", errJobFields
+	if err := checkSpec(spec); err != nil {
+		return "", err
 	}
 
 	root, err := h.WorkRoot(ctx)
@@ -402,7 +427,20 @@ func (h *Host) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, err
 		return "", err
 	}
 
-	return h.start(ctx, root, dir, spec.Command)
+	return h.start(ctx, root, dir, spec)
+}
+
+// checkSpec refuses a job with no name or no command, a job with a slot that is not valid, and a job with a folder that is not an absolute path.
+func checkSpec(spec model.JobSpec) error {
+	if spec.Name == "" || spec.Command == "" {
+		return errJobFields
+	}
+
+	if err := spec.Slot.Check(); err != nil {
+		return err
+	}
+
+	return jobwait.CheckFolder(spec.Folder)
 }
 
 // refuseDraining returns ErrDraining when Drain marked the host.
@@ -420,19 +458,52 @@ func (h *Host) refuseDraining(ctx context.Context, root string) error {
 }
 
 // start runs the unit. dir is the state folder under root.
-func (h *Host) start(ctx context.Context, root, dir, command string) (model.JobID, error) {
-	unit := "beehave-" + h.nonce()
-	encoded := base64.StdEncoding.EncodeToString([]byte(command))
+func (h *Host) start(ctx context.Context, root, dir string, spec model.JobSpec) (model.JobID, error) {
+	unit, held, err := h.unitOf(ctx, spec.Key)
+	if err == nil && !held {
+		err = h.runUnit(ctx, root, dir, unit, spec)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return model.JobID(jobwait.Job{ID: unit, Folder: spec.Folder}.String()), nil
+}
+
+// runUnit starts the transient unit that runs the command of spec.
+func (h *Host) runUnit(ctx context.Context, root, dir, unit string, spec model.JobSpec) error {
+	script := host.SlotWrap(spec.Slot, model.ShellQuote(path.Join(dir, slotsFolder, spec.Slot.Class)), model.ShellQuote(path.Join(dir, unit+waitingSuffix)), spec.Command)
+	encoded := base64.StdEncoding.EncodeToString([]byte(script))
 
 	_, err := h.run(ctx, "systemd-run", "systemd-run", "--user", "--quiet", "--unit="+unit, "--remain-after-exit",
 		"-p", "RuntimeMaxSec="+strconv.FormatInt(h.config.RunLimitSeconds(), 10), "-p", "TimeoutStopSec="+strconv.Itoa(stopTimeout),
 		"-p", "WorkingDirectory="+root, "-p", "StandardOutput=append:"+path.Join(dir, unit+logSuffix), "-p", "StandardError=inherit",
 		"--", "sh", "-c", `eval "$(printf %s `+encoded+` | base64 -d)"`)
-	if err != nil {
-		return "", err
+
+	return err
+}
+
+// unitOf returns the unit name of a job and whether systemd already holds that unit. A job with no key gets a new name from the nonce and is never held.
+func (h *Host) unitOf(ctx context.Context, key string) (string, bool, error) {
+	if key == "" {
+		return "beehave-" + h.nonce(), false, nil
 	}
 
-	return model.JobID(unit), nil
+	unit := "beehave-" + jobwait.KeyDigest(key)
+	held, err := h.holds(ctx, unit)
+
+	return unit, held, err
+}
+
+// holds reports whether systemd holds the unit: a job that an earlier Submit of the same key started, and that no release has removed.
+func (h *Host) holds(ctx context.Context, unit string) (bool, error) {
+	out, err := h.run(ctx, "systemctl show", "systemctl", "--user", "show", "-p", "LoadState", "--value", unit)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) == loadedState, nil
 }
 
 // Wait polls the unit until the job has a final state. See jobwait for the states, the lost, stale and died limits, and the bank.

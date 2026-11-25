@@ -52,6 +52,14 @@ func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigHasALineThatLoadsASkill
 	require.Equal(t, map[string]bool{"a": true, "o": false}, deps.Facts("p").RunnerSkillLoads, "the Claude runner has the line, the OpenCode runner has none, and a runner with no adapter is left out")
 }
 
+func TestDepsOn_TheEngineWritesTheForgeForARoundThroughTheRoundWriterOfTheBuild(t *testing.T) {
+	t.Parallel()
+
+	deps := depsOn(config.Config{}, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
+
+	require.IsType(t, roundWrites{}, deps.Rounds, "the engine writes the forge for a round as the writer role, so the build sets the writer of the rounds")
+}
+
 func TestDepsOn_TheEngineGetsTheSkillLineOfTheAgentOfEachRunner(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +90,7 @@ func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing
 	file := t.TempDir() + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    gate(name = \"check\", run = [\"true\"])\n"), 0o600))
 
-	_, err = engine.RunFile("12", "zzz", file)
+	_, err = engine.RunFile("12", "zzz", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, errUnknownProject.Error())
 }
@@ -150,7 +158,7 @@ func TestFlowFactory_TheEngineOfTheRunCommandPicksTheRunnerFromTheUsageTheClaude
 	file := dir + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    agent(model = \"m\", prompt = \"prompts/a.md\", name = \"a\")\n"), 0o600))
 
-	_, err = engine.RunFile("12", "p", file)
+	_, err = engine.RunFile("12", "p", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }
@@ -162,4 +170,13 @@ func TestRegistry_TheAgentEntryHoldsWhetherTheCLIHasALineThatLoadsASkill(t *test
 
 	require.True(t, agents[claude.Name].LoadsSkills, "Claude Code loads a skill from the first line of the prompt")
 	require.False(t, agents[opencode.Name].LoadsSkills, "OpenCode has no such line")
+}
+
+func TestRegistry_TheAgentEntryHoldsTheUsageWindowsOfTheProfile(t *testing.T) {
+	t.Parallel()
+
+	agents := newAdapters(nil, nil, nil).registry().Agents
+
+	require.Equal(t, []model.WindowSpec{{Name: "five_hour", DefaultMax: 90}, {Name: "seven_day", DefaultMax: 95}}, agents[claude.Name].Windows)
+	require.Empty(t, agents[opencode.Name].Windows, "OpenCode cannot report usage")
 }

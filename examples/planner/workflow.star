@@ -16,7 +16,7 @@ DEADLINE = env("DEADLINE", default = "1h")
 def worker(item):
     """One worker run. It publishes a progress value before and after its agent step."""
     publish(KEY, {"stage": "started"}, name = "started")
-    work = agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, inputs = {"item": item})
+    work = agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, sandbox = sandbox(), inputs = {"item": item})
     publish(KEY, {"stage": "done", "cost": work.cost_usd}, name = "done")
     return {"stage": "done"}
 
@@ -39,7 +39,7 @@ def main(item):
         command(name = "pause", run = ["sleep", PAUSE])
         seen = progress(runs, KEY, name = "peek")
 
-    command(name = "peeked", run = ["echo", "while the workers run:", stages(seen)])
+    command(name = "peeked", run = ["echo", "while the workers run:", stages(seen)], sandbox = sandbox())
 
     # Part 2: each turn the planner waits for the first of three events: a worker ends, a user sends the message "stall" with the item id of a worker, or
     # CHECK_IN passes with no event. A stall message stalls that worker. At the end of CHECK_IN every worker that is still open is stalled.
@@ -67,7 +67,7 @@ def main(item):
             open_runs = []
 
     # Part 3: the planner gives the task of each stalled worker to a new worker.
-    again = spawn(items = [run.item for run in stalled], entry = "worker", name = "reassign")
+    again = spawn(items = [run.item for run in stalled], entry = "worker", on_open = "replace", name = "reassign")
 
     # One deadline bounds the new workers. At the deadline the planner cancels each one that is still open.
     late = gather(again, timeout = DEADLINE, on_timeout = "cancel", name = "deadline").results

@@ -18,10 +18,6 @@ func (a *attempt) settings() *refusal {
 		}
 	}
 
-	if a.req.IntegrationPR != 0 && a.req.Dir == "" {
-		return refuse("REFUSE: the state folder is not set, so the row of the merge cannot be locked.")
-	}
-
 	return nil
 }
 
@@ -41,7 +37,7 @@ func (a *attempt) state() *refusal {
 		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}
 
-	state, base, head, mergeable := model.Deref(view.State), model.Deref(view.BaseRefName), model.Deref(view.HeadRefOid), model.Deref(view.Mergeable)
+	state, base, head, mergeable := a.facts.State, a.facts.Base, a.facts.Head, model.Deref(view.Mergeable)
 	a.say("before: " + tsvLine(state, strconv.FormatBool(*view.IsDraft), base, head, mergeable))
 
 	return a.readRefusal(state, base, head, mergeable)

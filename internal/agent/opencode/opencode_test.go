@@ -49,7 +49,16 @@ func TestProfile_HasNoNativeCapsAndStreamsItsCost(t *testing.T) {
 	assert.True(t, p.StreamsCost)
 }
 
-func TestProfile_HasNoSandboxSoASandboxedStepIsRefused(t *testing.T) {
+func TestProfile_DeclaresNoUsageWindowBecauseTheUsageIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, opencode.New().Profile().Windows)
+
+	_, known := opencode.New().ReadUsage(t.Context(), model.Runner{Name: "o", Agent: opencode.Name}).Usage()
+	assert.False(t, known)
+}
+
+func TestAgent_AnAdapterWithNoSandboxEndsItsStepNotStartedInASandboxedRun(t *testing.T) {
 	t.Parallel()
 
 	assert.False(t, opencode.New().Profile().Sandbox)
@@ -62,7 +71,8 @@ func TestProfile_HasNoSandboxSoASandboxedStepIsRefused(t *testing.T) {
 	})
 
 	assert.Equal(t, agent.OutcomeNotStarted, result.Outcome)
-	assert.Contains(t, result.Note, "sandbox = None")
+	assert.Contains(t, result.Note, `sandbox = "off"`)
+	assert.NotContains(t, result.Note, "sandbox = None")
 }
 
 func TestProfile_NoEditEnvDeniesTheEditPermission(t *testing.T) {
@@ -142,6 +152,16 @@ func TestRun_AResumeNamesTheSessionInTheArguments(t *testing.T) {
 
 	assert.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
 	assert.Contains(t, result.Stderr, "args=run --format json --model p/m --session ses_1")
+}
+
+func TestRun_AResumeOn2_2_5RunsWithAPrivateServerAndNamesTheSession(t *testing.T) {
+	t.Parallel()
+
+	script := "#!/bin/sh\n" + answersVersion("2.2.5") + "echo \"args=$*\" >&2\ncat > /dev/null\ncat '" + absolute(t, "testdata/ok-2x.jsonl") + "'\n"
+	result := guardedRun(t, script, func(s *agent.Spec) { s.Guard = ""; s.Resume = "ses_1"; s.Model = "p/m" })
+
+	assert.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
+	assert.Contains(t, result.Stderr, "args=run --format json --standalone --model p/m --session ses_1\n")
 }
 
 func TestRun_ARunOnVersionsFrom2_0_0OnUsesAPrivateServerAndOlderRunsDoNot(t *testing.T) {
@@ -272,13 +292,6 @@ func TestRun_ARunNeedsAnOpenCodeVersionFrom1_19_5UpToBut3_0_0OnEveryPath(t *test
 
 				result := guardedRun(t, guarded(absolute(t, "testdata/ok.jsonl"), tc.version, true), func(s *agent.Spec) { s.Guard = guard })
 
-				if tc.starts && guard != "" && strings.HasPrefix(tc.version, "2.") {
-					assert.Equal(t, agent.OutcomeNotStarted, result.Outcome)
-					assert.Contains(t, result.Note, "the guard of forbid_commands does not work from version 2.0.0 on")
-
-					return
-				}
-
 				if tc.starts {
 					assert.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
 
@@ -334,7 +347,7 @@ func TestRun_ARunThatSetsNoTimeoutEndsAtTheProfileLimitAndNamesTheLikelyCause(t 
 
 	var limit time.Duration
 
-	result := agent.Runner{Version: func(context.Context, string, []string) (string, error) { return "1.19.5", nil }, AfterFunc: func(d time.Duration, fire func()) agent.Timer {
+	result := agent.Runner{Version: func(context.Context, []string, []string) (string, error) { return "1.19.5", nil }, AfterFunc: func(d time.Duration, fire func()) agent.Timer {
 		limit = d
 
 		return time.AfterFunc(20*time.Millisecond, fire)
@@ -355,7 +368,7 @@ func TestProfile_PinsTheRecordedVersionAndRefusesWhatItCannotProve(t *testing.T)
 
 	assert.Equal(t, "1.19.5", p.SupportedFrom)
 	assert.Equal(t, "3.0.0", p.SupportedBefore)
-	assert.Equal(t, "2.0.0", p.GuardBefore)
+	assert.Empty(t, p.GuardBefore, "the guard plugin refuses a forbidden command on 1.x and on 2.x, so no version is closed to a guarded step")
 	assert.True(t, p.GuardPosixOnly)
 	assert.Equal(t, time.Hour, p.DefaultTimeout)
 }

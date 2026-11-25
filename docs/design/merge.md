@@ -49,8 +49,7 @@ The `github` backend reads a log with `gh run view --job <number> --log-failed`.
 - `NeedsCommit` is true for a blocking finding. It is also true for any open finding when the `Policy` sets `NoFollowUps`.
 - `Standing.Compare` lets a review of an earlier commit stand for a head that holds the same tree.
 
-The round cut and the merge audit are not part of the engine. They live in `examples/remediation/tools/` and run through the `remedy` binary. See [Remediation tools](#remediation-tools).
-
+The round cut is the engine step `round_cut`.
 ### Own work merges only after another step approved it
 
 [The trust boundary](trust.md#the-merge-checks-no-flag) describes the planned change: the forge requires the statuses `beehave/review` and `beehave/gate` at the head, and the `Approved` flag is deleted.
@@ -81,26 +80,37 @@ The commit list names authors only. So guard 0 also reads the committer of each 
 
 The workflow scope guard applies the same rule to changed files. A file list that is absent, or shorter than the forge's count, is a refusal.
 
+The workflow scope guard acts only on a pull request that changes `.github/workflows/`. In a project with `credentials`, it holds the change for the owner with code 3 and reads nothing: the writer token cannot change CI (see [trust](trust.md#the-ci-lock)). In a project with no `credentials`, it asks the forge whether the token can change CI. `yes` passes. `no` is code 3, with the command that adds the scope. `unknown`, and a read that fails, refuse with code 2.
+
 ### Order of the guards
 
 After guard 0, the guards refuse in this order:
 
 1. the repository and the base branch of the merge request,
 2. a gated commit id that is not 40 characters,
-3. the state,
-4. the base,
-5. the head,
-6. the mergeable flag,
-7. the hold label,
-8. the closing references,
-9. children,
-10. checks,
-11. the workflow scope,
-12. change requests,
-13. open threads,
-14. the forbidden text of `forbid_text`,
-15. commits with no linked account,
-16. the draft rule.
+3. the protection of the base,
+4. the state,
+5. the base,
+6. the head,
+7. the mergeable flag,
+8. the hold label,
+9. the closing references,
+10. children,
+11. checks,
+12. the workflow scope,
+13. change requests,
+14. open threads,
+15. the forbidden text of `forbid_text`,
+16. commits with no linked account,
+17. the draft rule.
+
+#### Protection of the base
+
+The protection guard reads the rules of the base from the forge, before any write, with the optional `Statuses` side of the forge.
+
+- A project with a `writer` entry in `credentials` needs a base whose protection has a pull request rule and requires `beehave/gate` and `beehave/review`. The refusal names the base, what is missing, and the ruleset to add (see [trust.md](trust.md#the-ruleset)). The forge enforces the rules. The merge only refuses to merge into a base that would not.
+- A forge that cannot read the protection refuses such a project, and the refusal names the forge. A read that fails is a transient refusal.
+- A project with no `credentials` key keeps its guards. If the base requires `beehave/gate` or `beehave/review`, the merge refuses and says that the project needs credentials, because nothing posts those statuses. A forge that cannot read the protection, or a read that fails, does not refuse such a project: the forge still enforces its own rules.
 
 #### Reads
 
@@ -111,16 +121,15 @@ The first read asks for every field in one call. The tip of the base is read at 
 
 #### Closing references
 
-The closing-references guard runs only for an item of the GitHub tracker whose id is a plain positive number, the number of its issue. For any other item, the merge prints one line that says no audit ran. A project that the config lacks is an error before the request exists.
+The closing-references guard runs for every member. Each member of `members` carries a required `closes` list of issue numbers, and the guard compares it with the issues that the forge lists. A member that closes nothing has `closes = []`. A member with no `closes` fails at the check. A project that the config lacks is an error before the request exists.
 
-The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the issue of the item, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
+The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the `closes` list, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
 
-The guard skips in these cases:
+GitHub lists no issues for a pull request into a branch other than the default branch. For such a pull request, the forge reads the closing keywords of the body and of the commit messages instead. The keywords are `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` and `resolved`, in any case, with an optional colon, and a number written as `#N`, `owner/repo#N` or an issue URL. A keyword for another repository is read as the full reference `owner/repo#N`, and the guard of the item does not compare it. The scope check holds it (see Scope check). A pull request with more than 100 commits is refused, because the later messages are unknown.
 
-- GitHub lists no issues for a pull request into a branch other than the default branch. The guard skips there and prints a line that names the base.
-- A member of a batch always skips, because its base is the integration branch. The read after `merge` covers it.
+A member of a batch is audited like any other member. The read after `merge` covers the issues of the batch as a whole.
 
-The audit does not see a closing keyword that is only in a commit message, because the field may not list it. It does not report a close of an issue in another repository.
+The audit does not report a close of an issue in another repository. The scope check asks the owner about it, and a commit message with such a keyword is refused unless the owner kept it.
 
 #### Children
 
@@ -200,66 +209,72 @@ A refusal on a replay means that a person must look. It does not mean that the p
 - a running check,
 - a push to the base by someone else.
 
-`BaseTipTree` is read by the batch merge, not by `Run`.
+`BaseTipTree` is read by the union merge, not by `Run`.
 
-A replay with an integration pull request writes the row `- #N merged at SHA` once, because `Run` skips the append when that exact row is already in the body.
+### The author check of a body
 
-### Edit of the shared body
-
-`EditBody` reads a body, applies an edit and writes the result. For the whole read and write, it holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder, so two writers never lose a row. The lock is released on every exit, a failed write included.
-
-The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the merge row, the closing line of `pr_open`) can write a body without the check.
+The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the body of the integration pull request of a round) can write a body without the check.
 
 - The author must be the login of the token that the forge command line uses.
 - A body of another author is never edited.
 - A body whose author login or token login cannot be read is never edited.
 
-A merge with an integration pull request records its row through `EditBody`. For a refused body, the step says a REFUSE line that names the author, and the owner adds the row. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
-
-The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehave merges third-party work that is reviewed.
+A merge writes no row into the body of an integration pull request. The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehave merges third-party work that is reviewed.
 
 ## Batch
 
-`batch` lands a set of reviewed pull requests with one gate run for the whole set. It is a layer 2 package. The `merge` builtin of `flow` wires it.
+The batch lands a set of reviewed pull requests with one gate run for the whole set. It is the library function `batch_merge` of `lib/batch.star`, which a workflow loads with `load("@beehave//batch.star", "batch_merge")`. The library is policy: the fold, the split, the retry of held members and the audit. The engine gives it the builtins that touch the world: `base_tip`, `command` for git, `gate`, the union `merge`, `landing_proof`, `issue_state` and `pr_closing`. A project that wants another policy copies the file and changes it.
 
-### Interfaces and result
+### The union merge
 
-The gate, the git calls, the forge and the step recorder are the interfaces `Gate`, `Git`, `Base` and `Recorder`.
-
-`Run` takes the members, each an item and a head commit, and sorts them by item as byte strings. It returns a `Result` with:
-
-- the merged items,
-- the rejected and deferred members, each with a reason,
-- the last base tip,
-- the number of gate runs.
+`merge(members, base, repo, gate, hold, own, forbid_text, name)` lands one gated union. The step `merge:<name>.plan` reads the base tip and folds the member heads onto it in order with git, without a working copy. A conflict, or a fold whose last tree is not the tree of the gate, merges nothing and returns `moved`. Each member then merges through `Run` of this package, pinned to its head and to the tree of its prefix. The engine trusts only a gate that this run recorded and that passed. `hand_off` is its own builtin and lands nothing.
 
 ### Git version
 
-`batch` needs git 2.38 or newer on the gate host, for `git merge-tree --write-tree`. `CheckGit` reads `git --version` once, before any step, and fails with "git 2.38 or newer is needed for merge".
+The union merge needs git 2.38 or newer on the gate host, for `git merge-tree --write-tree`. `landing.CheckGit` reads `git --version` in the plan step, before the fold, and fails with "git 2.38 or newer is needed for merge".
 
-`GitCLI` implements `Git` over any runner with the `Exec` method of `proc.Runner`. No maintained Go library does this fold: go-git has no three-way tree merge, and libgit2 bindings need cgo.
+No maintained Go library does this fold: go-git has no three-way tree merge, and libgit2 bindings need cgo.
 
 ### Head check
 
-Before the fold, one recorded step checks that the head of each member is in the repository (`git cat-file -e <head>^{commit}`). A member with a missing head is rejected with "head X of M is not in the repository; fetch it". The check exists because `git merge-tree` exits with the conflict code for an unknown commit.
+Before the fold, the library checks that the head of each member is in the repository (`git cat-file -e <head>^{commit}`). A member with a missing head is rejected with "head X of M is not in the repository; fetch it". The check exists because `git merge-tree` exits with the conflict code for an unknown commit.
 
 ### The union
 
-The union folds the members onto the base tip. Each step is:
+The library folds the members onto the base tip in item order. Each step is:
 
 1. a `git merge-tree --write-tree` of the fold so far and the next head,
 2. then a `git commit-tree` with both parents, so the next step has a commit to merge into.
 
-The union records the tree after each member.
+Every git command runs through `command` in the worktree of the item, which `base_tip` makes.
 
 - A member that conflicts with the base tip alone is rejected with the reason `conflict`, before any gate runs.
 - A member that conflicts only with an earlier member is held out.
 
 ### Scope check
 
-Before the merge of each member, the recorded step `batch:<name>.scope#<item>` reads the issues that the pull request of the member closes. It compares them with the issues of the first review of that item. For the item of the run, the first review is the first `gate` call. For another item, it is the newest earlier run of that item.
+The scope check is the library `scope.star`, and the workflow calls it before `batch_merge`. The library reads the issues that the pull request of each member closes, with the recorded step `pr_closing`. It compares them with the issues of the first review of that item. For the item of the run, the first review is the result of `fix_scope` in the run, which the call takes as `own`. For another item, it is the first review of the newest earlier run of that item that is named `scope`, read with `earlier_reads`. A run that fixed its own scope gives no scope to a member of another item.
 
-A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehave answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no recorded first review has nothing to compare.
+The scope holds each issue as a reference: `#N` for an issue of the repository of the pull request, and `owner/repo#N` (in lower case) for an issue of another repository. An issue of another repository is new, and the run asks the owner about it, in the same way as for an own issue. The number of an own issue does not keep an issue of another repository with the same number.
+
+A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehave answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`, and `keep owner/repo#N` for an issue of another repository. A later call of the member, in this run or in a new run of the same item, reads the kept issues from the owner waits of the earlier calls and asks nothing for them. An owner line keeps only an issue that an earlier check of the member read as a closing issue: an issue that the question did not ask about is asked about when it appears. The kept set only grows: a kept issue stays kept when a later pull request of the member no longer closes it. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no first review has nothing to compare.
+
+The library gives each member two fields, `kept` and `closing`. The closing keyword guard allows a kept issue in a commit message. The merge refuses a pull request whose closing set at the merge differs from `closing`, the set that the check read, and the line says to run the scope check again. A member with no `closing` pins no set. The check does not read the item id, so it also holds for an item of a tracker other than GitHub, and the line of the closing-references guard for such an item says so.
+
+A project with no forge has no scope to fix. The read then records that the scope check is off, and `beehave status` shows `scope check off: the project has no forge` on the run. A workflow that does not load the library has no scope check.
+
+### Commit statuses
+
+After a gate passes on a union, the merge of each member carries its commit statuses. The merge run of the member posts them as the `writer` role of the project after every guard passed, and right before its merge call:
+
+- `beehave/gate` with the state `success` on the head of the member. The description names the union commit.
+- `beehave/review` with the state `success` on the head of the member when its `approved` field is true.
+
+A member that a guard rejects or defers gets no status, and so does a member whose base moved before the merge call. A red or void gate posts nothing. A status belongs to one commit, so a new push to a member leaves its new head with no status. beehave keeps no list of the statuses, and the post is not a recorded step: the forge is the record. A resume after a post that worked and a merge that failed posts again and merges. A status with the same context, state and commit replaces the last one, so the second post changes nothing.
+
+A project with no `credentials` key posts none, and the merge says so in a `WARN:` line. A forge that cannot post statuses does the same. A post that the forge refuses stops that member before its merge call, and the member is deferred. The members that merged before it stay merged.
+
+The forge methods are `PostStatus` and `Protection` of `forge.Statuses`. `Protection` reads the pull request rule and the required status contexts of a branch. The `merge` builtin reads it in its protection guard (see [Protection of the base](#protection-of-the-base)).
 
 ### Splitting a red union
 
@@ -277,55 +292,41 @@ After the first round, each held-out member is folded once on the new tip. The f
 
 ### Gate run bound
 
-For N members and k bad members, the gate runs at most `min(2N - 1, 1 + 2k * ceil(log2 N))` times. `Bound` returns that number.
+For N members and k bad members, the gate runs at most `min(2N - 1, 1 + 2k * ceil(log2 N))` times.
 
-With H held-out members and R retried members, total gate runs are at most `Bound(N - H, k)` plus `Bound(R, k')`.
+With H held-out members and R retried members, total gate runs are at most that bound for N - H members plus the bound for R members.
 
 Each member that the merge refuses (own work, hold, checks, review) costs one more gate round on the members left after it. So with r refusals, the total can reach about r + 1 times that sum.
 
 ### Merge outcomes
 
-`Base.Merge` answers with a `MergeOutcome`:
+The union merge answers for each member:
 
 | Outcome | Effect |
 |---|---|
-| A refusal by a guard of the member (own work, hold label, checks, review, a head that moved while preparing) | Rejects that member with the reason: every line of the `Refusal` of `merge.Run`, one per line. The members after it are folded and gated again on the tip. |
-| Unsettled (`mergeable` stayed unknown for three reads, 10 seconds apart) | Defers that member and all members not yet decided, with the reason |
+| A refusal by a guard of the member (own work, hold label, checks, review, a head that moved while preparing) | Rejects that member with the reason: every line of the `Refusal` of `merge.Run`, one per line. The members after it come back in `rest`, and the library folds and gates them again on the tip. |
+| Unsettled (`mergeable` stayed unknown for three reads, 10 seconds apart, in the steps `merge:<name>.poll#<item>`) | Defers that member and all members not yet decided, with the reason |
 | A transient refusal of `merge.Run` (`merge.Transient`: a failed read of the forge, checks that still run, a base that moved while preparing, an error of the forge merge call) | Defers the same way, with every line of the `Refusal` as the reason and no second read, because the merge step of a member never runs twice in one attempt |
 | A pull request that is not OPEN at the intent read | Rejects that member, and the call goes on |
 | An error | Stops the call |
 
-The `Result` that comes with an error still lists the members that landed, and the error names the member where the call stopped.
-
-### Contracts of the interfaces
-
-- `Merge` is idempotent for one member, because a replay calls it again after a crash. The wiring uses the intent record of `merge.Run`.
-- `Recorder.Step` does not record a failed run.
-- `Gate.Run` gates exactly the commit it gets and reports the tree of that checkout.
-- `GitCLI.NewCommit` needs an author identity in the environment of the runner.
-- `Deps.Name` is not empty, and it is unique for each batch call in a workflow.
-
 ### Recorded steps
 
-Every input that picks a path is a recorded step: `batch:<name>.heads#k`, `.tip#k`, `.union#k` and `.gate#k`, and after the merges `.prove` and `.issues`.
+The union merge records `merge:<name>.plan`, then for each member `merge:<name>.intent#<item>` before its merge, and `merge:<name>.tip` after the call. The intent step records the pull request as OPEN, so a resume after a crash counts a merge that the forge already made as done.
 
-- The steps that read retry twice. The gate step runs once.
-- A later read of one member adds `@<read>` to the step name. An item id has no `@`.
-- A step records its input with its output, and a replay with other input fails.
-
-The batch needs the worktree of the item that runs the workflow. `merge` makes it before the first git call, and the batch host refuses an item with no worktree.
+The library records each read through the builtin it calls: the steps of `base_tip`, `command`, `gate`, `landing_proof`, `issue_state` and `pr_closing`, named after the `name` of the call. A resume replays them, so the fold, the split and the audit decide the same way.
 
 ### Green gate and tree checks
 
 A project gate counts as green only when it reports `passed` and every one of its steps is `pass`. An unknown step, or a gate with no step, is red, and no member of that union lands.
 
-The gate output carries the tree id the gate ran on. A tree id that differs from the tree of the union is the error "the recorded gate ran on tree X, and the union is tree Y".
+The gate reports the tree id it ran on. A tree id that differs from the tree of the union is the error "batch <name>: the gate ran on tree X, and the union is tree Y".
 
-Before each member merge, the run reads the tip and requires the tree of the members merged so far. Another tree means that someone else pushed, and the rest of the members are deferred.
+Before each member merge, the intent step reads the tip and requires the tree of the members merged so far. Another tree means that someone else pushed, and the rest of the members are deferred.
 
 ### Landing proof
 
-After the last member merge, the recorded step `batch:<name>.prove` checks each merged member against the base (`batch.Prove`).
+After the last member merge, the library calls `landing_proof` once, and it checks each merged member against the base.
 
 A member has landed when the forge compare shows its head in the history of the base: `behind_by` is 0 and the status is ahead or identical. If the head is not there, as after a squash, the member has landed on the vehicle commit only when each file it changed against the tip where the batch started has the same content on the base.
 
@@ -337,10 +338,9 @@ Every other member, and every member whose read failed, is a line of the result 
 
 ### Binary and packages
 
-- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
-- The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge and the beads claim store to `remedy.Main`, which wires the real git runner.
-- The package `lease` builds the claims over the rows and finds the project of a repository in the config folder, for `cmd/beehave` and `cmd/remedy` alike.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`.
+- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`. `make build` does not make it. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
+- The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only check `report`. The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
@@ -356,20 +356,22 @@ Each subcommand follows the exit codes of beehave:
 
 A bad argument is a refusal. The tool finds the repository from the `origin` remote of its working folder.
 
-### `remedy cut`
+### `round_cut`
 
-`remedy cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]` runs `roundcut`. It:
+`round_cut(old = <branch>, new = <branch>, pr = <number>, trunk = <branch>)` runs `roundcut`. It:
 
 - refuses unless the integration pull request is merged,
 - makes or resumes the new base only at the trunk tip,
 - moves every open pull request on the old base to it,
+- reads the trunk tip again right before it creates the new base, and refuses if the tip moved,
+- reads each pull request again right before it moves it, and refuses if it is not open or no longer targets the old base,
 - never deletes the old branch. The forge interface has no call that deletes a branch.
 
-A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The trunk is `main` when `--trunk` is not given. The number of the new round is the text after the last dash of the new branch.
+The step has no dry run. The `--dry` flag of the old `remedy cut` has no engine step, and the library keeps the dry path for tests only. The `trunk` argument is required, and the workflow passes the base branch of the project. The number of the new round is the text after the last dash of the new branch.
 
-### `remedy sync`
+### `round_sync`
 
-`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the sync and integration pull requests always use the default label `made-by-beehave`, and a custom `pr_label` reaches only item drafts. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`round_sync(base = <branch>, trunk = <branch>)` runs `roundsync`. The pull request that it opens carries the `pr_label` of the project (`made-by-beehave` when the project sets none). The step `integration_pull` labels the integration pull request the same way. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|
@@ -382,13 +384,13 @@ GitHub's merges endpoint (`POST /repos/{owner}/{repo}/merges`) makes a merge com
 
 The forge does each merge, so no checkout is written, and the round branch is never rebased. A repeat call finds the branch, the merge and the pull request. A base that moved after the branch was cut is merged into the branch, so the gated head holds every commit that the landing keeps. Any other failure of the forge is exit code 2.
 
-`remedy sync land --pr <number> --head <sha> --base-tip <sha>` merges the pull request with a merge commit pinned to `--head`. It lands only when the base is still at `--base-tip`. A moved base is `state=stale` and a moved head is `state=head-moved`. Both are exit code 2 and write nothing. A landing prints `state=landed`.
+`round_land(pr = <number>, head = <sha>, base_tip = <sha>)` merges the pull request with a merge commit pinned to `head`. It lands only when the base is still at `base_tip`. A moved base is `state=stale` and a moved head is `state=head-moved`. Both are exit code 2 and write nothing. A landing prints `state=landed`.
 
-GitHub does not merge a draft: `gh pr merge` on one exits 1 with `GraphQL: Pull Request is still a draft (mergePullRequest)` (measured on a scratch repository with gh 2.101.0). The sync opens its pull request as a draft. The landing marks the draft ready only after the base and head checks pass, then merges it pinned to `--head`.
+GitHub does not merge a draft: `gh pr merge` on one exits 1 with `GraphQL: Pull Request is still a draft (mergePullRequest)` (measured on a scratch repository with gh 2.101.0). The sync opens its pull request as a draft. The landing marks the draft ready only after the base and head checks pass, then merges it pinned to `head`.
 
 When the merge fails, or the tool gets SIGINT during the merge, the landing makes the pull request a draft again. That call runs on a context that the SIGINT does not end, with its own limit of 30 seconds. If that call fails, its failure is part of the error of the landing. A sync that finds the open pull request of its sync branch ready makes it a draft before any merge into that branch. If the draft call fails, the sync stops before the merge.
 
-A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `remedy sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. Once the sync holds its own open pull request, it closes every other open sync pull request into the round base, not only older ones, matched by the branch prefix `sync/<base>/`, with a comment that names the pull request that replaces it. A repeat call closes what a failed close left open. A failed close or a failed list is exit code 2 with the error of the forge. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
+A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `round_sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. Once the sync holds its own open pull request, it closes every other open sync pull request into the round base, not only older ones, matched by the branch prefix `sync/<base>/`, with a comment that names the pull request that replaces it. A repeat call closes what a failed close left open. A failed close or a failed list is exit code 2 with the error of the forge. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
 
 #### The sync step of the round
 
@@ -396,16 +398,17 @@ The round of `examples/remediation/workflow.star` runs the sync at the start of 
 
 | Step | What it does |
 |---|---|
-| `sync-<n>` | Runs `remedy sync --base <round base> --trunk <base_branch>`. Exit code 2 stops the round with the line of the tool. |
-| `sync-resolve-<n>` | Runs only on `conflict`. One agent step (`prompts/sync.md`) merges `source` into the sync branch, resolves, commits the merge commit and pushes. |
-| `sync-again-<n>` | Runs `remedy sync` again after the agent. A second `conflict` ends the pass. |
+| `sync-<n>` | The engine step `round_sync` with the round base and `base_branch`, run as the writer. A forge failure ends the run with its error. |
+| `sync-resolve-fetch-<n>` | Runs only on `conflict`. A `command` step fetches the sync branch and `source` into the folder of the round, so the agent needs no network. A failed fetch stops the run. The step sits behind `patched`, so an open round that recorded the resolve agent before the step existed replays with no fetch. |
+| `sync-resolve-<n>` | Runs only on `conflict`. One agent step (`prompts/sync.md`), in a sandbox with no network, merges `source` into the sync branch, resolves and commits the merge commit. The engine pushes it (`push-sync-<n>`). |
+| `sync-again-<n>` | Runs `round_sync` again after the agent. A second `conflict` ends the pass. |
 | `sync-fetch-<n>`, `sync-checkout-<n>` | Put the folder of the round at the head of a `synced` line, so the gate and the review read that head. |
 | `sync-gate-<n>` | The gate with no base: the gate command only, with no new-tests check and no mutation step. |
 | `sync-gate-<n>-host-<k>` | Runs only when `sync-gate-<n>` is void with a host cause (the engine proved a lost host job). The gate runs again, k from 1, until the engine counts 5 host losses in the tree of the run. |
 | `sync-review-<n>` | A read-only review (`prompts/sync_review.md`) pinned to the gated head. It writes the verdict `approve` or `changes`. |
-| `sync-land-<n>` | Runs `remedy sync land` pinned to the gated head and the base tip of the line. `stale` and `head-moved` land nothing, and the next pass syncs again. |
+| `sync-land-<n>` | The engine step `round_land`, pinned to the gated head and the base tip of the line. `stale` and `head-moved` land nothing, and the next pass syncs again. |
 
-A line with no `state` reads as `current`: the tool prints a state on every exit 0, and a dry run prints nothing. Any other exit code but 0 and 2, a state that the round does not know, or a line that lacks a field that its state needs, stops the run.
+A dry run shows the trunk as `current`. A state that the round does not know, or a result that lacks a field that its state needs, stops the run.
 
 Five results hold the round. Each has a reason:
 
@@ -425,42 +428,33 @@ A held round starts no sync and no item in a later pass. It gathers and lands th
 
 When no sync held the round and no item can move, the question names each listed item, its state and the step of the owner: `beehave resume <item>` for a failed item, then `beehave cancel <item>` when the resume refuses the run, so the next pass starts a new attempt. A round with no item list gets the count of the rows in each state and the ids of the failed rows. The round starts no new attempt for a failed item on its own.
 
-### `remedy audit`
+### The takeover step `pr_take`
 
-`remedy audit authored <span>` and `remedy audit present <tip> <base>` run `audit`. The audit reads the merges of a range through git, with `-z` path lists.
-
-- `Authored` lists the paths of a merge that differ from every parent, as resolved or authored, with a mark on sensitive paths.
-- `Present` lists the lines a merge added that the tip lost, and the files deleted at the tip.
-
-A line that marks a finding is exit code 1. A range that git cannot read is a refusal, never a clean report.
-
-### `remedy take`
-
-`remedy take <pr> --me <login> --idle <hours> --grace <hours> [--head <sha>] [--item <id>] [--apply | --take [--reply-read]]` runs `takeover`. It decides whether to take a pull request that somebody else holds.
+`pr_take(pr, me, idle, grace, step)` runs `takeover`. It decides whether to take a pull request that somebody else holds.
 
 | Step | What it does |
 |---|---|
-| No step flag | Reads and says what it would do |
-| `--apply` | Posts the notice |
-| `--take` | Checks the notice, the grace period and the replies |
+| `apply` | Posts the notice |
+| `take` | Checks the notice, the grace period and the replies |
 
-Every refusal is exit code 2. `--me` is a flag, so the tool keeps no state.
+Every refusal ends the item with the lines of the step and the exit code 2. The `code` that the step returns tells the two kinds apart: 2 for a guard (a pull request that is not open, or is ours) and 3 for a rule. `me` is an argument, so the step keeps no state.
 
 #### Rules for every step
 
 - A pull request that is not open, or is ours, is refused first, in every step.
 - A failed read refuses.
-- `--head` names the head commit that the caller works on. If the pull request has another head, the step refuses with exit code 2, and the lines say that the author pushed. With no `--head`, any head passes.
 
 #### The notice
 
-The notice needs a `CHANGES_REQUESTED` review of ours. It names its basis (assigned to us, or idle) and the grace period. A second notice is never posted: right before the post, `--apply` asks the forge for a notice of ours. If one exists, it says so, writes nothing and exits 0.
+The notice needs a `CHANGES_REQUESTED` review of ours. It names its basis (assigned to us, or idle) and the grace period. A second notice is never posted: right before the post, `apply` asks the forge for a notice of ours. If one exists, it says so, writes nothing and exits 0.
+
+The same read asks for the state, the author and the head again. If the pull request closed or became ours, `apply` posts nothing and refuses with code 2. If a notice of ours is already on the pull request, `apply` reports it and exits 0, whatever the head is. If no notice exists and the head is not the one the plan read, `apply` posts nothing and refuses with code 2. The refusal of a moved head names the old head and the new head. The step result of the workflow carries that code and those lines. A stop with code 2 ends the run as stopped. The next plan reads the new head only when the item runs again.
 
 The text of the notice is Markdown in `takeover/text`, read through one `embed` variable.
 
-#### `--take` refusals and replies
+#### `take` refusals and replies
 
-`--take` refuses in this order:
+`take` refuses in this order:
 
 1. no notice,
 2. a notice younger than the grace period,
@@ -471,30 +465,19 @@ The text of the notice is Markdown in `takeover/text`, read through one `embed` 
 |---|---|
 | Says `KEEP` | Stops the take |
 | Says `RELEASE` | Takes the pull request without the grace wait or the idle wait |
-| Neither word | Prints every reply and refuses. `--reply-read` lets the take go on with a note. |
+| Neither word | Prints every reply and refuses. |
 
 A token stands alone as a word when no Unicode letter, digit or underscore touches it. So `KEEPER`, `KEEP_ALL` and `KEEPé` do not say `KEEP`.
 
 #### Time
 
-`takeover` never calls `time.Now`. `remedy` puts the time in the context, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal. A pull request with no timestamp at all is unreadable, not idle.
+`takeover` never calls `time.Now`. The engine puts the time in the context, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal. A pull request with no timestamp at all is unreadable, not idle.
 
 #### Claims
 
-`remedy take` never writes a claim. A claim lapses after 5 minutes unless something renews it, and the tool exits at once. The run of the item in the engine takes the claim and renews it.
+The step runs inside the run of the item, and the engine writes only while that run holds the claim of the item. So the claim check of the takeover always passes, and the step reads no claim store and writes no claim.
 
-`--apply` and `--take` read the claim store of the project that owns the origin repository, from the beehave config folder, through `internal/lease`. This is the same code that `beehave run` uses.
-
-- The store opens only when the claim must be read, after every guard and rule that needs no store. So a store that does not open never hides a refusal.
-- A store that does not open is exit code 2.
-- `--apply` refuses when another owner holds the pull request, before it posts. `--take` refuses the same way.
-- When every check passes, `--take` prints one line: the pull request may be taken now, and the run of the item holds the claim. It never prints TAKEN.
-
-`--item` names the tracker item that the run claims. The claim read checks that item, never the pull request number. `--apply` and `--take` refuse with exit code 2 when `--item` is missing. The dry step needs no item.
-
-The engine gives each run a random owner token, and no login maps to an owner. So the read asks as the fixed owner `remedy`, which never holds a claim, and any live claim on the item is another owner's. So run `remedy take` before a run claims the item. Inside the item's own run, it sees the run's claim and always refuses.
-
-The forge of the tools has no call that assigns a pull request, so the take does not co-assign it.
+The take assigns the pull request and its linked issues to `me` through `gh`, as the writer of the project. Right before the first assignment, the take reads the state, the author and the head again. If the pull request closed or became ours, the take refuses with code 2. If the head is not the one the plan read, the take refuses with code 2 and names the old head and the new head. In both cases it assigns nothing.
 
 ### `remedy admit`
 
@@ -512,17 +495,12 @@ A pass is exit code 0. A gate that holds the brief back is exit code 1, with the
 
 | Command | Checks | Exit 1 | Exit 2 |
 |---|---|---|---|
-| `remedy papers <base>..<head> [--globs <patterns>]` | Lists the source paths that the range changes | A source path | |
 | `remedy handoff <file> [--name <text>] [--transcript <file>] [--cap <tokens>]` | Checks a handoff | A refused handoff | |
 | `remedy authors <file> --email <address> --login <name>` | Checks `<sha> <email> <login>` lines against the identity of the owner | A commit of the owner under another address | A missing identity or an empty file |
 | `remedy spend <transcript> [--hours <n>] [--cap <tokens>]` | Prints the hour table and one row for each lane | A lane over the cap | |
-| `remedy gatelist [--steps <name>]... [--map <json>] <workflow-file>...` | Derives the gate steps from the run steps of the CI workflow files, and names the steps and jobs that it leaves out | `--steps`, `--map`: the gate step names of the round and the `gate_map` of the project | A file that is not a workflow, files that give no step, a map that does not match the derived commands, a map of another form or given twice, a map with no gate steps |
-| `remedy job <script> --list <file> [--job-dir <folder>]` | Checks a host job against the gate list | A defect in the job | A gate list that cannot be read |
 | `remedy report <file> --head <sha>` | Checks the four tables of a lane report | A defect | |
 
-None of `papers`, `handoff`, `authors` and `spend` reads the state folder. None of `gatelist`, `job` and `report` reads an environment variable.
-
-`--job-dir` names the folder that a sourced file is read from. When it is not given, it is the folder of the script.
+None of `handoff`, `authors` and `spend` reads the state folder. `report` reads no environment variable.
 
 ### `remedy size`
 

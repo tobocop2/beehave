@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// SSHAgentVar is the variable that holds the socket of the SSH agent of the owner. No step gets it.
+const SSHAgentVar = "SSH_AUTH_SOCK"
+
 // Sandbox is the sandbox setting of one agent step as the run records it. A step with no sandbox records no value (nil), and a record
 // without the value replays as a step with no sandbox. Network lists the domains that the shell may reach.
 type Sandbox struct {
@@ -38,8 +41,20 @@ func ParseSandboxMode(text string) (SandboxMode, error) {
 	return "", fmt.Errorf("%w %q: use one of on, off", ErrUnknownSandboxMode, text)
 }
 
-// SandboxByDefault is true when the project file says sandbox = "on". A project that says nothing runs its steps with no sandbox.
+// SandboxByDefault is true when the project has the sandbox on: its file says sandbox = "on" or sets no sandbox key.
 func (p Project) SandboxByDefault() bool { return p.Sandbox == SandboxOn }
+
+// SandboxOffLine is the line that a run prints when its sandbox mode is off. It names the setting and what it does.
+const SandboxOffLine = `sandbox = "off": the agent steps of this run start with no sandbox, except a step that sets sandbox(...)`
+
+// RunSandboxMode is the sandbox mode that a run of the project stores when it starts: on when the project has the sandbox on, and off otherwise.
+func (p Project) RunSandboxMode() SandboxMode {
+	if p.SandboxByDefault() {
+		return SandboxOn
+	}
+
+	return SandboxOff
+}
 
 // domainName is a host name for the network list: labels of letters, digits and hyphens, with an optional leading "*." for all subdomains.
 var domainName = regexp.MustCompile(`^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)

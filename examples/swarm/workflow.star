@@ -11,6 +11,9 @@
 #   DEADLINE_MIN optional, default 480: the most minutes that the swarm starts new runs.
 #   BATCH        optional, default 8: the number of finished pull requests that starts a landing pass.
 
+load("@beehave//batch.star", "batch_merge")
+load("@beehave//queue.star", "queue")
+
 HOLD = "hold"
 TIERS = ["P0", "P1", "P2", "P3"]
 RESOLVES = 2
@@ -40,9 +43,13 @@ def run_step(name, prompt, inputs):
         prompt = prompt,
         model = MODEL,
         forbid_commands = FORBIDDEN,
+        # The shell pushes the branch and opens the pull request, so it reaches the forge and nothing else.
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = inputs,
         idle_timeout = IDLE_TIMEOUT,
         max_budget_usd = 6,
+        # A lane that fills 80 percent of its context window stops with the stop "context", before the model loses earlier decisions.
+        max_context_percent = 80,
     )
     if done.stop != "":
         fail("REFUSE: the %s step stopped at the %s cap before it finished." % (name, done.stop))
@@ -162,13 +169,14 @@ def wait_for_one(swarm, p):
             swarm.waiting[orig] = head
 
 def land(tag, swarm):
-    """One merge for each priority, P0 first. merge folds its members in the order of the item id, so one call for each priority makes P0 win."""
+    """One batch for each priority, P0 first. batch_merge folds its members in the order of the item id, so one call for each priority makes P0 win."""
     total = struct(merged = [], rejected = [], deferred = [], unproven = [])
     for tier in TIERS:
-        group = [struct(item = i, head = swarm.waiting[i]) for i in sorted(swarm.waiting.keys()) if swarm.prio[i] == tier]
+        # The pull request of a task closes no issue: the swarm closes the item of the task itself, so the merge expects an empty list.
+        group = [struct(item = i, head = swarm.waiting[i], closes = []) for i in sorted(swarm.waiting.keys()) if swarm.prio[i] == tier]
         if len(group) == 0:
             continue
-        out = merge(
+        out = batch_merge(
             name = "land-%s-%s" % (tag, tier),
             prs = group,
             base = env("BASE"),

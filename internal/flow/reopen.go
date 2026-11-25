@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // reopen puts a failed run back in the queue at its first failed step. The steps before it keep their results.
@@ -18,12 +21,30 @@ func (c *Client) reopen(id string, opts ...dbos.RewindWorkflowOption) error {
 		return fmt.Errorf("read the steps of %s: %w", id, err)
 	}
 
-	from, err := c.failedStep(steps, raised(steps), opts...)
+	from, err := c.failedStep(id, steps, raised(steps), opts...)
 	if err != nil {
 		return err
 	}
 
-	return c.rewind(id, min(from, openStart(steps)), opts...)
+	return c.rewind(id, min(from, openStart(steps), firstGap(steps)), opts...)
+}
+
+// refusedRun is the number of step ids in a row with no record that a refused step leaves: its own record and its failure record.
+const refusedRun = 2
+
+// firstGap returns the first id of the first refusedRun or more step ids in a row with no record, else the length of the history.
+func firstGap(steps []dbos.StepInfo) int {
+	next := 0
+
+	for _, step := range steps {
+		if step.StepID-next >= refusedRun {
+			return next
+		}
+
+		next = step.StepID + 1
+	}
+
+	return len(steps)
 }
 
 // openStart returns the first look at the caps or start mark after the last agent step, or the length of the history when there is none.
@@ -83,14 +104,15 @@ func isGatherStep(name string) bool {
 
 // failedStep returns the first step that failed or that started a child that ended without success. A run with no such step replays from the end of its history.
 // It reopens every such child, not only the first: a gather that raised canceled the children that were still open, and each of them must run again.
-func (c *Client) failedStep(steps []dbos.StepInfo, canceled map[string]bool, opts ...dbos.RewindWorkflowOption) (int, error) {
+// A refusal names the run and the step of the child. The children of earlier steps are already reopened when a later child refuses.
+func (c *Client) failedStep(id string, steps []dbos.StepInfo, canceled map[string]bool, opts ...dbos.RewindWorkflowOption) (int, error) {
 	first := len(steps)
 	replaced := superseded(steps)
 
 	for _, step := range steps {
 		child, err := c.reopenChild(reopenable(step, replaced), canceled, opts...)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("reopen step %d (%s) of %s: %w", step.StepID, step.StepName, id, err)
 		}
 
 		if !child && step.Error == nil {
@@ -235,6 +257,7 @@ func (c *Client) reopenAgain(row dbos.WorkflowStatus, queue string, opts ...dbos
 }
 
 // reopenCanceledPhases puts back to work each phase of a canceled item that the cancel reached. The item replays its steps, and a phase that stays canceled would fail it again.
+// A refusal names the run and the step. The children of earlier steps are already reopened when a later child refuses.
 func (c *Client) reopenCanceledPhases(id string, opts ...dbos.RewindWorkflowOption) error {
 	steps, err := dbos.GetWorkflowSteps(c.flow, id)
 	if err != nil {
@@ -247,7 +270,7 @@ func (c *Client) reopenCanceledPhases(id string, opts ...dbos.RewindWorkflowOpti
 		}
 
 		if err := c.reopenCanceledPhase(step.ChildWorkflowID, opts...); err != nil {
-			return err
+			return fmt.Errorf("reopen step %d (%s) of %s: %w", step.StepID, step.StepName, id, err)
 		}
 	}
 
@@ -262,7 +285,8 @@ func (c *Client) reopenCanceledPhase(id string, opts ...dbos.RewindWorkflowOptio
 	}
 
 	// A gate that runs on a build host waits for a build job. The job goes back to work first, so the gate that replays finds it queued.
-	if phase.Name == exclusiveName {
+	// A gate that a person held keeps its job canceled: the release of the gate reopens it.
+	if phase.Name == exclusiveName && !heldBeforeMove(phase) {
 		if err := c.reopenCanceledPhases(id, opts...); err != nil {
 			return err
 		}
@@ -335,23 +359,37 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 }
 
 // gateRewindTarget returns the queue and the partition that a rewound gate, merge or build job goes back to. A gate or a merge goes to the exclusive queue,
-// in the partition of its project. A build job goes to the host queue, in the partition that it recorded in its input.
-// The host job of a command call with a slot class goes to the queue of its class, in the same partition.
+// in the partition of its project. A gate job goes to the slot queue of the class gate, in the partition that it recorded in its input.
+// The host job of a command call with a slot class goes to the queue of its class and its count, in the same partition. A job whose input holds no count
+// was queued before the count was recorded: it has no queue to go back to, and the rewind refuses it.
 func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err error) {
 	var in ExclusiveInput
 	if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
 		return "", "", fmt.Errorf("read the input of %s: %w", row.ID, err)
 	}
 
-	if row.Name == hostJobName && in.Kind == kindCommand {
-		return slotQueuePrefix + in.Request.SlotClass, in.HostKey, nil
+	if row.Name == hostJobName {
+		class := cmp.Or(in.Request.SlotClass, model.GateClass)
+
+		if in.SlotCount < 1 {
+			return "", "", fmt.Errorf("the job %s of the slot class %q was queued before slot counts were recorded and cannot go back to a queue. Run the item again from its start", row.ID, class)
+		}
+
+		return slotQueueName(class, in.SlotCount), in.HostKey, nil
 	}
 
-	if row.Name == hostJobName {
-		return hostQueueName, in.HostKey, nil
+	if heldBeforeMove(row) {
+		return heldQueueName, in.Project, nil
 	}
 
 	return exclusiveQueueName, in.Project, nil
+}
+
+// heldBeforeMove reports whether a gate that a person held was canceled by a move. The cancel clears the queue of the row, and the mark of the move keeps the queue that it had.
+func heldBeforeMove(row dbos.WorkflowStatus) bool {
+	mark, marked := moveMarkOf(row)
+
+	return row.Name == exclusiveName && marked && mark.Queue == heldQueueName
 }
 
 // phaseRewindTarget returns the queue and the partition key that a rewound phase goes back to: the queue of its step and the partition of its login.
@@ -367,9 +405,9 @@ func phaseRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err er
 // errNoRow is returned when a workflow the store listed is gone.
 var errNoRow = errors.New("the workflow is not in the store")
 
-// row reads one workflow with its input.
+// row reads one workflow with its input, as the store holds it: a reopen needs the true state of the run, whether a mover marked it or not.
 func (c *Client) row(id string) (dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true))
+	rows, err := c.store().Exact(dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return dbos.WorkflowStatus{}, fmt.Errorf("read workflow %s: %w", id, err)
 	}

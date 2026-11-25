@@ -47,17 +47,23 @@ func TestLaneLayout_TheInnerLoopIsScopedAndTheFullGateRunsOncePerCandidate(t *te
 
 	cases := map[string]struct {
 		options []DryOption
+		fixture string
 		want    []string
 	}{
-		"every_review_approves": {nil, []string{
+		"every_review_approves": {nil, "", []string{
 			"agent implement", "agent scoped-review-implement",
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",
 		}},
-		"the_first_review_sends_back": {[]DryOption{WithSendBack()}, []string{
+		"the_first_review_sends_back": {nil, `{
+  "agent:implement": {}, "agent:scoped-review-implement": [{"outputs": {"verdict": "changes"}}], "agent:fix-scoped-2": {}, "agent:scoped-review-2": {}, "agent:candidate-review": {}, "gate:candidate-gate": {}
+}`, []string{
 			"agent implement", "agent scoped-review-implement", "agent fix-scoped-2", "agent scoped-review-2",
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",
 		}},
-		"the_first_gate_is_red": {[]DryOption{WithRedGate()}, []string{
+		"the_first_gate_is_red": {nil, `{
+  "gate:candidate-gate": [{"passed": false}, {"passed": true}],
+  "agent:implement": {}, "agent:scoped-review-implement": {}, "agent:fix-scoped-1": {}, "agent:scoped-review-1": {}, "agent:candidate-review": {}
+}`, []string{
 			"agent implement", "agent scoped-review-implement", "gate candidate-gate",
 			"agent fix-scoped-1", "agent scoped-review-1",
 			"gate candidate-gate", "command candidate-before-review-ancestor", "command candidate-before-review-keywords", "agent candidate-review",
@@ -68,7 +74,12 @@ func TestLaneLayout_TheInnerLoopIsScopedAndTheFullGateRunsOncePerCandidate(t *te
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			events := loopEvents(t, tc.options...)
+			options := tc.options
+			if tc.fixture != "" {
+				options = append(options, WithFixture(fixtureOf(t, tc.fixture)))
+			}
+
+			events := loopEvents(t, options...)
 
 			assert.Equal(t, tc.want, events, "scoped fixes and scoped reviews run with no gate; each candidate gets one gate, the checks before review and one full review")
 		})

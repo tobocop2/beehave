@@ -38,9 +38,11 @@ type claimHold struct {
 	before  time.Time
 	failure string
 	lost    string
-	stop    func()
-	ctx     context.Context
-	cancel  context.CancelFunc
+	// released is true for the claim of a replayed run that began its release before: the claim store may hold no row for it.
+	released bool
+	stop     func()
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // holds keeps the claim of each attempt this process executes, from Claim until Release. A write names the attempt, so the answer for an earlier
@@ -124,7 +126,18 @@ func (h *holds) clear() {
 	}
 }
 
-// snapshot lists the claims that still renew: a lost claim stays lost, and a claim with no first trust waits for it.
+// freed marks the claim of an attempt as one that its own release may have freed, so no tick renews it.
+func (h *holds) freed(a *attempt) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if row, found := h.rows[a]; found {
+		row.released = true
+		h.rows[a] = row
+	}
+}
+
+// snapshot lists the claims that still renew: a lost claim stays lost, a freed claim renews nothing, and a claim with no first trust waits for it.
 func (h *holds) snapshot() map[*attempt]claimHold {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -132,7 +145,7 @@ func (h *holds) snapshot() map[*attempt]claimHold {
 	rows := make(map[*attempt]claimHold, len(h.rows))
 
 	for a, row := range h.rows {
-		if row.lost == "" && !row.renewed.IsZero() {
+		if row.lost == "" && !row.released && !row.renewed.IsZero() {
 			rows[a] = row
 		}
 	}
@@ -385,7 +398,7 @@ func (e *Engine) waitOrStop(in PhaseInput, reason string, early bool, graceEnd t
 
 // runOpen reports whether the run with this id is in the store and has not ended.
 func (e *Engine) runOpen(id string) (bool, error) {
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterWorkflowIDs(id))
+	rows, err := e.store().List(dbos.WithFilterWorkflowIDs(id))
 	if err != nil {
 		return false, fmt.Errorf("read run %s: %w", id, err)
 	}

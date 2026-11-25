@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +28,22 @@ var (
 )
 
 const (
-	drainReason = "beehave"
-	defaultPoll = 10 * time.Second
-	timeoutExit = "124" // the exit status of `timeout` for a command that it stopped
+	drainReason   = "beehave"
+	defaultPoll   = 10 * time.Second
+	timeoutExit   = "124"       // the exit status of `timeout` for a command that it stopped
+	canceledState = "CANCELLED" //nolint:misspell // Slurm's spelling
+	lookback      = "7days"     // how far back sacct looks for the job of a key; it reads from midnight when it has no start time
+
+	// stateFolder is the folder in the login folder of the head node that holds the lock files of the slot classes and the markers of the jobs that wait.
+	stateFolder   = ".beehave"
+	slotsFolder   = "slots"
+	waitingPrefix = "waiting-"
+
+	// waitingLine is the line that runningShell prints for a job that waits for a slot.
+	waitingLine = "beehave-waiting"
+	// runningShell prints waitingLine when the marker $1 exists, then the size of the log $2, or -1 for a log with no size.
+	runningShell = `if test -e "$1"; then echo ` + waitingLine + `; fi
+stat -c %s "$2" 2>/dev/null || echo -1`
 )
 
 // Slot is what the owner of the cluster does to keep the cluster busy while a job holds its work.
@@ -78,7 +93,7 @@ func New(l *link.Link, config model.HostConfig, slot Slot, opts ...Option) *Queu
 	}
 
 	q.nonce, q.limit, q.bank = s.nonce, s.limit, s.bank
-	q.engine = jobwait.New(scheduler{l}, slot.Release, s.clock, s.bank, time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
+	q.engine = jobwait.New(scheduler{l}, slot.Release, s.clock, jobwait.ScopedBank(s.bank, q.bankFolder), time.Duration(config.StaleMinutes)*time.Minute, jobwait.Limits{LostAfter: config.LostAfter, StopLimit: config.StopLimit})
 
 	return q
 }
@@ -142,6 +157,10 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 		return "", errJobFields
 	}
 
+	if err := errors.Join(spec.Slot.Check(), jobwait.CheckFolder(spec.Folder)); err != nil {
+		return "", err
+	}
+
 	job, err := q.queue(ctx, spec)
 	if err != nil {
 		return "", err
@@ -155,13 +174,73 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 }
 
 // queue runs sbatch and returns the handle of the new job, with a nonce made for this Submit.
+// A spec with a Key names the job by the key and takes the digest of the key as the nonce, and it returns the job of that name when Slurm holds one.
 func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, error) {
-	words := []string{"sbatch", "--parsable", "--job-name=" + spec.Name}
+	name, nonce := spec.Name, ""
+
+	if spec.Key != "" {
+		nonce = jobwait.KeyDigest(spec.Key)
+		name += "-" + nonce
+
+		found, err := q.named(ctx, name)
+		if err != nil || found != "" {
+			return jobwait.Job{ID: found, Nonce: nonce, Folder: spec.Folder}, err
+		}
+	} else {
+		nonce = q.nonce()
+	}
+
+	return q.sbatch(ctx, spec, name, nonce)
+}
+
+// named returns the id of the job that Slurm holds under name: squeue for a job that the controller knows, then sacct for one that it forgot.
+// A job that Slurm canceled does not count: it is the job that Submit canceled itself when the slot could not hold the cluster, and its retry starts a new one.
+// It returns an empty id when neither holds such a job.
+func (q *Queue) named(ctx context.Context, name string) (string, error) {
+	for _, read := range [][]string{
+		{"squeue", "-h", "--name=" + name, "-o", "%i|%T"},
+		{"sacct", "-X", "-n", "-P", "-S", "now-" + lookback, "--name=" + name, "-o", "JobID,State"},
+	} {
+		result := q.link.Exec(ctx, read...)
+		if err := q.link.Drop(result); err != nil {
+			return "", err
+		}
+
+		if result.ExitCode != 0 {
+			return "", link.Failure(read[0], result)
+		}
+
+		if id := firstKept(result.Stdout); id != "" {
+			return parseSubmitted(id)
+		}
+	}
+
+	return "", nil
+}
+
+// firstKept returns the job id of the first `id|state` line whose state is not a cancel, or an empty text.
+func firstKept(out string) string {
+	for _, line := range model.NonEmptyLines(out) {
+		id, state, _ := strings.Cut(line, "|")
+		if !strings.HasPrefix(state, canceledState) {
+			return id
+		}
+	}
+
+	return ""
+}
+
+// sbatch submits the job and returns its handle.
+func (q *Queue) sbatch(ctx context.Context, spec model.JobSpec, name, nonce string) (jobwait.Job, error) {
+	words := []string{"sbatch", "--parsable", "--job-name=" + name}
 	if q.limit > 0 {
 		words = append(words, "--time="+strconv.FormatInt(int64(math.Ceil(q.limit.Minutes())), 10))
 	}
 
-	out, err := q.link.Remote(ctx, "sbatch", append(words, "--wrap="+spec.Command)...)
+	marker := `"` + path.Join(stateFolder, waitingPrefix) + `$SLURM_JOB_ID"`
+	command := host.SlotWrap(spec.Slot, model.ShellQuote(path.Join(stateFolder, slotsFolder, spec.Slot.Class)), marker, spec.Command)
+
+	out, err := q.link.Remote(ctx, "sbatch", append(words, "--wrap="+command)...)
 	if err != nil {
 		return jobwait.Job{}, err
 	}
@@ -171,7 +250,7 @@ func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, err
 		return jobwait.Job{}, err
 	}
 
-	return jobwait.Job{ID: id, Nonce: q.nonce()}, nil
+	return jobwait.Job{ID: id, Nonce: nonce, Folder: spec.Folder}, nil
 }
 
 // hold asks the slot to hold the cluster. If it cannot, the Slurm job is canceled.
@@ -251,14 +330,17 @@ func ended(state model.JobState) bool {
 
 type scheduler struct{ link *link.Link }
 
-// Observe reads the state, and the size of the log only for a running job.
+// Observe reads the state, and the waiting marker and the size of the log only for a running job. A running job that waits for a slot of its class reads pending.
 func (s scheduler) Observe(ctx context.Context, job jobwait.Job) (model.JobState, int64, error) {
 	state, err := s.state(ctx, job)
 	if err != nil || state != model.JobRunning {
 		return state, -1, err
 	}
 
-	size, err := s.logSize(ctx, job)
+	waiting, size, err := s.running(ctx, job)
+	if waiting {
+		return model.JobPending, -1, nil
+	}
 
 	return state, size, err
 }
@@ -295,19 +377,25 @@ func (s scheduler) recorded(ctx context.Context, id string) (model.JobState, err
 	return parseJobState(result.Stdout)
 }
 
-// logSize is -1 for a log that has no size yet, which counts as no growth.
-func (s scheduler) logSize(ctx context.Context, job jobwait.Job) (int64, error) {
-	result := s.link.Exec(ctx, "stat", "-c", "%s", "slurm-"+job.ID+".out")
+// running reads in one remote command whether the job waits for a slot of its class and the size of its log.
+// A read that fails reads as no marker and a size of -1, which counts as no growth; only a dropped link is an error.
+func (s scheduler) running(ctx context.Context, job jobwait.Job) (bool, int64, error) {
+	result := s.link.Exec(ctx, "sh", "-c", runningShell, "sh", path.Join(stateFolder, waitingPrefix+job.ID), "slurm-"+job.ID+".out")
 	if err := s.link.Drop(result); err != nil {
-		return -1, err
+		return false, -1, err
 	}
 
-	size, err := strconv.ParseInt(strings.TrimSpace(result.Stdout), 10, 64)
-	if result.ExitCode != 0 || err != nil {
-		return -1, nil
+	lines := model.NonEmptyLines(result.Stdout)
+	if result.ExitCode != 0 || len(lines) == 0 {
+		return false, -1, nil
 	}
 
-	return size, nil
+	size, err := strconv.ParseInt(lines[len(lines)-1], 10, 64)
+	if err != nil {
+		size = -1
+	}
+
+	return slices.Contains(lines, waitingLine), size, nil
 }
 
 func (s scheduler) Stop(ctx context.Context, job jobwait.Job) error {
@@ -348,6 +436,11 @@ func (q *Queue) bankWork(ctx context.Context) error {
 	}
 
 	return host.BankAll(ctx, q.link.Runner("git"), q.link.Runner("find"), root, q.config.PrivateRemote, host.WithRepoBudget(q.config.BankBudget))
+}
+
+// bankFolder banks the work in one folder of the head node, the folder of a job. A folder that is gone holds no work.
+func (q *Queue) bankFolder(ctx context.Context, folder string) error {
+	return host.BankFolder(ctx, q.link.Runner("git"), q.link.Runner("find"), q.link.Runner("test"), folder, q.config.PrivateRemote, host.WithRepoBudget(q.config.BankBudget))
 }
 
 // logTailBytes is the most bytes that Log reads from the end of the log of a job.

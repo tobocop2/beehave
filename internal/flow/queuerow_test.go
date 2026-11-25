@@ -13,7 +13,7 @@ import (
 )
 
 // rowFieldsFlow prints the container, the author and the change request of each row.
-const rowFieldsFlow = `def main(item):
+const rowFieldsFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + ":" + r.parent + ":" + r.author + ":" + str(r.changes_requested) for r in q.rows])
 `
@@ -29,7 +29,7 @@ func TestQueue_ARowCarriesItsContainerAndTheAuthorAndReviewStateOfItsPullRequest
 		pullBy(t, 5, "22", "someone", "REVIEW_REQUIRED"), pullBy(t, 6, "23", "owner", "CHANGES_REQUESTED"),
 	)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, rowFieldsFlow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, rowFieldsFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:9::False", "22::someone:False", "23::owner:True"}, seenBy(t, h),
@@ -37,7 +37,7 @@ func TestQueue_ARowCarriesItsContainerAndTheAuthorAndReviewStateOfItsPullRequest
 }
 
 // pullsFlow prints the labels of each row and each open pull request of the queue, field by field.
-const pullsFlow = `def main(item):
+const pullsFlow = queueLoad + `def main(item):
     q = queue(name = "q", label = "tracked")
     rows = [r.item + "=" + ",".join(r.labels) for r in q.rows]
     pulls = ["%d|%s|%s|%s|%s|%s|%s" % (p.number, p.branch, p.base, p.author, p.draft, p.title, p.item) for p in q.pulls]
@@ -72,7 +72,7 @@ func TestQueue_TheResultHoldsTheOpenPullRequestsAndTheLabelsOfEachRow(t *testing
 		openPullOf(t, 7, "loose", "dev", "owner", "no-issue", true),
 	)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, pullsFlow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, pullsFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -91,14 +91,14 @@ func TestQueue_ARowTakesTheAuthorOfTheLowestPullRequestOfItsBranch(t *testing.T)
 		pullBy(t, 9, "24", "later", "CHANGES_REQUESTED"), pullBy(t, 4, "24", "first", ""),
 	)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, rowFieldsFlow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, rowFieldsFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"24::first:False"}, seenBy(t, h), "the lowest number counts, for the author and for the review state")
 }
 
 // stoppedChild runs a child whose command ends it with a stop code, then prints the row of each item. The word ROW stands for the expression of the test.
-const stoppedChild = `def work(item):
+const stoppedChild = queueLoad + `def work(item):
     command(name = "lint", run = ["lint"], stop_on_rc = [2])
 
 def main(item):
@@ -137,7 +137,7 @@ func TestQueue_AStoppedRowKeepsOneLineOfTheStopOutputUpToTheLimit(t *testing.T) 
 			h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 			stopAtLintWith(h, test.output)
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.stop_reason.replace(" ", "_")`)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.stop_reason.replace(" ", "_")`)), modeOff())
 
 			require.NoError(t, err)
 			assert.Equal(t, []string{test.want}, seenBy(t, h))
@@ -151,7 +151,7 @@ const stopOrWork = `def main(item):
 `
 
 // rowsFlow reads the queue and prints the state of each row.
-const rowsFlow = `def main(item):
+const rowsFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + "|" + r.state for r in q.rows])
 `
@@ -160,7 +160,7 @@ const rowsFlow = `def main(item):
 func rowsSeenBy(t *testing.T, h *harness, engine *Engine, observer string) ([]string, error) {
 	t.Helper()
 
-	_, err := engine.RunFile(observer, testProject, writeFlow(t, rowsFlow))
+	_, err := engine.RunFile(observer, testProject, writeFlow(t, rowsFlow), modeOff())
 
 	ran := h.commands.ranBy(observer)
 	if len(ran) == 0 {
@@ -188,7 +188,7 @@ func TestQueue_ABeehaveRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(
 	}
 
 	engine := h.engine(t)
-	_, err := engine.RunFile("21", testProject, writeFlow(t, stopOrWork))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, stopOrWork), modeOff())
 	require.NoError(t, err)
 
 	rows, err := rowsSeenBy(t, h, engine, "7")
@@ -202,7 +202,7 @@ func TestQueue_ABeehaveRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(
 
 	stopping.Store(false)
 
-	_, err = engine.RunFile("21", testProject, writeFlow(t, stopOrWork))
+	_, err = engine.RunFile("21", testProject, writeFlow(t, stopOrWork), modeOff())
 	require.NoError(t, err)
 
 	rows, err = rowsSeenBy(t, h, engine, "8")
@@ -216,7 +216,7 @@ func TestQueue_ABeehaveRunOfAnItemWhoseResultCannotBeReadReplacesThatRun(t *test
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, stopOrWork))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, stopOrWork), modeOff())
 	require.NoError(t, err)
 	storeExec(t, h, `UPDATE workflow_output SET output = 'not json' WHERE workflow_uuid = '`+runID("21", 1)+`'`)
 
@@ -224,7 +224,7 @@ func TestQueue_ABeehaveRunOfAnItemWhoseResultCannotBeReadReplacesThatRun(t *test
 	require.ErrorContains(t, err, "read the result of "+runID("21", 1))
 	require.ErrorContains(t, err, "Run beehave run 21 to start a new attempt")
 
-	_, err = engine.RunFile("21", testProject, writeFlow(t, stopOrWork))
+	_, err = engine.RunFile("21", testProject, writeFlow(t, stopOrWork), modeOff())
 	require.NoError(t, err)
 
 	rows, err := rowsSeenBy(t, h, engine, "8")
@@ -238,7 +238,7 @@ func TestQueue_ARunThatEndedWithAStopIsNotDone(t *testing.T) {
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	stopAtLint(h)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.state`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.state`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21|stopped"}, seenBy(t, h), "a run whose result records a stop is stopped in the queue, as status shows it")
@@ -250,14 +250,14 @@ func TestQueue_AStoppedRowNamesTheStepAndTheReasonOfTheStop(t *testing.T) {
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)})
 	stopAtLint(h)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.stop_step + "|" + r.stop_reason`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.stop_step + "|" + r.stop_reason`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21|command:lint#1|base-moved", "22||"}, seenBy(t, h), "the stopped row names the step and the output of the stop; a row that is not stopped names neither")
 }
 
 // valueFlow prints the state and the value of each row, with none when the value is None.
-const valueFlow = `def main(item):
+const valueFlow = queueLoad + `def main(item):
     q = queue(name = "q")
     command(name = "seen", run = ["seen"] + [r.item + "|" + r.state + "|" + (str(r.value).replace(" ", "_") if r.value != None else "none") for r in q.rows])
 `
@@ -268,10 +268,10 @@ func TestQueue_ADoneRowCarriesTheValueOfARunThatAUserStarted(t *testing.T) {
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True, \"head\": \"abc\"}\n"))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True, \"head\": \"abc\"}\n"), modeOff())
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{`21|done|{"approved":_True,_"head":_"abc"}`}, seenBy(t, h), "the row shows what the run of the owner returned")
@@ -283,10 +283,10 @@ func TestQueue_ARunThatAUserStartedAndThatReturnsAValueOfNoKindKeepsNoValueAndSt
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return struct(a = 1)\n"))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return struct(a = 1)\n"), modeOff())
 	require.NoError(t, err, "a struct is no value that a run keeps, and it never fails a run that a user started")
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21|done|none"}, seenBy(t, h))
@@ -302,20 +302,20 @@ func TestQueue_AHeldItemWithASucceededRunIsAHoldRowAndAnItemThatIsNotHeldIsDone(
 	engine := h.engine(t)
 
 	for _, item := range []string{"21", "22"} {
-		_, err := engine.RunFile(item, testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True}\n"))
+		_, err := engine.RunFile(item, testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True}\n"), modeOff())
 		require.NoError(t, err)
 	}
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, valueFlow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{`21|hold|none`, `22|done|{"approved":_True}`}, seenBy(t, h), "a rejected landing holds the item, so the row is hold and carries no value to land")
 }
 
-func TestQueue_ARowWhoseRecordedValueIsNotJSONFailsTheCall(t *testing.T) {
+func TestRunRead_AValueThatIsNotJSONFailsTheCall(t *testing.T) {
 	t.Parallel()
 
-	_, err := queuedValue(queued{Rows: []queueRow{{Item: "21", Value: json.RawMessage("{")}}})
+	_, err := fields(runReadOutputs([]runView{{Item: "21", State: queueDone, Value: json.RawMessage("{")}}, 0))
 
-	require.ErrorContains(t, err, "read the value of the last run of item 21")
+	require.ErrorContains(t, err, "output \"runs\"")
 }

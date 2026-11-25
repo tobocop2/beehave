@@ -115,7 +115,7 @@ func TestCancel_ADoneRunAndACancelledRunWithNothingOpenAreStillRefused(t *testin
 	require.NoError(t, err)
 
 	err = client.Cancel(testItem)
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, testRun+" is done and has nothing to cancel")
 
 	failed := newHarness(t)
@@ -127,7 +127,7 @@ func TestCancel_ADoneRunAndACancelledRunWithNothingOpenAreStillRefused(t *testin
 	require.NoError(t, failedClient.Cancel(testItem))
 
 	err = failedClient.Cancel(testItem)
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, testRun+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehave status prints
 }
 

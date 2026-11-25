@@ -58,45 +58,22 @@ func TestGateRefusal_AProgramGateOnAHostIsNotRefused(t *testing.T) {
 	assert.Equal(t, []string{"true"}, h.commands.ran())
 }
 
-func TestGateRefusal_ABatchMergeIsRefusedWithAProjectGateAndWithAGateRun(t *testing.T) {
+func TestGateRefusal_ABatchMergeIsRefusedWithAProjectGateAndWithAGateRunAndLandsNothing(t *testing.T) {
 	t.Parallel()
 
 	for name, extra := range map[string]string{"project gate": "", "gate_run": `gate_run = ["check-all"], `} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			rig := newBatchRig(t)
+			rig := libRig(t)
 			rig.h.refuseGate = func(string, bool) error { return errNoGateHere }
 
-			_, err := rig.walk(t, rig.call("1", extra))
+			err := rig.libWalk(t, rig.libCall("1", extra))
 
 			require.ErrorContains(t, err, errNoGateHere.Error())
-			assert.Empty(t, rig.h.commands.ran())
-			assert.Empty(t, rig.merger.landed())
-		})
-	}
-}
-
-func TestGateRefusal_ABatchMergeIsRefusedBeforeAnyGitCommandWorktreeOrProgram(t *testing.T) {
-	t.Parallel()
-
-	for name, extra := range map[string]string{"project gate": "", "gate_run": `gate_run = ["check-all"], `} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			rig := newBatchRig(t)
-			rig.h.trees.late = &lateFolder{dir: t.TempDir()}
-			rig.h.refuseGate = func(string, bool) error { return errNoGateHere }
-
-			_, err := rig.walk(t, rig.call("1", extra))
-
-			require.ErrorContains(t, err, errNoGateHere.Error())
-			assert.Empty(t, rig.host.gitCalls(), "no git command runs")
-			assert.Empty(t, rig.h.trees.late.path(), "no worktree is made")
-			assert.Zero(t, rig.host.tipCalls, "the tip of the base is not read")
-			assert.Empty(t, rig.host.checkouts)
-			assert.Empty(t, rig.h.commands.ran(), "no program runs")
+			assert.NotContains(t, rig.h.commands.ran(), "check-all", "no program of the gate runs")
 			assert.Empty(t, rig.gate.ran(), "no gate runs")
+			assert.Empty(t, rig.merger.landed())
 		})
 	}
 }
@@ -140,7 +117,7 @@ func TestGateRefusal_AReplayOfARecordedGateReturnsTheRecordedPassAfterTheSandbox
 			engine := h.engine(t)
 
 			// The release after the gate fails, so the run fails with the gate pass in its history.
-			_, err := engine.RunFile(testItem, testProject, file)
+			_, err := engine.RunFile(testItem, testProject, file, modeOff())
 			require.ErrorContains(t, err, "release")
 
 			sandboxOn.Store(true)

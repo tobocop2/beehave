@@ -29,6 +29,8 @@ type fakeCommands struct {
 	mu       sync.Mutex
 	requests []CommandRequest
 	reply    func(CommandRequest) (CommandOutput, error)
+	// git answers a request ahead of reply when its second value is true, so a test that sets its own reply keeps the git of the batch library.
+	git func(CommandRequest) (CommandOutput, bool)
 	// before runs ahead of the lock, so it may wait for the context or for a signal of the test. A non-nil error fails the command.
 	before func(ctx context.Context, request CommandRequest) error
 }
@@ -49,6 +51,12 @@ func (c *fakeCommands) Run(ctx context.Context, request CommandRequest) (Command
 	defer c.mu.Unlock()
 
 	c.requests = append(c.requests, request)
+
+	if c.git != nil {
+		if out, ok := c.git(request); ok {
+			return out, nil
+		}
+	}
 
 	if c.reply == nil {
 		return CommandOutput{}, nil
@@ -159,7 +167,7 @@ func walkBody(t *testing.T, h *harness, body string) (ItemResult, error) {
 func walkText(t *testing.T, h *harness, text string) (ItemResult, error) {
 	t.Helper()
 
-	return h.engine(t).RunFile(testItem, testProject, writeFlow(t, text))
+	return h.engine(t).RunFile(testItem, testProject, writeFlow(t, text), modeOff())
 }
 
 // stepNames returns the names of the builtin steps of the run, which are the ones with a count.
@@ -181,7 +189,21 @@ func stepNames(t *testing.T, engine *Engine) []string {
 }
 
 // interrupted runs the file until it waits for the owner, then stops the engine as a crash would.
-func interrupted(t *testing.T, h *harness, file string) {
+func interrupted(t *testing.T, h *harness, file string, options ...RunOption) {
+	t.Helper()
+
+	interruptedWhen(t, h, file, nil, options...)
+}
+
+// interruptedParked is interrupted, but it stops the engine only after the run has recorded the window of its receive. The question shows before the window is recorded, so a stop at the question can come first and leave a run that never parked.
+func interruptedParked(t *testing.T, h *harness, file string) {
+	t.Helper()
+
+	interruptedWhen(t, h, file, func(run *runRef) bool { return run.parked(time.Now()) != "" })
+}
+
+// interruptedWhen is interrupted that also waits until ready, when it is set, accepts the run.
+func interruptedWhen(t *testing.T, h *harness, file string, ready func(run *runRef) bool, options ...RunOption) {
 	t.Helper()
 
 	stopCtx, stop := context.WithCancel(t.Context())
@@ -194,7 +216,7 @@ func interrupted(t *testing.T, h *harness, file string) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, append([]RunOption{modeOff()}, options...)...)
 		ended <- runErr
 	}()
 
@@ -203,6 +225,12 @@ func interrupted(t *testing.T, h *harness, file string) {
 
 		return struct{}{}, err == nil && len(rows) == 1 && rows[0].Question != "", nil
 	}})
+
+	if ready != nil {
+		waitOn(t, waiting[struct{}]{what: "the run to record its receive window", read: func() (struct{}, bool, error) {
+			return struct{}{}, ready(runOfEngine(t, engine)), nil
+		}})
+	}
 
 	stop()
 	require.NoError(t, engine.Shutdown())
@@ -221,7 +249,7 @@ func runFileWithin(t *testing.T, engine *Engine, file string) (ItemResult, error
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -253,7 +281,7 @@ func TestRunStar_AReplayIssuesTheSameStepNamesAndRunsNoRecordedStepAgain(t *test
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -284,7 +312,7 @@ const goldenFlow = `def main(item):
 // A change to the sequence of a builtin that is not behind a patch: bump the version of the module that owns it in moduleTable (stepmodules.go) and record the list here in the same commit.
 // A change behind a patch leaves this list alone and shows its marker in goldenSteps (see goldenpatch_test.go). A later change re-keys this list for each module.
 var goldenBaseSteps = []string{
-	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "scope:g#1", "gate:g#1",
+	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "gate:g#1",
 	"login#1", "agent:a#1/start", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1", "agent:a#1/commit",
 	"wait:w#1",
 }
@@ -304,7 +332,7 @@ func TestRunStar_TheStepNamesOfTheWaitForALostGateJobMatchTheGoldenList(t *testi
 	hosts.proofs = []model.LostProof{{Note: "the link is down"}, {Kind: model.LostStopped}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"g\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"g\")\n")), modeOff())
 	require.NoError(t, err)
 
 	_, child := gateChildSteps(t, engine)

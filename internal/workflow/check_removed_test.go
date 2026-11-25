@@ -28,6 +28,20 @@ func TestCheck_ABuiltinThatTheAPIRemovedIsRefusedAsAnUndefinedNameAndNamed(t *te
 	}
 }
 
+func TestCheck_ACallOfTheQueueBuiltinIsRefusedAndNamesTheLibraryThatReplacesIt(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "undefined: queue")
+	assert.Contains(t, got[0], `load("@beehave//queue.star", "queue")`)
+
+	loaded := checkText(t, "load(\"@beehave//queue.star\", \"queue\")\n\ndef main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
+
+	assert.Empty(t, loaded, "a file that loads the library function passes the check")
+}
+
 func TestCheck_AKeywordThatTheAPIRemovedIsRefusedByNameWithTheBuiltinThatTookIt(t *testing.T) {
 	t.Parallel()
 
@@ -46,4 +60,27 @@ func TestCheck_AKeywordThatTheAPIRemovedIsRefusedByNameWithTheBuiltinThatTookIt(
 			assert.Contains(t, got[0], test.want)
 		})
 	}
+}
+
+func TestCheckWorkflow_PROpenRefusesIssueAndNamesBody(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    pr_open(title = \"t\", base = \"main\", body = \"b\", issue = 12)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_open takes no argument issue. Write the closing line in body, such as Closes #12.")
+
+	got = checkText(t, "def main(item):\n    pr_open(title = \"t\", base = \"main\", integration = True)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_open takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue.")
+}
+
+func TestCheckWorkflow_PRCommentRefusesIntegrationAndNamesForbidText(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    pr_comment(text = \"t\", key = \"k\", integration = True)\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "pr_comment takes no argument integration. Pass the closing keywords in forbid_text for a pull request that may not close an issue.")
 }

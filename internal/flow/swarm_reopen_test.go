@@ -84,7 +84,7 @@ func TestSpawnGather_AResumeKeepsAChildThatTheUserCanceledByHand(t *testing.T) {
 		canceled <- handCancel(resumer, "23")
 	}()
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, afterFails))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, afterFails), modeOff())
 	require.ErrorIs(t, err, errFake)
 	require.NoError(t, receive(t, canceled))
 	require.Equal(t, dbos.WorkflowStatusCancelled, childStatus(t, engine, "23"))
@@ -129,7 +129,7 @@ func TestSpawnGather_TheGatherRecordsTheRunsThatTheRaiseCanceled(t *testing.T) {
 	}
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)), modeOff())
 
 	require.ErrorContains(t, err, "item 22 did not finish")
 
@@ -252,7 +252,7 @@ func TestSpawnGather_AResumeThatFailsOnTheSecondChildLeavesTheParentAndLetsTheFi
 	}
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)), modeOff())
 	require.ErrorContains(t, err, "item 21 did not finish")
 	require.Equal(t, dbos.WorkflowStatusError, childStatus(t, engine, "21"))
 	require.Equal(t, dbos.WorkflowStatusCancelled, childStatus(t, engine, "22"))
@@ -317,7 +317,7 @@ func TestSpawnGather_ARaiseOnAChildCanceledByHandSaysThatResumeKeepsItCanceled(t
 		canceled <- handCancel(resumer, "23")
 	}()
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)), modeOff())
 	require.NoError(t, receive(t, canceled))
 	require.ErrorContains(t, err, "item 23 did not finish")
 	require.ErrorContains(t, err, "It was canceled by hand, and beehave resume 12 does not reopen a child canceled by hand")
