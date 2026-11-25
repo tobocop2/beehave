@@ -257,7 +257,7 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	}
 }
 
-// settleCancel waits for the end of the main run that a cancel stopped, then for every run of its tree to leave the queue as cancelled and for the wait
+// settleCancel waits for the end of the main run that a cancel stopped, then for every run of its tree to leave the queue as canceled and for the wait
 // that the cancel stopped to return, so that nothing of the old run is alive when the test resumes. It prints the state of the engine if the test fails.
 func settleCancel(t *testing.T, engine *Engine, gated hostGate, ended <-chan error) {
 	t.Helper()
@@ -270,7 +270,7 @@ func settleCancel(t *testing.T, engine *Engine, gated hostGate, ended <-chan err
 
 	require.Error(t, receive(t, ended))
 
-	waitOn(t, waiting[struct{}]{what: "the old runs of the item to end as cancelled and the old wait to return", read: func() (struct{}, bool, error) {
+	waitOn(t, waiting[struct{}]{what: "the old runs of the item to end as canceled and the old wait to return", read: func() (struct{}, bool, error) {
 		return struct{}{}, gated.oldWaitReturned() && noRunOpen(engine), nil
 	}})
 }
