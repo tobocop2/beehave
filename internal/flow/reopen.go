@@ -26,7 +26,18 @@ func (c *Client) reopen(id string, opts ...dbos.RewindWorkflowOption) error {
 		return err
 	}
 
-	return c.rewind(id, min(from, openStart(steps)), opts...)
+	return c.rewind(id, min(from, openStart(steps), firstGap(steps)), opts...)
+}
+
+// firstGap returns the step id where the history has no record (the store refused it), moved back to the look that opens it; else the length of the history.
+func firstGap(steps []dbos.StepInfo) int {
+	for i, step := range steps {
+		if step.StepID != i {
+			return firstOpenStart(steps, i)
+		}
+	}
+
+	return len(steps)
 }
 
 // openStart returns the first look at the caps or start mark after the last agent step, or the length of the history when there is none.
