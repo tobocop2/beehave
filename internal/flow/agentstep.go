@@ -560,7 +560,7 @@ func (s *script) attempts(name string, a agentArgs, in PhaseInput) (stepResult, 
 // A run that a provider limit stopped is followed by a wait for the reset and a rerun inside the same try: a limit spends no output try and no lane.
 // Each phase looks at the caps first, because the limited run can have spent money before the limit stopped it.
 func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (stepResult, error) {
-	in.Severity, in.Call = string(s.severity), name
+	in.Severity, in.Call, in.Rerun = string(s.severity), name, try > 1
 
 	if err := s.clearOutput(name, a, in, try); err != nil {
 		return stepResult{}, err

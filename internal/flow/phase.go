@@ -21,6 +21,8 @@ import (
 // Model, Timeout and IdleTimeout go to the agent as they are. Forbid lists the kinds of command that the step forbids.
 type PhaseInput struct {
 	Run string `json:"run"`
+	// Tree is the root run of the item tree of Run. The spend row of the phase names it. It is left out of a phase that the engine did not queue.
+	Tree string `json:"tree,omitempty"`
 	// Call is the name of the agent call, such as agent:fix#1. The stop at a cap and the error of a look name it.
 	Call    string `json:"call,omitempty"`
 	Item    string `json:"item"`
@@ -28,6 +30,8 @@ type PhaseInput struct {
 	Login   string `json:"login"`
 	// Severity is the severity of the item, which sets the place of the phase in its queue. It is left out for an item with none.
 	Severity string `json:"severity,omitempty"`
+	// Rerun is true for a phase that runs a call again: a new try after a bad output file, or the rerun after a provider limit. It is left out of the first run of a call.
+	Rerun bool `json:"rerun,omitempty"`
 
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
@@ -107,6 +111,8 @@ type PhaseOutput struct {
 	CapStop *CapStop `json:"cap_stop,omitempty"`
 	// ResumeOf is the session of the lost start or the limited run that this run was given to resume, and is left out of a recorded phase for any other run.
 	ResumeOf string `json:"resume_of,omitempty"`
+	// Execution is the id of the agent execution that the phase ran, which is the key of its spend row. It is left out of a recorded phase that ran no agent.
+	Execution string `json:"execution,omitempty"`
 }
 
 // phase waits for a trusted claim of its run, looks at the caps, then runs the agent as a step; a cap stop ends it with the stop and no agent run.
@@ -152,13 +158,19 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 		return PhaseOutput{}, err
 	}
 
+	execution, err := e.startSpend(ctx, in)
+	if err != nil {
+		return PhaseOutput{}, err
+	}
+
 	named, said, finish := e.watch(ctx, in)
 	defer finish()
 
 	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, named, said))
 
 	out, err := e.judgePhase(ctx, in, result, err)
-	out.ResumeOf = lost.session()
+	out.ResumeOf, out.Execution = lost.session(), execution
+	e.endSpend(ctx, execution, in, out)
 
 	return out, err
 }
@@ -392,6 +404,13 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 	if _, err := e.claimed(in.Run, in.Item); err != nil {
 		return PhaseOutput{}, err
 	}
+
+	tree, err := rootRun(e.store(), in.Run)
+	if err != nil {
+		return PhaseOutput{}, fmt.Errorf("find the item tree of item %s: %w", in.Item, err)
+	}
+
+	in.Tree = tree
 
 	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.agentQueue(in.NoEdits)), dbos.WithQueuePartitionKey(in.Login), dbos.WithPriority(placeOf(model.Severity(in.Severity), false)))
 	if err != nil {

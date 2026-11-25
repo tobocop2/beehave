@@ -232,10 +232,38 @@ func TestLaneLayout_AStoreThatIsShutDownGivesNoCountOfEarlierCalls(t *testing.T)
 	require.NoError(t, engine.Shutdown())
 
 	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).countEarlier("fix")
-	require.ErrorContains(t, err, "list the earlier runs of item 12")
+	require.ErrorContains(t, err, "count the agent calls of item 12 in the ledger")
 
-	_, err = callsInRuns(engine.ctx, []string{"item-12-r1"}, "fix")
+	_, err = engine.executionsOf("item-12-r1")
 	require.ErrorContains(t, err, "read the steps of item-12-r1")
+}
+
+// The executions of the own run come from the recorded output of its phases. The count leaves them out, and counts the executions of every other run.
+func TestLaneLayout_TheCountOfEarlierCallsLeavesOutTheExecutionsThatTheStepsOfTheRunRecorded(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, "def main(item):\n    agent(name = \"fix\", prompt = \"prompts/work.md\", model = \"m\")\n")
+	engine := h.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	own, err := engine.executionsOf(runID(testItem, 1))
+	require.NoError(t, err)
+	require.Len(t, own, 1, "the run made one agent execution")
+
+	none, err := engine.executionsOf("")
+	require.NoError(t, err)
+	assert.Empty(t, none, "a caller outside a run has no own execution")
+
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "a script outside the run counts the execution of the run as earlier")
+
+	skipped, err := engine.ledger.CountCalls(engine.ctx, testItem, "agent:fix#", own)
+	require.NoError(t, err)
+	assert.Zero(t, skipped, "the execution that the steps of the run recorded is left out")
 }
 
 // A cap that the first run did not use up is what the second run gets: a first run that ended early after one candidate leaves one candidate fewer.
