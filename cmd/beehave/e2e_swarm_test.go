@@ -374,7 +374,7 @@ func (swarmForgeAt) SetBody(context.Context, int, string) error { return nil }
 
 func (swarmForgeAt) StackID(context.Context, int) (string, error) { return "", nil }
 
-func (swarmForgeAt) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+func (swarmForgeAt) CanWriteCI(context.Context) (model.CIWrite, error) { return model.CIWriteNo, nil }
 
 func (swarmForgeAt) TreeBlobs(context.Context, string) (map[string]string, error) { return nil, nil }
 

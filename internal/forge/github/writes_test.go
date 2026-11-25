@@ -115,46 +115,65 @@ func TestDisableAutoMergePR_AFailedCallIsARefusal(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot turn off the queued merge of pull request 4")
 }
 
-func TestTokenScopes_ReadsTheQuotedScopesOfTheTokenLine(t *testing.T) {
+func TestCanWriteCI_AScopeLineWithTheWorkflowScopeIsYes(t *testing.T) {
 	t.Parallel()
 
 	f, run := fixed(t, authText)
 
-	scopes, err := f.TokenScopes(context.Background())
+	answer, err := f.CanWriteCI(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, []string{"gist", "read:org", "repo", "workflow"}, scopes)
+	assert.Equal(t, model.CIWriteYes, answer)
 	assert.Equal(t, [][]string{{"auth", "status", "--active"}}, run.Calls)
 }
 
-func TestTokenScopes_ReadsTheScopesFromStderrToo(t *testing.T) {
+func TestCanWriteCI_TheScopeLineDecidesOnStderrAndWhateverTheExitCode(t *testing.T) {
 	t.Parallel()
 
 	f, _ := failing(t, authText)
 
-	scopes, err := f.TokenScopes(context.Background())
+	answer, err := f.CanWriteCI(context.Background())
 	require.NoError(t, err)
-	assert.Contains(t, scopes, "workflow")
+	assert.Equal(t, model.CIWriteYes, answer)
 }
 
-func TestTokenScopes_ATokenWithNoScopeLineHasNoScopes(t *testing.T) {
+func TestCanWriteCI_AScopeLineWithoutTheWorkflowScopeIsNo(t *testing.T) {
 	t.Parallel()
 
-	f, _ := fixed(t, "github.com\n  - Token scopes: none\n")
+	for _, line := range []string{"  - Token scopes: none\n", "  - Token scopes: 'repo', 'read:org'\n", "  - Token scopes: 'workflows'\n"} {
+		f, _ := fixed(t, "github.com\n"+line)
 
-	scopes, err := f.TokenScopes(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, scopes)
+		answer, err := f.CanWriteCI(context.Background())
+		require.NoError(t, err, line)
+		assert.Equal(t, model.CIWriteNo, answer, line)
+	}
 }
 
-func TestTokenScopes_AnAnswerWithNoTokenLineIsARefusal(t *testing.T) {
+func TestCanWriteCI_ALoggedInTokenWithNoScopeLineIsUnknownNeverNo(t *testing.T) {
 	t.Parallel()
 
-	for name, stdout := range map[string]string{"empty": "", "logged out": "You are not logged into any GitHub hosts.\n"} {
+	// gh v2.101.0 prints the scope line only for ghp_ and gho_ tokens, so a fine-grained token that is logged in prints none and exits 0.
+	for _, stdout := range []string{"github.com\n  ✓ Logged in to github.com account me (GH_TOKEN)\n  - Active account: true\n", ""} {
 		f, _ := fixed(t, stdout)
 
-		_, err := f.TokenScopes(context.Background())
+		answer, err := f.CanWriteCI(context.Background())
+		require.NoError(t, err, stdout)
+		assert.Equal(t, model.CIWriteUnknown, answer, stdout)
+	}
+}
+
+func TestCanWriteCI_AnAnswerThatIsNotLoggedInIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	for name, stderr := range map[string]string{
+		"refused login": "github.com\n  X Failed to log in to github.com using token (GH_TOKEN)\n  - The token in GH_TOKEN is invalid.\n",
+		"logged out":    "You are not logged into any GitHub hosts.\n",
+	} {
+		f, _ := failing(t, stderr)
+
+		answer, err := f.CanWriteCI(context.Background())
 		require.Error(t, err, name)
-		assert.Contains(t, err.Error(), "cannot read the token scopes", name)
+		assert.Equal(t, model.CIWriteUnknown, answer, name)
+		assert.Contains(t, err.Error(), "gh auth status exited with code 1", name)
 	}
 }
 

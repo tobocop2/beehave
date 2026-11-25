@@ -132,13 +132,13 @@ type Activity interface {
 }
 
 // Lookup finds items and branches: a search, the default branch and the tip of a branch.
-// TokenScopes lists the scopes of the token the forge command line uses.
+// CanWriteCI answers whether the token the forge command line uses can change CI files: yes, no or unknown. A read that fails is an error, never an answer.
 // PullCounts returns the forge's own count of the commits and changed files of a pull request. A list in PRView can be cut short, so a caller compares the count to the list.
 // Committers returns the committer of each commit of a pull request, in the order of the commits.
 type Lookup interface {
 	PullCounts(ctx context.Context, pr int) (commits, files int, err error)
 	Committers(ctx context.Context, pr int) ([]model.Committer, error)
-	TokenScopes(ctx context.Context) ([]string, error)
+	CanWriteCI(ctx context.Context) (model.CIWrite, error)
 	Search(ctx context.Context, req model.SearchRequest) ([]int, error)
 	DefaultBranch(ctx context.Context) (string, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)

@@ -1,6 +1,7 @@
 package merge_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -80,19 +81,19 @@ func TestScope_AWorkflowChangeNeedsTheWorkflowScope(t *testing.T) {
 	workflow := map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}}
 
 	cases := map[string]struct {
-		scopes []string
-		want   merge.Stop
+		ci   model.CIWrite
+		want merge.Stop
 	}{
-		"both":      {[]string{"repo", "workflow"}, merge.Done},
-		"repo only": {[]string{"repo"}, merge.NoWorkflowScope},
-		"none":      {nil, merge.NoWorkflowScope},
+		"the token can change CI":    {model.CIWriteYes, merge.Done},
+		"the token cannot change CI": {model.CIWriteNo, merge.NoWorkflowScope},
 	}
 	for name, one := range cases {
 		w := newWorld(t).set(t, workflow)
-		w.scopes = one.scopes
+		w.ci = one.ci
 		result := w.run(request())
 
 		assert.Equal(t, one.want, result.Stop, name)
+		assert.True(t, w.called("CanWriteCI"), name)
 
 		if one.want == merge.NoWorkflowScope {
 			assert.Equal(t, 3, result.Stop.Code())
@@ -110,18 +111,50 @@ func TestScope_TheWorkflowPrefixNeedsItsTrailingSlash(t *testing.T) {
 	w := newWorld(t).set(t, other)
 
 	assert.Equal(t, merge.Done, w.run(request()).Stop)
-	assert.False(t, w.called("TokenScopes"))
+	assert.False(t, w.called("CanWriteCI"))
 }
 
 func TestScope_UnreadableScopesRefuse(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t).set(t, map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}})
-	w.fails["TokenScopes"] = true
+	w.fails["CanWriteCI"] = true
 	result := w.run(request())
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Equal(t, "REFUSE: cannot read the token scopes, so a workflow change cannot be merged", last(result))
+	assert.Equal(t, "REFUSE: cannot read whether the token can change workflow files, so a workflow change cannot be merged", last(result))
+}
+
+func TestScope_AProjectWithCredentialsHoldsAWorkflowChangeForTheOwnerAndReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, ci := range []model.CIWrite{model.CIWriteYes, model.CIWriteNo, model.CIWriteUnknown} {
+		s := shield(t, full)
+		s.set(t, map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}})
+		s.ci = ci
+
+		result := merge.Run(context.Background(), s, credentialed())
+
+		assert.Equal(t, merge.NoWorkflowScope, result.Stop, ci)
+		assert.Equal(t, 3, result.Stop.Code(), ci)
+		assert.Equal(t, "REFUSE: #5 changes .github/workflows. The writer token cannot change CI, so the owner lands this change by hand.", last(result), ci)
+		assert.False(t, s.called("CanWriteCI"), "a project with credentials reads no CI answer")
+		assert.Empty(t, s.writes, ci)
+	}
+}
+
+func TestScope_AProjectWithNoCredentialsRefusesAWorkflowChangeWhenTheForgeCannotTell(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t).set(t, map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}})
+	w.ci = model.CIWriteUnknown
+	result := w.run(request())
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, 2, result.Stop.Code())
+	assert.Equal(t, "REFUSE: #5 changes .github/workflows, and the forge cannot tell whether the token can change workflow files.", last(result))
+	assert.True(t, w.called("CanWriteCI"))
+	assert.Empty(t, w.writes)
 }
 
 func TestScope_AnUnreadableFileListRefusesInsteadOfSkippingTheScopeCheck(t *testing.T) {
@@ -133,7 +166,7 @@ func TestScope_AnUnreadableFileListRefusesInsteadOfSkippingTheScopeCheck(t *test
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Contains(t, last(result), "the changed files cannot be read")
 	assert.NotContains(t, last(result), "incomplete")
-	assert.False(t, w.called("TokenScopes"))
+	assert.False(t, w.called("CanWriteCI"))
 	assert.Empty(t, w.writes)
 }
 

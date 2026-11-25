@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/credential"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
@@ -45,7 +48,8 @@ func writerHome(t *testing.T) (config.Config, flow.Options) {
 	require.NoError(t, exectest.ChmodFolder(folder, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(folder, "writer.token"), []byte(writerToken+"\n"), 0o600))
 
-	project := model.Project{Name: "p", Repo: "o/r", Credentials: map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/writer.token"}}}
+	// The project has no forge to ask whether the token can change CI, so the owner states it.
+	project := model.Project{Name: "p", Repo: "o/r", Credentials: map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/writer.token", CILocked: true}}}
 	opts := flow.Options{StateDir: evaluated(t, t.TempDir()), Env: map[string]string{"HOME": home, "PATH": testPath}}
 
 	return config.Config{Projects: map[string]config.Project{"p": {Project: project}}}, opts
@@ -370,6 +374,112 @@ func TestPushLocal_RunsGitInTheNamedRepositoryWithTheFileTransportOnlyAndNoPromp
 	got, err := os.ReadFile(log) //nolint:gosec // a file of this test
 	require.NoError(t, err)
 	assert.Equal(t, "dir="+dir+" prompt=0 allow=file", strings.TrimSpace(string(got)))
+}
+
+// ciForge is a forge that answers only whether the token can change CI.
+type ciForge struct {
+	forge.Forge
+	answer model.CIWrite
+	err    error
+}
+
+func (f ciForge) CanWriteCI(context.Context) (model.CIWrite, error) { return f.answer, f.err }
+
+// withForge gives the project of the writer home the forge github and the statement locked, and returns writers whose forge table builds the forge.
+func withForge(t *testing.T, locked bool, built forge.Forge, buildErr error) (*writers, config.Config, flow.Options) {
+	t.Helper()
+
+	cfg, opts := writerHome(t)
+	project := cfg.Projects["p"]
+	project.Forge = forgegithub.Name
+	project.Credentials = map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/writer.token", CILocked: locked}}
+	cfg.Projects["p"] = project
+
+	return &writers{forges: func(model.Project) (forge.Forge, error) { return built, buildErr }}, cfg, opts
+}
+
+func TestWritersStart_TheCIAnswerOfTheForgeDecidesTheStartAndCILockedLiftsOnlyUnknown(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		answer model.CIWrite
+		locked bool
+		want   error
+	}{
+		"yes":                {model.CIWriteYes, false, credential.ErrCIWritable},
+		"yes with ci_locked": {model.CIWriteYes, true, credential.ErrCIWritable},
+		"no":                 {model.CIWriteNo, false, nil},
+		"no with ci_locked":  {model.CIWriteNo, true, nil},
+		"unknown":            {model.CIWriteUnknown, false, credential.ErrCIUnstated},
+		"unknown, ci_locked": {model.CIWriteUnknown, true, nil},
+	} {
+		roles, cfg, opts := withForge(t, test.locked, ciForge{answer: test.answer}, nil)
+
+		err := roles.start(t.Context(), cfg, opts)
+
+		if test.want == nil {
+			require.NoError(t, err, name)
+
+			continue
+		}
+
+		require.ErrorIs(t, err, test.want, name)
+		require.ErrorContains(t, err, "project p: ", name)
+	}
+}
+
+func TestWritersStart_AFailedCIReadRefusesTheStartWhateverCILockedSays(t *testing.T) {
+	t.Parallel()
+
+	down := errors.New("gh auth status exited with code 1")
+
+	for _, locked := range []bool{false, true} {
+		roles, cfg, opts := withForge(t, locked, ciForge{err: down}, nil)
+		require.ErrorIs(t, roles.start(t.Context(), cfg, opts), down)
+
+		roles, cfg, opts = withForge(t, locked, nil, reach.ErrNotLoaded)
+		err := roles.start(t.Context(), cfg, opts)
+		require.ErrorIs(t, err, reach.ErrNotLoaded)
+		require.ErrorContains(t, err, "project p: cannot read whether the writer token can change workflow files: ")
+	}
+}
+
+func TestWritersStart_AProjectWithCredentialsAndNoForgeStartsOnlyWhenTheOwnerStatesCILocked(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := writerHome(t)
+	project := cfg.Projects["p"]
+	project.Credentials = map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/writer.token"}}
+	cfg.Projects["p"] = project
+
+	err := (&writers{}).start(t.Context(), cfg, opts)
+
+	require.ErrorIs(t, err, credential.ErrCIUnstated)
+	require.ErrorContains(t, err, "project p: beehave cannot read whether the writer token can change workflow files")
+}
+
+func TestEngineStart_EveryEntryPointReadsTheCIAnswerAsTheWriterAndRefusesATokenWithTheWorkflowScope(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "gh-calls")
+	script := "#!/bin/sh\necho \"$* | GH_TOKEN=${GH_TOKEN:-unset} | GH_CONFIG_DIR=${GH_CONFIG_DIR:-unset}\" >> " + log + "\n" +
+		"printf 'github.com\\n  - Token scopes: %s\\n' \"'repo', 'workflow'\"\n"
+	require.NoError(t, exectest.Write(filepath.Join(bin, "gh"), script))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+testPath)
+	t.Setenv("GH_TOKEN", "owner-token")
+
+	_, cfg, opts := withForge(t, true, nil, nil)
+
+	_, err := newEngine(t.Context(), cfg, opts)
+	require.ErrorIs(t, err, credential.ErrCIWritable, "run")
+
+	_, err = newEngineOn(t.Context(), cfg, opts, nil, newAdapters(nil, nil, opts.Env))
+	require.ErrorIs(t, err, credential.ErrCIWritable, "serve and resume")
+
+	_, err = ownProgramFor(t.Context(), cfg, opts, "p")
+	require.ErrorIs(t, err, credential.ErrCIWritable, "the owner command")
+
+	want := "auth status --active | GH_TOKEN=" + writerToken + " | GH_CONFIG_DIR=" + filepath.Join(opts.StateDir, "roles", "p", "gh")
+	assert.Equal(t, []string{want, want, want}, ghCalls(t, log), "each start reads the answer once, as the writer and never as the owner")
 }
 
 func TestPulls_PushOfAProjectWithNoCredentialsKeepsNoTokenOfTheEnvironmentOfTheOwner(t *testing.T) {

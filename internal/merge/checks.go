@@ -3,13 +3,12 @@ package merge
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// workflowDir is the folder of the workflow files. A change there needs the workflow scope on the token.
+// workflowDir is the folder of the workflow files. A change there needs a token that can change CI.
 const workflowDir = ".github/workflows/"
 
 // checks refuses a head whose checks are not a pass. A skipped check is not a pass. Zero passes refuse unless the owner allowed it.
@@ -90,25 +89,41 @@ func (b buckets) summary(total int) []string {
 	return append(lines, fmt.Sprintf("checks: %d of %d passed", b.green, total))
 }
 
-// workflowScope refuses a change to a workflow file when the token has no workflow scope. It reads the scopes only then.
+// workflowScope refuses a change to a workflow file that the token cannot land. A project with credentials holds it for the owner and reads nothing,
+// because its writer cannot change CI. A project with no credentials reads whether the token can change CI, only for such a change.
 func (a *attempt) workflowScope() *refusal {
 	if !touchesWorkflow(a.view) {
 		return nil
 	}
 
-	scopes, err := a.forge.TokenScopes(a.ctx)
+	if a.req.Credentialed {
+		return &refusal{stop: NoWorkflowScope, lines: []string{
+			fmt.Sprintf("REFUSE: #%d changes .github/workflows. The writer token cannot change CI, so the owner lands this change by hand.", a.req.PR),
+		}}
+	}
+
+	answer, err := a.forge.CanWriteCI(a.ctx)
 	if err != nil {
-		return refuse("REFUSE: cannot read the token scopes, so a workflow change cannot be merged")
+		return refuse("REFUSE: cannot read whether the token can change workflow files, so a workflow change cannot be merged")
 	}
 
-	if slices.Contains(scopes, "workflow") {
+	return a.ciRefusal(answer)
+}
+
+// ciRefusal is the refusal of a workflow change for the answer of the forge: none for yes, stop 3 with the fix for no, and a refusal for unknown.
+func (a *attempt) ciRefusal(answer model.CIWrite) *refusal {
+	switch answer {
+	case model.CIWriteYes:
 		return nil
+	case model.CIWriteNo:
+		return &refusal{stop: NoWorkflowScope, lines: []string{
+			fmt.Sprintf("REFUSE: #%d touches .github/workflows and the token has no workflow scope.", a.req.PR),
+			"        Run: gh auth refresh -h github.com -s workflow",
+		}}
+	case model.CIWriteUnknown:
 	}
 
-	return &refusal{stop: NoWorkflowScope, lines: []string{
-		fmt.Sprintf("REFUSE: #%d touches .github/workflows and the token has no workflow scope.", a.req.PR),
-		"        Run: gh auth refresh -h github.com -s workflow",
-	}}
+	return refuse(fmt.Sprintf("REFUSE: #%d changes .github/workflows, and the forge cannot tell whether the token can change workflow files.", a.req.PR))
 }
 
 // wholeFileList is the guard before the scope guard. It refuses a list of changed files that is absent or shorter than the forge's count, because a workflow file could hide in the rest.

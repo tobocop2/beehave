@@ -230,7 +230,7 @@ func TestRun_AnIntentDoesNotSkipTheReviewsTheFileListOrTheAuthors(t *testing.T) 
 		"an unresolved thread":      {nil, func(w *world) { w.threads = []model.ReviewThread{thread} }, "unresolved review threads"},
 		"a workflow file with no scope": {
 			map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}},
-			func(w *world) { w.scopes = []string{"repo"} }, "no workflow scope",
+			func(w *world) { w.ci = model.CIWriteNo }, "no workflow scope",
 		},
 		"a short file list": {nil, func(w *world) { w.counts = &counts{commits: 1, files: 101} }, "incomplete"},
 		"an unlinked author": {

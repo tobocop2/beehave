@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,9 @@ import (
 )
 
 const scopesMarker = "Token scopes:"
+
+// workflowScope is the scope of a token that can change the workflow files of a repository.
+const workflowScope = "workflow"
 
 var (
 	commitID    = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -87,18 +91,32 @@ func (f *Forge) DisableAutoMergePR(ctx context.Context, pr int) error {
 	return nil
 }
 
-// TokenScopes returns the scopes of the token of the active account. An answer with no scope line is a refusal: the scopes are unknown, not empty.
-func (f *Forge) TokenScopes(ctx context.Context) ([]string, error) {
+// CanWriteCI answers from the scope line of the active account: yes when it holds the workflow scope, no when it does not.
+// gh prints the line only for a token that has scopes, so no line with a clean exit is unknown, and no line with a failed exit is a refusal.
+func (f *Forge) CanWriteCI(ctx context.Context) (model.CIWrite, error) {
 	done := f.run.Run(ctx, []string{"auth", "status", "--active"})
 
 	// gh prints the status to stderr when it exits with an error, so both streams are read.
 	for line := range strings.Lines(done.Stdout + "\n" + done.Stderr) {
 		if _, list, found := strings.Cut(line, scopesMarker); found {
-			return scopeNames(list), nil
+			return writeOf(scopeNames(list)), nil
 		}
 	}
 
-	return nil, forge.Refuse("cannot read the token scopes of gh")
+	if done.ExitCode != 0 {
+		return model.CIWriteUnknown, refused(done, "gh auth status exited with code %d", done.ExitCode)
+	}
+
+	return model.CIWriteUnknown, nil
+}
+
+// writeOf is the answer of a list of scopes: yes when it holds the workflow scope.
+func writeOf(scopes []string) model.CIWrite {
+	if slices.Contains(scopes, workflowScope) {
+		return model.CIWriteYes
+	}
+
+	return model.CIWriteNo
 }
 
 // Login returns the login of the active account: the account the review poll reads for. An empty answer is a refusal.

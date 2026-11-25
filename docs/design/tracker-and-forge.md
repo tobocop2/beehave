@@ -119,7 +119,7 @@ The writes are `PostComment`, `SetDraft`, `MergePR`, `CreateBranch`, `SetBase` a
 
 `MergePR` runs `gh pr merge --merge --match-head-commit`. It refuses a pin that is not a full commit id before `gh` runs.
 
-`TokenScopes` reads `gh auth status --active`.
+`CanWriteCI` reads the scope line of `gh auth status --active`: `yes` when it holds `workflow`, `no` when it does not, and `unknown` when gh prints no line and exits 0, as for a fine-grained token. No line with a failed exit is an error.
 
 ### Conversation methods
 

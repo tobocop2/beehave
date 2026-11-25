@@ -80,6 +80,8 @@ The commit list names authors only. So guard 0 also reads the committer of each 
 
 The workflow scope guard applies the same rule to changed files. A file list that is absent, or shorter than the forge's count, is a refusal.
 
+The workflow scope guard acts only on a pull request that changes `.github/workflows/`. In a project with `credentials`, it holds the change for the owner with code 3 and reads nothing: the writer token cannot change CI (see [trust](trust.md#the-ci-lock)). In a project with no `credentials`, it asks the forge whether the token can change CI. `yes` passes. `no` is code 3, with the command that adds the scope. `unknown`, and a read that fails, refuse with code 2.
+
 ### Order of the guards
 
 After guard 0, the guards refuse in this order:
