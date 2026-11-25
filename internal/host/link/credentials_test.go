@@ -17,7 +17,7 @@ const sshG = "user ci\nhostname 10.9.9.9\nbatchmode yes\nclearallforwardings no\
 // clean is the part of an `ssh -G` answer that gives the host neither the agent nor the X display of the owner.
 const clean = "forwardagent no\nforwardx11 no\nforwardx11trusted no\n"
 
-func TestWithCredentials_NoneForcesNoAgentNoForwardNoDisplayAndNoSharedConnectionOnEveryCallAndLeavesTheLinkItCopies(t *testing.T) {
+func TestWithCredentials_NoneForcesEveryCredentialOptionOnEveryCallAndLeavesTheLinkItCopies(t *testing.T) {
 	t.Parallel()
 
 	ssh := proctest.Always(model.CommandResult{})
@@ -74,7 +74,7 @@ func TestCheckCredentials_RunsSshGWithTheOptionsOfTheLinkWithoutTheForcedOnes(t 
 	}, ssh.Calls)
 }
 
-func TestCheckCredentials_AcceptsOnlyNoAgentNoDisplayNoProxyLocaleVariablesAndNoSecretSetting(t *testing.T) {
+func TestCheckCredentials_AcceptsOnlyNoAgentNoDisplayNoKerberosNoProxyLocaleVariablesAndNoSecretSetting(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {

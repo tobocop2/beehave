@@ -38,7 +38,7 @@ func TestUp_AHostDeclaredCredentialsNoneThatGetsTheAgentIsRefusedBeforeAnyCallRe
 	assert.Empty(t, m.Calls, "no call reaches the machine")
 }
 
-func TestUp_AHostDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayAndNoSharedConnectionOnEveryCall(t *testing.T) {
+func TestUp_AHostDeclaredCredentialsNoneThatPassesGetsEveryCredentialOptionOnEveryCall(t *testing.T) {
 	t.Parallel()
 
 	m := sshtest.New(hosttest.Working)

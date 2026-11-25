@@ -44,7 +44,7 @@ func TestUp_AClusterThatFailsToLaunchRunsNoCheck(t *testing.T) {
 	assert.Empty(t, ssh.Calls, "the ssh config entry of the cluster exists only after the launch")
 }
 
-func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayAndNoSharedConnectionOnTheQueueLink(t *testing.T) {
+func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsEveryCredentialOptionOnTheQueueLink(t *testing.T) {
 	t.Parallel()
 
 	sky, ssh := &proctest.Scripted{}, &proctest.Scripted{}

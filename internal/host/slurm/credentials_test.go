@@ -42,7 +42,7 @@ func TestUp_AHeadNodeDeclaredCredentialsNoneThatGetsTheDisplayIsRefusedBeforeAny
 	assert.True(t, strings.HasPrefix(s.calls[0], "-G "), s.calls[0])
 }
 
-func TestUp_AHeadNodeDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayAndNoSharedConnectionOnEveryCall(t *testing.T) {
+func TestUp_AHeadNodeDeclaredCredentialsNoneThatPassesGetsEveryCredentialOptionOnEveryCall(t *testing.T) {
 	t.Parallel()
 
 	h, s := headNodeDeclaredNone(t, hosttest.CleanSSHConfig)

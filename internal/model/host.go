@@ -77,7 +77,7 @@ type HostConfig struct {
 // HostCredentials is what the owner declares about the credentials that a build host gets.
 type HostCredentials string
 
-// HostCredentialsNone declares that the host gets no credential of the owner: no agent, key, display or secret variable.
+// HostCredentialsNone declares that the host gets no credential of the owner: no agent, key, display, Kerberos credential or secret variable.
 const HostCredentialsNone HostCredentials = "none"
 
 // ErrUnknownHostCredentials is returned when text names no value of host.credentials.
