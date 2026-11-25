@@ -186,11 +186,11 @@ A project of an organization can use a merge queue instead. That variant is not 
 
 ## The sandbox is on by default
 
-An unset `sandbox` in a project gives `on`. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
+An unset `sandbox` in a project gives `on`, and `beehave check config` prints one note for each project with no key. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
 
 A step with `sandbox = None` in a project with the sandbox on is refused by `beehave check workflow` and does not start. A step that needs `docker` runs as a `command` step.
 
-The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it reads the live sandbox mode of its project.
+The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it runs with the mode off.
 
 The step fails closed: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
 

@@ -561,7 +561,7 @@ func (e *Engine) Launch() error {
 }
 
 // sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,
-// before it launches and resumes these runs. A run with no stored mode uses the live default of its project.
+// before it launches and resumes these runs. A run with no stored mode uses the mode off.
 func (e *Engine) sayResumedOff() error {
 	if !e.serving {
 		return nil
@@ -573,7 +573,7 @@ func (e *Engine) sayResumedOff() error {
 	}
 
 	for _, row := range open {
-		if in, err := (run{Status: row}).input(); err == nil && in.UsedSandbox(e.deps.SandboxDefault) == model.SandboxOff {
+		if in, err := (run{Status: row}).input(); err == nil && in.UsedSandbox() == model.SandboxOff {
 			e.progress.say("run %s: %s", row.ID, model.SandboxOffLine)
 		}
 	}

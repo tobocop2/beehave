@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -67,18 +68,37 @@ func runCheckConfig(t *testing.T, env map[string]string, args ...string) (int, s
 	return code, stdout.String(), stderr.String()
 }
 
+// offProject is a valid project with the sandbox off, which gets no note from check config.
+const offProject = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", sandbox = \"off\")\n"
+
 func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.star", validRunners)
-	writeConfig(t, dir, "projects/p.star", validProject)
+	writeConfig(t, dir, "projects/p.star", offProject)
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 0, code)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+}
+
+func TestCheckConfig_AProjectWithNoSandboxKeyGetsOneNoteThatItsStepsRunInTheSandbox(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/unset.star", validProject)
+	writeConfig(t, dir, "projects/off.star", offProject)
+	writeConfig(t, dir, "projects/on.star", strings.Replace(offProject, `sandbox = "off"`, `sandbox = "on"`, 1))
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Equal(t, 1, strings.Count(stderr, "sets no sandbox key"), stderr)
+	require.Contains(t, stderr, "note: project unset sets no sandbox key, so its agent steps run in the sandbox. To run them with no sandbox, write sandbox = \"off\" in "+filepath.Join(dir, "projects", "unset.star")+".\n")
 }
 
 func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t *testing.T) {
@@ -89,7 +109,7 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 		"sandbox = \"on\", build_host = \"gpu\", host = host(provider = \"skypilot\", disk_floor_gb = 50))\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/far.star", remote)
-	writeConfig(t, dir, "projects/near.star", validProject)
+	writeConfig(t, dir, "projects/near.star", offProject)
 
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 

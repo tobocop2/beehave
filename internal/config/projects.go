@@ -22,6 +22,8 @@ type Project struct {
 	model.Project
 
 	Path string
+	// SandboxUnset is true when the file sets no sandbox key, so the project has the sandbox on by default.
+	SandboxUnset bool
 }
 
 // rawProject is a project block as written. At is the position of its call; every refusal after the call points there.
@@ -86,7 +88,7 @@ func loadProject(path string, registry Adapters) (Project, error) {
 		return Project{}, err
 	}
 
-	return Project{Project: profile, Path: path}, nil
+	return Project{Project: profile, Path: path, SandboxUnset: !raw.Sandbox.Set}, nil
 }
 
 // projectSpec is the schema of the project call. The arguments after the fixed ones are the adapter blocks that the registry declares, each optional and named as its block.
@@ -320,7 +322,7 @@ func absolutePaths(raw rawProject) error {
 	return nil
 }
 
-// sandboxOf reads sandbox. An unset key gives the empty mode, which runs the steps with no sandbox. A set key that is empty or unknown is refused.
+// sandboxOf reads sandbox. An unset key gives on, which runs the steps in the sandbox. A set key that is empty or unknown is refused.
 // The sandbox_read and sandbox_deny paths must be absolute, or start with ~/, so that a path never depends on the folder of a step.
 func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 	if err := sandboxKeys(raw); err != nil {
@@ -328,7 +330,7 @@ func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 	}
 
 	if !raw.Sandbox.Set {
-		return "", nil
+		return model.SandboxOn, nil
 	}
 
 	return parseKey(raw.At, "sandbox", raw.Sandbox.Value, model.ParseSandboxMode)

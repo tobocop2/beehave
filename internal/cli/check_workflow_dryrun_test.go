@@ -25,8 +25,9 @@ func runDry(t *testing.T, env map[string]string, args ...string) (int, string, s
 	return code, stdout.String(), stderr.String()
 }
 
-// roundProject is a project file whose vars hold the round settings of the remediation example.
-const roundProject = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", vars = {\"round\": " +
+// roundProject is a project file whose vars hold the round settings of the remediation example. It sets sandbox = "off" because the test build
+// has no sandbox enforcer, which refuses every local gate of a sandboxed project; check_workflow_sandbox_test.go pins that refusal.
+const roundProject = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", sandbox = \"off\", vars = {\"round\": " +
 	"{\"base\": \"integration\", \"owner\": \"owner\", \"owner_email\": \"owner@example.com\", \"lane_cap\": 3, \"fix_rounds\": 5, \"label\": \"beehave-round\"}})\n"
 
 func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheReadOfTheQueueWithNoEnvironment(t *testing.T) {
@@ -301,7 +302,7 @@ func TestCheckWorkflowDryRun_AProjectWithTheSandboxOnRefusesASandboxNoneStepAtTh
 	}{
 		"sandbox on":  {`, sandbox = "on"`, 1},
 		"sandbox off": {`, sandbox = "off"`, 0},
-		"key unset":   {``, 0},
+		"key unset":   {``, 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

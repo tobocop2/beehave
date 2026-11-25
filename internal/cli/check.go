@@ -358,6 +358,7 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 
 	cfg, problems := configProblems(ctx, dir, env, adapters, registry)
 	if len(problems) == 0 {
+		printDefaultNotes(stderr, cfg)
 		printHostNotes(stderr, cfg, refusal)
 
 		return nil
@@ -387,6 +388,16 @@ func printLines(stderr io.Writer, problems config.Problems) {
 	for _, problem := range problems {
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintln(stderr, problem)
+	}
+}
+
+// printDefaultNotes prints a note for each project whose file sets no sandbox key, so that the default it runs with is visible.
+func printDefaultNotes(stderr io.Writer, cfg config.Config) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		if project := cfg.Projects[name]; project.SandboxUnset {
+			// A failed write to stderr has no recovery.
+			_, _ = fmt.Fprintf(stderr, "note: project %s sets no sandbox key, so its agent steps run in the sandbox. To run them with no sandbox, write sandbox = \"off\" in %s.\n", name, project.Path)
+		}
 	}
 }
 
