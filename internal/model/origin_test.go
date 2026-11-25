@@ -35,3 +35,12 @@ func TestAuthored_OnlyTheOwnerOrNothingIsNotForeign(t *testing.T) {
 		assert.True(t, model.Authored{Number: 7, Association: association}.Foreign(), association)
 	}
 }
+
+func TestPullFacts_AuthoredIsThePullRequestOfTheFactsWithItsAuthor(t *testing.T) {
+	t.Parallel()
+
+	facts := model.PullFacts{Number: 31, State: "OPEN", Author: "dev", Association: model.AssociationContributor}
+
+	assert.Equal(t, model.Authored{Number: 31, Association: model.AssociationContributor}, facts.Authored())
+	assert.Zero(t, model.PullFacts{}.Authored(), "facts with no pull request have none")
+}
