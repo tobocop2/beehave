@@ -20,7 +20,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
-// The batch scripts run merge in a real beehave process over a real git repository (the folder "tree" of the work folder) and a forge that lives in files.
+// The batch scripts run batch_merge of the workflow library in a real beehave process over a real git repository (the folder "tree" of the work folder) and a forge that lives in files.
 // The pull request of the item mN is number N, on the branch mN. A merge on this forge makes a real merge commit on the branch main of the repository,
 // writes the file forge/merged-N, and adds a line to forge/calls.log. When the file forge/crash-after holds a number, the process exits right after the merge with that count,
 // once: the file forge/crashed stops the second exit. The exit comes before the engine records the merge step, as a power loss does.
@@ -324,8 +324,10 @@ func (f fileForge) crashAfter() {
 }
 
 // batchStar is the workflow of the batch scripts. The heads are the commits of the branches m1 to m3 of the repository.
-const batchStar = `def main(item):
-    done = merge(
+const batchStar = `load("@beehave//batch.star", "batch_merge")
+
+def main(item):
+    done = batch_merge(
         name = "all",
         base = "main",
         repo = "example/shop",

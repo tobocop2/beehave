@@ -10,7 +10,6 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -166,19 +165,19 @@ type unionOutcome struct {
 
 // add keeps the end of a member and reports whether the next member may merge. A refusal stops the loop and returns the members after it in rest.
 // An unsettled answer defers the member and every member after it.
-func (o *unionOutcome) add(m workflow.PullRequest, got batch.MergeOutcome, after []workflow.PullRequest) bool {
+func (o *unionOutcome) add(m workflow.PullRequest, got memberOutcome, after []workflow.PullRequest) bool {
 	switch got.Status {
-	case batch.StatusMerged:
+	case memberMerged:
 		o.merged = append(o.merged, m.Item)
 
 		return true
-	case batch.StatusRefused:
+	case memberRefused:
 		o.rejected = append(o.rejected, landing.Outcome{Item: m.Item, Reason: got.Reason})
 
 		for _, next := range after {
 			o.rest = append(o.rest, next.Item)
 		}
-	case batch.StatusUnsettled:
+	case memberUnsettled:
 		for _, left := range append([]workflow.PullRequest{m}, after...) {
 			o.deferred = append(o.deferred, landing.Outcome{Item: left.Item, Reason: got.Reason})
 		}
@@ -187,11 +186,11 @@ func (o *unionOutcome) add(m workflow.PullRequest, got batch.MergeOutcome, after
 	return false
 }
 
-// mergeUnion merges the members of a call with `members` in order. With a gate, the engine first folds the member heads onto the base tip and merges nothing
+// mergeUnion merges the members of a merge call in order. With a gate, the engine first folds the member heads onto the base tip and merges nothing
 // unless that fold makes the tree that the gate ran on. Each member then merges only on the tip that the members before it made, and proves the tree after it.
 // A gate that this run did not record, or one that did not pass, ends the call before any step.
 func (s *script) mergeUnion(call batchCall) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	base := &batchBase{s: s, call: call, prefix: kindMerge}
+	base := &batchBase{s: s, call: call}
 
 	out, err := s.landUnion(call, base)
 	if err != nil {
@@ -356,7 +355,7 @@ func (s *script) handOffCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 		return nil, err
 	}
 
-	if err := call.fill(prs, nil, nil, nil); err != nil {
+	if err := call.fillHandOff(prs); err != nil {
 		return nil, err
 	}
 

@@ -638,8 +638,6 @@ func TestExclusiveHost_TheHostOfAGateIsNamedOnlyWhenTheGateRunsThere(t *testing.
 		{"a_project_gate_on_this_machine", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{BuildHost: "local"}}, ""},
 		{"a_program_gate_on_a_host", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{Run: []string{"x"}, Host: "build", BuildHost: "box"}}, "box"},
 		{"a_program_gate_on_this_machine", ExclusiveInput{Kind: kindGate, Project: "p", Request: CommandRequest{Run: []string{"x"}, BuildHost: "box"}}, ""},
-		{"a_batch_gate_on_a_host", ExclusiveInput{Kind: kindBatchGate, Project: "p", BuildHost: "box"}, "box"},
-		{"a_batch_gate_with_a_program", ExclusiveInput{Kind: kindBatchGate, Project: "p", BuildHost: "box", GateRun: []string{"x"}}, ""},
 		{"a_merge", ExclusiveInput{Kind: kindMerge, Project: "p", Request: CommandRequest{BuildHost: "box"}}, ""},
 	}
 

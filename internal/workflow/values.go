@@ -205,6 +205,15 @@ func PreflightClaimRefusal(keyword string) string {
 		keyword, stop, keyword)
 }
 
+// BatchKeywords are the keywords that batch_merge in the workflow library takes and that merge refuses.
+func BatchKeywords() []string { return []string{"prs", "gate_run", integrationKeyword} }
+
+// MergeBatchRefusal is the sentence for a merge call that passes a keyword of the batch. It names the library function that takes the keyword.
+func MergeBatchRefusal(keyword string) string {
+	return fmt.Sprintf("merge takes no argument %s. The batch with its own gate moved to the library function batch_merge: load(\"@beehave//batch.star\", \"batch_merge\") and pass %s to it.",
+		keyword, keyword)
+}
+
 // OwnDraft reads the own_draft field of a member of prs: the number of a pull request, 1 or more, or zero for a member that leaves it out.
 func OwnDraft(v starlark.Value) (int, error) {
 	if v == nil {

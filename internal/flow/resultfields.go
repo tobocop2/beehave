@@ -119,9 +119,10 @@ func landingProofOutputs(unproven []landing.Outcome) map[string]any {
 	return map[string]any{unprovenField: unproven}
 }
 
-// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED, and whether a read ran. A project whose tracker has no issue numbers gives found false and no state.
-func issueStateOutputs(state string, found bool) map[string]any {
-	return map[string]any{stateField: state, foundField: found}
+// issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED, whether a read ran, and the cause of a failed read.
+// A project whose tracker has no issue numbers gives found false, no state and no error.
+func issueStateOutputs(state string, found bool, failure string) map[string]any {
+	return map[string]any{stateField: state, foundField: found, errorField: failure}
 }
 
 // pushOutputs are the fields of push: the head that the branch holds after the push, and the branch. A fork reads the branch to keep out of it.

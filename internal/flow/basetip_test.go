@@ -69,6 +69,36 @@ func TestBaseTip_ReturnsTheCommitAndTheTreeOfTheBase(t *testing.T) {
 	assert.Contains(t, stepNames(t, engine), "base_tip:t#1")
 }
 
+func TestBaseTip_MakesTheWorktreeOfTheItemBeforeTheRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	made := &ensureLog{}
+	h.trees = &fakeTrees{dir: t.TempDir(), ensured: made}
+	host := &tipHost{tips: []landing.Tip{{Commit: "c0ffee", Tree: "7ee"}}}
+	h.batch = host
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, baseTipFlow(`base_tip(base = "main")`)), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testItem}, made.all(), "the tip is fetched into the worktree, so the call makes it first")
+}
+
+func TestBaseTip_AWorktreeThatCannotBeMadeEndsTheStepBeforeTheRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.trees = &fakeTrees{ensureErr: errFake}
+	host := &tipHost{tips: []landing.Tip{{Commit: "c0ffee", Tree: "7ee"}}}
+	h.batch = host
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, baseTipFlow(`base_tip(base = "main")`)), modeOff())
+
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "find the folder of item "+testItem)
+	assert.Empty(t, host.calls(), "no read runs without the worktree")
+}
+
 func TestBaseTip_AReadThatFailsEndsTheStepAndNeverGivesAnEmptyTip(t *testing.T) {
 	t.Parallel()
 

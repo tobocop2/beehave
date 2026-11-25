@@ -23,13 +23,14 @@ func (m *landMerger) statusesGiven() []string {
 	return got
 }
 
-func TestBatchMerge_EachMergeOfAGreenUnionCarriesTheGateStatusOfItsHeadAndTheReviewStatusOfAnApprovedOne(t *testing.T) {
+func TestMerge_EachMergeOfAGreenUnionCarriesTheGateStatusOfItsHeadAndTheReviewStatusOfAnApprovedOne(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
-	prs := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True, closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])]`
+	rig.foldOf("1", "3")
+	members := `[struct(item = "1", head = "` + rig.heads["1"] + `", approved = True, closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])]`
 
-	_, err := rig.walk(t, `out = merge(prs = `+prs+`, base = "main", repo = "o/r", name = "b")`)
+	_, err := rig.walk(t, rig.membersCall(members, ""))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -40,14 +41,14 @@ func TestBatchMerge_EachMergeOfAGreenUnionCarriesTheGateStatusOfItsHeadAndTheRev
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
 }
 
-func TestBatchMerge_AMemberThatFailsTheGateIsGivenNoStatus(t *testing.T) {
+func TestMerge_AMemberThatFailsTheGateIsGivenNoStatus(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
 
 	_, err := rig.walk(t, rig.call("2", ""))
 
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "did not pass, so the merge posts no status and merges nothing")
 	assert.Empty(t, rig.merger.statusesGiven(), "the gate was red for the only member, so no merge runs and no head has a status")
 	assert.Empty(t, rig.merger.landed())
 }

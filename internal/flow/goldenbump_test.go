@@ -29,14 +29,13 @@ var goldenRecorded = map[string]string{
 	"core20.agent15.tracker4.forge11.land13.gate7.host1.round6": "a489f6e9f9ac6cdbd5ca5b9cc0e1132df2d38c3ffa67787dd890650ffb9739fb",
 	"core20.agent15.tracker4.forge11.land14.gate7.host1.round6": "3c0c5a833414b40f566fb3e115f34c3fce980b1b00dcd7c9872e7c2edf474be9",
 	"core20.agent15.tracker4.forge11.land15.gate7.host1.round7": "4b1d3887ad5fec4e501bb54d12dbdb340c4abbf4951114ed61fd10f52db2b823",
-	"core20.agent15.tracker4.forge12.land16.gate8.host1.round7": "8fa1e2324d34184a016bfe0dd42c3091264871b9988a34e724353003735ae711",
+	"core20.agent15.tracker4.forge12.land16.gate8.host1.round7": "f68273b35ed5f5e2936f6b4562e540b638770eac8f9dd2a0c8686b176e1fd42b",
 }
 
 // goldenDigest is the digest of the base lists, the shapes and the kinds. It covers each golden list of the step tests, not only the lists of goldenFlow.
 func goldenDigest() string {
 	parts := []string{
 		fmt.Sprint(goldenBaseSteps), fmt.Sprint(goldenBaseGateSteps), fmt.Sprint(goldenBaseLostGateSteps),
-		fmt.Sprint(goldenBatchSteps), fmt.Sprint(goldenBatchGateSteps), fmt.Sprint(goldenLostBatchSteps),
 		fmt.Sprint(goldenLostAskSteps), fmt.Sprint(goldenOneMemberSteps), fmt.Sprint(goldenShapes), fmt.Sprint(goldenKinds), fmt.Sprint(goldenUnionSteps),
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))

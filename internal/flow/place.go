@@ -33,12 +33,7 @@ func (e *Engine) placeCandidates(in ExclusiveInput, recorded string) []string {
 
 // withHost is in with host as the build host of its call.
 func (in ExclusiveInput) withHost(host string) ExclusiveInput {
-	if in.Kind == kindBatchGate {
-		in.BuildHost = host
-	} else {
-		in.Request.BuildHost = host
-	}
-
+	in.Request.BuildHost = host
 	in.HostKey = hostKeyPrefix + host
 
 	return in

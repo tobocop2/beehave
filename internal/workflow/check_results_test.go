@@ -14,7 +14,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 
 	cases := []struct{ name, call, want string }{
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, commit_subject, commit_body."},
-		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses, rest, reason."},
+		{"merge", `merge(name = "n", members = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, rest, moved, reason, tip."},
 		{"hand_off", `hand_off(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")`, "3:11 haed is not a field of the result of hand_off. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc, attempts, error."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses, step."},
@@ -30,7 +30,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"pr_closing", `pr_closing()`, "3:11 haed is not a field of the result of pr_closing. It has: found, issues, forge."},
 		{"base_tip", `base_tip(base = "main")`, "3:11 haed is not a field of the result of base_tip. It has: commit, tree."},
 		{"landing_proof", `landing_proof(base = "main", start = struct(commit = "c", tree = "t"), end = struct(commit = "c", tree = "t"), landed = [])`, "3:11 haed is not a field of the result of landing_proof. It has: unproven."},
-		{"issue_state", `issue_state(number = 7)`, "3:11 haed is not a field of the result of issue_state. It has: state, found."},
+		{"issue_state", `issue_state(number = 7)`, "3:11 haed is not a field of the result of issue_state. It has: state, found, error."},
 		{"earlier_reads", `earlier_reads(kind = "wait", name = "n")`, "3:11 haed is not a field of the result of earlier_reads. It has: reads."},
 		{"pr_history", `pr_history()`, "3:11 haed is not a field of the result of pr_history. It has: pulls."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
@@ -62,14 +62,14 @@ func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
 
 	got := checkText(t, `def main(item):
     a = agent("p", "m", outputs = ["verdict", "findings"])
-    b = merge(name = "n", prs = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")
+    b = merge(name = "n", members = [struct(item = "1", head = "h", closes = [])], base = "b", repo = "r")
     c = command(["a"])
     g = gate()
     h = gather([])
     i = item_create("t", "k")
     s = spawn(["1"])
     w = wait()
-    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, a.stop, a.cost_usd, a.rewrote, b.merged, b.tip, b.tree, b.gates, c.stdout, c.rc])
+    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, a.stop, a.cost_usd, a.rewrote, b.merged, b.tip, b.rest, b.moved, b.reason, c.stdout, c.rc])
     command(["x", g.passed, g.head, g.tree, g.report, h.results, i.id, i.created, s.runs, w.answer, b.rejected, b.deferred])
 `)
 

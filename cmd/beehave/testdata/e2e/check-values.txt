@@ -5,11 +5,11 @@ isolate
 stderr 'agent: output_tries must be a whole number of 1 or more'
 stderr 'command: timeout is "soon", which is not a duration'
 stderr 'command: for parameter "host": got NoneType, want string'
-stderr 'merge: `prs` is empty'
+stderr 'merge: `members` is empty'
 
 -- bad.star --
 def main(item):
     agent("p", "m", output_tries = 0)
     command(run = ["x"], timeout = "soon")
     command(run = ["x"], host = None)
-    merge(prs = [], base = "b", repo = "r", name = "n")
+    merge(members = [], base = "b", repo = "r", name = "n")

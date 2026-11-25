@@ -119,7 +119,7 @@ The first read asks for every field in one call. The tip of the base is read at 
 
 #### Closing references
 
-The closing-references guard runs for every member. Each member of `prs` carries a required `closes` list of issue numbers, and the guard compares it with the issues that the forge lists. A member that closes nothing has `closes = []`. A member with no `closes` fails at the check. A project that the config lacks is an error before the request exists.
+The closing-references guard runs for every member. Each member of `members` carries a required `closes` list of issue numbers, and the guard compares it with the issues that the forge lists. A member that closes nothing has `closes = []`. A member with no `closes` fails at the check. A project that the config lacks is an error before the request exists.
 
 The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the `closes` list, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
 
@@ -207,68 +207,51 @@ A refusal on a replay means that a person must look. It does not mean that the p
 - a running check,
 - a push to the base by someone else.
 
-`BaseTipTree` is read by the batch merge, not by `Run`.
+`BaseTipTree` is read by the union merge, not by `Run`.
 
-A replay with an integration pull request writes the row `- #N merged at SHA` once, because `Run` skips the append when that exact row is already in the body.
+### The author check of a body
 
-### Edit of the shared body
-
-`EditBody` reads a body, applies an edit and writes the result. For the whole read and write, it holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder, so two writers never lose a row. The lock is released on every exit, a failed write included.
-
-The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the merge row, the body of `pr_open`) can write a body without the check.
+The author check is inside `SetBody`, the forge write that sets a body. It is the only such write, so no caller (the body of the integration pull request of a round) can write a body without the check.
 
 - The author must be the login of the token that the forge command line uses.
 - A body of another author is never edited.
 - A body whose author login or token login cannot be read is never edited.
 
-A merge with an integration pull request records its row through `EditBody`. For a refused body, the step says a REFUSE line that names the author, and the owner adds the row. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
-
-The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehave merges third-party work that is reviewed.
+A merge writes no row into the body of an integration pull request. The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehave merges third-party work that is reviewed.
 
 ## Batch
 
-`batch` lands a set of reviewed pull requests with one gate run for the whole set. It is a layer 2 package. The `merge` builtin of `flow` wires it.
+The batch lands a set of reviewed pull requests with one gate run for the whole set. It is the library function `batch_merge` of `lib/batch.star`, which a workflow loads with `load("@beehave//batch.star", "batch_merge")`. The library is policy: the fold, the split, the retry of held members and the audit. The engine gives it the builtins that touch the world: `base_tip`, `command` for git, `gate`, the union `merge`, `landing_proof`, `issue_state` and `pr_closing`. A project that wants another policy copies the file and changes it.
 
-### One pull request
+### The union merge
 
-`merge` with `member` runs one member through the same `Merge` of the base as a member of a list, with no union and no gate run of its own. The call gives the gate of an earlier `gate` call of the run. The engine posts the statuses `beehave/gate` and `beehave/review` only for a gate that this run recorded and that passed on the tree `gated_tree`, and the merge run posts them after its guards. The intent step refuses a tip whose tree is not `expect_tree`, and the call returns `unsettled`. The same step merges the head of the member into the tip with `git merge-tree` and refuses a call whose `gated_tree` is not the tree that this makes, before any status is posted. `hand_off` is its own builtin and runs the hand-off of the list form.
-
-### Interfaces and result
-
-The gate, the git calls, the forge and the step recorder are the interfaces `Gate`, `Git`, `Base` and `Recorder`.
-
-`Run` takes the members, each an item and a head commit, and sorts them by item as byte strings. It returns a `Result` with:
-
-- the merged items,
-- the rejected and deferred members, each with a reason,
-- the last base tip,
-- the number of gate runs.
+`merge(members, base, repo, gate, hold, own, forbid_text, name)` lands one gated union. The step `merge:<name>.plan` reads the base tip and folds the member heads onto it in order with git, without a working copy. A conflict, or a fold whose last tree is not the tree of the gate, merges nothing and returns `moved`. Each member then merges through `Run` of this package, pinned to its head and to the tree of its prefix. The engine trusts only a gate that this run recorded and that passed. `hand_off` is its own builtin and lands nothing.
 
 ### Git version
 
-`batch` needs git 2.38 or newer on the gate host, for `git merge-tree --write-tree`. `CheckGit` reads `git --version` once, before any step, and fails with "git 2.38 or newer is needed for merge".
+The union merge needs git 2.38 or newer on the gate host, for `git merge-tree --write-tree`. `landing.CheckGit` reads `git --version` in the plan step, before the fold, and fails with "git 2.38 or newer is needed for merge".
 
-`GitCLI` implements `Git` over any runner with the `Exec` method of `proc.Runner`. No maintained Go library does this fold: go-git has no three-way tree merge, and libgit2 bindings need cgo.
+No maintained Go library does this fold: go-git has no three-way tree merge, and libgit2 bindings need cgo.
 
 ### Head check
 
-Before the fold, one recorded step checks that the head of each member is in the repository (`git cat-file -e <head>^{commit}`). A member with a missing head is rejected with "head X of M is not in the repository; fetch it". The check exists because `git merge-tree` exits with the conflict code for an unknown commit.
+Before the fold, the library checks that the head of each member is in the repository (`git cat-file -e <head>^{commit}`). A member with a missing head is rejected with "head X of M is not in the repository; fetch it". The check exists because `git merge-tree` exits with the conflict code for an unknown commit.
 
 ### The union
 
-The union folds the members onto the base tip. Each step is:
+The library folds the members onto the base tip in item order. Each step is:
 
 1. a `git merge-tree --write-tree` of the fold so far and the next head,
 2. then a `git commit-tree` with both parents, so the next step has a commit to merge into.
 
-The union records the tree after each member.
+Every git command runs through `command` in the worktree of the item, which `base_tip` makes.
 
 - A member that conflicts with the base tip alone is rejected with the reason `conflict`, before any gate runs.
 - A member that conflicts only with an earlier member is held out.
 
 ### Scope check
 
-The scope check is the library `scope.star`, and the workflow calls it before `merge`. The library reads the issues that the pull request of each member closes, with the recorded step `pr_closing`. It compares them with the issues of the first review of that item. For the item of the run, the first review is the result of `fix_scope` in the run, which the call takes as `own`. For another item, it is the first review of the newest earlier run of that item that is named `scope`, read with `earlier_reads`. A run that fixed its own scope gives no scope to a member of another item.
+The scope check is the library `scope.star`, and the workflow calls it before `batch_merge`. The library reads the issues that the pull request of each member closes, with the recorded step `pr_closing`. It compares them with the issues of the first review of that item. For the item of the run, the first review is the result of `fix_scope` in the run, which the call takes as `own`. For another item, it is the first review of the newest earlier run of that item that is named `scope`, read with `earlier_reads`. A run that fixed its own scope gives no scope to a member of another item.
 
 The scope holds each issue as a reference: `#N` for an issue of the repository of the pull request, and `owner/repo#N` (in lower case) for an issue of another repository. An issue of another repository is new, and the run asks the owner about it, in the same way as for an own issue. The number of an own issue does not keep an issue of another repository with the same number.
 
@@ -307,55 +290,41 @@ After the first round, each held-out member is folded once on the new tip. The f
 
 ### Gate run bound
 
-For N members and k bad members, the gate runs at most `min(2N - 1, 1 + 2k * ceil(log2 N))` times. `Bound` returns that number.
+For N members and k bad members, the gate runs at most `min(2N - 1, 1 + 2k * ceil(log2 N))` times.
 
-With H held-out members and R retried members, total gate runs are at most `Bound(N - H, k)` plus `Bound(R, k')`.
+With H held-out members and R retried members, total gate runs are at most that bound for N - H members plus the bound for R members.
 
 Each member that the merge refuses (own work, hold, checks, review) costs one more gate round on the members left after it. So with r refusals, the total can reach about r + 1 times that sum.
 
 ### Merge outcomes
 
-`Base.Merge` answers with a `MergeOutcome`:
+The union merge answers for each member:
 
 | Outcome | Effect |
 |---|---|
-| A refusal by a guard of the member (own work, hold label, checks, review, a head that moved while preparing) | Rejects that member with the reason: every line of the `Refusal` of `merge.Run`, one per line. The members after it are folded and gated again on the tip. |
-| Unsettled (`mergeable` stayed unknown for three reads, 10 seconds apart) | Defers that member and all members not yet decided, with the reason |
+| A refusal by a guard of the member (own work, hold label, checks, review, a head that moved while preparing) | Rejects that member with the reason: every line of the `Refusal` of `merge.Run`, one per line. The members after it come back in `rest`, and the library folds and gates them again on the tip. |
+| Unsettled (`mergeable` stayed unknown for three reads, 10 seconds apart, in the steps `merge:<name>.poll#<item>`) | Defers that member and all members not yet decided, with the reason |
 | A transient refusal of `merge.Run` (`merge.Transient`: a failed read of the forge, checks that still run, a base that moved while preparing, an error of the forge merge call) | Defers the same way, with every line of the `Refusal` as the reason and no second read, because the merge step of a member never runs twice in one attempt |
 | A pull request that is not OPEN at the intent read | Rejects that member, and the call goes on |
 | An error | Stops the call |
 
-The `Result` that comes with an error still lists the members that landed, and the error names the member where the call stopped.
-
-### Contracts of the interfaces
-
-- `Merge` is idempotent for one member, because a replay calls it again after a crash. The wiring uses the intent record of `merge.Run`.
-- `Recorder.Step` does not record a failed run.
-- `Gate.Run` gates exactly the commit it gets and reports the tree of that checkout.
-- `GitCLI.NewCommit` needs an author identity in the environment of the runner.
-- `Deps.Name` is not empty, and it is unique for each batch call in a workflow.
-
 ### Recorded steps
 
-Every input that picks a path is a recorded step: `batch:<name>.heads#k`, `.tip#k`, `.union#k` and `.gate#k`, and after the merges `.prove` and `.issues`.
+The union merge records `merge:<name>.plan`, then for each member `merge:<name>.intent#<item>` before its merge, and `merge:<name>.tip` after the call. The intent step records the pull request as OPEN, so a resume after a crash counts a merge that the forge already made as done.
 
-- The steps that read retry twice. The gate step runs once.
-- A later read of one member adds `@<read>` to the step name. An item id has no `@`.
-- A step records its input with its output, and a replay with other input fails.
-
-The batch needs the worktree of the item that runs the workflow. `merge` makes it before the first git call, and the batch host refuses an item with no worktree.
+The library records each read through the builtin it calls: the steps of `base_tip`, `command`, `gate`, `landing_proof`, `issue_state` and `pr_closing`, named after the `name` of the call. A resume replays them, so the fold, the split and the audit decide the same way.
 
 ### Green gate and tree checks
 
 A project gate counts as green only when it reports `passed` and every one of its steps is `pass`. An unknown step, or a gate with no step, is red, and no member of that union lands.
 
-The gate output carries the tree id the gate ran on. A tree id that differs from the tree of the union is the error "the recorded gate ran on tree X, and the union is tree Y".
+The gate reports the tree id it ran on. A tree id that differs from the tree of the union is the error "batch <name>: the gate ran on tree X, and the union is tree Y".
 
-Before each member merge, the run reads the tip and requires the tree of the members merged so far. Another tree means that someone else pushed, and the rest of the members are deferred.
+Before each member merge, the intent step reads the tip and requires the tree of the members merged so far. Another tree means that someone else pushed, and the rest of the members are deferred.
 
 ### Landing proof
 
-After the last member merge, the recorded step `batch:<name>.prove` checks each merged member against the base (`batch.Prove`).
+After the last member merge, the library calls `landing_proof` once, and it checks each merged member against the base.
 
 A member has landed when the forge compare shows its head in the history of the base: `behind_by` is 0 and the status is ahead or identical. If the head is not there, as after a squash, the member has landed on the vehicle commit only when each file it changed against the tip where the batch started has the same content on the base.
 

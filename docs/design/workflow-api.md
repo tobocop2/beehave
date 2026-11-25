@@ -37,7 +37,7 @@ A call uses a keyword when it names the keyword, when it passes the value at the
 
 ## The fields of a member of `merge`
 
-A member of the list `prs` of `merge` is a `struct`. It is not a keyword, so the table below has no row for its fields.
+A member of the list `members` of `merge`, and of the list `prs` of `hand_off` and of `batch_merge` in `lib/batch.star`, is a `struct`. It is not a keyword, so the table below has no row for its fields.
 
 | Field | Meaning |
 |---|---|

@@ -63,7 +63,7 @@ func stepDefs() []builtinDef {
 func repositoryDefs() []builtinDef {
 	return []builtinDef{
 		{name: "gate", call: (*script).gate, repository: true, exempt: "run"},
-		{name: "merge", call: (*script).batchMerge, repository: true},
+		{name: "merge", call: (*script).mergeCall, repository: true},
 		{name: handOffKeyword, call: (*script).handOffCall, repository: true},
 		{name: "pr_comment", call: (*script).prComment, repository: true},
 		{name: prHistoryKind, call: (*script).prHistory, repository: true},

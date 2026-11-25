@@ -2,12 +2,14 @@ package flow
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,9 +20,6 @@ import (
 
 // gitWord is the program of the git commands that the batch library runs.
 const gitWord = "git"
-
-// reasonMoved is the reason of a member that a stop left unlanded because the base moved.
-const reasonMoved = "the base moved while the batch ran; run the batch again"
 
 // noLandingNote is the note of a batch that landed nothing.
 const noLandingNote = "issue states: no member landed, so no read ran."
@@ -34,6 +33,20 @@ func libRig(t *testing.T) *batchRig {
 	rig.h.queue = &fakeQueue{issueStates: map[int]string{0: issueClosed, 1: issueClosed, 2: issueClosed, 3: issueClosed, 4: issueClosed}}
 
 	return rig
+}
+
+// lostBatchRig is a batch rig whose build host is gpu-b, with a clock that moves a minute at each read of the proof and a host that proves each loss.
+// The gate loses its first lose jobs.
+func lostBatchRig(t *testing.T, lose int) (*batchRig, *upHosts) {
+	t.Helper()
+
+	rig := newBatchRig(t)
+	clock := newReadingClock()
+	hosts := &upHosts{started: true, proofs: []model.LostProof{{Kind: model.LostStopped}}, afterProof: func() { clock.advance(time.Minute) }}
+	rig.h.hosts, rig.h.reading, rig.h.facts = hosts, clock.read, lostFacts(time.Hour)
+	rig.gate.lose = lose
+
+	return rig, hosts
 }
 
 // runGit makes the command runner of the rig run each git command in the repository, as the worktree of the item does, and answer any other program with rc 0.
@@ -201,6 +214,43 @@ func TestBatchLibrary_AHeldMemberIsGatedAloneInTheRetry(t *testing.T) {
 	assert.Equal(t, "report  2:red,4:red  2  "+noLandingNote, rig.libReport(t), "4 is held with 2, then gated alone in the retry")
 }
 
+func TestBatchLibrary_TwoHeldMembersThatConflictInTheRetryRejectTheSecondAndNameTheFirst(t *testing.T) {
+	t.Parallel()
+
+	rig := libRig(t)
+	rig.heads["0"] = rig.branchOn(t, "m0", map[string]string{"bad.txt": "zero\n"})
+	rig.heads["4"] = rig.branchOn(t, "m4", map[string]string{"bad.txt": "four\n"})
+	rig.heads["5"] = rig.branchOn(t, "m5", map[string]string{"bad.txt": "five\n"})
+
+	require.NoError(t, rig.libWalk(t, rig.libCall("0 4 5", "")))
+
+	assert.Equal(t, "report  0:red,5:conflicts with 4,4:red  2  "+noLandingNote, rig.libReport(t), "4 and 5 are held with 0; in the retry 5 conflicts with 4 and is not held again")
+}
+
+func TestBatchLibrary_AGateThatReportsPassedWithNoStepIsRed(t *testing.T) {
+	t.Parallel()
+
+	rig := libRig(t)
+	rig.gate.noSteps = true
+
+	require.NoError(t, rig.libWalk(t, rig.libCall("1", "")))
+
+	assert.Equal(t, "report  1:red  1  "+noLandingNote, rig.libReport(t))
+	assert.Empty(t, rig.merger.landed())
+}
+
+func TestBatchLibrary_AGateThatReportsPassedWithAFailedStepIsRed(t *testing.T) {
+	t.Parallel()
+
+	rig := libRig(t)
+	rig.gate.passWithFail = true
+
+	require.NoError(t, rig.libWalk(t, rig.libCall("2", "")))
+
+	assert.Equal(t, "report  2:red  1  "+noLandingNote, rig.libReport(t))
+	assert.Empty(t, rig.merger.landed())
+}
+
 func TestBatchLibrary_AConflictInTheRetryWithAMemberThatDidNotLandNamesTheBase(t *testing.T) {
 	t.Parallel()
 
@@ -241,9 +291,13 @@ func TestBatchLibrary_ABaseThatMovesAfterTheGateStopsTheBatchAndDefersEveryMembe
 
 	rig := libRig(t)
 	moved := rig.branchOn(t, "other", map[string]string{"other.txt": "other\n"})
-	rig.h.commands.before = func(_ context.Context, request CommandRequest) error {
-		if request.Gate {
-			rig.repo.must(t, "update-ref", "refs/heads/main", moved)
+	rig.h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		if !request.Gate {
+			return nil
+		}
+
+		if res := rig.repo.Run(ctx, []string{"update-ref", "refs/heads/main", moved}); res.ExitCode != 0 {
+			return errors.New(res.Stderr)
 		}
 
 		return nil
@@ -277,6 +331,20 @@ func TestBatchLibrary_AVoidGateEndsTheCallAndBlamesNoMember(t *testing.T) {
 
 	require.ErrorContains(t, err, "the gate gave no result: the gate did not run: node is 20.1.0 and the pin is 22.0.0. No member is blamed")
 	assert.Empty(t, rig.merger.landed())
+}
+
+func TestBatchLibrary_AGateWithAnUnknownStepAndNoFailedStepIsVoidEvenWhenItReportsPassed(t *testing.T) {
+	t.Parallel()
+
+	rig := libRig(t)
+	rig.gate.unknownStep = true
+
+	err := rig.libWalk(t, rig.libCall("1 3", ""))
+
+	require.ErrorContains(t, err, "the gate gave no result: gate on ")
+	require.ErrorContains(t, err, "No member is blamed")
+	assert.Empty(t, rig.merger.landed())
+	assert.Len(t, rig.gate.ran(), 1, "a void union is not split")
 }
 
 func TestBatchLibrary_AGateOnAnotherTreeThanTheUnionEndsTheCall(t *testing.T) {
@@ -427,6 +495,51 @@ def main(item):
 	assert.Equal(t, baseAuditText(), seen)
 	assert.Equal(t, []int{4, 9}, q.issueAsked, "the id that is not a plain number is not read")
 	assert.Equal(t, []int{70}, q.closingAsked)
+}
+
+func TestBatchLibrary_AnIssueReadThatFailsIsAFindingAndTheAuditGoesOn(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{issueStates: map[int]string{9: issueOpen}, issueErrs: map[int]error{4: errors.New("the forge is down")}}
+	h.queue = q
+
+	body := `load("@beehave//batch.star", "issue_audit")
+
+def main(item):
+    out = issue_audit(landed = ["4", "9"], name = "a")
+    for line in out.findings:
+        command(name = "seen", run = ["seen", line])
+`
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
+
+	require.NoError(t, err, "a failed read is a finding, as the base audit made it, and never ends the call")
+	assert.Equal(t, []string{
+		"seen cannot read issue #4: the forge is down",
+		`seen issue #9 of item 9 is not closed after the batch landed (the forge says "OPEN")`,
+	}, h.commands.ran())
+	assert.Equal(t, []int{4, 9}, q.issueAsked, "the audit reads the next issue after a failed read")
+}
+
+func TestBatchLibrary_ATrackerWithNoIssueNumbersGivesANoteAndNoFindings(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	q := &fakeQueue{noIssueNumbers: true}
+	h.queue = q
+
+	body := `load("@beehave//batch.star", "issue_audit")
+
+def main(item):
+    out = issue_audit(landed = ["bb-1", "4", "9"], integration = 70, name = "a")
+    command(name = "seen", run = ["seen", str(len(out.findings)), out.note])
+`
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"seen 0 issue states: the tracker of the project has no issue numbers, so no read ran."}, h.commands.ran(), "as the base audit, no finding when the tracker has no issue numbers")
+	assert.Equal(t, []int{4}, q.issueAsked, "the first read tells that the tracker has no issue numbers, and no other read runs")
+	assert.Empty(t, q.closingAsked)
 }
 
 func TestBatchLibrary_AnIdWithALeadingZeroOrNoDigitsIsNotAPlainIssueNumber(t *testing.T) {

@@ -452,7 +452,6 @@ func swarmSignatures() map[string][]Param {
 }
 
 // mergeParams are the parameters of merge: the members of one union in landing order, and the gate that an earlier call of the run recorded on that union.
-// `prs`, `gate_run` and `integration` are the keywords of the batch with a gate of its own, which the engine runs until the library batch_merge replaces it.
 func mergeParams() []Param {
 	return []Param{
 		{Name: "members", Kind: KindList, Rule: membersRule, Members: true},
@@ -460,8 +459,6 @@ func mergeParams() []Param {
 		{Name: gateName, Kind: KindAny, AsValue: true},
 		opt(holdKeyword, KindText), ruled("own", KindDict, ownRule), forbidText(),
 		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
-		{Name: "prs", Kind: KindList, Rule: prsRule, Members: true},
-		words("gate_run"), opt(integrationKeyword, KindInt),
 	}
 }
 

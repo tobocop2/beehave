@@ -34,9 +34,8 @@ const (
 	mergeProof = "TestRun_AReadThatFailsRefusesTheMerge"
 	batchProof = "TestProve_AReadThatFailsLeavesTheMemberUnprovenNeverLanded"
 
-	issueAuditProof = "TestAudit_AReadThatFailsIsAFindingAndNeverAPass"
-	dryWaitHeld     = "only the dry run sets this source, and its refusals have their own tests (TestDryRun_AWaitPastTheEndOfItsListIsRefused, TestDryRun_AWaitWithNoDeadlineAndNoEntryIsRefused); a real run reads no such source"
-	inAdapter       = "the adapter or the consumer has its own failure tests, and this test does not prove them"
+	dryWaitHeld = "only the dry run sets this source, and its refusals have their own tests (TestDryRun_AWaitPastTheEndOfItsListIsRefused, TestDryRun_AWaitWithNoDeadlineAndNoEntryIsRefused); a real run reads no such source"
+	inAdapter   = "the adapter or the consumer has its own failure tests, and this test does not prove them"
 
 	assigneesHeld = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
 	readyHeld     = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
@@ -70,11 +69,10 @@ var rules = map[string]rule{
 	"internal/landing.ProofReads.TreeBlobs":   {Proof: batchProof, Needle: "blobsErr"},
 	"internal/landing.ProofReads.BranchRef":   {Proof: "TestProve_ABranchThatCannotBeReadLeavesTheMemberUnproven", Needle: "branchErr"},
 	"internal/landing.versioner.Version":      {Proof: "TestCheckGit_VersionCallFails", Needle: "err"},
-	"internal/flow.batchHost.Prove":           {Proof: "TestBatchMerge_AProofThatErrorsEndsTheCallWithTheError", Needle: "proofErr"},
+	"internal/flow.batchHost.Prove":           {Proof: "TestLandingProof_ListsTheMembersItCannotFindOnTheBase", Needle: "proofErr"},
 	"internal/merge.Trees.CommitTree":         {Proof: "TestTree_ATipWhoseTreeCannotBeReadStops", Needle: "CommitTree"},
 	"internal/merge.Trees.TreeBlobs":          {Proof: "TestTree_ADifferentTreeStillStopsWhenThePathsCannotBeListed", Needle: "listFail"},
 	"internal/merge.Logs.FailedLog":           {Exempt: "the log of a failed check helps the reader; a log that cannot be read leaves the row without text and the check stays red"},
-	"internal/merge.Body.PRBody":              {Proof: "TestEditBody_AFailedReadWritesNothing", Needle: "failRead"},
 
 	"internal/preflight.Reader.PRView":            {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "viewErr"},
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},
@@ -104,7 +102,7 @@ var rules = map[string]rule{
 
 	"internal/flow.queueReader.ItemList":    {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "itemsErr"},
 	"internal/flow.queueReader.OpenPulls":   {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "pullsErr"},
-	"internal/flow.queueReader.IssueState":  {Proof: "TestIssueState_AReadThatFailsEndsTheStepWithAnError", Needle: "issueErr"},
+	"internal/flow.queueReader.IssueState":  {Proof: "TestIssueState_AReadThatFailsGivesTheErrorAndNoState", Needle: "issueErr"},
 	"internal/flow.queueReader.PullClosing": {Proof: "TestPRClosing_AReadOfAPullRequestNumberThatFailsFailsTheStepAndNeverGivesAnEmptySet", Needle: "closingErr"},
 	"internal/flow.queueReader.PullState":   {Proof: "TestQueue_AFailedReadOfTheRecordedPullRequestFailsTheStepAndReturnsNoGuess", Needle: "stateErr"},
 	"internal/flow.reader.Comments":         {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
@@ -125,7 +123,6 @@ var rules = map[string]rule{
 	"internal/flow.hostKeeper.Defer":        {Proof: "TestHostUp_AHostThatCannotBeReadFailsTheCallAndAHostThatIsUpStartsNormally", Needle: "deferErr"},
 
 	// Methods that start, create or record something. The error is the result of the action, not a read that a guard depends on.
-	"internal/batch.Recorder.Step":      {Exempt: doesWork},
 	"internal/cli.Runner.RunFile":       {Exempt: doesWork},
 	"internal/cli.Steering.JoinRun":     {Exempt: doesWork},
 	"internal/flow.agents.Run":          {Exempt: doesWork},
@@ -168,15 +165,6 @@ var rules = map[string]rule{
 	"internal/store.Writer.Create":             {Exempt: doesWork},
 
 	// Reads with no failed-read case at the consumer in this test. Each method has its own entry, so a new method on one of these interfaces fails the test.
-	"internal/batch.Git.Version":                  {NotHeld: inAdapter},
-	"internal/batch.Git.HasCommit":                {NotHeld: inAdapter},
-	"internal/batch.Git.MergeTree":                {NotHeld: inAdapter},
-	"internal/batch.Git.NewCommit":                {NotHeld: inAdapter},
-	"internal/batch.Gate.Run":                     {NotHeld: inAdapter},
-	"internal/batch.Base.Tip":                     {NotHeld: inAdapter},
-	"internal/batch.Base.Merge":                   {NotHeld: inAdapter},
-	"internal/batch.IssueReads.IssueState":        {Proof: issueAuditProof, Needle: "failing"},
-	"internal/batch.IssueReads.ClosingRefs":       {Proof: issueAuditProof, Needle: "refsErr"},
 	"internal/cli.Resuming.FailedRuns":            {Proof: "TestResumeFailed_AListThatCannotBeReadIsReportedInTheRealRunAndTheDryRun", Needle: "failedErr"},
 	"internal/cli.Forking.Fork":                   {Proof: "TestForkCommand_AForkThatTheClientCannotStartIsReportedAndNamesNoNewRun", Needle: "forkErr"},
 	"internal/cli.Resuming.ResumeRun":             {Exempt: doesWork},
@@ -195,9 +183,7 @@ var rules = map[string]rule{
 	"internal/cli.Steering.OpenRun":               {NotHeld: noEngine},
 	"internal/cli.ItemStore.Item":                 {NotHeld: noEngine},
 	"internal/cli.ItemStore.ItemList":             {NotHeld: noEngine},
-	"internal/flow.batchHost.Issues":              {NotHeld: inAdapter},
 	"internal/flow.batchHost.Git":                 {NotHeld: inAdapter},
-	"internal/flow.batchHost.Checkout":            {NotHeld: inAdapter},
 	"internal/flow.batchHost.Tip":                 {NotHeld: inAdapter},
 	"internal/flow.batchHost.Intent":              {NotHeld: inAdapter},
 	"internal/flow.batchHost.Pull":                {Proof: "TestHandOff_AReadThatFailsEndsTheCallAndNamesTheItem", Needle: "pullErr"},

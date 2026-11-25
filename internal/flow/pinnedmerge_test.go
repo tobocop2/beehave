@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // member is the struct of the member of a union for the item, at its head.
@@ -270,45 +272,11 @@ func TestMerge_ARefusalOfOneMemberIsAResultAndNotAnError(t *testing.T) {
 	assert.Empty(t, rig.merger.landed())
 }
 
-func TestMerge_AUnionCallRefusesTheKeywordsOfABatchWithAGateOfItsOwn(t *testing.T) {
+func TestMerge_ACallNeedsMembers(t *testing.T) {
 	t.Parallel()
 
-	for name, extra := range map[string]string{"gate_run": `gate_run = ["check"], `, "integration": `integration = 5, `} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			rig := newBatchRig(t)
-
-			_, err := rig.walk(t, rig.union("1", extra))
-
-			require.ErrorContains(t, err, "merge with `members` lands a union that a gate call of this run gated, so it takes no `gate_run` and no `integration`")
-			assert.Empty(t, rig.merger.landed())
-		})
-	}
-}
-
-func TestMerge_AListCallRefusesAGate(t *testing.T) {
-	t.Parallel()
-
-	rig := newBatchRig(t)
-
-	_, err := rig.walk(t, rig.call("1", `gate = "x", `))
-
-	require.ErrorContains(t, err, "merge with `prs` runs its own gate, so it takes no `gate`")
-	assert.Empty(t, rig.merger.landed())
-	assert.Zero(t, rig.gate.submitted(), "the refusal comes before any gate")
-}
-
-func TestMerge_ACallNeedsMembersOrPrsAndNotBoth(t *testing.T) {
-	t.Parallel()
-
-	rig := newBatchRig(t)
-
-	_, err := rig.walk(t, `merge(base = "main", repo = "o/r", name = "m")`)
+	_, err := newBatchRig(t).walk(t, `merge(base = "main", repo = "o/r", name = "m")`)
 	require.ErrorContains(t, err, "merge needs `members`")
-
-	_, err = newBatchRig(t).walk(t, `merge(prs = [`+rig.member("1")+`], members = [`+rig.member("1")+`], base = "main", repo = "o/r", name = "m")`)
-	require.ErrorContains(t, err, "merge takes `members` or `prs`, not both")
 }
 
 func TestMerge_AMemberThatIsNotAWellFormedStructIsRefusedWithItsPlace(t *testing.T) {
@@ -415,9 +383,11 @@ func TestMerge_ACallThatTheCheckDoesNotSeeIsRefusedByTheRunWithTheSameForm(t *te
 
 	member := `struct(item = "1", head = "h", closes = [])`
 	cases := map[string]struct{ args, want string }{
-		"prs with members":        {args: `"base": "main", "prs": [], "members": [` + member + `]`, want: "not both"},
-		"empty base":              {args: `"members": [` + member + `], "base": "" + ""`, want: "base must not be empty"},
-		"neither prs nor members": {args: `"base": "main"`, want: "merge needs `members`"},
+		"prs with members": {args: `"base": "main", "prs": [], "members": [` + member + `]`, want: workflow.MergeBatchRefusal("prs")},
+		"gate_run":         {args: `"base": "main", "gate_run": [], "members": [` + member + `]`, want: workflow.MergeBatchRefusal("gate_run")},
+		"empty base":       {args: `"members": [` + member + `], "base": "" + ""`, want: "base must not be empty"},
+		"no members":       {args: `"base": "main"`, want: "merge needs `members`"},
+		"unknown keyword":  {args: `"base": "main", "wrong": 1, "members": [` + member + `]`, want: `merge: unexpected keyword argument "wrong"`},
 	}
 
 	for name, c := range cases {

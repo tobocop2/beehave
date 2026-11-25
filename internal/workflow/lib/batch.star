@@ -11,6 +11,9 @@ REASON_MOVED = "the base moved while the batch ran; run the batch again"
 # The note of a batch that landed nothing, so no issue was read.
 NO_LANDING_NOTE = "issue states: no member landed, so no read ran."
 
+# The note of a batch whose project tracker has no issue numbers, so the issue states were not checked.
+NO_ISSUE_NUMBERS_NOTE = "issue states: the tracker of the project has no issue numbers, so no read ran."
+
 # The number of lost gate jobs with a proof that end a call: the first loss gates the union again, and the second ends the call.
 LOST_JOBS_OF_A_CALL = 2
 
@@ -205,7 +208,8 @@ def _land(st, members):
 def issue_audit(landed, integration = 0, name = ""):
     """Reads the issue of each landed item and, when integration is not 0, the issues that the integration pull request closes.
     An issue of a landed item that is still open is a finding, and so is an issue that the integration pull request closes and no landed item names.
-    The id of an item of the GitHub tracker is the number of its issue. Returns struct(findings)."""
+    An issue read that fails is a finding, never a pass. The id of an item of the GitHub tracker is the number of its issue.
+    A tracker with no issue numbers gives no findings and the note NO_ISSUE_NUMBERS_NOTE. Returns struct(findings, note)."""
     findings, claimed = [], {}
     for item in landed:
         if item == "" or item.lstrip("0123456789") != "" or item.startswith("0"):
@@ -213,15 +217,19 @@ def issue_audit(landed, integration = 0, name = ""):
             continue
         number = int(item)
         claimed[number] = True
-        state = issue_state(number = number, name = "%s.issue#%s" % (name, item)).state
-        if state != "CLOSED":
-            findings.append("issue #%d of item %s is not closed after the batch landed (the forge says \"%s\")" % (number, item, state))
+        read = issue_state(number = number, name = "%s.issue#%s" % (name, item))
+        if read.error != "":
+            findings.append("cannot read issue #%d: %s" % (number, read.error))
+        elif not read.found:
+            return struct(findings = [], note = NO_ISSUE_NUMBERS_NOTE)
+        elif read.state != "CLOSED":
+            findings.append("issue #%d of item %s is not closed after the batch landed (the forge says \"%s\")" % (number, item, read.state))
     if integration > 0:
         refs = pr_closing(pr = integration, name = name + ".closing").issues
         for number in sorted([int(ref[1:]) for ref in refs if ref.startswith("#")]):
             if number not in claimed:
                 findings.append("pull request #%d closes issue #%d and no landed item names it" % (integration, number))
-    return struct(findings = findings)
+    return struct(findings = findings, note = "")
 
 def batch_merge(name, prs, base, repo, hold = "", own = {}, forbid_text = [], gate_run = [], integration = 0):
     """Lands the pull requests of prs with one gate run for the whole set. The members fold in item order onto the base tip, the union is gated, and a red union splits in halves.
@@ -250,9 +258,10 @@ def batch_merge(name, prs, base, repo, hold = "", own = {}, forbid_text = [], ga
         "losses": [],
         "host_losses": 0,
     }
-    present = _present(st, members)
+    # base_tip makes the worktree of the item, where every git command of the batch runs, so it comes first.
     start = base_tip(base = base, name = name + ".tip")
     st["tip"] = struct(commit = start.commit, tree = start.tree)
+    present = _present(st, members)
     _land(st, present)
     if not st["stopped"] and len(st["held"]) > 0:
         st["retry"] = True
@@ -264,7 +273,8 @@ def batch_merge(name, prs, base, repo, hold = "", own = {}, forbid_text = [], ga
     findings, note = [], NO_LANDING_NOTE
     if len(landed) > 0:
         unproven = landing_proof(base = base, start = start, end = st["tip"], landed = landed, name = name + ".prove").unproven
-        findings, note = issue_audit(landed = st["merged"], integration = integration, name = name).findings, ""
+        audit = issue_audit(landed = st["merged"], integration = integration, name = name)
+        findings, note = audit.findings, audit.note
 
     return struct(
         merged = st["merged"],

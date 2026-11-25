@@ -144,7 +144,7 @@ type GateJob struct {
 	Head string `json:"head,omitempty"`
 	// Plan is what the job runs and the steps that it reports, fixed when the job text was made. Run judges the job by it.
 	Plan gatepkg.Plan `json:"plan"`
-	// Call is the key of the gate call that asked for the job, such as gate:check. The engine sets it only in a dry run, and it is never encoded. It is empty in a real run and for a batch gate.
+	// Call is the key of the gate call that asked for the job, such as gate:check. The engine sets it only in a dry run, and it is never encoded. It is empty in a real run.
 	Call string `json:"-"`
 }
 
@@ -317,7 +317,7 @@ type CommandRequest struct {
 	// BuildHost is the build host that the run recorded in host_up. The gate and a call with Host run there. Empty means the default of the project.
 	BuildHost string
 	Timeout   time.Duration
-	// Gate is true for the program of a gate (a gate call with run, or the gate_run of merge). A gate on this machine runs under the sandbox of its project.
+	// Gate is true for the program of a gate call with run. A gate on this machine runs under the sandbox of its project.
 	Gate bool
 	// MaxNewProcesses is the number of tasks that the tree of the command may hold besides the command (on Linux), or the process count of the user at the start plus this number (elsewhere). It is zero for a call that sets no cap.
 	MaxNewProcesses int

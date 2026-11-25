@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/landing"
@@ -112,9 +111,7 @@ type repoHost struct {
 	mu        sync.Mutex
 	tipErrs   []error // each Tip call takes the first one; a nil entry is a good call
 	tipCalls  int
-	gitLog    []string
 	intents   []string
-	checkouts []string
 	intentErr error
 	notOpen   map[string]bool // items whose pull request is not OPEN
 	// trees is set by a test that needs the folder of the item at the first git call: folderAtGit holds it.
@@ -122,12 +119,7 @@ type repoHost struct {
 	folderAtGit string
 	gitErr      error
 	// version, when set, is what git --version prints.
-	version  string
-	checkErr error
-	// report and reportErr are the answer of Issues, and issueCalls holds what it was asked.
-	report     batch.Report
-	reportErr  error
-	issueCalls []string
+	version string
 	// unproven and proofErr are the answer of Prove, and proofCalls holds what it was asked.
 	unproven   []landing.Outcome
 	proofErr   error
@@ -143,18 +135,17 @@ func (h *repoHost) Git(context.Context, string, string) (landing.GitCLI, error) 
 		h.mu.Unlock()
 	}
 
-	return landing.GitCLI{Exec: loggedGit{repo: h.repo, host: h}}, h.gitErr
+	return landing.GitCLI{Exec: hostGit{repo: h.repo, host: h}}, h.gitErr
 }
 
-// loggedGit runs a git command of the batch host and logs its arguments in the call log of the host.
-type loggedGit struct {
+// hostGit runs a git command of the batch host in the repository of the test, and prints the version of the host for git --version when it has one.
+type hostGit struct {
 	repo repoGit
 	host *repoHost
 }
 
-func (g loggedGit) Run(ctx context.Context, args []string) model.CommandResult {
+func (g hostGit) Run(ctx context.Context, args []string) model.CommandResult {
 	g.host.mu.Lock()
-	g.host.gitLog = append(g.host.gitLog, strings.Join(args, " "))
 	version := g.host.version
 	g.host.mu.Unlock()
 
@@ -163,37 +154,6 @@ func (g loggedGit) Run(ctx context.Context, args []string) model.CommandResult {
 	}
 
 	return g.repo.Run(ctx, args)
-}
-
-// gitCalls is every git command that the host ran.
-func (h *repoHost) gitCalls() []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	return append([]string(nil), h.gitLog...)
-}
-
-func (h *repoHost) Checkout(ctx context.Context, _, _, commit string) (string, error) {
-	h.mu.Lock()
-	h.checkouts = append(h.checkouts, commit)
-	h.mu.Unlock()
-
-	if h.checkErr != nil {
-		return "", h.checkErr
-	}
-
-	if res := h.repo.Run(ctx, []string{"checkout", "-q", "--detach", commit}); res.ExitCode != 0 {
-		return "", errors.New(res.Stderr)
-	}
-
-	return strings.TrimSpace(h.repo.Run(ctx, []string{"rev-parse", "HEAD^{tree}"}).Stdout), nil
-}
-
-func (h *repoHost) checkoutCalls() int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	return len(h.checkouts)
 }
 
 func (h *repoHost) Tip(ctx context.Context, _, _, _ string) (landing.Tip, error) {
@@ -229,16 +189,6 @@ func (h *repoHost) Intent(_ context.Context, _, item, _, base, tipTree string, n
 	return merge.Intent{PR: 1, Head: item, Base: base, BaseTipTree: tipTree, State: "OPEN", Time: now}, h.intentErr
 }
 
-// Issues answers the read after the batch: it records what it was asked and returns the report of the test.
-func (h *repoHost) Issues(_ context.Context, project, base string, integration int, landed []string) (batch.Report, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	h.issueCalls = append(h.issueCalls, fmt.Sprintf("%s %s %d %s", project, base, integration, strings.Join(landed, ",")))
-
-	return h.report, h.reportErr
-}
-
 // Prove answers the proof of the landing: it records what it was asked and returns the unproven lines of the test.
 // The tips are the trees of the repository of the test, so a test sees that the start and the end tip are the two ends of the batch.
 func (h *repoHost) Prove(_ context.Context, project, base string, start, end landing.Tip, landed []landing.Member) ([]landing.Outcome, error) {
@@ -262,13 +212,6 @@ func (h *repoHost) proofReads() []string {
 	return slices.Clone(h.proofCalls)
 }
 
-func (h *repoHost) issueReads() []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	return slices.Clone(h.issueCalls)
-}
-
 func (h *repoHost) tipReads() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -289,6 +232,8 @@ type treeGate struct {
 	unknownStep bool
 	// noSteps, when set, makes the gate report Passed with an empty, non-nil list of steps.
 	noSteps bool
+	// passWithFail, when set, makes the gate report Passed whatever its steps say.
+	passWithFail bool
 	// void, when set, makes the gate answer as a voided gate does: it did not run, and every step is unknown.
 	void bool
 	// noTree, when set, makes the gate pass and report no tree.
@@ -342,19 +287,6 @@ func (g *treeGate) submittedBases() [][2]string {
 	return slices.Clone(g.submitBases)
 }
 
-// submitted counts the host jobs that the gate started.
-func (g *treeGate) submitted() int {
-	return int(g.submits.Load())
-}
-
-// waitedOn lists the host jobs that Run was given, in order.
-func (g *treeGate) waitedOn() []GateJob {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	return slices.Clone(g.jobs)
-}
-
 // loses says whether wait number n, from 1, ends as lost.
 func (g *treeGate) loses(n int) bool {
 	return n <= g.lose || slices.Contains(g.loseAt, n)
@@ -392,7 +324,7 @@ func (g *treeGate) Run(ctx context.Context, _, _, cluster string, job GateJob) (
 	g.mu.Unlock()
 
 	g.mu.Lock()
-	lie, unknown, empty, void := g.lie, g.unknownStep, g.noSteps, g.void
+	lie, unknown, empty, void, reported := g.lie, g.unknownStep, g.noSteps, g.void, passed || g.passWithFail
 	if g.noTree {
 		tree = ""
 	}
@@ -406,7 +338,7 @@ func (g *treeGate) Run(ctx context.Context, _, _, cluster string, job GateJob) (
 		tree = lie
 	}
 
-	return GateResult{Passed: passed, Report: "gate on " + tree, Head: head, Tree: tree, Steps: treeGateSteps(passed, unknown, empty)}, nil
+	return GateResult{Passed: reported, Report: "gate on " + tree, Head: head, Tree: tree, Steps: treeGateSteps(passed, unknown, empty)}, nil
 }
 
 // treeGateSteps are the steps that the tree gate reports: the command step, a step whose result is unknown when unknown is set, and none when empty is set.

@@ -103,9 +103,11 @@ func swarmResultFields() map[string][]string {
 	}
 }
 
-// mergeFields are the fields of the result of merge: the fields of a union, rest and reason, and the fields of the batch with a gate of its own,
-// which merge returns for `prs` until the library batch_merge replaces it.
-func mergeFields() []string { return append(handOffFields(), "rest", reasonField) }
+// mergeFields are the fields of the result of merge: the members that landed, were refused or were deferred, the members after a refusal,
+// whether the fold was not the gated union and why, and the base tip after the call.
+func mergeFields() []string {
+	return []string{"merged", "rejected", "deferred", "rest", "moved", reasonField, "tip"}
+}
 
 // earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
 func earlierResultFields() map[string][]string {
@@ -129,7 +131,7 @@ func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		baseTipName:        {"commit", treeKeyword},
 		landingProofName:   {"unproven"},
-		issueStateName:     {stateField, foundField},
+		issueStateName:     {stateField, foundField, "error"},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},

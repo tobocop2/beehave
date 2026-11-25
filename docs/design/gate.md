@@ -91,7 +91,7 @@ When the wait of `gate` ends as `lost`, the steps `gate:lost-start` and `gate:lo
 
 The workflow library cannot record from inside a step, so the id needs a step of its own. After a crash between the two steps, the replay finds the id on record and the wait reads the same job: the host gets one job. A crash inside `gate:job`, after the host accepted the job and before the step is recorded, can still submit a second job.
 
-The project gate of `merge` has the same two steps, `batch_gate:job` and `batch_gate`. After a lost job with a proof, the batch gates the same commit once more. See "A lost batch gate job" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`, and a `merge` with `gate_run` is one step, `batch_gate`.
+The batch library gates each union with this `gate` call, so it has the same two steps. After a lost job with a proof, `batch_merge` gates the same union once more, and a second loss in one call ends the call. See "The batch library" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`.
 
 ### Gate steps
 

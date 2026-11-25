@@ -370,34 +370,25 @@ func TestPlaceOnHost_AGateStepRecordsTheHostItChose(t *testing.T) {
 	assert.Contains(t, fmt.Sprint(placed[0]), "B", "the record holds the host that the gate runs on")
 }
 
-func TestPlaceOnHost_ABatchGateIsPlacedAndAProgramGateIsNot(t *testing.T) {
+func TestPlaceOnHost_AProjectGateIsPlacedAndAProgramGateIsNot(t *testing.T) {
 	t.Parallel()
 
 	h, _ := placeHarness(t, []string{"A", "B"})
 	engine := h.opened(t)
 
-	batch, err := engine.placeOnHost(ExclusiveInput{Kind: kindBatchGate, Project: "demo", Item: "1"})
+	project, err := engine.placeOnHost(ExclusiveInput{Kind: kindGate, Project: "demo", Item: "1"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"A", "B"}, batch.Hosts, "a batch gate of a run that recorded no host is placed")
-	assert.Equal(t, hostKeyPrefix+"A", batch.HostKey, "until it is placed, the gate holds the default host")
+	assert.Equal(t, []string{"A", "B"}, project.Hosts, "a project gate of a run that recorded no host is placed")
+	assert.Equal(t, hostKeyPrefix+"A", project.HostKey, "until it is placed, the gate holds the default host")
 
-	chosen := batch.withHost("B")
-	assert.Equal(t, "B", chosen.BuildHost, "a batch gate carries its host in BuildHost")
-	assert.Empty(t, chosen.Request.BuildHost)
+	chosen := project.withHost("B")
+	assert.Equal(t, "B", chosen.Request.BuildHost, "a project gate carries its host in its request")
 	assert.Equal(t, hostKeyPrefix+"B", chosen.HostKey)
-
-	project := ExclusiveInput{Kind: kindGate, Project: "demo", Item: "1"}.withHost("B")
-	assert.Equal(t, "B", project.Request.BuildHost, "a project gate carries its host in its request")
-	assert.Empty(t, project.BuildHost)
 
 	program, err := engine.placeOnHost(ExclusiveInput{Kind: kindGate, Project: "demo", Item: "1", Request: CommandRequest{Run: []string{"make"}, Host: "A"}})
 	require.NoError(t, err)
 	assert.Empty(t, program.Hosts, "a program gate keeps its host")
 	assert.Equal(t, hostKeyPrefix+"A", program.HostKey)
-
-	recorded, err := engine.placeOnHost(ExclusiveInput{Kind: kindBatchGate, Project: "demo", Item: "1", BuildHost: "B"})
-	require.NoError(t, err)
-	assert.Empty(t, recorded.Hosts, "a host that host_up recorded is kept")
 }
 
 func TestPlaceOnHost_ABuildWithNoHostKeeperPlacesNothing(t *testing.T) {

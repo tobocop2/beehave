@@ -320,7 +320,7 @@ Only the `skypilot` provider starts a machine, so only it has a size. The `ssh` 
 - The start is a recorded step of the gate (`gate:host`). A replay reads the record and starts no second host.
 - Two gates that are placed at once start one host. The start runs under the placement lock of the engine, so the second gate finds the host up and starts nothing. The cost: while a slow start runs (`sky launch` can take minutes), the placement of every other gate of the engine waits for it.
 - The run that placed the gate owns the host that the gate started. `host_teardown` stops it as it stops a host that `host_up` started, and the idle watchdog stays a backstop.
-- Only a gate and a batch gate start a deferred host. A `command` call that needs the host before any gate fails until a gate has started it.
+- Only a gate starts a deferred host. The batch library gates through the same `gate` call. A `command` call that needs the host before any gate fails until a gate has started it.
 - A host that is up keeps its size. `host_up` never resizes it. The next size is picked when the host is absent again, after the idle watchdog or `host_teardown` deleted it.
 - A queue that cannot be read ends the gate with an error. No host starts at a guessed size.
 - `ssh` and `slurm` have no table. `host_up` starts and records them as before.

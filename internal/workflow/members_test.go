@@ -64,7 +64,7 @@ func TestCheck_ReadsTheFieldsOfAStructMemberOfPrs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := checkText(t, "def main(item):\n    name = item.id\n    merge(prs = "+tc.prs+", base = \"main\", repo = \"o/r\", name = \"n\")\n")
+			got := checkText(t, "def main(item):\n    name = item.id\n    hand_off(prs = "+tc.prs+", base = \"main\", repo = \"o/r\", name = \"n\")\n")
 
 			if tc.want == "" {
 				assert.Empty(t, got)
@@ -73,7 +73,7 @@ func TestCheck_ReadsTheFieldsOfAStructMemberOfPrs(t *testing.T) {
 			}
 
 			require.Len(t, got, 1)
-			assert.Contains(t, got[0], "merge: "+tc.want)
+			assert.Contains(t, got[0], "hand_off: "+tc.want)
 		})
 	}
 }
@@ -81,7 +81,7 @@ func TestCheck_ReadsTheFieldsOfAStructMemberOfPrs(t *testing.T) {
 func TestCheck_ReadsAStructThatTheFileDefinesAsItsOwnName(t *testing.T) {
 	t.Parallel()
 
-	got := checkText(t, "def struct(**fields):\n    return fields\n\ndef main(item):\n    merge(prs = [struct(item = 1, head = True)], base = \"main\", repo = \"o/r\", name = \"n\")\n")
+	got := checkText(t, "def struct(**fields):\n    return fields\n\ndef main(item):\n    hand_off(prs = [struct(item = 1, head = True)], base = \"main\", repo = \"o/r\", name = \"n\")\n")
 
 	assert.Empty(t, got)
 }

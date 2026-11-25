@@ -16,14 +16,16 @@ import (
 )
 
 // lostTreeFlow is a parent with three children, one after the other. The gate of items 21 and 22 runs on the host gpu-b, and item 23 lands
-// the pull requests that replace PRS with one merge there.
-const lostTreeFlow = `def worker(item):
+// the pull requests that replace PRS with one batch_merge there.
+const lostTreeFlow = `load("@beehave//batch.star", "batch_merge")
+
+def worker(item):
     host_up(name = "start", host = "gpu-b")
     gate(name = "check")
 
 def lander(item):
     host_up(name = "start", host = "gpu-b")
-    merge(prs = [PRS], base = "main", repo = "o/r", name = "b")
+    batch_merge(prs = [PRS], base = "main", repo = "o/r", name = "b")
 
 def main(item):
     gather(spawn(items = ["21"], entry = "worker"), fail = "raise")
@@ -91,6 +93,8 @@ func TestHostLoss_TheRootRunCountsLossesOfItsChildRuns(t *testing.T) {
 
 	// The gate loses the first three jobs: the gates of items 21 and 22, then the batch gate of item 23, whose rerun passes.
 	rig, _ := lostBatchRig(t, 3)
+	rig.runGit()
+	rig.h.queue = &fakeQueue{issueStates: map[int]string{1: issueClosed, 3: issueClosed}}
 	engine := rig.engine(t)
 	prs := `struct(item = "1", head = "` + rig.heads["1"] + `", closes = []), struct(item = "3", head = "` + rig.heads["3"] + `", closes = [])`
 
@@ -101,7 +105,7 @@ func TestHostLoss_TheRootRunCountsLossesOfItsChildRuns(t *testing.T) {
 
 	assert.Contains(t, stepNamesOf(t, engine, first), "gate:check#1/host-loss", "the item run records the loss as its own step")
 	assert.Contains(t, stepNamesOf(t, engine, second), "gate:check#1/host-loss", "the item run records the loss as its own step")
-	assert.Contains(t, stepNamesOf(t, engine, lander), "batch:b.gate#1/host-loss", "the item run records the loss of the batch gate as its own step")
+	assert.Contains(t, stepNamesOf(t, engine, lander), "gate:b.gate#1/host-loss", "the item run records the loss of the batch gate as its own step")
 	assert.EqualValues(t, 1, gateRecordOf(t, engine, first, "gate:check#1")[hostLossesKey], "the first loss of the tree")
 	assert.EqualValues(t, 2, gateRecordOf(t, engine, second, "gate:check#1")[hostLossesKey], "the second result counts the loss of the first child and its own")
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed(), "the batch gate ran again after the proof, and the batch landed")

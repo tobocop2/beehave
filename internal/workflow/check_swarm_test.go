@@ -79,11 +79,11 @@ func TestCheck_AnUnknownKeywordOfSpawnOrGatherIsAProblemAtTheKeyword(t *testing.
 func TestCheck_AMergeCallWithNoNameIsAProblemAtTheCall(t *testing.T) {
 	t.Parallel()
 
-	got := checkText(t, "def main(item):\n    merge(prs = item.id, base = \"main\", repo = \"o/r\")\n    merge(item.id, \"main\", \"o/r\", limit = 2, name = \"b\")\n    merge(item.id, \"main\", \"o/r\", name = \"c\")\n")
+	got := checkText(t, "def main(item):\n    merge(members = item.id, base = \"main\", repo = \"o/r\")\n    merge(item.id, \"main\", \"o/r\", limit = 2, name = \"b\")\n    merge(item.id, \"main\", \"o/r\", name = \"c\")\n")
 
 	require.Len(t, got, 2)
 	assert.Contains(t, got[0], "2:10 merge needs the `name` keyword. Add name = ... to the call. The name makes the step names of the call unique, so use one for each call of the run.")
-	assert.Contains(t, got[1], "3:35 merge takes no argument limit. Use one of: members, base, repo, gate, hold, own, forbid_text, name, prs, gate_run, integration.")
+	assert.Contains(t, got[1], "3:35 merge takes no argument limit. Use one of: members, base, repo, gate, hold, own, forbid_text, name.")
 }
 
 func TestCheck_AFailValueThatIsNotListedIsAProblemAtTheValue(t *testing.T) {

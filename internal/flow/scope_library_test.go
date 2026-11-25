@@ -45,7 +45,7 @@ func (r *batchRig) libFlow(pre, items string, holds int) string {
 			`    held = hold_scope(name = "hold-`+n+`", `+given+`prs = [`+strings.Join(members, ", ")+`])`,
 			"    rejected += held.rejected",
 			"    if held.prs:",
-			`        merged += merge(prs = held.prs, base = "main", repo = "o/r", name = "b-`+n+`").merged`)
+			`        merged += merge(members = held.prs, base = "main", repo = "o/r", name = "b-`+n+`").merged`)
 	}
 
 	body = append(body, `    command(name = "report", run = ["report", ",".join(merged), ",".join([r.item + ":" + r.reason for r in rejected]), ""])`)
@@ -783,13 +783,10 @@ func TestHoldScope_ANewIssueOfAMemberWhoseFirstReviewClosedNoIssueIsAskedAboutWi
 // mergeForm is one form of a merge call over the members that hold_scope let through: the argument that passes them, and the expression of the refusal reasons in its result.
 type mergeForm struct{ members, reasons string }
 
-// mergeForms are the two forms of a merge call: the list with a gate of its own and the members of one union.
+// mergeForms are the forms of a merge call: the members of one union.
 func mergeForms() map[string]mergeForm {
-	rejected := `",".join([r.reason for r in out.rejected])`
-
 	return map[string]mergeForm{
-		"prs":     {members: "prs = held.prs", reasons: rejected},
-		"members": {members: "members = held.prs", reasons: rejected},
+		"members": {members: "members = held.prs", reasons: `",".join([r.reason for r in out.rejected])`},
 	}
 }
 
@@ -927,7 +924,7 @@ func TestMerge_AnOwnerAnswerThatKeepsAnotherIssueDoesNotKeepTheIssueOfTheMember(
 	t.Parallel()
 
 	rig := newBatchRig(t)
-	out := rig.answerKeep(t, rig.engine(t), "1", rig.keptFlow("prs", askToKeep), "keep #14")
+	out := rig.answerKeep(t, rig.engine(t), "1", rig.keptFlow("members", askToKeep), "keep #14")
 
 	require.ErrorContains(t, out.err, keptRefusal)
 	assert.Empty(t, rig.merger.given)
@@ -954,7 +951,7 @@ func TestMerge_AKeptIssueThatOnlyAnAnswerInARunOfAnotherItemKeptEndsTheCall(t *t
 	engine := rig.engine(t)
 	require.NoError(t, rig.answerKeep(t, engine, "9", "def main(item):\n    "+askToKeep+"\n", "keep #13").err)
 
-	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("prs", "pass")), modeOff())
+	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("members", "pass")), modeOff())
 
 	require.ErrorContains(t, err, keptRefusal)
 	assert.Empty(t, rig.merger.given, "the answer of a run of item 9 keeps nothing for a run of item 1")

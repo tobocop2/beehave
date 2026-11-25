@@ -339,7 +339,7 @@ Known limit: the enforcer has no right for `chmod`, so a gate can still change t
 
 ### The program gate
 
-A program gate (a `gate` call with `run`, or the `gate_run` of `merge`) runs under the same enforcer, the same copy and the same plan as the project gate. `gate_network` and `gate_allow_write` apply to it. `beehave check` prints no note for it, because it is not outside the sandbox.
+A program gate (a `gate` call with `run`, such as the gate of `batch_merge` with `gate_run`) runs under the same enforcer, the same copy and the same plan as the project gate. `gate_network` and `gate_allow_write` apply to it. `beehave check` prints no note for it, because it is not outside the sandbox.
 
 The sandbox does not limit stdin or `max_new_processes` of a program gate.
 
