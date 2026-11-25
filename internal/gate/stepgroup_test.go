@@ -18,13 +18,28 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// childOnlyTimeout models a `timeout` that makes itself a group leader and sends TERM and then KILL to its child only, never to the group.
-// The perl line is the setpgid(0, 0) call that a shell script cannot make.
-const childOnlyTimeout = `#!/bin/sh
+// leaderPrelude makes a fake `timeout` the leader of its own group, as `timeout` is. The perl line is the setpgid(0, 0) call that a shell script cannot make.
+const leaderPrelude = `#!/bin/sh
 if [ -z "$FAKE_TIMEOUT_LEADER" ]; then
 	FAKE_TIMEOUT_LEADER=1 exec perl -e 'setpgrp(0, 0); exec @ARGV' "$0" "$@"
 fi
-grace=0
+`
+
+// exit124Timeout models a `timeout` that sends TERM to its child only, does not wait for the child, and exits 124. A child that ignores TERM survives it.
+const exit124Timeout = leaderPrelude + `case "$1" in
+--kill-after=*) shift ;;
+esac
+limit=$1
+shift
+"$@" &
+c=$!
+sleep "$limit"
+kill -s TERM "$c" 2>/dev/null
+exit 124
+`
+
+// childOnlyTimeout models a `timeout` that sends TERM and then KILL to its child only, never to the group, and gives the status of the child.
+const childOnlyTimeout = leaderPrelude + `grace=0
 case "$1" in
 --kill-after=*) grace=${1#--kill-after=}; shift ;;
 esac
@@ -97,8 +112,8 @@ func timedStepProject(step string) model.Project {
 	return project
 }
 
-// childOnlyTimeoutDir is a folder with the model timeout under the name `timeout`.
-func childOnlyTimeoutDir(t *testing.T) string {
+// fakeTimeoutDir is a folder with the script as the program `timeout`.
+func fakeTimeoutDir(t *testing.T, script string) string {
 	t.Helper()
 
 	if _, err := exec.LookPath("perl"); err != nil {
@@ -106,9 +121,25 @@ func childOnlyTimeoutDir(t *testing.T) string {
 	}
 
 	dir := t.TempDir()
-	require.NoError(t, exectest.Write(filepath.Join(dir, "timeout"), childOnlyTimeout))
+	require.NoError(t, exectest.Write(filepath.Join(dir, "timeout"), script))
 
 	return dir
+}
+
+// childOnlyTimeoutDir is a folder with the child-only model timeout under the name `timeout`.
+func childOnlyTimeoutDir(t *testing.T) string {
+	t.Helper()
+
+	return fakeTimeoutDir(t, childOnlyTimeout)
+}
+
+// requireTimeout skips the test on a machine with no `timeout` program.
+func requireTimeout(t *testing.T) {
+	t.Helper()
+
+	if _, err := exec.LookPath("timeout"); err != nil {
+		t.Skip("no timeout binary on this machine")
+	}
 }
 
 func TestHostCommand_AKilledStepLeavesNoChildAliveWhenTimeoutOnlyKillsTheChild(t *testing.T) {
@@ -148,9 +179,7 @@ func TestHostCommand_AKilledStepLeavesNoGrandchildAliveWhenTimeoutOnlyKillsTheCh
 func TestHostCommand_AStepThatEndsInTimeKeepsItsBackgroundChild(t *testing.T) {
 	t.Parallel()
 
-	if _, err := exec.LookPath("timeout"); err != nil {
-		t.Skip("no timeout binary on this machine")
-	}
+	requireTimeout(t)
 
 	const arg = "4304.01"
 
@@ -162,4 +191,80 @@ func TestHostCommand_AStepThatEndsInTimeKeepsItsBackgroundChild(t *testing.T) {
 	assert.True(t, ran)
 	assert.Contains(t, out, "beehave-gate-step one rc=0\n")
 	assert.Len(t, sleepersOf(t, arg), 1, "a step that ends in time is not killed, so its background child stays")
+}
+
+func TestHostCommand_AStepThatTimeoutEndedWithStatus124LeavesNoChildAlive(t *testing.T) {
+	t.Parallel()
+
+	const arg = "4305.01"
+
+	requireCounterSeesASleeper(t)
+	killSleepers(t, arg)
+
+	code, _, ran, out := runProjectCommandOn(t, timedStepProject("trap '' TERM; sleep "+arg), []string{fakeTimeoutDir(t, exit124Timeout)}, "SHIM_HEAD="+headA)
+
+	assert.Equal(t, 1, code, "the failed step fails the job")
+	assert.True(t, ran, "the later step still runs")
+	assert.Contains(t, out, "beehave-gate-step one rc=124\n")
+	assert.Empty(t, sleepersOf(t, arg), "the child that survived the TERM of timeout is gone")
+}
+
+func TestHostCommand_TheRunLimitOfTheHostStopsTheStepWhenTimeoutOnlySignalsItsChild(t *testing.T) {
+	t.Parallel()
+
+	const arg = "4306.01"
+
+	requireCounterSeesASleeper(t)
+	killSleepers(t, arg)
+
+	project := timedStepProject("sleep " + arg)
+	project.GateSteps[0].Timeout = 30 * time.Second
+	project.Host = &model.HostConfig{MaxRun: time.Second}
+
+	_, _, ran, _ := runProjectCommandOn(t, project, []string{childOnlyTimeoutDir(t)}, "SHIM_HEAD="+headA)
+
+	assert.True(t, ran, "the later step still runs")
+	assert.Empty(t, sleepersOf(t, arg), "the run limit stopped the step, which has 30 seconds left")
+}
+
+func TestHostCommand_AKilledStepLogsNoErrorWhenTimeoutAlreadyKilledTheGroup(t *testing.T) {
+	t.Parallel()
+
+	requireTimeout(t)
+
+	const arg = "4307.01"
+
+	killSleepers(t, arg)
+
+	_, _, _, out := runProjectCommandOn(t, timedStepProject("trap '' TERM; sleep "+arg), nil, "SHIM_HEAD="+headA)
+
+	assert.Contains(t, out, "beehave-gate-step one rc=137\n")
+	assert.NotContains(t, out, "No such process")
+}
+
+func TestHostCommand_AStepWithATimeoutReadsTheStdinOfTheJob(t *testing.T) {
+	t.Parallel()
+
+	requireTimeout(t)
+
+	_, _, _, out := runProjectCommandWithInput(t, timedStepProject("cat"), nil, "from the job\n", "SHIM_HEAD="+headA)
+
+	assert.Contains(t, out, "from the job\n")
+	assert.Contains(t, out, "beehave-gate-step one rc=0\n")
+}
+
+func TestHostCommand_AStepWithATimeoutKeepsTheDefaultHandlingOfInterruptAndQuit(t *testing.T) {
+	t.Parallel()
+
+	requireTimeout(t)
+
+	for _, signal := range []string{"INT", "QUIT"} {
+		t.Run(signal, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, _, out := runProjectCommandOn(t, timedStepProject("kill -s "+signal+" $$; echo survived-"+signal), nil, "SHIM_HEAD="+headA)
+
+			assert.NotContains(t, out, "survived-"+signal, "the step dies of the signal, as it does with no timeout")
+		})
+	}
 }

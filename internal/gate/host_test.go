@@ -187,6 +187,13 @@ func runProjectCommand(t *testing.T, project model.Project, env ...string) (int,
 func runProjectCommandOn(t *testing.T, project model.Project, first []string, env ...string) (int, string, bool, string) {
 	t.Helper()
 
+	return runProjectCommandWithInput(t, project, first, "", env...)
+}
+
+// runProjectCommandWithInput is runProjectCommandOn with stdin as the standard input of the command. The log holds stdout and stderr, as the host log does.
+func runProjectCommandWithInput(t *testing.T, project model.Project, first []string, stdin string, env ...string) (int, string, bool, string) {
+	t.Helper()
+
 	home, bin := t.TempDir(), t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), gitShim))
 
@@ -211,6 +218,8 @@ func runProjectCommandOn(t *testing.T, project model.Project, first []string, en
 	require.NoError(t, err)
 
 	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Stdin = strings.NewReader(stdin)
 	code := 0
 
 	err = cmd.Run()
