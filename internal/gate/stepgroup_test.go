@@ -2,6 +2,7 @@ package gate_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,7 +69,9 @@ func killSleepers(t *testing.T, arg string) {
 	t.Cleanup(func() {
 		for _, pid := range sleepersOf(t, arg) {
 			if proc, err := os.FindProcess(pid); err == nil {
-				_ = proc.Kill()
+				if killErr := proc.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+					t.Errorf("stop sleeper %d: %v", pid, killErr)
+				}
 			}
 		}
 	})
@@ -80,10 +83,8 @@ func requireCounterSeesASleeper(t *testing.T, arg string) {
 
 	killSleepers(t, arg)
 
-	sleeper := exec.CommandContext(context.Background(), "sleep", arg)
+	sleeper := exec.CommandContext(t.Context(), "sleep", arg) //nolint:gosec // arg is a constant of the calling test, and the test context stops the sleeper
 	require.NoError(t, sleeper.Start())
-
-	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
 
 	require.Eventually(t, func() bool { return len(sleepersOf(t, arg)) == 1 }, 5*time.Second, 50*time.Millisecond, "the counter must see a sleeper that runs")
 }
@@ -107,7 +108,6 @@ func childOnlyTimeoutDir(t *testing.T) string {
 
 	dir := t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(dir, "timeout"), childOnlyTimeout))
-	require.NoError(t, os.Chmod(filepath.Join(dir, "timeout"), 0o700)) //nolint:gosec // a script in the test's own temporary folder that must run
 
 	return dir
 }
