@@ -32,5 +32,6 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) {
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
 		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Sandbox: model.SandboxOn, Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
+		GateProgram: []string{".gitleaks.toml", ".gitleaksignore", "GNUmakefile", "Makefile", "makefile"},
 	}, cfg.Projects["p"].Project)
 }
