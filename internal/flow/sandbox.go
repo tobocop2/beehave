@@ -91,22 +91,18 @@ func sandboxFromStruct(value *starlarkstruct.Struct) (sandboxChoice, error) {
 // errUnsandboxed is returned for a step that sets sandbox = None in a run whose project has the sandbox on.
 var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start, and the run failed. Set sandbox = "off" in the project, or give the step sandbox(network = [...]) in the workflow file. Then run beehave cancel <item>, and run beehave run <item>`)
 
-// UsedSandbox returns the sandbox mode that the run uses: the stored mode, or for a run recorded before the mode was stored, the live default of its project.
-// The engine and the lines that name the off mode all call it, so the line and the behavior of a run cannot differ. A nil live means no project has the sandbox on.
-func (in ItemInput) UsedSandbox(live func(project string) bool) model.SandboxMode {
+// UsedSandbox returns the sandbox mode that the run uses: the stored mode, or off for a run recorded before the mode was stored.
+// The engine and the lines that name the off mode all call it, so the line and the behavior of a run cannot differ.
+func (in ItemInput) UsedSandbox() model.SandboxMode {
 	if in.Sandbox != "" {
 		return in.Sandbox
-	}
-
-	if live != nil && live(in.Project) {
-		return model.SandboxOn
 	}
 
 	return model.SandboxOff
 }
 
 // runMode returns the sandbox mode that the run uses.
-func (s *script) runMode() model.SandboxMode { return s.in.UsedSandbox(s.e.deps.SandboxDefault) }
+func (s *script) runMode() model.SandboxMode { return s.in.UsedSandbox() }
 
 // refusedAtCall returns the refusal of an agent call before the engine writes the start line of the step. Any other call, and a call that the agent step itself rejects, gives nil.
 func (s *script) refusedAtCall(b *starlark.Builtin, kwargs []starlark.Tuple) error {

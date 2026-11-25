@@ -32,7 +32,7 @@ func TestCheckWorkflow_AGateCallPassesWhenTheSandboxIsOff(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "workflow.star", "def main(item):\n    gate(name = \"a\")\n")
-	writeConfig(t, dir, "projects/near.star", "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n")
+	writeConfig(t, dir, "projects/near.star", "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", sandbox = \"off\")\n")
 
 	code, _, stderr := runCheckWorkflow(t, "--config", dir, "--project", "near", filepath.Join(dir, "workflow.star"))
 

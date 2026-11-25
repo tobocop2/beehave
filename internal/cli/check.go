@@ -358,6 +358,7 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 
 	cfg, problems := configProblems(ctx, dir, env, adapters, registry)
 	if len(problems) == 0 {
+		printDefaultNotes(stderr, cfg)
 		printHostNotes(stderr, cfg, refusal)
 
 		return nil
@@ -390,8 +391,19 @@ func printLines(stderr io.Writer, problems config.Problems) {
 	}
 }
 
+// printDefaultNotes prints a note for each project whose file sets no sandbox key, so that the default it runs with is visible.
+func printDefaultNotes(stderr io.Writer, cfg config.Config) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		if project := cfg.Projects[name]; project.SandboxUnset {
+			// A failed write to stderr has no recovery.
+			_, _ = fmt.Fprintf(stderr, "note: project %s sets no sandbox key, so its agent steps run in the sandbox. To run them with no sandbox, write sandbox = \"off\" in %s.\n", name, project.Path)
+		}
+	}
+}
+
 // printHostNotes prints a note for each project that has the sandbox on. A project on a host runs its gate there with no sandbox.
-// A project on this machine cannot run its gate when no sandbox enforcer can run here.
+// A project on this machine cannot run its gate when no sandbox enforcer can run here. When one can, a project with no sandbox key
+// gets a note that its gate cannot read the home folder there.
 func printHostNotes(stderr io.Writer, cfg config.Config, refusal GateRefusal) {
 	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
 		project := cfg.Projects[name]
@@ -399,16 +411,20 @@ func printHostNotes(stderr io.Writer, cfg config.Config, refusal GateRefusal) {
 			continue
 		}
 
-		// A failed write to stderr has no recovery.
-		if project.BuildHost == config.LocalHost {
-			if reason := refusal.reason(project, false); reason != "" {
-				_, _ = fmt.Fprintf(stderr, "note: project %s has the sandbox on, but %s\n", name, reason)
-			}
+		if project.BuildHost != config.LocalHost {
+			// A failed write to stderr has no recovery.
+			_, _ = fmt.Fprintf(stderr, "note: project %s builds on the host %s, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", name, project.BuildHost)
 
 			continue
 		}
 
-		_, _ = fmt.Fprintf(stderr, "note: project %s builds on the host %s, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", name, project.BuildHost)
+		switch reason := refusal.reason(project, false); {
+		case reason != "":
+			_, _ = fmt.Fprintf(stderr, "note: project %s has the sandbox on, but %s\n", name, reason)
+		case project.SandboxUnset:
+			_, _ = fmt.Fprintf(stderr, "note: project %s sets no sandbox key, so its gate runs in the sandbox on this machine. The gate cannot read the home folder there, "+
+				"so a gate tool under it, such as a mise or asdf shim or ~/go/bin, fails. Add the folders of those tools to sandbox_read, or write sandbox = \"off\" in %s.\n", name, project.Path)
+		}
 	}
 }
 

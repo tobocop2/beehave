@@ -226,7 +226,7 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, 
 }
 
 // OpenRun returns the open run that the test set: a pinned file, or openRun with the stored mode openMode. The mode is the one that the real function gives.
-func (s *fakeSteering) OpenRun(_ string, live func(string) bool) (flow.OpenRun, error) {
+func (s *fakeSteering) OpenRun(_ string) (flow.OpenRun, error) {
 	if err := cmp.Or(s.pinnedErr, s.openErr); err != nil {
 		return flow.OpenRun{}, err
 	}
@@ -235,7 +235,7 @@ func (s *fakeSteering) OpenRun(_ string, live func(string) bool) (flow.OpenRun, 
 		return flow.OpenRun{}, nil
 	}
 
-	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live), Delayed: s.openDelayed}, nil
+	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(), Delayed: s.openDelayed}, nil
 }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
