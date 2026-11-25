@@ -131,7 +131,7 @@ The example refuses any other key under `round`.
 
 ### `beehave init`
 
-`beehave init` runs in the top folder of a git repository. It writes `projects/<name>.star` into the config folder, and `workflow.star` and `prompts/` (`plan.md`, `implement.md`, `review.md`, `fix.md`) into the repository. The workflow and the prompts are the files of `examples/local`.
+`beehave init` runs in the top folder of a git repository. Git decides: a subfolder, or a folder with an empty `.git` folder inside a repository, is refused. If git is not on PATH, init says so. It writes `projects/<name>.star` into the config folder, and `workflow.star` and `prompts/` (`plan.md`, `implement.md`, `review.md`, `fix.md`) into the repository. The workflow and the prompts are the files of `examples/local`.
 
 The project file holds `source` (the absolute path of the repository), `base_branch`, `sandbox = "on"`, `gate` and `test_report`. The flags set the values:
 
@@ -139,7 +139,7 @@ The project file holds `source` (the absolute path of the repository), `base_bra
 |---|---|
 | `--config` | `$BEEHAVE_CONFIG`, then `~/.config/beehave` |
 | `--name` | The folder name of the repository. A name uses letters, digits, `-`, `_` and `.`, with no leading dot. |
-| `--base-branch` | The branch that `git symbolic-ref --short HEAD` prints, so a branch with no commit yet counts. A detached HEAD needs the flag. |
+| `--base-branch` | The local branch that `git symbolic-ref HEAD` names, so a branch with no commit yet counts. A detached HEAD, or a HEAD that names a remote ref, needs the flag. |
 | `--gate` | `make check` |
 | `--test-report` | `reports/*.xml` |
 

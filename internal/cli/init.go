@@ -25,12 +25,16 @@ const (
 	initBranchFlag        = "base-branch"
 	initGateFlag          = "gate"
 	initTestReportFlag    = "test-report"
-	gitEntry              = ".git"
+	branchPrefix          = "refs/heads/"
+	gitNotFound           = 127 // the exit code that the runner reports for a binary that is not on PATH
 	dirMode               = 0o700
 	fileMode              = 0o600
 )
 
-var errNotARepository = errors.New("run beehave init in the top folder of a git repository")
+var (
+	errNotARepository = errors.New("run beehave init in the top folder of a git repository")
+	errGitNotFound    = errors.New("git was not found. Install git and put it on PATH")
+)
 
 // projectNamePattern is a project name that is also a file stem: letters, digits, "-", "_" and ".", with no leading dot.
 var projectNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
@@ -99,7 +103,7 @@ func runInit(ctx context.Context, out io.Writer, env map[string]string, opts ini
 
 // planInit returns the files that init creates, after it checks every input.
 func planInit(ctx context.Context, env map[string]string, opts initOptions, repo string) ([]initFile, error) {
-	name, err := checkInputs(opts, repo)
+	name, err := checkInputs(ctx, opts, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +122,14 @@ func planInit(ctx context.Context, env map[string]string, opts initOptions, repo
 }
 
 // checkInputs refuses a folder that is not the top folder of a repository, an unusable name and an empty gate or test report. It returns the project name.
-func checkInputs(opts initOptions, repo string) (string, error) {
-	if _, err := os.Lstat(filepath.Join(repo, gitEntry)); err != nil {
+func checkInputs(ctx context.Context, opts initOptions, repo string) (string, error) {
+	// Git prints the path of the folder below the top of its repository: nothing when the folder is the top.
+	prefix, err := askGit(ctx, repo, errNotARepository, "rev-parse", "--show-prefix")
+	if err != nil {
+		return "", err
+	}
+
+	if prefix != "" {
 		return "", errNotARepository
 	}
 
@@ -177,14 +187,33 @@ func baseBranch(ctx context.Context, repo, named string) (string, error) {
 		return named, nil
 	}
 
-	result := gitexec.New(repo, proc.DefaultTimeout).Run(ctx, []string{"symbolic-ref", "--short", "HEAD"})
-	branch := strings.TrimSpace(result.Stdout)
+	refused := fmt.Errorf("HEAD of the repository names no branch. Pass the branch that rounds start from with --%s", initBranchFlag)
 
-	if result.ExitCode != 0 || result.SetupErr != nil || branch == "" {
-		return "", fmt.Errorf("HEAD of the repository names no branch. Pass the branch that rounds start from with --%s", initBranchFlag)
+	head, err := askGit(ctx, repo, refused, "symbolic-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+
+	branch, isBranch := strings.CutPrefix(head, branchPrefix)
+	if !isBranch || branch == "" {
+		return "", refused
 	}
 
 	return branch, nil
+}
+
+// askGit runs git in repo and returns its trimmed output. A git that is not on PATH gives errGitNotFound; any other failure gives refused.
+func askGit(ctx context.Context, repo string, refused error, args ...string) (string, error) {
+	result := gitexec.New(repo, proc.DefaultTimeout).Run(ctx, args)
+
+	switch {
+	case result.ExitCode == gitNotFound:
+		return "", errGitNotFound
+	case result.ExitCode != 0 || result.SetupErr != nil:
+		return "", refused
+	}
+
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // refuseExisting fails when any file exists, and names each one. A symbolic link counts as a file, also a dangling one, because Lstat does not follow it.

@@ -284,7 +284,7 @@ func TestInit_AWorktreeCountsAsARepositoryAndGivesItsBranch(t *testing.T) {
 	assert.Contains(t, readText(t, filepath.Join(confDir, initProject)), `base_branch = "side"`)
 }
 
-func TestInit_ADotGitFolderThatGitCannotReadIsRefusedAndNamesTheFlag(t *testing.T) {
+func TestInit_AnEmptyDotGitFolderIsNotARepository(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "work")
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
 	t.Chdir(repo)
@@ -292,10 +292,65 @@ func TestInit_ADotGitFolderThatGitCannotReadIsRefusedAndNamesTheFlag(t *testing.
 	code, _, stderr := runInit(t, map[string]string{}, "--config", t.TempDir())
 
 	require.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "top folder of a git repository")
+}
+
+func TestInit_AFolderInsideARepositoryIsRefusedAlsoWithAnEmptyDotGitFolder(t *testing.T) {
+	confDir := t.TempDir()
+	outer := initRepo(t, "main")
+	inner := filepath.Join(outer, "inner")
+	require.NoError(t, os.MkdirAll(filepath.Join(inner, ".git"), 0o700))
+	t.Chdir(inner)
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "top folder of a git repository")
+	assert.Empty(t, filesBelow(t, confDir))
+	assert.Empty(t, filesBelow(t, inner))
+}
+
+func TestInit_WithNoGitOnPathSaysThatGitWasNotFound(t *testing.T) {
+	confDir := t.TempDir()
+	initRepo(t, "main")
+	t.Setenv("PATH", t.TempDir())
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "git was not found")
+	assert.Empty(t, filesBelow(t, confDir))
+}
+
+func TestInit_AHeadThatPointsToARemoteBranchIsRefusedAndNamesTheFlag(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
+	git(t, repo, "symbolic-ref", "HEAD", "refs/remotes/o/x")
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "--base-branch")
+	assert.Empty(t, filesBelow(t, confDir))
+}
+
+// skipWithoutReftable skips the test when the git on PATH cannot make a reftable repository. The ref storage is a feature of git 2.45 and later.
+// The code that the test covers, git symbolic-ref, is the same on every git, and the other tests of the base branch cover it on an older git.
+func skipWithoutReftable(t *testing.T) {
+	t.Helper()
+
+	probe := exec.CommandContext(t.Context(), "git", "init", "-q", "--ref-format=reftable", t.TempDir()) //nolint:gosec // the test runs git with its own arguments
+
+	if out, err := probe.CombinedOutput(); err != nil {
+		version, _ := exec.CommandContext(t.Context(), "git", "--version").Output() //nolint:errcheck // the version is only for the message
+
+		t.Skipf("this git cannot make a reftable repository (%s): %s", strings.TrimSpace(string(version)), strings.TrimSpace(string(out)))
+	}
 }
 
 func TestInit_AReftableRepositoryGivesItsBranch(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+	skipWithoutReftable(t)
+
 	confDir := t.TempDir()
 	initRepo(t, "trunk", "--ref-format=reftable")
 
