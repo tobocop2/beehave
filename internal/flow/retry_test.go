@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -89,7 +90,7 @@ func TestCommandRetries_WhenTheAttemptsAreSpentTheLastExitCodeIsTheResult(t *tes
 	assert.Equal(t, "log 7 2", logged(h))
 }
 
-func TestCommandRetries_TheSpentRetriesLeaveOneRecordOfTheLastTry(t *testing.T) {
+func TestCommandRetries_EachTryIsARecordOfItsOwnAndTheCallEndsInOneRecord(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -100,23 +101,65 @@ func TestCommandRetries_TheSpentRetriesLeaveOneRecordOfTheLastTry(t *testing.T) 
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, timesRun(h, "fetch"))
-	assert.Equal(t, []string{"command:fetch#1"}, stepNames(t, engine), "the step holds the last try, so a replay reads one record")
+	assert.Equal(t, []string{"command:fetch#1/try1", "command:fetch#1/try2", "command:fetch#1/try3", "command:fetch#1"}, stepNames(t, engine),
+		"a replay reads each try and the record of the call")
+}
+
+func TestCommandRetries_ACallWithNoRetriesIsOneRecord(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.commands.reply = codes(7)
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], name = \"fetch\")\n")), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"command:fetch#1"}, stepNames(t, engine))
+}
+
+func TestCommandRetries_TheRunViewShowsARetriedCallAsOneLine(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.commands.reply = codes(1, 0)
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 2, backoff = \"1ms\", name = \"fetch\")\n")), modeOff())
+	require.NoError(t, err)
+
+	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
+	require.NoError(t, err)
+
+	var fetch []StepLine
+
+	for _, line := range stepLines(steps, runDone, false, time.Now()) {
+		if strings.HasPrefix(line.Name, "command:fetch") {
+			fetch = append(fetch, line)
+		}
+	}
+
+	require.Len(t, fetch, 1, "the tries and the wait belong to the line of the call")
+	assert.Equal(t, "command:fetch#1", fetch[0].Name)
+	assert.Equal(t, stepDone, fetch[0].State)
 }
 
 func TestCommandRetries_TheDoubledWaitStopsAtTheLongestWait(t *testing.T) {
 	t.Parallel()
 
-	first, most, set := retryWaits(workflow.RetryPolicy{Retries: workflow.MaxRetries, Backoff: time.Minute})
+	minute := workflow.RetryPolicy{Retries: workflow.MaxRetries, Backoff: time.Minute}
+	first, most := retryWaits(minute)
 
-	require.True(t, set)
 	assert.Equal(t, time.Minute, first)
 	assert.Equal(t, 10*time.Minute, most, "ten retries from a minute would wait 512 minutes before the last one with no cap")
+	assert.Equal(t, []time.Duration{time.Minute, 2 * time.Minute, 8 * time.Minute, 10 * time.Minute},
+		[]time.Duration{retryWait(minute, 1), retryWait(minute, 2), retryWait(minute, 4), retryWait(minute, 5)})
 
-	_, _, set = retryWaits(workflow.RetryPolicy{Retries: 2})
-	assert.False(t, set, "a call with no backoff keeps the waits of the workflow library")
+	first, most = retryWaits(workflow.RetryPolicy{Retries: 2})
+	assert.Equal(t, []time.Duration{100 * time.Millisecond, 5 * time.Second}, []time.Duration{first, most}, "a call with no backoff starts at 100 ms and stops at 5 s")
 }
 
-func TestCommandRetries_TheWorkflowLibraryWaitsPastItsOwnLongestWaitOfFiveSeconds(t *testing.T) {
+func TestCommandRetries_TheWaitDoublesPastFiveSeconds(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -136,7 +179,7 @@ func TestCommandRetries_TheWorkflowLibraryWaitsPastItsOwnLongestWaitOfFiveSecond
 		return next(request)
 	}
 
-	// The waits are 1.5 s, 3 s and 6 s, each within 5% of the jitter of the library. With its own longest wait, the third would be 5 s.
+	// The waits are 1.5 s, 3 s and 6 s. With a longest wait of 5 s, the third would be 5 s.
 	_, err := walkBody(t, h, "command(run = [\"fetch\"], retries = 3, backoff = \"1500ms\", name = \"fetch\")\n")
 
 	require.NoError(t, err)
@@ -221,7 +264,7 @@ func TestCommandRetries_AReplayAfterTheRetriesReadsTheRecordAndRunsTheProgramNoM
 	assert.Equal(t, "log 0 2", logged(h))
 }
 
-func TestCommandRetries_ACrashDuringTheRetriesStartsTheCountAgain(t *testing.T) {
+func TestCommandRetries_ACrashDuringTry2RunsTry2AgainAndKeepsTheCount(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -238,8 +281,45 @@ func TestCommandRetries_ACrashDuringTheRetriesStartsTheCountAgain(t *testing.T) 
 
 	crashAndResume(t, h, h.deps(), "c = command(run = [\"fetch\"], retries = 3, backoff = \"1ms\", name = \"fetch\")\ncommand(run = [\"log\", str(c.rc), str(c.attempts)], name = \"log\")\n")
 
-	assert.Equal(t, 3, timesRun(h, "fetch"), "two tries before the crash, one after it")
-	assert.Equal(t, "log 0 1", logged(h), "the library records only the last try, so the count starts again at the resume")
+	assert.Equal(t, 3, timesRun(h, "fetch"), "two tries before the crash, and try 2 again after it")
+	assert.Equal(t, "log 0 2", logged(h), "try 1 is recorded, so the resume runs try 2 and the call counts two tries")
+}
+
+func TestCommandRetries_ACrashDuringTheWaitResumesTheWaitAndRunsTheNextTryOnce(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu     sync.Mutex
+		starts []time.Time
+	)
+
+	h := newHarness(t)
+	crash := newCrash(t, h)
+	fetch := codes(1, 0)
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		out, err := fetch(request)
+		if request.Run[0] != "fetch" {
+			return out, err
+		}
+
+		mu.Lock()
+		starts = append(starts, time.Now())
+		mu.Unlock()
+
+		if out.Stdout == "try 1" {
+			// The record of try 1 is written well within the second; the crash then comes in the wait of 4 s.
+			time.AfterFunc(time.Second, crash.after)
+		}
+
+		return out, err
+	}
+
+	crashAndResume(t, h, h.deps(), "c = command(run = [\"fetch\"], retries = 1, backoff = \"4s\", name = \"fetch\")\ncommand(run = [\"log\", str(c.rc), str(c.attempts)], name = \"log\")\n")
+
+	assert.Equal(t, 2, timesRun(h, "fetch"), "the crash comes in the wait after try 1, so the resume runs try 2 only")
+	assert.Equal(t, "log 0 2", logged(h))
+	require.Len(t, starts, 2)
+	assert.GreaterOrEqual(t, starts[1].Sub(starts[0]), 4*time.Second, "the resume waits the rest of the wait before try 2")
 }
 
 func TestCommandFailure_ReturnGivesTheErrorAndRCMinusOneAndTheRunGoesOn(t *testing.T) {
@@ -300,15 +380,28 @@ func TestCommandFailure_TheDefaultRaisesAndEndsTheRun(t *testing.T) {
 func TestCommandFailure_ACancelOfTheRunIsNeverReturned(t *testing.T) {
 	t.Parallel()
 
-	tries := &tries{failure: workflow.FailureReturn}
-	tries.start()
+	tries := tries{failure: workflow.FailureReturn}
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	assert.False(t, tries.returned(canceled, errors.New("x"), func(error) bool { return false }), "the context of the step ended")
-	assert.False(t, tries.returned(t.Context(), fmt.Errorf("stop: %w", context.Canceled), func(error) bool { return false }), "the error is a cancel")
-	assert.True(t, tries.returned(t.Context(), errors.New("x"), func(error) bool { return false }))
+	assert.False(t, tries.returned(canceled, 1, errors.New("x"), func(error) bool { return false }), "the context of the step ended")
+	assert.False(t, tries.returned(t.Context(), 1, fmt.Errorf("stop: %w", context.Canceled), func(error) bool { return false }), "the error is a cancel")
+	assert.True(t, tries.returned(t.Context(), 1, errors.New("x"), func(error) bool { return false }))
+}
+
+func TestCommandRetries_ACancelOfTheRunIsNeverTriedAgain(t *testing.T) {
+	t.Parallel()
+
+	tries := tries{policy: workflow.RetryPolicy{Retries: 2}}
+
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	assert.False(t, tries.again(canceled, 1, errors.New("x"), func(error) bool { return true }), "the context of the step ended")
+	assert.False(t, tries.again(t.Context(), 1, fmt.Errorf("stop: %w", context.Canceled), func(error) bool { return true }), "the error is a cancel")
+	assert.False(t, tries.again(t.Context(), 3, errors.New("x"), func(error) bool { return true }), "no try is left")
+	assert.True(t, tries.again(t.Context(), 2, errors.New("x"), func(error) bool { return true }))
 }
 
 func TestCommandRetries_TheRunRefusesAValueThatTheCheckCannotSee(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/beehave/internal/agent"
@@ -17,12 +18,12 @@ import (
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
-// commandPlan is a command call after its check: the request, the stop codes, the label, and the count of its tries.
+// commandPlan is a command call after its check: the request, the stop codes, the label, and the policy of its tries.
 type commandPlan struct {
 	request CommandRequest
 	stops   []int
 	label   string
-	tries   *tries
+	tries   tries
 }
 
 // commandCall unpacks and checks the arguments of the command builtin.
@@ -48,21 +49,21 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 }
 
 // triesOf reads the retry policy and the failure mode of a call.
-func triesOf(c commandRaw) (*tries, error) {
+func triesOf(c commandRaw) (tries, error) {
 	policy, err := workflow.Retry(c.retries, c.backoff)
 	if err != nil {
-		return nil, err
+		return tries{}, err
 	}
 
 	if err := workflow.RetrySlots(c.retries, c.slots != nil && c.slots != starlark.None); err != nil {
-		return nil, err
+		return tries{}, err
 	}
 
 	if !slices.Contains(workflow.FailureModes(), c.failure) {
-		return nil, fmt.Errorf("failure is %q. Use \"raise\" or \"return\"", c.failure)
+		return tries{}, fmt.Errorf("failure is %q. Use \"raise\" or \"return\"", c.failure)
 	}
 
-	return &tries{policy: policy, failure: workflow.FailureMode(c.failure)}, nil
+	return tries{policy: policy, failure: workflow.FailureMode(c.failure)}, nil
 }
 
 // commandRaw are the arguments of a command call as the file wrote them.
@@ -180,13 +181,42 @@ func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 		return s.slotCommand(plan)
 	}
 
-	return s.durableRetried("command", plan.label, plan.tries.policy, func(ctx context.Context, name string) (stepResult, error) {
-		return s.runCommand(ctx, name, plan)
+	if plan.tries.policy.Retries > 0 {
+		return s.retriedCommand(plan)
+	}
+
+	return s.durable(builtinCommand, plan.label, func(ctx context.Context, name string) (stepResult, error) {
+		return s.runCommand(ctx, name, plan, 1)
 	})
 }
 
+// retriedCommand runs a command call with retries. Each try is a recorded step `<call>/try<n>`, with a recorded wait before the next try,
+// and the step of the call records the result or the error of the try that ended the call.
+func (s *script) retriedCommand(plan commandPlan) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	final, err := s.tryAll(s.nextName(builtinCommand, plan.label), plan)
+
+	return s.durable(builtinCommand, plan.label, func(context.Context, string) (stepResult, error) { return final, err })
+}
+
+// tryAll runs the tries of the call until one ends it, and returns the record or the error of that try. A crash during try n resumes at try n,
+// because the tries before it are recorded steps.
+func (s *script) tryAll(call string, plan commandPlan) (stepResult, error) {
+	for n := 1; ; n++ {
+		done, err := runStep(s.e, s.ctx, call+tryMark+strconv.Itoa(n), func(ctx context.Context) (stepResult, error) {
+			return s.runCommand(ctx, call, plan, n)
+		})
+		if err != nil || !done.Again {
+			return done, err
+		}
+
+		if _, err := dbos.Sleep(s.ctx, retryWait(plan.tries.policy, n)); err != nil {
+			return stepResult{}, err
+		}
+	}
+}
+
 // defaultSlot puts a host job that names no slot class in the default class, so it waits at the cap of the host like any other job. A library build with no
-// slots resolver leaves it free, and a call with retries stays one step: a step cannot wait on a queue.
+// slots resolver leaves it free, and a call with retries takes no slot.
 func (s *script) defaultSlot(plan *commandPlan) {
 	if plan.request.Host != "" && plan.request.SlotClass == "" && plan.tries.policy.Retries == 0 && s.e.deps.Slots != nil {
 		plan.request.SlotClass = model.DefaultClass
@@ -198,7 +228,7 @@ func (s *script) defaultSlot(plan *commandPlan) {
 // A replay reads the recorded result of the child run and queues nothing again. With failure "return", a job that could not run is the recorded result.
 func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	out, err := s.e.queueSlotCommand(s.ctx, plan.request)
-	if err != nil && !plan.tries.returned(s.ctx, err, func(error) bool { return false }) {
+	if err != nil && !plan.tries.returned(s.ctx, 1, err, func(error) bool { return false }) {
 		return nil, fmt.Errorf("command %q could not run: %w", plan.label, err)
 	}
 
@@ -211,35 +241,30 @@ func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolin
 	})
 }
 
-// runCommand runs one try of the program of a command call and records its output. A code in stops adds the stop to the record.
-// A try that a retry may cure returns retriedRC. With failure "return", an error that ends the tries is the recorded result.
-func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) (stepResult, error) {
-	plan.tries.start()
-
-	out, err := s.writes().Run(attemptKey(ctx, plan.tries.n), plan.request)
+// runCommand runs try n of the program of the command call named call, with the job key of the step of the try. A code in stops adds the stop to the record.
+// A try that a retry may cure records Again. With failure "return", an error that ends the tries is the recorded result.
+func (s *script) runCommand(ctx context.Context, call string, plan commandPlan, n int) (stepResult, error) {
+	out, err := s.writes().Run(ctx, plan.request)
 
 	switch {
-	case err != nil && plan.tries.returned(ctx, err, s.e.retryable):
-		return stepResult{Outputs: s.e.failedOutputs(err, plan.tries.n)}, nil
+	case err != nil && plan.tries.returned(ctx, n, err, s.e.retryable):
+		return stepResult{Outputs: s.e.failedOutputs(err, n)}, nil
+	case err != nil && plan.tries.again(ctx, n, err, s.e.retryable):
+		return s.again(call, err), nil
 	case err != nil:
 		return stepResult{}, err
-	case plan.tries.retry(out.RC, plan.stops):
-		return stepResult{}, &retriedRC{rc: out.RC}
+	case plan.tries.retry(n, out.RC, plan.stops):
+		return s.again(call, &retriedRC{rc: out.RC}), nil
 	}
 
-	return commandRecord(name, out, plan.stops, plan.tries.n), nil
+	return commandRecord(call, out, plan.stops, n), nil
 }
 
-// attemptKey gives try n of a retried step a job key of its own, so a host that holds the failed job of try 1 starts a new job for try 2.
-// A step that runs again after a crash counts its tries from 1 again. On Slurm that finds the job of the try that the crash cut short, because accounting keeps ended jobs.
-// On ssh, Wait released the unit of try 1, so a crash during try 2 runs try 1 again. A context with no key stays as it is.
-func attemptKey(ctx context.Context, n int) context.Context {
-	key := host.JobKey(ctx)
-	if key == "" {
-		return ctx
-	}
+// again is the record of a try that asks for another try. The log names the reason.
+func (s *script) again(call string, reason error) stepResult {
+	s.e.logger.Warn("a try of a command failed; the next try starts after the wait", "item", s.in.Item, "step", call, "error", reason)
 
-	return withJobKey(ctx, key+":"+strconv.Itoa(n))
+	return stepResult{Again: true}
 }
 
 // commandRecord is the record of a command step: the output, and the stop when the exit code is one of stops.
