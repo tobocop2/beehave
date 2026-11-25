@@ -21,7 +21,7 @@ var errNoCloneToPush = errors.New("the project has no clone to push from")
 // the project, which only the engine writes, by git upload-pack under the sandbox enforcer of the project with read on the clone folder and the system folders. The push then
 // runs in that repository, with the hooks off, to the address that the engine read from the project file or the forge, never a remote name.
 // With expect, the push carries a lease on the branch; with no expect, git takes only a new branch or a fast forward. Git checks no lease when the branch
-// is already at head and exits 0, so a replay after the push landed passes. A project with no forge is an error, as for Open: such a project pushes nothing.
+// is already at head and exits 0, so a replay after the push landed passes. A project with no source and no forge is an error: such a project pushes nothing.
 func (p pulls) Push(ctx context.Context, project, item, branch, head, expect string) error {
 	remote, err := p.pushRemote(project)
 	if err != nil {
@@ -69,14 +69,14 @@ func (c checkedPush) Run(ctx context.Context, args []string) model.CommandResult
 	return c.git.Run(ctx, args)
 }
 
-// pushRemote returns the address that the clone of the project came from. A project with no forge is an error.
+// pushRemote returns the address that the clone of the project came from: its source, or else the clone address of its forge. A project with neither is an error.
 func (p pulls) pushRemote(project string) (string, error) {
-	// forgeOf refuses a project that the config lacks, so the lookup below finds it.
-	if _, err := p.forgeOf(project); err != nil {
+	found, err := p.projectOf(project)
+	if err != nil {
 		return "", err
 	}
 
-	return cloneSource(p.projects[project].Project, p.forge)
+	return cloneSource(found.Project, p.forge)
 }
 
 // headCopy is what the copy of a head needs: the enforcer that a sandbox_enforcer value names, and the path of this program, which git runs as upload-pack.
