@@ -209,7 +209,7 @@ The secret scan needs gitleaks 8.30.1, which `make setup` and the CI `test` job 
 
 A gate with no failed step and at least one `unknown` step is void, not red.
 
-- A batch gate stops the batch and blames no member (`ErrGateVoid`).
+- `batch_merge` of the batch library ends the call with "the gate gave no result" and blames no member.
 - The review loop of one item starts no fix agent for it. The loop reruns a void gate twice in the same run. Each rerun is a new recorded gate step, because a resume replays a recorded result and never runs a recorded step again.
 - After the reruns, the loop asks the owner, and an answer runs the gate again. After three answers it refuses and names the steps with no result.
 - The loop of `examples/local` still reads a void gate as red.
