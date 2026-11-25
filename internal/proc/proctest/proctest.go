@@ -30,8 +30,13 @@ func Always(result model.CommandResult) *Scripted {
 }
 
 // Run records the call and returns the latest plan that fits it, or exit code 99 when no plan fits.
+// A gh pr or gh issue list or view that names a --json field that gh does not accept exits 1 before any plan, as gh does.
 func (s *Scripted) Run(_ context.Context, args []string) model.CommandResult {
 	s.Calls = append(s.Calls, slices.Clone(args))
+
+	if field := unknownGHField(args); field != "" {
+		return model.CommandResult{ExitCode: 1, Stderr: fmt.Sprintf("Unknown JSON field: %q", field)}
+	}
 
 	for i := len(s.answers) - 1; i >= 0; i-- {
 		if s.answers[i].fits(args) {
