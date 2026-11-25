@@ -81,14 +81,16 @@ func TestCommand_TwoHostsWithDifferentCountsForOneClassEachKeepTheirOwnCount(t *
 	}
 }
 
-// stripSlotCount removes the count from the stored input of the job id. The store keeps an input as base64 text of its JSON.
-func stripSlotCount(t *testing.T, h *harness, id string) {
+// stripSlotCount removes the count from the stored input of the one host job of the run. The store keeps an input as base64 text of its JSON.
+// The job is found by its name, so a step that the engine adds before it does not move the test.
+func stripSlotCount(t *testing.T, h *harness, run string) {
 	t.Helper()
 
 	db := sqlOf(t, h)
 
-	var stored string
+	var id, stored string
 
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT workflow_uuid FROM workflow_status WHERE name = ? AND workflow_uuid LIKE ?", hostJobName, run+"-%").Scan(&id))
 	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT inputs FROM workflow_input WHERE workflow_uuid = ?", id).Scan(&stored))
 
 	raw, err := base64.StdEncoding.DecodeString(stored)
@@ -120,7 +122,7 @@ func TestResume_AJobQueuedBeforeCountsWereRecordedIsRefusedWithTheRunTheStepAndT
 	require.Error(t, receive(t, first))
 
 	// The stored input of the job loses its count, as the input of a job that an older build queued has none.
-	stripSlotCount(t, h, "item-12-r1-2")
+	stripSlotCount(t, h, testRun)
 
 	err := client.Resume(testItem)
 
