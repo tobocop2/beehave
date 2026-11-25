@@ -239,7 +239,7 @@ The three outputs `cost_usd`, `cost_estimated` and `cost_unknown` form one cost.
 
 When a run has a cost cap and its CLI does not cap dollars itself, the run does not start if its model has no price. A run cap and a tree cap stop the next step after a cost that is unknown, because the cap cannot be checked. A cost is unknown when its model has no price, or when its recorded cost cannot be read. The stop message names which.
 
-The cost is recorded in the phase and in the read step of the agent call, and in the limit step of a run that a provider limit stopped. A replay returns the recorded cost and never asks the CLI again. A run that fails before its result line leaves no cost.
+The cost is recorded in the phase and in the read step of the agent call, and in the limit step of a run that a provider limit stopped. A replay returns the recorded cost and never asks the CLI again. The agent step of a failed run records its cost in the same record as its error, so a stop after that record loses no cost. A run that fails before its result line leaves no cost.
 
 #### The three caps
 
