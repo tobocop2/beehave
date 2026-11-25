@@ -283,11 +283,29 @@ func (g Gate) withPins(ctx context.Context, request Request) (Request, string) {
 
 func (g Gate) unchanged(ctx context.Context, dir string, before State) error {
 	after, err := g.read(ctx, dir)
-	if err == nil && after != before {
-		return fmt.Errorf("%w: %s changed while the gate ran. Run the gate again", ErrTreeChanged, dir)
+	if err != nil {
+		return err
 	}
 
-	return err
+	return RequireSame(dir, before, after)
+}
+
+// RequireClean refuses the state of the tree in dir when it has changes that are not committed: a gate must judge a commit.
+func RequireClean(dir string, state State) error {
+	if state.Clean {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s has changes that are not committed. Commit or discard them, then run the gate again", ErrTreeChanged, dir)
+}
+
+// RequireSame refuses the state of the tree in dir after a gate when it is not the state before the gate.
+func RequireSame(dir string, before, after State) error {
+	if after == before {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s changed while the gate ran. Run the gate again", ErrTreeChanged, dir)
 }
 
 func (g Gate) read(ctx context.Context, dir string) (State, error) {
@@ -301,11 +319,15 @@ func (g Gate) read(ctx context.Context, dir string) (State, error) {
 
 func (g Gate) clean(ctx context.Context, dir string) (State, error) {
 	state, err := g.read(ctx, dir)
-	if err == nil && !state.Clean {
-		return State{}, fmt.Errorf("%w: %s has changes that are not committed. Commit or discard them, then run the gate again", ErrTreeChanged, dir)
+	if err != nil {
+		return State{}, err
 	}
 
-	return state, err
+	if err := RequireClean(dir, state); err != nil {
+		return State{}, err
+	}
+
+	return state, nil
 }
 
 func (g Gate) execute(ctx context.Context, request Request, head string) (Result, error) {

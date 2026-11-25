@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/exectest"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	trackerstore "github.com/tobocop2/beehave/internal/store"
 )
@@ -138,9 +139,9 @@ func TestDryRun_AStepThatTheDryRunDoesNotFakeIsNotRunAndIsNotAnError(t *testing.
 		"state":   {body: "pr_state(pr = 41, name = \"s\")", want: "not run in a dry run: read the state of a pull request"},
 		"issue":   {body: "issue_state(number = 7, name = \"i\")", want: "not run in a dry run: read the state of an issue"},
 		"tip":     {body: "base_tip(base = \"main\", name = \"t\")", want: "not run in a dry run: read the tip of a base"},
+		"proof":   {body: "landing_proof(base = \"main\", start = struct(commit = \"c\", tree = \"t\"), end = struct(commit = \"c\", tree = \"t\"), landed = [], name = \"p\")", want: "not run in a dry run: prove a landing"},
 		"closing": {body: "pr_closing(pr = 41, name = \"c\")", want: "not run in a dry run: read the issues that a pull request closes"},
-		"batch":   {body: "merge(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
-		"one":     {body: "merge(member = struct(item = \"1\", head = \"h\", closes = []), base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
+		"one":     {body: "merge(members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
 		"hand":    {body: "hand_off(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", name = \"b\")", want: "not run in a dry run: merge a batch of pull requests"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -246,6 +247,22 @@ func dryFileWithPrompt(t *testing.T, text string) string {
 	require.NoError(t, os.WriteFile(flow, []byte(text), 0o600))
 
 	return flow
+}
+
+func TestDryGate_StateIsTheHeadOfTheDryRunAndItsTree(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	head := rig.repo.must(t, "rev-parse", "HEAD")
+
+	dir, state, err := newDryGate(rig.repo.dir, head, nil).State(t.Context(), "p", "i")
+
+	require.NoError(t, err)
+	assert.Equal(t, rig.repo.dir, dir)
+	assert.Equal(t, gatepkg.State{Head: head, Tree: rig.repo.must(t, "rev-parse", "HEAD^{tree}"), Clean: true}, state)
+
+	_, _, err = newDryGate(t.TempDir(), head, nil).State(t.Context(), "p", "i")
+	require.Error(t, err, "a folder with no repository has no tree")
 }
 
 func TestDryGate_EveryRunPassesWithAPassedStepWhenNoFixtureScriptsIt(t *testing.T) {

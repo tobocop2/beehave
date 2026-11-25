@@ -1,13 +1,13 @@
-# merge with hand_off marks the draft pull request ready, runs the notify command once, and watches the pull request until the owner merges it.
+# hand_off marks the draft pull request ready, runs the notify command once, and watches the pull request until the owner merges it.
 # The notify command of this script is the owner: it merges the pull request of m1 when it runs. The watch then reads MERGED and the call ends.
-# The check refuses the same call when it also names a keyword of a landing.
+# The check refuses a merge call that names hand_off: only the hand_off builtin hands a pull request to the owner.
 batchsetup
 replace config/projects/shop.star '    gate = "true",' '    gate = "true", notify = ["sh", "OWNER_SCRIPT"],'
 replace config/projects/shop.star OWNER_SCRIPT $WORK/forge/owner.sh
 
 exec beehave check workflow flow/handoff.star
 ! exec beehave check workflow flow/landing.star
-stderr 'merge with .hand_off. lands nothing, so it takes no .gate_run.'
+stderr 'merge takes no argument hand_off'
 
 exec beehave run 7 --workflow flow/handoff.star
 stdout 'item 7 finished'
@@ -29,4 +29,4 @@ echo "$@" >> "$folder/notice.log"
 date > "$folder/merged-1"
 -- flow/landing.star --
 def main(item):
-    merge(name = "ask", base = "main", repo = "example/shop", hand_off = True, gate_run = ["true"], prs = [struct(item = "m1", head = "abc", closes = [])])
+    merge(name = "ask", base = "main", repo = "example/shop", hand_off = True, members = [struct(item = "m1", head = "abc", closes = [])])

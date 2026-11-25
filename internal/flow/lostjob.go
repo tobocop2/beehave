@@ -10,7 +10,6 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/config"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
@@ -47,7 +46,7 @@ type LostJobShown struct {
 }
 
 // LostJob is the host job of a gate whose wait ended as lost: the link to the host stayed down, so nobody can tell where the job stands.
-// Kind is "gate" or "batch_gate". Head is the head that a gate judges, or the union commit of a batch gate.
+// Kind is "gate". Head is the head that the gate judges.
 // Host is the host of the HostKey of the call, which is the host the job ran on. Advice is the text of the lost error,
 // which ends with the cancel command of the adapter. Required is the list of the gate. Since is the time the wait for a proof started.
 // Proof is the proof that the last look read, and At is the time of that look. Limit is true when the wait reached host.lost_job_wait with no proof,
@@ -86,11 +85,6 @@ func lostJobOf(in ExclusiveInput, start gateStart, lost error) *LostJob {
 	return &LostJob{
 		Kind: kindGate, Job: start.Job.ID, Host: strings.TrimPrefix(in.HostKey, hostKeyPrefix), Head: start.Job.Head, Advice: lost.Error(), Required: start.Required,
 	}
-}
-
-// batchLostJobOf is the lost job of the batch gate of in, from the job that its first step recorded and the lost error of the wait.
-func batchLostJobOf(in ExclusiveInput, job GateJob, lost error) *LostJob {
-	return &LostJob{Kind: kindBatchGate, Job: job.ID, Host: strings.TrimPrefix(in.HostKey, hostKeyPrefix), Head: in.Commit, Advice: lost.Error()}
 }
 
 // endLost waits for the proof that the lost job of a gate can no longer run, and stores the job in out.
@@ -134,7 +128,7 @@ func (e *Engine) lostOutputs(ctx dbos.Context, in ExclusiveInput, call string, r
 
 // provenLoss is the lost job of a call, which the exclusive run returned, once it has a proof, and the record of that loss in the item run.
 // A wait for the proof that reached the limit asks the owner first (askLost). The lost job with its proof is then recorded (recordLoss).
-// It runs in the item run, because only the item run receives an answer. The gate and the batch gate both read a loss through it.
+// It runs in the item run, because only the item run receives an answer.
 func (e *Engine) provenLoss(ctx dbos.Context, in ExclusiveInput, call string, lost LostJob) (LostJob, hostLoss, error) {
 	if lost.Limit {
 		var err error
@@ -352,16 +346,9 @@ func lossReport(lost LostJob) string {
 	return fmt.Sprintf("the gate job was lost on %s and the proof is %s", lost.Host, lost.Proof.Kind)
 }
 
-// lossRecord is the record host_loss of a lost job that has a proof. It has one shape for the gate and the batch gate: head_or_commit is the head
-// of a gate and the union commit of a batch gate.
+// lossRecord is the record host_loss of a lost job that has a proof: head_or_commit is the head that the gate judged.
 func lossRecord(lost LostJob) map[string]any {
 	return map[string]any{
 		"kind": lost.Kind, "job": lost.Job, "host": lost.Host, "head_or_commit": lost.Head, "proof": lost.Proof.Kind, "note": lost.Proof.Note, "at": lost.At.UTC().Format(time.RFC3339),
 	}
-}
-
-// lostOutcome is the outcome of a batch gate whose lost job has a proof: a void gate on the tree of the checkout, whose reason names the host and the proof.
-// It is the record of the host job run. The item run reads the lost job next to it and gates the commit again (batchGate.Run).
-func lostOutcome(tree string, lost LostJob) batch.GateOutcome {
-	return batch.GateOutcome{Tree: tree, Report: lossReport(lost), Void: lossReport(lost)}
 }

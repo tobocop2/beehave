@@ -18,10 +18,6 @@ func (a *attempt) settings() *refusal {
 		}
 	}
 
-	if a.req.IntegrationPR != 0 && a.req.Dir == "" {
-		return refuse("REFUSE: the state folder is not set, so the row of the merge cannot be locked.")
-	}
-
 	return nil
 }
 

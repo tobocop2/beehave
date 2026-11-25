@@ -389,7 +389,7 @@ type hereGate struct {
 	program bool
 }
 
-// gateCalls lists the calls in a parsed file that run a gate on this machine: each merge, each gate without a program and each gate with a program and no host.
+// gateCalls lists the calls in a parsed file that run a gate on this machine: each gate without a program and each gate with a program and no host.
 // A name that the file defines is not the builtin.
 func gateCalls(file string, parsed *syntax.File) []hereGate {
 	shadowed := definedNames(parsed)
@@ -415,18 +415,15 @@ func gateCalls(file string, parsed *syntax.File) []hereGate {
 }
 
 // runsHere reports whether the call runs a gate on this machine, and whether that gate is a program that the call names.
-// A merge always does. A gate does unless it names both a program and a host.
+// A gate does unless it names both a program and a host.
 func runsHere(call *syntax.CallExpr) (program, here bool) {
-	switch callee(call) {
-	case mergeName:
-		return namesKeyword(call, "gate_run"), true
-	case gateName:
-		program = namesKeyword(call, "run")
-
-		return program, !program || !namesHost(call)
+	if callee(call) != gateName {
+		return false, false
 	}
 
-	return false, false
+	program = namesKeyword(call, "run")
+
+	return program, !program || !namesHost(call)
 }
 
 // namesHost reports whether a call passes a host keyword that is not the literal empty text.

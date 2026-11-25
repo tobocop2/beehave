@@ -21,6 +21,8 @@ import (
 
 // headGate passes every run on the head of the item folder as it is when the run starts, so a commit of a fix agent is the head of the next candidate.
 type headGate struct {
+	cleanTree
+
 	t    *testing.T
 	dir  string
 	jobs atomic.Int32

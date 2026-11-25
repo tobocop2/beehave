@@ -8,11 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// goldenOneMemberSteps are the step names of one merge call that lands one pull request. The call takes the steps of a merge of several pull requests,
-// less the steps of the members that it does not hold.
-var goldenOneMemberSteps = []string{
-	"batch:b.refuse", "batch:b.heads#1", "batch:b.tip#1", "batch:b.union#1", "batch:b.tip#2", "batch:b.intent#1", "batch:b.tip#3", "batch:b.prove", "batch:b.issues",
-}
+// goldenOneMemberSteps are the step names of one merge call that lands one pull request: the plan, the intent of the member, then the tip.
+var goldenOneMemberSteps = []string{"merge:b.plan", "merge:b.intent#1", "merge:b.tip"}
 
 func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T) {
 	t.Parallel()
@@ -26,13 +23,13 @@ func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T
 	var recorded []string
 
 	for _, name := range stepNamesOf(t, engine, testRun) {
-		if strings.HasPrefix(name, "batch:") {
+		if strings.HasPrefix(name, "merge:") {
 			recorded = append(recorded, name)
 		}
 	}
 
-	assert.False(t, unpatchedChange(goldenOneMemberSteps, recorded), "one pull request takes the same steps as several, one intent and one merge for each member")
-	assert.Equal(t, []string{"report 1  "}, rig.h.commands.ran(), "the one member is merged and nothing is rejected or deferred")
+	assert.False(t, unpatchedChange(goldenOneMemberSteps, recorded), "one pull request takes the same steps as several, one intent for each member: %v", recorded)
+	assert.Equal(t, "report 1  ", rig.reportLine(t), "the one member is merged and nothing is rejected or deferred")
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 	assert.Equal(t, "README\none.txt", rig.mainFiles(t), "main holds the one member")
 	assert.Equal(t, []string{"1"}, rig.host.intents, "the intent of the member is written before its merge")
@@ -42,14 +39,13 @@ func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T
 	require.NotNil(t, rig.merger.given[0].Intent, "the merge carries the intent that was written before it")
 }
 
-func TestMerge_AMergeOfOnePullRequestWithARedGateRejectsItAndLandsNothing(t *testing.T) {
+func TestMerge_AMergeOfOnePullRequestWithARedGateLandsNothing(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
 
 	_, err := rig.walk(t, rig.call("2", ""))
-	require.NoError(t, err)
 
-	assert.Equal(t, []string{"report  2:red "}, rig.h.commands.ran())
+	require.ErrorContains(t, err, "did not pass, so the merge posts no status and merges nothing")
 	assert.Empty(t, rig.merger.landed(), "the red member is not merged")
 }

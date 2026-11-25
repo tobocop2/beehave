@@ -48,6 +48,21 @@ func TestCalls_ListsTheBuiltinCallsWithTheirKeywordArguments(t *testing.T) {
 	assert.Equal(t, []string{"check"}, workflowtest.Literals(calls[1].Args["name"]))
 }
 
+func TestCallsTo_ListsTheCallsOfTheNamedFunctionsOnly(t *testing.T) {
+	t.Parallel()
+
+	calls, err := workflowtest.CallsTo("workflow.star", []byte(`def main(item):
+    batch_merge(name = "land", prs = [])
+    merge(name = "one")
+    other.batch_merge(name = "a method")
+`), "batch_merge")
+
+	require.NoError(t, err)
+	require.Len(t, calls, 1)
+	assert.Equal(t, "batch_merge", calls[0].Builtin)
+	assert.Equal(t, []string{"land"}, workflowtest.Literals(calls[0].Args["name"]))
+}
+
 func TestCalls_RefusesTextThatDoesNotParse(t *testing.T) {
 	t.Parallel()
 

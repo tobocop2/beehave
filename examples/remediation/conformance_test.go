@@ -123,14 +123,15 @@ func readConformance(t *testing.T, text string) []conformanceRow {
 	return rows
 }
 
-// calls lists the calls of the example as "<file> <builtin> <name>": the main file, and the review loop that it loads.
+// calls lists the calls of the example as "<file> <builtin> <name>": the main file, and the review loop and the batch that it loads.
 // A call is found by its keyword `name = "<label>"`.
 func calls(t *testing.T) map[string]bool {
 	t.Helper()
 
 	found := map[string]bool{}
+	lib := filepath.Join(repoRoot, "internal", "workflow", "lib")
 
-	for file, path := range map[string]string{"workflow.star": filepath.Join(exampleDir, "workflow.star"), "review_fix.star": filepath.Join(repoRoot, "internal", "workflow", "lib", "review_fix.star")} {
+	for file, path := range map[string]string{"workflow.star": filepath.Join(exampleDir, "workflow.star"), "review_fix.star": filepath.Join(lib, "review_fix.star"), "batch.star": filepath.Join(lib, "batch.star")} {
 		text, err := os.ReadFile(path) //nolint:gosec // the test names its own example files
 		require.NoError(t, err)
 

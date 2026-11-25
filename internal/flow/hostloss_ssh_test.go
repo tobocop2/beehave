@@ -19,6 +19,8 @@ import (
 
 // sshGate is the gate of an engine whose gate jobs run on one ssh host. Submit starts the job, and then the link to the machine goes down.
 type sshGate struct {
+	cleanTree
+
 	host    *ssh.Host
 	machine *sshtest.Machine
 }

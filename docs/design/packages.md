@@ -28,7 +28,7 @@ flowchart TD
         claim["claim<br/>claim policy"]
         check["check/shell<br/>shell scan"]
         ci["ci · ci/githubactions<br/>gate steps from CI files"]
-        policy["batch · gate · pool · preflight · review · merge<br/>lane policy"]
+        policy["batch · gate · landing · pool · preflight · review · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]

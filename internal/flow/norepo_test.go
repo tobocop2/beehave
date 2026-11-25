@@ -113,7 +113,7 @@ func TestBuiltins_AProjectWithNoRepositoryRefusesTheGitBuiltinsWithAPlainMessage
 
 	for name, call := range map[string]string{
 		"gate":      `gate(name = "check")`,
-		"merge":     `merge(prs = [struct(item = "1", head = "abc", closes = [])], base = "main", repo = "o/n", name = "batch")`,
+		"merge":     `merge(members = [struct(item = "1", head = "abc", closes = [])], base = "main", repo = "o/n", name = "batch")`,
 		"preflight": `preflight(head = "abc", base = "main", name = "look")`,
 		"hand_off":  `hand_off(prs = [struct(item = "1", head = "abc", closes = [])], base = "main", repo = "o/n", name = "batch")`,
 	} {

@@ -46,7 +46,6 @@ type world struct {
 	stackQueue []string
 	tip        string
 	tipFound   bool
-	body       string
 	fails      map[string]bool
 	// down is the error of a method named in fails. Nil means errDown.
 	down   error
@@ -69,8 +68,6 @@ type world struct {
 	// behind makes the head not an ancestor of the base after the merge. ancestryErr makes that read fail.
 	behind      bool
 	ancestryErr bool
-	// authorOf is the author login of each pull request other than the merged one. A number not in the map has no author.
-	authorOf map[int]string
 	// failAt makes the read of that number fail, counted from 1 over all reads of the pull request. Zero fails none.
 	failAt int
 	// closingRefs is what the forge lists as closing references. Nil means the forge cannot read them, and the read fails.
@@ -156,7 +153,7 @@ func newWorld(t *testing.T) *world {
 
 	return &world{
 		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, scopes: []string{"repo", "workflow"},
-		stacks: map[int]string{}, tip: tipSHA, tipFound: true, body: "rows", fails: map[string]bool{},
+		stacks: map[int]string{}, tip: tipSHA, tipFound: true, fails: map[string]bool{},
 		closingRefs: &model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{}},
 	}
 }
@@ -186,7 +183,7 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 			return model.PullRequest{}, err
 		}
 
-		return model.PullRequest{Author: model.Account{Login: w.authorOf[number]}}, nil
+		return model.PullRequest{}, nil
 	}
 
 	w.views++
@@ -366,30 +363,6 @@ func (w *world) MergePR(_ context.Context, number int, pin string) error {
 	w.writes = append(w.writes, fmt.Sprintf("MergePR %d %s", number, pin))
 
 	return w.fail("MergePR")
-}
-
-func (w *world) PRBody(context.Context, int) (string, error) {
-	return w.body, w.fail("PRBody")
-}
-
-// SetBody is the write of the forge: like the GitHub forge, it refuses a pull request that the owner did not write and an author that cannot be read.
-func (w *world) SetBody(_ context.Context, number int, body string) error {
-	if w.fail("PRView other") != nil {
-		return &model.NotAuthorError{Reason: fmt.Sprintf("cannot read its author: %v", errDown)}
-	}
-
-	if author := w.authorOf[number]; !strings.EqualFold(author, me) {
-		return &model.NotAuthorError{Reason: fmt.Sprintf("its author is %q, not the owner", author)}
-	}
-
-	if err := w.fail("SetBody"); err != nil {
-		return err
-	}
-
-	w.writes = append(w.writes, fmt.Sprintf("SetBody %d", number))
-	w.body = body
-
-	return nil
 }
 
 // attributionPatterns is the forbidden text of the default request: four attribution marks, which the engine does not hold.

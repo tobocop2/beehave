@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/review"
@@ -214,16 +214,16 @@ func TestBatchHost_TipReadsTheTipOnTheForgeAndTheTreeOfThatCommit(t *testing.T) 
 func TestBatchHost_ProveLeavesAMemberUnprovenWhenTheForgeCannotCompareCommits(t *testing.T) {
 	t.Parallel()
 
-	landed := []batch.Member{{Item: "7", Head: "abc"}}
+	landed := []landing.Member{{Item: "7", Head: "abc"}}
 
-	got, err := hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "p", "main", batch.Tip{}, batch.Tip{}, landed)
+	got, err := hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "p", "main", landing.Tip{}, landing.Tip{}, landed)
 
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "7", got[0].Item)
 	assert.Contains(t, got[0].Reason, "unproven")
 
-	_, err = hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "nope", "main", batch.Tip{}, batch.Tip{}, landed)
+	_, err = hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "nope", "main", landing.Tip{}, landing.Tip{}, landed)
 	require.Error(t, err)
 }
 
@@ -263,37 +263,6 @@ func TestBatchHost_TipFailsWhenTheFetchFailsAndWhenTheTipIsNotInTheRepository(t 
 
 	_, err = hostOver(dir, hostForge{tip: strings.Repeat("e", 40), found: true}, nil).Tip(t.Context(), "p", "7", "main")
 	require.ErrorContains(t, err, "git rev-parse of "+strings.Repeat("e", 40))
-}
-
-func TestBatchHost_CheckoutDetachesTheWorktreeAtTheCommitAndReturnsItsTree(t *testing.T) {
-	t.Parallel()
-
-	dir := hostRepo(t)
-	first := hostGit(t, dir, "rev-parse", "HEAD")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b\n"), 0o600))
-	hostGit(t, dir, "add", "b.txt")
-	hostGit(t, dir, "commit", "-q", "-m", "second")
-
-	tree, err := hostOver(dir, hostForge{}, nil).Checkout(t.Context(), "p", "7", first)
-
-	require.NoError(t, err)
-	assert.Equal(t, hostGit(t, dir, "rev-parse", first+"^{tree}"), tree)
-	assert.Equal(t, first, hostGit(t, dir, "rev-parse", "HEAD"))
-	assert.Empty(t, hostGit(t, dir, "branch", "--show-current"), "the worktree is detached, so no branch moves")
-	assert.NoFileExists(t, filepath.Join(dir, "b.txt"))
-}
-
-func TestBatchHost_CheckoutFailsForACommitThatIsNotThereAndForAMissingFolder(t *testing.T) {
-	t.Parallel()
-
-	dir := hostRepo(t)
-	missing := strings.Repeat("d", 40)
-
-	_, err := hostOver(dir, hostForge{}, nil).Checkout(t.Context(), "p", "7", missing)
-	require.ErrorContains(t, err, "git checkout of the union "+missing)
-
-	_, err = hostOver("", hostForge{}, errFake).Checkout(t.Context(), "p", "7", missing)
-	require.ErrorIs(t, err, errFake)
 }
 
 // TestBatchHost_GitMakesCommitsWithTheFixedIdentity changes the environment of the process, so it does not run in parallel.
@@ -336,9 +305,6 @@ func TestBatchHost_AnItemWithNoWorktreeIsRefusedAndGitNeverRunsInTheFolderOfTheP
 	fix := "item 7 of project p has no worktree, so merge cannot run git for it. Make the worktree of the item first"
 
 	_, err := host.Git(t.Context(), "p", "7")
-	require.EqualError(t, err, fix)
-
-	_, err = host.Checkout(t.Context(), "p", "7", "abc")
 	require.EqualError(t, err, fix)
 
 	_, err = host.Tip(t.Context(), "p", "7", "main")

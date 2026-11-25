@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
@@ -25,7 +24,7 @@ func (s *script) trustKept(call batchCall) error {
 }
 
 // trustMemberKept refuses the first kept issue of the member that no recorded owner answer keeps. A member that keeps nothing reads nothing.
-func (s *script) trustMemberKept(m batch.Member) error {
+func (s *script) trustMemberKept(m workflow.PullRequest) error {
 	if len(m.Kept) == 0 {
 		return nil
 	}

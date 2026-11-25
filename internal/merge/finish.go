@@ -1,10 +1,7 @@
 package merge
 
 import (
-	"errors"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -265,37 +262,5 @@ func (a *attempt) merged() string {
 
 	a.say(fmt.Sprintf("MERGED #%d at %s; %s tip is now %s", a.req.PR, a.req.Gated, base, shown))
 
-	if a.req.IntegrationPR != 0 {
-		a.record()
-	}
-
 	return tip
-}
-
-// record adds the row of the merge to the integration pull request, under the lock of its body. A body that already holds the exact row, on a line of its own with either line ending, stays as it is, so a replay writes the row once. A row that cannot be written does not undo the merge.
-func (a *attempt) record() {
-	row := fmt.Sprintf("- #%d merged at %s", a.req.PR, a.req.Gated)
-	add := func(body string) string {
-		if slices.Contains(strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n"), row) {
-			return body
-		}
-
-		return strings.TrimRight(body, "\n") + "\n" + row
-	}
-
-	a.say(rowOutcome(a.req.IntegrationPR, EditBody(a.ctx, a.req.Dir, a.forge, a.req.IntegrationPR, add)))
-}
-
-// rowOutcome is the line of the step about the row: recorded, refused because the forge write found that the pull request is not the work of the owner, or not recorded.
-func rowOutcome(pr int, err error) string {
-	var refused *model.NotAuthorError
-
-	switch {
-	case err == nil:
-		return fmt.Sprintf("integration-row: recorded on #%d", pr)
-	case errors.As(err, &refused):
-		return fmt.Sprintf("REFUSE: integration-row not recorded on #%d: %s. Add the row by hand.", pr, refused.Reason)
-	}
-
-	return fmt.Sprintf("integration-row: not recorded on #%d: %s. Add the row by hand.", pr, err)
 }

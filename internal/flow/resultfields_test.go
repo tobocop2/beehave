@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -48,7 +48,8 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"earlier_reads":   keysOf(earlierReadsOutputs(nil)),
 		"pr_closing":      keysOf(prClosingOutputs(closingRead{})),
 		"base_tip":        keysOf(baseTipOutputs("", "")),
-		"issue_state":     keysOf(issueStateOutputs("", false)),
+		"landing_proof":   keysOf(landingProofOutputs(nil)),
+		"issue_state":     keysOf(issueStateOutputs("", false, "")),
 		"gate":            keysOf(gateOutputs(true, "", "", "", nil, nil, nil)),
 		"facts":           keysOf(factsOutputs(model.Project{})),
 		"item_comment":    keysOf(commentOutputs("")),
@@ -98,22 +99,14 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	gathered, err := outcomesValue([]childOutcome{{}})
 	require.NoError(t, err)
 
-	landed, err := batchResult(batch.Result{}, batch.Report{}, nil, nil, nil)
-	require.NoError(t, err)
-
 	first, err := firstOfValue(firstChoice{})
 	require.NoError(t, err)
-
-	// merge has two forms: `prs` returns the fields of hand_off, and `member` returns the fields of oneResult. The table holds both.
-	listFields := batchStruct(t, landed).AttrNames()
-	both := slices.Concat(listFields, batchStruct(t, oneResult(batch.MergeOutcome{}, batch.Tip{})).AttrNames())
-	slices.Sort(both)
 
 	got := map[string][]string{
 		"cancel":   cancelValue(cancelOutcome{}).AttrNames(),
 		"first_of": first.AttrNames(),
-		"merge":    slices.Compact(both),
-		"hand_off": listFields,
+		"merge":    batchStruct(t, unionResult(unionOutcome{}, landing.Tip{})).AttrNames(),
+		"hand_off": batchStruct(t, handResultValue(handResult{})).AttrNames(),
 		"gather":   gathered.AttrNames(),
 		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
 		"stream":   streamValue(streamRead{}).AttrNames(),

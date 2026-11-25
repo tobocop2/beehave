@@ -27,7 +27,7 @@ const (
 // Step kinds that no other file names as a constant.
 const (
 	kindPreflight = "preflight"
-	// kindBatch starts the names of the steps of merge, which has no counted step of its own.
+	// kindBatch starts the names of the steps of hand_off, which has no counted step of its own.
 	kindBatch = "batch"
 	// kindUndo starts the name of the step that runs the undo of a write: undo:<the name of the write step>.
 	kindUndo = "undo"
@@ -86,7 +86,11 @@ const agentVersion = 16
 // Version 13 records the closes field of each member in the input of the batch steps, and the merge audits its closing references against it.
 // Version 14 adds the call of merge with `member`: it records the step batch:<call>.tip after the merge, and the moved field of the intent step, when the tip has another tree than expect_tree.
 // Version 15 adds the kept and closing fields of each member to the input of the batch steps. The merge no longer records the steps batch:<call>.scope#<item> and batch:<call>.kept#<item>: the scope check is the library scope.star.
-const landVersion = 15
+// Version 16 replaces the call of merge with `member` by the call with `members`: it records merge:<call>.plan, the fold of the member heads, then
+// merge:<call>.intent#<item> and merge:<call>.poll#<item> for each member, and merge:<call>.tip after the call. The intent step no longer reads the tree that the merge makes.
+// It also removes the call of merge with `prs`, its batch:<call>.* steps and the batch_gate run: the library function batch_merge gates and splits the batch.
+// The kind merge is live again, so a run with the single merge of land 4 or older is refused by the version of the module.
+const landVersion = 16
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 // Version 3 adds the item_stop step. Version 4 adds the item_list step.
@@ -96,7 +100,9 @@ const trackerVersion = 4
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
 // Version 7 adds the steps board_card, integration_pull, pr_take, round_cut, round_land and round_sync, which the engine runs as the writer. The remedy tool no longer runs them as command steps.
 // Version 8 adds the pr_read and issue_assignees steps. Version 9 adds the pr_list step. Version 10 adds the pr_closing step. Version 11 adds the base_tip and issue_state steps.
-const forgeVersion = 11
+// Version 12 adds the landing_proof step, and the error field of the issue_state step: a failed read is recorded with its cause and no state.
+// It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
+const forgeVersion = 12
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
@@ -105,7 +111,8 @@ const forgeVersion = 11
 // Version 5 added the revert field to the results of gate, and the revert run to the checks of a candidate gate.
 // Version 6 retires the kind before_review, which version 5 recorded. The function before_review of the library judges a head with command steps.
 // Version 7 adds the step field to the result of gate: the name of the step that recorded it.
-const gateVersion = 7
+// Version 8 records, for a gate with a program, the head and the tree of the worktree of the item that the program ran on, in place of the head keyword and an empty tree.
+const gateVersion = 8
 
 // roundVersion is the version of the round module. Version 2 added the step of the engine that makes the worktree at the start of every round item.
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).
@@ -142,8 +149,8 @@ func moduleTable() []stepModule {
 		},
 		{name: moduleAgent, version: agentVersion, kinds: []string{agentStepName, loginStepName}},
 		{name: moduleTracker, version: trackerVersion, kinds: []string{"item_comment", "item_create", itemListKind, "item_read", "item_status", itemStopKind}, retired: []string{"item_assign"}},
-		{name: moduleForge, version: forgeVersion, kinds: []string{baseTipKind, boardCardKind, issueAssigneesKind, issueStateKind, prClosingKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
-		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindPreflight}, retired: []string{"merge"}},
+		{name: moduleForge, version: forgeVersion, kinds: []string{baseTipKind, boardCardKind, issueAssigneesKind, issueStateKind, landingProofKind, prClosingKind, "pr_comment", prHistoryKind, prListKind, "pr_open", prReadKind, prStateKind, prTakeKind, pushKind, roundCutKind, roundIntegrationKind, roundLandKind, roundSyncKind}, retired: []string{"board_sync", "pr_assign"}},
+		{name: moduleLand, version: landVersion, kinds: []string{kindBatch, kindMerge, kindPreflight}},
 		{name: moduleGate, version: gateVersion, kinds: []string{kindGate}, retired: []string{"before_review"}},
 		{name: moduleHost, version: 1, kinds: []string{"host_teardown", "host_up"}},
 		{name: moduleRound, version: roundVersion, kinds: []string{runReadKind}, engine: []string{kindHold}, retired: []string{"queue", "scope", "scope-check"}},

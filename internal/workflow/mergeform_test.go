@@ -11,75 +11,50 @@ import (
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
-func TestMergeForm_NamesTheKeywordThatAFormDoesNotTake(t *testing.T) {
+func TestMembers_ReadsTheMembersOfAUnionInOrderAndNamesThePlaceOfABadOne(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]struct {
-		keywords workflow.MergeKeywords
-		want     string
-	}{
-		"no prs and no member":           {workflow.MergeKeywords{}, "merge needs `prs` or `member`"},
-		"prs and member":                 {workflow.MergeKeywords{Prs: true, Member: true}, "merge takes `prs` or `member`, not both"},
-		"member with gate_run":           {workflow.MergeKeywords{Member: true, GateRun: true}, "merge with `member` lands one pull request, so it takes no `gate_run`"},
-		"member with integration":        {workflow.MergeKeywords{Member: true, Integration: true}, "takes no `integration`"},
-		"member with hand_off":           {workflow.MergeKeywords{Member: true, HandOff: true}, "takes no `hand_off`"},
-		"member with a gate and no tree": {workflow.MergeKeywords{Member: true, Gate: true}, "merge with `gate` needs `gated_tree`"},
-		"member with a tree and no gate": {workflow.MergeKeywords{Member: true, GatedTree: true}, "merge with `gated_tree` needs `gate`"},
-		"prs with gate":                  {workflow.MergeKeywords{Prs: true, Gate: true}, "merge with `prs` runs its own gate, so it takes no `gate`"},
-		"prs with gated_tree":            {workflow.MergeKeywords{Prs: true, GatedTree: true}, "takes no `gated_tree`"},
-		"prs with expect_tree":           {workflow.MergeKeywords{Prs: true, ExpectTree: true}, "takes no `expect_tree`"},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			require.ErrorContains(t, workflow.MergeForm(c.keywords), c.want)
+	member := func(item string) starlark.Value {
+		return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"item": starlark.String(item), "head": starlark.String("h" + item), "approved": starlark.True, "closes": starlark.NewList([]starlark.Value{starlark.MakeInt(3)}),
 		})
 	}
 
-	for name, keywords := range map[string]workflow.MergeKeywords{
-		"a list":                        {Prs: true, GateRun: true, Integration: true, HandOff: true},
-		"a member with a gate and tree": {Member: true, Gate: true, GatedTree: true, ExpectTree: true},
-		"a member with no gate":         {Member: true, ExpectTree: true},
-	} {
-		assert.NoError(t, workflow.MergeForm(keywords), name)
+	got, err := workflow.Members(starlark.NewList([]starlark.Value{member("7"), member("2")}))
+
+	require.NoError(t, err)
+	assert.Equal(t, []workflow.PullRequest{{Item: "7", Head: "h7", Approved: true, Closes: []int{3}}, {Item: "2", Head: "h2", Approved: true, Closes: []int{3}}}, got)
+
+	cases := map[string]struct {
+		value starlark.Value
+		want  string
+	}{
+		"not a list":    {starlark.String("7"), "`members` must be a list"},
+		"an empty list": {starlark.NewList(nil), "`members` is empty"},
+		"a bad member":  {starlark.NewList([]starlark.Value{member("7"), starlark.String("2")}), "members[1]: the member has the type string, not struct"},
+		"an item twice": {starlark.NewList([]starlark.Value{member("7"), member("7")}), "`members` names item 7 twice"},
+	}
+
+	for name, c := range cases {
+		_, err := workflow.Members(c.value)
+		require.ErrorContains(t, err, c.want, name)
 	}
 }
 
-func TestMember_ReadsTheFieldsOfAMemberOfPrsAndNamesTheKeywordInAnError(t *testing.T) {
-	t.Parallel()
-
-	member := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-		"item": starlark.String("7"), "head": starlark.String("abc"), "approved": starlark.True, "closes": starlark.NewList([]starlark.Value{starlark.MakeInt(3)}),
-	})
-
-	got, err := workflow.Member(member)
-
-	require.NoError(t, err)
-	assert.Equal(t, workflow.PullRequest{Item: "7", Head: "abc", Approved: true, Closes: []int{3}}, got)
-
-	_, err = workflow.Member(starlark.String("7"))
-
-	require.ErrorContains(t, err, "member: the member has the type string, not struct")
-}
-
-func TestCheck_AMergeCallIsCheckedForTheKeywordsOfItsForm(t *testing.T) {
+func TestCheck_AMergeOrAHandOffCallIsCheckedForItsKeywords(t *testing.T) {
 	t.Parallel()
 
 	const member = `struct(item = "1", head = "h", closes = [])`
 
 	cases := map[string]struct{ call, want string }{
-		"member with gate_run":      {`merge(member = ` + member + `, base = "b", repo = "r", gate_run = ["x"], name = "n")`, "merge with `member` lands one pull request, so it takes no `gate_run`"},
-		"member with hand_off":      {`merge(member = ` + member + `, base = "b", repo = "r", hand_off = True, name = "n")`, "takes no `hand_off`"},
-		"gate with no gated_tree":   {`merge(member = ` + member + `, base = "b", repo = "r", gate = g, name = "n")`, "merge with `gate` needs `gated_tree`"},
-		"prs with gate":             {`merge(prs = [` + member + `], base = "b", repo = "r", gate = g, name = "n")`, "merge with `prs` runs its own gate, so it takes no `gate`"},
-		"neither prs nor member":    {`merge(base = "b", repo = "r", name = "n")`, "merge needs `prs` or `member`"},
-		"prs and member":            {`merge(prs = [` + member + `], member = ` + member + `, base = "b", repo = "r", name = "n")`, "merge takes `prs` or `member`, not both"},
+		"merge with member":         {`merge(member = ` + member + `, base = "b", repo = "r", name = "n")`, "merge takes no argument member"},
+		"merge with gated_tree":     {`merge(members = [` + member + `], base = "b", repo = "r", gate = g, gated_tree = g.tree, name = "n")`, "merge takes no argument gated_tree"},
+		"merge with expect_tree":    {`merge(members = [` + member + `], base = "b", repo = "r", expect_tree = "t", name = "n")`, "merge takes no argument expect_tree"},
 		"hand_off with a landing":   {`hand_off(prs = [` + member + `], base = "b", repo = "r", hold = "x", name = "n")`, "hand_off takes no argument hold. Use one of: prs, base, repo, name."},
 		"hand_off with no name":     {`hand_off(prs = [` + member + `], base = "b", repo = "r")`, "hand_off needs the `name` keyword"},
 		"hand_off with empty prs":   {`hand_off(prs = [], base = "b", repo = "r", name = "n")`, "`prs` is empty"},
 		"hand_off result bad field": {`hand_off(prs = [` + member + `], base = "b", repo = "r", name = "n").tree2`, "tree2 is not a field of the result of hand_off"},
+		"merge result bad field":    {`merge(members = [` + member + `], base = "b", repo = "r", gate = g, name = "n").status`, "status is not a field of the result of merge"},
 	}
 
 	for name, c := range cases {
@@ -94,11 +69,10 @@ func TestCheck_AMergeCallIsCheckedForTheKeywordsOfItsForm(t *testing.T) {
 	}
 
 	for name, call := range map[string]string{
-		"a member call with a gate":    `merge(member = ` + member + `, base = "b", repo = "r", gate = g, gated_tree = g.tree, expect_tree = "t", name = "n")`,
-		"a member call with no gate":   `merge(member = ` + member + `, base = "b", repo = "r", name = "n")`,
-		"a hand-off":                   `hand_off(prs = [` + member + `], base = "b", repo = "r", name = "n")`,
-		"a list with a computed flag":  `merge(prs = [` + member + `], base = "b", repo = "r", hand_off = item.id == "1", name = "n")`,
-		"a member call with gate None": `merge(member = ` + member + `, base = "b", repo = "r", gate = None, name = "n")`,
+		"a union with a gate":    `print(merge(members = [` + member + `], base = "b", repo = "r", gate = g, name = "n").tip)`,
+		"a union with no gate":   `merge(members = [` + member + `], base = "b", repo = "r", name = "n")`,
+		"a union with gate None": `merge(members = [` + member + `], base = "b", repo = "r", gate = None, name = "n")`,
+		"a hand-off":             `hand_off(prs = [` + member + `], base = "b", repo = "r", name = "n")`,
 	} {
 		assert.Empty(t, checkText(t, "def main(item):\n    g = gate(name = \"g\")\n    "+call+"\n"), name)
 	}

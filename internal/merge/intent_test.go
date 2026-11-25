@@ -248,28 +248,3 @@ func TestRun_AnIntentDoesNotSkipTheReviewsTheFileListOrTheAuthors(t *testing.T) 
 		})
 	}
 }
-
-func TestRun_AReplayLeavesOneIntegrationRow(t *testing.T) {
-	t.Parallel()
-
-	req := replay()
-	req.IntegrationPR, req.Dir = 9, t.TempDir()
-	row := "- #5 merged at " + sha
-
-	w := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	w.authorOf = map[int]string{9: me}
-	w.body = "rows\n" + row
-	assert.Equal(t, merge.Done, w.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(w.body, row))
-
-	crlf := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	crlf.authorOf = map[int]string{9: me}
-	crlf.body = "rows\r\n" + row + "\r\n"
-	assert.Equal(t, merge.Done, crlf.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(crlf.body, row), "a body written with CRLF keeps one row")
-
-	fresh := mergedWorld(t, intentTime.Add(time.Minute), nil)
-	fresh.authorOf = map[int]string{9: me}
-	assert.Equal(t, merge.Done, fresh.run(req).Stop)
-	assert.Equal(t, 1, strings.Count(fresh.body, row))
-}
