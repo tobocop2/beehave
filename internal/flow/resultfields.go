@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
 // commitField is the result field of base_tip that holds the tip commit.
 const commitField = "commit"
+
+// unprovenField is the result field of landing_proof: each landed member that the forge cannot show on the base, with the reason.
+const unprovenField = "unproven"
 
 // revertField is the result field of gate that holds the verdict of the revert run.
 const revertField = "revert"
@@ -108,6 +112,11 @@ func prStateOutputs(state string) map[string]any { return map[string]any{stateFi
 // baseTipOutputs are the fields of base_tip: the tip commit of the base and its tree.
 func baseTipOutputs(commit, tree string) map[string]any {
 	return map[string]any{commitField: commit, treeName: tree}
+}
+
+// landingProofOutputs are the fields of landing_proof: each landed member that the forge cannot show on the base, with the reason.
+func landingProofOutputs(unproven []landing.Outcome) map[string]any {
+	return map[string]any{unprovenField: unproven}
 }
 
 // issueStateOutputs are the fields of issue_state: the state of the issue, OPEN or CLOSED, and whether a read ran. A project whose tracker has no issue numbers gives found false and no state.

@@ -74,8 +74,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land15.gate7.host1.round7", applicationVersion("v1"))
-	assert.Equal(t, "v1+core20.agent15.tracker4.forge11.land15.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge12.land16.gate8.host1.round7", applicationVersion("v1"))
+	assert.Equal(t, "v1+core20.agent15.tracker4.forge12.land16.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {
@@ -94,10 +94,10 @@ func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {
 		"and the earlier_reads step comes at core20")
 }
 
-func TestStepModules_TheLandModuleIsAtVersionFifteen(t *testing.T) {
+func TestStepModules_TheLandModuleIsAtVersionSixteen(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "land15", "merge is the old batch_merge and a merge of one pull request records the batch steps, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "land16", "merge is the old batch_merge and a merge of one pull request records the batch steps, "+
 		"each member records its scope check as batch:<call>.scope#<item> before its intent, a hand-off records batch:<call>.ready#<item> and batch:<call>.watch#<item>@<round>, "+
 		"the preflight step records no foreign, pr, head or author field, the merge of a member names its run at land9, "+
 		"an owner line that keeps issues records batch:<call>.kept#<item> at land10, "+
@@ -105,15 +105,17 @@ func TestStepModules_TheLandModuleIsAtVersionFifteen(t *testing.T) {
 		"and the first review read and the first merge call of a run that no gate gave a scope record the scope step at land12, "+
 		"and each member records the issues that its pull request must close, which the merge audits, at land13, "+
 		"and a merge of one pull request records batch:<call>.tip after its merge and the moved field of its intent step at land14, "+
-		"and each member records the issues that the owner kept and the closing issues that a check read, and the merge records no scope or kept step, at land15")
+		"and each member records the issues that the owner kept and the closing issues that a check read, and the merge records no scope or kept step, at land15, "+
+		"and a merge of `members` records merge:<call>.plan, then merge:<call>.intent#<item> for each member, then merge:<call>.tip, at land16")
 }
 
-func TestStepModules_TheGateModuleIsAtVersionSeven(t *testing.T) {
+func TestStepModules_TheGateModuleIsAtVersionEight(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate7", "the gate step records the step field, the name of its own step, so a run that recorded a gate before this version does not replay it, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate8", "the gate step records the step field, the name of its own step, so a run that recorded a gate before this version does not replay it, "+
 		"records a lost job and host_losses, the wait for its proof records gate:lost-start and gate:lost-look.<k>, "+
-		"the owner wait records <call>/lost-ask.<n>, the item run records a lost job with a proof as <call>/host-loss, gate records the revert field, and the kind before_review is retired")
+		"the owner wait records <call>/lost-ask.<n>, the item run records a lost job with a proof as <call>/host-loss, gate records the revert field, and the kind before_review is retired, "+
+		"and a gate with a program records the head and the tree of the worktree that it read, at gate8")
 }
 
 func TestStepModules_TheRoundModuleIsAtVersionSeven(t *testing.T) {

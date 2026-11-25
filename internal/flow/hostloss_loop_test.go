@@ -19,6 +19,8 @@ import (
 
 // lossyGate gives a void result with no host cause for its first `void` runs, loses the host job of the next `lose` runs, and passes every later run, on the head that it is given.
 type lossyGate struct {
+	cleanTree
+
 	head string
 	void int32
 	lose int32

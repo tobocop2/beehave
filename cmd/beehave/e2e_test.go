@@ -252,6 +252,13 @@ func e2eHeadOf(ctx context.Context, dir string) (string, error) {
 // and a revert run in which the new test fails on the base code.
 type e2eGate struct{ dir string }
 
+// State reads the commit of the git folder that e2eSetup makes, with the tree that the gate reports for it, as a clean worktree.
+func (g e2eGate) State(ctx context.Context, _, _ string) (string, gate.State, error) {
+	head, err := e2eHeadOf(ctx, g.dir)
+
+	return filepath.Join(g.dir, "tree"), gate.State{Head: head, Tree: "tree-of-" + head, Clean: true}, err
+}
+
 func (e2eGate) Submit(_ context.Context, _, _, _, base, _, _ string, _ model.Slot) (flow.GateJob, error) {
 	return flow.GateJob{Plan: gate.Plan{Base: base}}, nil
 }

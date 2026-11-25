@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
@@ -531,7 +532,7 @@ func TestExampleBatch_AnUnprovenMemberStopsTheRunWithARefuseThatNamesTheItemAndT
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
-	rig.host.unproven = []batch.Outcome{{Item: "3", Reason: "its branch holds another commit now"}}
+	rig.host.unproven = []landing.Outcome{{Item: "3", Reason: "its branch holds another commit now"}}
 
 	_, err := rig.run(t)
 

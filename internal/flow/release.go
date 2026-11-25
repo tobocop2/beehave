@@ -183,12 +183,15 @@ func keepReason(ctx context.Context, tree proc.Runner, heads func(context.Contex
 	return common, ""
 }
 
+// revParse is the git command that reads the id of a commit, a tree or a folder of the repository.
+const revParse = "rev-parse"
+
 // cleanHead returns the commit at HEAD and the repository that owns a tree with no changes that are not committed. A dirty tree is a reason to keep it.
 func cleanHead(ctx context.Context, tree proc.Runner) (head, common, reason string) {
 	local, reason := readAll(ctx, tree,
 		read{"read the state of the worktree", []string{"status", "--porcelain"}},
-		read{"read HEAD", []string{"rev-parse", "HEAD"}},
-		read{"read the repository of the worktree", []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}})
+		read{"read HEAD", []string{revParse, "HEAD"}},
+		read{"read the repository of the worktree", []string{revParse, "--path-format=absolute", "--git-common-dir"}})
 	if reason != "" {
 		return "", "", reason
 	}

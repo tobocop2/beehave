@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // batchRig is an engine over a real repository with three members: item 2 holds bad.txt, which the gate rejects.
@@ -297,7 +299,7 @@ func TestBatchMerge_AMergedMemberThatTheProofCannotFindOnTheBaseIsUnprovenInTheR
 	t.Parallel()
 
 	rig := newBatchRig(t)
-	rig.host.unproven = []batch.Outcome{{Item: "3", Reason: "its head is not on main (the forge compares it: diverged, ahead by 4, behind by 2) and the base does not hold its change of three.txt"}}
+	rig.host.unproven = []landing.Outcome{{Item: "3", Reason: "its head is not on main (the forge compares it: diverged, ahead by 4, behind by 2) and the base does not hold its change of three.txt"}}
 
 	_, err := rig.walk(t, rig.unprovenCall("1 2 3"))
 
@@ -566,7 +568,8 @@ func TestBatchMerge_ACallWithNoArgumentsIsRefusedWithTheMissingName(t *testing.T
 
 	_, err := newBatchRig(t).walk(t, `merge(name = "b")`)
 
-	require.ErrorContains(t, err, "prs")
+	require.ErrorContains(t, err, "merge needs the `base` keyword")
+	require.ErrorContains(t, err, "merge needs the `repo` keyword")
 }
 
 func TestBatchMerge_AFailedTipReadInsideTheIntentStepEndsTheRun(t *testing.T) {
@@ -743,7 +746,7 @@ func TestBatchMerge_ACancelWhileTheMergeStepRunsThenAResumeMergesTheMemberOnce(t
 func TestBatchMerge_TheStepNameOfALaterReadNeverEqualsTheNameOfAnotherItem(t *testing.T) {
 	t.Parallel()
 
-	b := &batchBase{call: batchCall{name: "n"}}
+	b := &batchBase{call: batchCall{name: "n"}, prefix: "batch"}
 
 	assert.NotEqual(t, b.stepName("merge", "bd-a3f8", 2), b.stepName("merge", "bd-a3f8.2", 1))
 	assert.Equal(t, "batch:n.merge#bd-a3f8", b.stepName("merge", "bd-a3f8", 1))
@@ -770,7 +773,7 @@ func TestBatchMerge_AGateOrAMergeWithAContextThatIsNotARunIsRefused(t *testing.T
 	_, err := batchGate{s: s}.Run(t.Context(), batch.GateInput{})
 	require.ErrorIs(t, err, errNotRunContext)
 
-	_, err = (&batchBase{s: s}).mergeReads(t.Context(), batch.Member{}, MergeSettings{})
+	_, err = (&batchBase{s: s}).mergeReads(t.Context(), workflow.PullRequest{}, MergeSettings{})
 	require.ErrorIs(t, err, errNotRunContext)
 }
 

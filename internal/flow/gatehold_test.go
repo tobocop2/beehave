@@ -19,6 +19,8 @@ import (
 // stopGate holds the gate of each item until the test lets it end. It sends "start <item>" as a gate starts and "end <item>" as it ends.
 // A gate that its context stops sends no "end".
 type stopGate struct {
+	cleanTree
+
 	events  chan string
 	release map[string]chan struct{}
 }

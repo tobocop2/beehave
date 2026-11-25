@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -47,12 +48,6 @@ type Tip struct {
 	Tree   string `json:"tree"`
 }
 
-// MergeResult is what git's three-way merge of two commits made. A conflict still has a tree id, and it is not a result to use.
-type MergeResult struct {
-	Tree     string
-	Conflict bool
-}
-
 // Git is the small set of git calls the union needs. Version is called first, once, then HasCommit once for each member.
 // MergeTree and NewCommit need no working copy.
 // NewCommit needs an author and committer identity in the git environment of the implementation.
@@ -61,7 +56,7 @@ type Git interface {
 	Version(ctx context.Context) (string, error)
 	// HasCommit reports whether the repository holds the commit id, so that an unfetched head is found before the fold.
 	HasCommit(ctx context.Context, id string) (bool, error)
-	MergeTree(ctx context.Context, ours, theirs string) (MergeResult, error)
+	MergeTree(ctx context.Context, ours, theirs string) (landing.MergeResult, error)
 	NewCommit(ctx context.Context, tree string, parents ...string) (string, error)
 }
 
@@ -191,7 +186,7 @@ func Run(ctx context.Context, deps Deps, members []Member) (Result, error) {
 		return Result{}, err
 	}
 
-	if err := CheckGit(ctx, deps.Git); err != nil {
+	if err := landing.CheckGit(ctx, deps.Git); err != nil {
 		return Result{}, err
 	}
 

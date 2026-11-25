@@ -348,7 +348,7 @@ func TestProvenLoss_ALossThatCannotBeRecordedFailsTheGateCallAndGivesNoOutputs(t
 func TestBatchResult_ALossRecordThatAWorkflowCannotHoldFailsTheResult(t *testing.T) {
 	t.Parallel()
 
-	_, err := batchResult(batch.Result{}, batch.Report{}, nil, []hostLoss{{Loss: func() {}}}, nil)
+	_, err := batchResult(batch.Result{}, batch.Report{}, nil, []hostLoss{{Loss: func() {}}})
 
 	require.ErrorContains(t, err, "the host loss records of merge: ")
 }

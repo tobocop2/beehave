@@ -41,6 +41,7 @@ const (
 	itemReadName         = "item_read"
 	itemStatusName       = "item_status"
 	baseTipName          = "base_tip"
+	landingProofName     = "landing_proof"
 	issueStateName       = "issue_state"
 	prClosingName        = "pr_closing"
 	prCommentName        = "pr_comment"
@@ -98,9 +99,13 @@ const runsResult = "runs"
 func swarmResultFields() map[string][]string {
 	return map[string][]string{
 		spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"},
-		mergeName: append(handOffFields(), statusField, reasonField, "commit"), handOffName: handOffFields(),
+		mergeName: mergeFields(), handOffName: handOffFields(),
 	}
 }
+
+// mergeFields are the fields of the result of merge: the fields of a union, rest and reason, and the fields of the batch with a gate of its own,
+// which merge returns for `prs` until the library batch_merge replaces it.
+func mergeFields() []string { return append(handOffFields(), "rest", reasonField) }
 
 // earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
 func earlierResultFields() map[string][]string {
@@ -123,6 +128,7 @@ func factsResultFields() map[string][]string {
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		baseTipName:        {"commit", treeKeyword},
+		landingProofName:   {"unproven"},
 		issueStateName:     {stateField, foundField},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},

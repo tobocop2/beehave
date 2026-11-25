@@ -14,6 +14,8 @@ import (
 
 // slowGate holds each gate until the test lets it end, and tells the test when it started.
 type slowGate struct {
+	cleanTree
+
 	started chan struct{}
 	release chan struct{}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -134,7 +135,7 @@ func TestRun_RealGitFoldsThreeBranchesAndRejectsTheConflictingOne(t *testing.T) 
 
 	tip := Tip{Commit: g.must(t, "rev-parse", "HEAD"), Tree: g.must(t, "rev-parse", "HEAD^{tree}")}
 	gate, base := &fixedGate{}, &fixedBase{tip: tip}
-	deps := Deps{Git: GitCLI{Exec: g}, Gate: gate, Base: base, Steps: newMemory(), Name: "real"}
+	deps := Deps{Git: landing.GitCLI{Exec: g}, Gate: gate, Base: base, Steps: newMemory(), Name: "real"}
 
 	res, err := Run(context.Background(), deps, []Member{{Item: "z", Head: z}, {Item: "y", Head: y}, {Item: "x", Head: x}})
 
@@ -163,5 +164,5 @@ func TestCheckGit_InstalledGitPasses(t *testing.T) {
 
 	g := gitIn{binary: binary, dir: t.TempDir(), home: t.TempDir()}
 
-	require.NoError(t, CheckGit(context.Background(), GitCLI{Exec: g}))
+	require.NoError(t, landing.CheckGit(context.Background(), landing.GitCLI{Exec: g}))
 }

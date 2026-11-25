@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // The tests of this file run the library scope.star on the merge rig: the closing sets come from the fake forge, the owner answers through the client, and the fake merger records what it gets.
@@ -783,11 +783,13 @@ func TestHoldScope_ANewIssueOfAMemberWhoseFirstReviewClosedNoIssueIsAskedAboutWi
 // mergeForm is one form of a merge call over the members that hold_scope let through: the argument that passes them, and the expression of the refusal reasons in its result.
 type mergeForm struct{ members, reasons string }
 
-// mergeForms are the two forms of a merge call: the list and the one member.
+// mergeForms are the two forms of a merge call: the list with a gate of its own and the members of one union.
 func mergeForms() map[string]mergeForm {
+	rejected := `",".join([r.reason for r in out.rejected])`
+
 	return map[string]mergeForm{
-		"prs":    {members: "prs = held.prs", reasons: `",".join([r.reason for r in out.rejected])`},
-		"member": {members: "member = held.prs[0]", reasons: "out.reason"},
+		"prs":     {members: "prs = held.prs", reasons: rejected},
+		"members": {members: "members = held.prs", reasons: rejected},
 	}
 }
 
@@ -865,11 +867,7 @@ const keptRefusal = "item 1 keeps #13, and no owner answer keeps it"
 // keptMember is the member of item 1 that keeps #13, in the form of the merge call.
 func (r *batchRig) keptMember(form string) string {
 	member := `struct(item = "1", head = "` + r.heads["1"] + `", closes = [], kept = ["#13"])`
-	if form == "member" {
-		return "member = " + member
-	}
-
-	return "prs = [" + member + "]"
+	return form + " = [" + member + "]"
 }
 
 // keptFlow runs the statement pre, then merges the member of item 1 that keeps #13 in the form, and reports the merged items.
@@ -942,7 +940,7 @@ func TestMerge_AKeptIssueThatAnOwnerAnswerOfAnEarlierRunOfTheItemKeptReachesTheM
 	engine := rig.engine(t)
 	require.NoError(t, rig.answerKeep(t, engine, "1", "def main(item):\n    "+askToKeep+"\n", "keep #13").err)
 
-	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("member", "pass")), modeOff())
+	_, err := engine.RunFile("1", testProject, writeFlow(t, rig.keptFlow("members", "pass")), modeOff())
 
 	require.NoError(t, err)
 	require.Len(t, rig.merger.given, 1)
@@ -971,6 +969,6 @@ func TestMerge_AKeptIssueWhoseOwnerAnswersCannotBeReadEndsTheCall(t *testing.T) 
 
 	s := &script{e: engine, in: ItemInput{Item: testItem}}
 
-	require.ErrorContains(t, s.trustMemberKept(batch.Member{Item: "1", Kept: []model.IssueRef{"#13"}}), "list the earlier runs of item 12")
-	require.NoError(t, s.trustMemberKept(batch.Member{Item: "1"}), "a member that keeps nothing reads no answer")
+	require.ErrorContains(t, s.trustMemberKept(workflow.PullRequest{Item: "1", Kept: []model.IssueRef{"#13"}}), "list the earlier runs of item 12")
+	require.NoError(t, s.trustMemberKept(workflow.PullRequest{Item: "1"}), "a member that keeps nothing reads no answer")
 }

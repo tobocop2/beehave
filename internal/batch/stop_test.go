@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/landing"
 )
 
 func refused(reason string) MergeOutcome { return MergeOutcome{Status: StatusRefused, Reason: reason} }
@@ -267,34 +267,6 @@ func TestRun_GateCountWithRetryAcrossN(t *testing.T) {
 	}
 }
 
-func TestGitCLI_HasCommit(t *testing.T) {
-	t.Parallel()
-
-	s, g := scripted(
-		model.CommandResult{},
-		model.CommandResult{ExitCode: 1},
-		model.CommandResult{ExitCode: 128, Stderr: "fatal: Not a valid object name\n"},
-		model.CommandResult{ExitCode: 2, Stderr: "boom\n"},
-	)
-	ctx := context.Background()
-
-	found, err := g.HasCommit(ctx, "abc")
-	require.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, []string{"cat-file", "-e", "abc^{commit}"}, s.calls[0])
-
-	found, err = g.HasCommit(ctx, "abc")
-	require.NoError(t, err)
-	assert.False(t, found)
-
-	found, err = g.HasCommit(ctx, "abc")
-	require.NoError(t, err)
-	assert.False(t, found)
-
-	_, err = g.HasCommit(ctx, "abc")
-	require.EqualError(t, err, "git cat-file failed with exit code 2: boom")
-}
-
 func TestRun_RealGitRejectsAHeadThatIsNotInTheRepository(t *testing.T) {
 	t.Parallel()
 
@@ -304,7 +276,7 @@ func TestRun_RealGitRejectsAHeadThatIsNotInTheRepository(t *testing.T) {
 
 	tip := Tip{Commit: g.must(t, "rev-parse", "HEAD"), Tree: g.must(t, "rev-parse", "HEAD^{tree}")}
 	unknown := strings.Repeat("1234567890", 4)
-	deps := Deps{Git: GitCLI{Exec: g}, Gate: &fixedGate{}, Base: &fixedBase{tip: tip}, Steps: newMemory(), Name: "real"}
+	deps := Deps{Git: landing.GitCLI{Exec: g}, Gate: &fixedGate{}, Base: &fixedBase{tip: tip}, Steps: newMemory(), Name: "real"}
 
 	res, err := Run(context.Background(), deps, []Member{{Item: "u", Head: unknown}, {Item: "x", Head: x}})
 

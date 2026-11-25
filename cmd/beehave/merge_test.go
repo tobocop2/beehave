@@ -17,7 +17,6 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
 	"github.com/tobocop2/beehave/internal/workflow/workflowtest"
 )
 
@@ -211,7 +210,7 @@ func shipping(t *testing.T, over map[string]any) (pulls, *shipForge, flow.MergeS
 	}
 }
 
-// exampleForbidText reads the `forbid_text` patterns of the landing merge call of the remediation example. The hand-off call lands nothing and has none.
+// exampleForbidText reads the `forbid_text` patterns of the merge calls of the remediation example.
 func exampleForbidText(t *testing.T) []string {
 	t.Helper()
 
@@ -224,9 +223,7 @@ func exampleForbidText(t *testing.T) []string {
 	require.NotEmpty(t, patterns, "the example holds its attribution patterns in ATTRIBUTION")
 
 	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
-		if !handsOff(ship) {
-			patterns = append(patterns, workflowtest.Literals(ship["forbid_text"])...)
-		}
+		patterns = append(patterns, workflowtest.Literals(ship["forbid_text"])...)
 	})
 
 	return patterns
@@ -242,19 +239,11 @@ func walkExampleMerge(t *testing.T, visit func(map[string]syntax.Expr)) {
 	require.NoError(t, err)
 
 	// The round of the example lands its approved items with one batch merge, which runs the guards of the merge for each item.
-	// With vars.round.hand_off, a second merge call hands them to the owner instead.
 	for _, call := range calls {
 		if call.Builtin == "merge" {
 			visit(call.Args)
 		}
 	}
-}
-
-// handsOff reports whether a merge call of the example hands the pull requests to the owner: its hand_off is the literal True.
-func handsOff(ship map[string]syntax.Expr) bool {
-	flag, isName := ship["hand_off"].(*syntax.Ident)
-
-	return isName && flag.Name == "True"
 }
 
 func TestMerge_AGatedTreeReachesTheMergeAndATipWithAnotherTreeStopsTheRunWithTheDifferingPaths(t *testing.T) {
@@ -639,7 +628,7 @@ func TestNewLife_TheRunnersOfTheConfigAreTheOwnRunnersOfTheMerger(t *testing.T) 
 func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T) {
 	t.Parallel()
 
-	var landings, handOffs, singles int
+	var landings, unions int
 
 	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
 		// The base, the repository, the logins and the address come from the project file, so the example names none of them.
@@ -648,26 +637,15 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 		assert.Empty(t, workflowtest.Literals(ship["base"]), "base is the round base, read from vars.round.base")
 		assert.Empty(t, workflowtest.Literals(ship["repo"]), "repo is the repository of the project")
 
-		if ship["member"] != nil {
-			// A call with `member` lands one pull request under the same guards as the landing call, and it takes no integration pull request, which belongs to a list.
-			singles++
+		if ship["members"] != nil {
+			// A call with `members` lands one gated union under the same guards as the landing call, and it takes no integration pull request.
+			unions++
 
-			for _, name := range []string{"hold", "own", "forbid_text"} {
-				assert.NotNil(t, ship[name], "%s is set on the call that lands one pull request", name)
+			for _, name := range []string{"hold", "own", "forbid_text", "gate"} {
+				assert.NotNil(t, ship[name], "%s is set on the call that lands one union", name)
 			}
 
-			assert.Nil(t, ship["integration"], "the call that lands one pull request takes no integration")
-
-			return
-		}
-
-		if handsOff(ship) {
-			handOffs++
-
-			// A hand-off lands nothing, and the check refuses a landing keyword beside hand_off.
-			for _, name := range workflow.HandOffLanding() {
-				assert.Nil(t, ship[name], "the hand-off call takes no %s", name)
-			}
+			assert.Nil(t, ship["integration"], "the call that lands one union takes no integration")
 
 			return
 		}
@@ -685,6 +663,5 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 		}
 	})
 	assert.Equal(t, 1, landings, "the example has one landing merge call")
-	assert.Equal(t, 1, handOffs, "the example has one hand-off merge call")
-	assert.Equal(t, 1, singles, "the example has one merge call of one pull request")
+	assert.Equal(t, 1, unions, "the example has one merge call of one gated union")
 }

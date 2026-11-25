@@ -340,12 +340,11 @@ const batchStar = `def main(item):
 
 // handStar is the workflow of the hand-off script: the owner lands the pull request of the branch m1, whose head is the one given.
 const handStar = `def main(item):
-    out = merge(
+    out = hand_off(
         name = "ask",
         base = "main",
         repo = "example/shop",
-        hand_off = True,
-        prs = [struct(item = "m1", head = %q, closes = [])],
+        prs =[struct(item = "m1", head = %q, closes = [])],
     )
     if out.merged != ["m1"] or out.rejected or out.moved:
         fail("the owner did not land m1: merged=%%s rejected=%%s moved=%%s" %% (out.merged, out.rejected, out.moved))

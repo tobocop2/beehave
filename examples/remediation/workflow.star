@@ -528,25 +528,31 @@ def integration_reads(base, pr, numbers):
 
     return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
 
-def land_one(member, base, repo, own, forbid_text, gated, expect_tree, name):
-    """Merges one pull request with the result of a gate call of this run, under the same guards as the list call of the round: the hold label, the own identity and the forbidden text.
-    The engine posts the statuses of the gate and merges only when the tree that the merge makes is the tree of the gate and the base tip has the tree expect_tree.
+def land_union(members, base, repo, own, forbid_text, gated, name):
+    """Merges the members of one union in order with the result of a gate call of this run on that union, under the same guards as the list call of the round: the hold label,
+    the own identity and the forbidden text. The engine folds the member heads on the base tip and merges nothing when the fold is not the tree of the gate.
     No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
     return merge(
         name = name,
-        member = member,
+        members = members,
         base = base,
         repo = repo,
         hold = "hold",
         own = own,
         forbid_text = forbid_text,
         gate = gated,
-        gated_tree = gated.tree,
-        expect_tree = expect_tree,
     )
 
+def prove_landing(base, start, end, members, merged, name):
+    """Returns each merged member that the forge cannot show on the base, with the reason. start and end are the tips of the base before and after the unions,
+    as base_tip returns them. No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
+    heads = {m.item: m.head for m in members}
+    landed = [struct(item = item, head = heads[item]) for item in merged]
+
+    return landing_proof(base = base, start = start, end = end, landed = landed, name = name).unproven
+
 def hand_to_owner(prs, base, repo, name):
-    """Marks the pull requests ready and waits until the owner merges them. No entry calls it yet: the hand-off of the batch still uses the keyword of merge (#503)."""
+    """Marks the pull requests ready and waits until the owner merges them. The round calls it when the owner merges."""
     return hand_off(prs = prs, base = base, repo = repo, name = name)
 
 def id_patterns(ids):
@@ -732,7 +738,7 @@ def land(approved, project, round_settings, n, run):
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
-        out = merge(name = "round-land-%d" % n, prs = prs, base = base, repo = project.repo, hand_off = True)
+        out = hand_to_owner(prs = prs, base = base, repo = project.repo, name = "round-land-%d" % n)
     else:
         out = merge(
             name = "round-land-%d" % n,

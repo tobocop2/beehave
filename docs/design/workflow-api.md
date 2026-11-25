@@ -194,17 +194,20 @@ The Change column says how the pair differs from the contract that the five piec
 | `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
 | `keep_issues` | `-` | #500: new, reads the issues of an owner line in the form `keep #N[, owner/repo#N ...]`, the form that the merge reads to trust `kept` | 1: `internal/workflow/lib/scope.star` |
 | `keep_issues` | `text` | #500: new | 1: `internal/workflow/lib/scope.star` |
+| `landing_proof` | `-` | #503: new, lists each landed member that the forge cannot show on the base, merged or on the vehicle commit | 1: `examples/remediation/workflow.star` |
+| `landing_proof` | `base` | #503: new | 1: `examples/remediation/workflow.star` |
+| `landing_proof` | `end` | #503: new | 1: `examples/remediation/workflow.star` |
+| `landing_proof` | `landed` | #503: new | 1: `examples/remediation/workflow.star` |
+| `landing_proof` | `name` | #503: new | 1: `examples/remediation/workflow.star` |
+| `landing_proof` | `start` | #503: new | 1: `examples/remediation/workflow.star` |
 | `merge` | `-` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `base` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
-| `merge` | `expect_tree` | #503: new, the merge stops as unsettled when the base tip has another tree | 1: `examples/remediation/workflow.star` |
 | `merge` | `forbid_text` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
-| `merge` | `gate` | #503: new, the result of a gate call of this run. The engine posts the statuses of that gate and trusts none that the run did not record | 1: `examples/remediation/workflow.star` |
+| `merge` | `gate` | #503: new, the result of a gate call of this run on the union of the members. The engine folds the member heads on the base tip and merges nothing when the fold is not the tree of that gate | 1: `examples/remediation/workflow.star` |
 | `merge` | `gate_run` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
-| `merge` | `hand_off` | #653: new, marks the pull requests ready and waits for the owner to merge them | 1: `examples/remediation/workflow.star` |
-| `merge` | `gated_tree` | #503: new, the tree that the gate ran on | 1: `examples/remediation/workflow.star` |
 | `merge` | `hold` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `integration` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
-| `merge` | `member` | #503: new, lands one pull request | 1: `examples/remediation/workflow.star` |
+| `merge` | `members` | #503: new, the members of one union in landing order | 1: `examples/remediation/workflow.star` |
 | `merge` | `name` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `own` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `prs` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |

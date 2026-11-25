@@ -329,7 +329,7 @@ func (a agentArgs) unchangedSinceStart(ctx context.Context, root string, one cha
 
 // topLevel returns the root of the repository of the folder.
 func topLevel(ctx context.Context, tree proc.Runner) (string, error) {
-	root, err := git(ctx, tree, "rev-parse", "--show-toplevel")
+	root, err := git(ctx, tree, revParse, "--show-toplevel")
 	if err != nil {
 		return "", fmt.Errorf("find the root of the item folder: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
@@ -63,13 +64,13 @@ func (h batchHost) folder(ctx context.Context, project, item string) (string, er
 }
 
 // Git returns git over the worktree of the item.
-func (h batchHost) Git(ctx context.Context, project, item string) (batch.Git, error) { //nolint:ireturn // the interface batchHost serves in internal/flow returns it
+func (h batchHost) Git(ctx context.Context, project, item string) (landing.GitCLI, error) {
 	dir, err := h.folder(ctx, project, item)
 	if err != nil {
-		return nil, err
+		return landing.GitCLI{}, err
 	}
 
-	return batch.GitCLI{Exec: signed{run: h.programs.local(project, "git", dir, batchGitTimeout).Run}}, nil
+	return landing.GitCLI{Exec: signed{run: h.programs.local(project, "git", dir, batchGitTimeout).Run}}, nil
 }
 
 // Checkout puts the commit in the worktree of the item, without a branch, and returns its tree id.
@@ -92,20 +93,20 @@ func (h batchHost) tree(ctx context.Context, project, dir, commit string) (strin
 }
 
 // Tip reads the tip of the base on the forge, fetches the branches of the remote into the clone, and returns the tip with its tree id.
-func (h batchHost) Tip(ctx context.Context, project, item, base string) (batch.Tip, error) {
+func (h batchHost) Tip(ctx context.Context, project, item, base string) (landing.Tip, error) {
 	commit, err := h.baseTip(ctx, project, base)
 	if err != nil {
-		return batch.Tip{}, err
+		return landing.Tip{}, err
 	}
 
 	dir, err := h.fetched(ctx, project, item, base)
 	if err != nil {
-		return batch.Tip{}, err
+		return landing.Tip{}, err
 	}
 
 	tree, err := h.tree(ctx, project, dir, commit)
 
-	return batch.Tip{Commit: commit, Tree: tree}, err
+	return landing.Tip{Commit: commit, Tree: tree}, err
 }
 
 // baseTip reads the tip commit of the base on the forge of the project.
@@ -143,13 +144,13 @@ func (h batchHost) fetched(ctx context.Context, project, item, base string) (str
 
 // Prove checks on the forge that each landed member is on the base, merged or on the vehicle commit, and returns the item and the reason for each one it cannot prove.
 // A forge that cannot compare commits or list trees leaves every member unproven, and the reasons say why.
-func (h batchHost) Prove(ctx context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error) {
+func (h batchHost) Prove(ctx context.Context, project, base string, start, end landing.Tip, landed []landing.Member) ([]landing.Outcome, error) {
 	built, err := h.pulls.forgeOf(project)
 	if err != nil {
 		return nil, err
 	}
 
-	return batch.Prove(ctx, built, base, start, end, landed), nil
+	return landing.Prove(ctx, built, base, start, end, landed), nil
 }
 
 // Issues reads the state of the issues after a batch. Only the GitHub tracker has issue numbers for ids. A read that fails is a finding of the report.

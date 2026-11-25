@@ -66,7 +66,8 @@ var goldenShapes = map[string][]string{
 		"item_read: comments,fields,found,id,parent",
 		"item_status: id,status",
 		"item_stop: recorded",
-		"merge: commit,deferred,findings,gates,host_loss,host_losses,merged,moved,note,reason,rejected,status,tip,tree,unproven",
+		"landing_proof: unproven",
+		"merge: deferred,findings,gates,host_loss,host_losses,merged,moved,note,reason,rejected,rest,tip,tree,unproven",
 		"pr_closing: forge,found,issues",
 		"pr_comment: number",
 		"pr_history: pulls",
@@ -105,7 +106,7 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 var goldenKinds = map[string][]string{
 	"star30": {
 		"agent", "base_tip", "board_card", "cancel", "command", "earlier_calls", "earlier_reads", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
-		"issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "login", "now",
+		"issue_assignees", "issue_state", "item_comment", "item_create", "item_list", "item_read", "item_status", "item_stop", "landing_proof", "login", "now",
 		"pr_closing", "pr_comment", "pr_history", "pr_list", "pr_open", "pr_read", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "recv", "round_cut", "round_land", "round_sync", "run_read", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }

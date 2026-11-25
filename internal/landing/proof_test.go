@@ -1,4 +1,4 @@
-package batch_test
+package landing_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -64,8 +64,8 @@ func (w *proofWorld) TreeBlobs(_ context.Context, tree string) (map[string]strin
 }
 
 var (
-	startTip = batch.Tip{Commit: "start", Tree: "t-start"}
-	endTip   = batch.Tip{Commit: "end", Tree: "t-end"}
+	startTip = landing.Tip{Commit: "start", Tree: "t-start"}
+	endTip   = landing.Tip{Commit: "end", Tree: "t-end"}
 	onBase   = model.Comparison{Status: "ahead", AheadBy: 5}
 	offBase  = model.Comparison{Status: "diverged", AheadBy: 5, BehindBy: 2}
 )
@@ -84,15 +84,15 @@ func newProofWorld() *proofWorld {
 	}
 }
 
-func members() []batch.Member {
-	return []batch.Member{{Item: "a", Head: "h-a"}, {Item: "b", Head: "h-b"}}
+func members() []landing.Member {
+	return []landing.Member{{Item: "a", Head: "h-a"}, {Item: "b", Head: "h-b"}}
 }
 
 func TestProve_AMemberWhoseHeadIsOnTheBaseIsLandedWithoutAnyTreeRead(t *testing.T) {
 	t.Parallel()
 
 	w := newProofWorld()
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
 
 	assert.Empty(t, got)
 	assert.Equal(t, []string{"branch a", "compare h-a main"}, w.asked)
@@ -104,7 +104,7 @@ func TestProve_AMemberWhoseBranchWasPushedAfterTheFoldIsUnprovenEvenWhenTheFolde
 	w := newProofWorld()
 	w.branch["a"] = "h-a-forced" // h-a is on the base, and the branch no longer holds it
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
 
 	require.Len(t, got, 1)
 	assert.Equal(t, "a", got[0].Item)
@@ -119,7 +119,7 @@ func TestProve_ABranchThatCannotBeReadLeavesTheMemberUnproven(t *testing.T) {
 	w := newProofWorld()
 	w.branchErr = map[string]error{"a": errRead}
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members()[:1])
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Reason, "cannot read its branch")
@@ -131,7 +131,7 @@ func TestProve_ABranchThatIsGoneHasNoNewerCommitAndTheCompareDecides(t *testing.
 	w := newProofWorld()
 	delete(w.branch, "a")
 
-	assert.Empty(t, batch.Prove(t.Context(), w, "main", startTip, endTip, members()[:1]))
+	assert.Empty(t, landing.Prove(t.Context(), w, "main", startTip, endTip, members()[:1]))
 }
 
 func TestProve_AMemberWhoseHeadIsNotOnTheBaseAndNotOnTheVehicleIsUnprovenAndNeverLanded(t *testing.T) {
@@ -140,7 +140,7 @@ func TestProve_AMemberWhoseHeadIsNotOnTheBaseAndNotOnTheVehicleIsUnprovenAndNeve
 	w := newProofWorld()
 	w.blobs["t-end"]["a.go"] = "3" // the base holds another content of a.go than the member
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members())
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members())
 
 	require.Len(t, got, 1)
 	assert.Equal(t, "b", got[0].Item)
@@ -153,7 +153,7 @@ func TestProve_AMemberOnTheVehicleByBlobAfterASquashLands(t *testing.T) {
 	t.Parallel()
 
 	w := newProofWorld()
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members())
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members())
 
 	assert.Empty(t, got, "every path the member changed holds the same content on the base, so the member is on the vehicle")
 }
@@ -166,7 +166,7 @@ func TestProve_TwoMembersOffTheBaseAreCheckedAgainstTheSameTwoTreesReadOnce(t *t
 	w.trees["h-c"] = "t-c"
 	w.blobs["t-c"] = map[string]string{"a.go": "4", "old.go": "9", "keep.go": "5"} // the base does not hold content 4 of a.go
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, append(members(), batch.Member{Item: "c", Head: "h-c"}))
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, append(members(), landing.Member{Item: "c", Head: "h-c"}))
 
 	require.Len(t, got, 1, "b is on the vehicle and c is not")
 	assert.Equal(t, "c", got[0].Item)
@@ -190,7 +190,7 @@ func TestProve_AMemberThatOnlyMakesAFileExecutableIsUnprovenWhenTheBaseHoldsItWi
 	w.blobs["t-b"]["a.go"] = "100755 1"
 	w.blobs["t-end"]["a.go"] = "100644 1"
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members()[1:])
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members()[1:])
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Reason, "a.go")
@@ -202,7 +202,7 @@ func TestProve_AFileTheMemberRemovedThatTheBaseStillHoldsIsUnproven(t *testing.T
 	w := newProofWorld()
 	w.blobs["t-end"]["old.go"] = "9"
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members())
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members())
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Reason, "old.go")
@@ -214,7 +214,7 @@ func TestProve_AMemberThatChangesNothingAgainstTheStartTipAndIsNotOnTheBaseIsUnp
 	w := newProofWorld()
 	w.blobs["t-b"] = w.blobs["t-start"]
 
-	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members())
+	got := landing.Prove(t.Context(), w, "main", startTip, endTip, members())
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Reason, "changes nothing")
@@ -235,7 +235,7 @@ func TestProve_AReadThatFailsLeavesTheMemberUnprovenNeverLanded(t *testing.T) {
 		w := newProofWorld()
 		fail(w)
 
-		got := batch.Prove(t.Context(), w, "main", startTip, endTip, members())
+		got := landing.Prove(t.Context(), w, "main", startTip, endTip, members())
 
 		require.Len(t, got, 1, name)
 		assert.Contains(t, got[0].Reason, "cannot", name)
@@ -248,6 +248,6 @@ func TestProve_AnEmptyListOfMembersProvesNothingAndReadsNothing(t *testing.T) {
 
 	w := newProofWorld()
 
-	assert.Empty(t, batch.Prove(t.Context(), w, "main", startTip, endTip, nil))
+	assert.Empty(t, landing.Prove(t.Context(), w, "main", startTip, endTip, nil))
 	assert.Empty(t, w.asked)
 }

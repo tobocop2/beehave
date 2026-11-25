@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
@@ -20,7 +20,7 @@ const (
 
 // proofForge builds the GitHub forge over scripted gh answers for one member whose head is not in the base. The start tree and the tree of the base
 // hold deploy.sh with startMode and endMode, and the tree of the member holds it as an executable. All three hold the same content id.
-func proofForge(t *testing.T, startMode, endMode string) batch.ProofReads {
+func proofForge(t *testing.T, startMode, endMode string) landing.ProofReads {
 	t.Helper()
 
 	entry := func(mode string) string {
@@ -44,16 +44,16 @@ func proofForge(t *testing.T, startMode, endMode string) batch.ProofReads {
 func TestProve_TheListOfTheRealReaderShowsAMemberThatOnlyMadeAFileExecutable(t *testing.T) {
 	t.Parallel()
 
-	start := batch.Tip{Commit: "start", Tree: proofStart}
-	end := batch.Tip{Commit: "end", Tree: proofEnd}
-	members := []batch.Member{{Item: "a", Head: proofHead}}
+	start := landing.Tip{Commit: "start", Tree: proofStart}
+	end := landing.Tip{Commit: "end", Tree: proofEnd}
+	members := []landing.Member{{Item: "a", Head: proofHead}}
 
-	missing := batch.Prove(t.Context(), proofForge(t, "100644", "100644"), "main", start, end, members)
+	missing := landing.Prove(t.Context(), proofForge(t, "100644", "100644"), "main", start, end, members)
 
 	require.Len(t, missing, 1)
 	assert.Contains(t, missing[0].Reason, "deploy.sh", "the base does not hold the executable bit, and the reason names the file")
 
-	landed := batch.Prove(t.Context(), proofForge(t, "100644", "100755"), "main", start, end, members)
+	landed := landing.Prove(t.Context(), proofForge(t, "100644", "100755"), "main", start, end, members)
 
 	assert.Empty(t, landed, "the base holds the executable bit, so the member is on the vehicle")
 }

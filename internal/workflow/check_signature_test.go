@@ -1,7 +1,6 @@
 package workflow_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -70,6 +69,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"base_tip missing base", `base_tip(name = "t")`, "base_tip needs the `base` keyword"},
 		{"base_tip empty base", `base_tip(base = "")`, "base_tip"},
 		{"base_tip unknown keyword", `base_tip(base = "main", repo = "o/r")`, "base_tip takes no argument repo"},
+		{"landing_proof missing landed", `landing_proof(base = "main", start = None, end = None)`, "landing_proof needs the `landed` keyword"},
+		{"landing_proof text for landed", `landing_proof(base = "main", start = None, end = None, landed = "1")`, "landed must be a list, not a text."},
 		{"issue_state missing number", `issue_state(name = "s")`, "issue_state needs the `number` keyword"},
 		{"issue_state text for number", `issue_state(number = "7")`, "number must be an int, not a text."},
 		{"pr_closing int for item", `pr_closing(item = 9)`, "item must be a text, not an int."},
@@ -143,6 +144,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`pr_closing(item = "9", name = "n")`,
 		`pr_closing(pr = 41, name = "n")`,
 		`base_tip(base = "main", name = "n")`,
+		`landing_proof(base = "main", start = struct(commit = "c", tree = "t"), end = struct(commit = "c", tree = "t"), landed = [], name = "n")`,
 		`issue_state(number = 7, name = "n")`,
 		`earlier_reads(kind = "pr_closing", name = "n", item = "9", own_run = True)`,
 		`sleep("90s", name = "n")`,
@@ -331,7 +333,7 @@ func TestCheck_MergeTakesTheKeywordsOfABatchAndNoKeywordOfTheOldSingleMerge(t *t
 			got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", "+keyword+")\n")
 
 			require.NotEmpty(t, got)
-			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name, member, gate, gated_tree, expect_tree.")
+			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: members, base, repo, gate, hold, own, forbid_text, name, prs, gate_run, integration.")
 		})
 	}
 }
@@ -367,47 +369,11 @@ func TestCheck_TheResultOfMergeHasNoStateField(t *testing.T) {
 	assert.Contains(t, got[0], "state is not a field of the result of merge")
 }
 
-func TestCheck_MergeTakesHandOffAsABool(t *testing.T) {
+func TestCheck_MergeTakesNoHandOffKeyword(t *testing.T) {
 	t.Parallel()
 
-	const call = "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = %s)\n"
-
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "True")))
-
-	got := checkText(t, fmt.Sprintf(call, `"yes"`))
+	got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = True)\n")
 
 	require.NotEmpty(t, got)
-	assert.Contains(t, got[0], "hand_off")
-}
-
-func TestCheck_MergeWithHandOffRefusesEachKeywordOfALanding(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]string{
-		"hold":        `hold = "hold"`,
-		"own":         `own = {"logins": ["me"]}`,
-		"forbid_text": `forbid_text = ["x"]`,
-		"gate_run":    `gate_run = ["check"]`,
-		"integration": `integration = 5`,
-	}
-
-	for name, extra := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = True, "+extra+")\n")
-
-			require.Len(t, got, 1)
-			assert.Contains(t, got[0], "merge with `hand_off` lands nothing, so it takes no `"+name+"`")
-		})
-	}
-}
-
-func TestCheck_MergeWithHandOffFalseOrComputedTakesTheKeywordsOfALanding(t *testing.T) {
-	t.Parallel()
-
-	const call = "def main(item):\n    flag = item == \"x\"\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = %s, gate_run = [\"check\"])\n"
-
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "False")), "a landing that is not handed off takes gate_run")
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "flag")), "a flag that only the run knows is left to the run")
+	assert.Contains(t, got[0], "merge takes no argument hand_off")
 }

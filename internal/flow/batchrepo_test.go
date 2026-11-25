@@ -17,7 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -119,27 +121,29 @@ type repoHost struct {
 	trees       *fakeTrees
 	folderAtGit string
 	gitErr      error
-	checkErr    error
+	// version, when set, is what git --version prints.
+	version  string
+	checkErr error
 	// report and reportErr are the answer of Issues, and issueCalls holds what it was asked.
 	report     batch.Report
 	reportErr  error
 	issueCalls []string
 	// unproven and proofErr are the answer of Prove, and proofCalls holds what it was asked.
-	unproven   []batch.Outcome
+	unproven   []landing.Outcome
 	proofErr   error
 	proofCalls []string
 	// pr answers Pull and SetDraft for a hand-off.
 	pr *handForge
 }
 
-func (h *repoHost) Git(context.Context, string, string) (batch.Git, error) {
+func (h *repoHost) Git(context.Context, string, string) (landing.GitCLI, error) {
 	if h.trees != nil {
 		h.mu.Lock()
 		h.folderAtGit = h.trees.late.path()
 		h.mu.Unlock()
 	}
 
-	return batch.GitCLI{Exec: loggedGit{repo: h.repo, host: h}}, h.gitErr
+	return landing.GitCLI{Exec: loggedGit{repo: h.repo, host: h}}, h.gitErr
 }
 
 // loggedGit runs a git command of the batch host and logs its arguments in the call log of the host.
@@ -151,7 +155,12 @@ type loggedGit struct {
 func (g loggedGit) Run(ctx context.Context, args []string) model.CommandResult {
 	g.host.mu.Lock()
 	g.host.gitLog = append(g.host.gitLog, strings.Join(args, " "))
+	version := g.host.version
 	g.host.mu.Unlock()
+
+	if version != "" && args[0] == "--version" {
+		return model.CommandResult{Stdout: version}
+	}
 
 	return g.repo.Run(ctx, args)
 }
@@ -187,7 +196,7 @@ func (h *repoHost) checkoutCalls() int {
 	return len(h.checkouts)
 }
 
-func (h *repoHost) Tip(ctx context.Context, _, _, _ string) (batch.Tip, error) {
+func (h *repoHost) Tip(ctx context.Context, _, _, _ string) (landing.Tip, error) {
 	h.mu.Lock()
 	h.tipCalls++
 
@@ -198,10 +207,10 @@ func (h *repoHost) Tip(ctx context.Context, _, _, _ string) (batch.Tip, error) {
 	h.mu.Unlock()
 
 	if failure != nil {
-		return batch.Tip{}, failure
+		return landing.Tip{}, failure
 	}
 
-	return batch.Tip{
+	return landing.Tip{
 		Commit: strings.TrimSpace(h.repo.Run(ctx, []string{"rev-parse", "main"}).Stdout),
 		Tree:   strings.TrimSpace(h.repo.Run(ctx, []string{"rev-parse", "main^{tree}"}).Stdout),
 	}, nil
@@ -232,7 +241,7 @@ func (h *repoHost) Issues(_ context.Context, project, base string, integration i
 
 // Prove answers the proof of the landing: it records what it was asked and returns the unproven lines of the test.
 // The tips are the trees of the repository of the test, so a test sees that the start and the end tip are the two ends of the batch.
-func (h *repoHost) Prove(_ context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error) {
+func (h *repoHost) Prove(_ context.Context, project, base string, start, end landing.Tip, landed []landing.Member) ([]landing.Outcome, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -282,6 +291,8 @@ type treeGate struct {
 	noSteps bool
 	// void, when set, makes the gate answer as a voided gate does: it did not run, and every step is unknown.
 	void bool
+	// noTree, when set, makes the gate pass and report no tree.
+	noTree bool
 	// submits counts the host jobs that the gate started: each Submit, and each Run with no job, which submits its own job as the real gate does.
 	submits atomic.Int32
 	// lose is the number of the first waits that end as lost. jobs are the host jobs that Run was given, in order.
@@ -296,6 +307,22 @@ type treeGate struct {
 	// started, when set, gets one signal from wait number blockAt (the first wait when blockAt is 0), which then blocks until its context ends.
 	started chan struct{}
 	blockAt int
+}
+
+// State reads the head, the tree of the head and the changes of the repository of the test, as the reader of the project gate does.
+func (g *treeGate) State(ctx context.Context, _, _ string) (string, gatepkg.State, error) {
+	var out [3]string
+
+	for i, args := range [][]string{{"rev-parse", "HEAD"}, {"rev-parse", "HEAD^{tree}"}, {"status", "--porcelain"}} {
+		result := g.repo.Run(ctx, args)
+		if result.ExitCode != 0 {
+			return "", gatepkg.State{}, fmt.Errorf("git %v: %s", args, result.Stderr)
+		}
+
+		out[i] = strings.TrimSpace(result.Stdout)
+	}
+
+	return g.repo.dir, gatepkg.State{Head: out[0], Tree: out[1], Clean: out[2] == ""}, nil
 }
 
 func (g *treeGate) Submit(_ context.Context, _, _, _, base, pinBase, _ string, slot model.Slot) (GateJob, error) {
@@ -366,6 +393,9 @@ func (g *treeGate) Run(ctx context.Context, _, _, cluster string, job GateJob) (
 
 	g.mu.Lock()
 	lie, unknown, empty, void := g.lie, g.unknownStep, g.noSteps, g.void
+	if g.noTree {
+		tree = ""
+	}
 	g.mu.Unlock()
 
 	if void {
@@ -374,6 +404,15 @@ func (g *treeGate) Run(ctx context.Context, _, _, cluster string, job GateJob) (
 
 	if lie != "" {
 		tree = lie
+	}
+
+	return GateResult{Passed: passed, Report: "gate on " + tree, Head: head, Tree: tree, Steps: treeGateSteps(passed, unknown, empty)}, nil
+}
+
+// treeGateSteps are the steps that the tree gate reports: the command step, a step whose result is unknown when unknown is set, and none when empty is set.
+func treeGateSteps(passed, unknown, empty bool) []GateStep {
+	if empty {
+		return []GateStep{}
 	}
 
 	status := "fail"
@@ -386,11 +425,7 @@ func (g *treeGate) Run(ctx context.Context, _, _, cluster string, job GateJob) (
 		steps = append(steps, GateStep{Name: "tests", Status: "unknown"})
 	}
 
-	if empty {
-		steps = []GateStep{}
-	}
-
-	return GateResult{Passed: passed, Report: "gate on " + tree, Head: head, Tree: tree, Steps: steps}, nil
+	return steps
 }
 
 func (g *treeGate) ran() []string {

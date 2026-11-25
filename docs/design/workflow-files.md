@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `hand_off`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `base_tip`, `board_card`, `cancel`, `command`, `earlier_calls`, `earlier_reads`, `env`, `facts`, `first_of`, `gate`, `gather`, `hand_off`, `host_teardown`, `host_up`, `integration_pull`, `issue_assignees`, `issue_state`, `item_comment`, `item_create`, `item_list`, `item_read`, `item_status`, `item_stop`, `landing_proof`, `merge`, `now`, `patched`, `pr_closing`, `pr_comment`, `pr_history`, `pr_list`, `pr_open`, `pr_read`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `recv`, `round_cut`, `round_land`, `round_sync`, `run_read`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -81,7 +81,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `base_tip`, `issue_state`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `item_list`, `pr_list`, `run_read`, `preflight`, `earlier_calls`, `earlier_reads`, `pr_closing`, `base_tip`, `landing_proof`, `issue_state`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -342,6 +342,17 @@ The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_s
 - An empty `base` is refused before any read.
 - The read is a recorded step named `base_tip:<name>#<n>`, so a resumed run replays the first tip.
 - A read that fails ends the step with an error. A branch that is not there is a failed read, and so is a tip with no commit. The call never gives an empty tip.
+- A build with no batch host fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
+
+#### `landing_proof`
+
+`landing_proof(base, start, end, landed, name)` checks on the forge that each landed member is on the base, and returns `unproven`: one `struct(item, reason)` for each member that it cannot show there.
+
+- `start` and `end` are the tips of `base` before and after the landing, each a `struct(commit, tree)` as `base_tip` returns it. `landed` is a list of `struct(item, head)`.
+- A member is proven when its head is in the history of the base, or when the vehicle commit from `start` to `end` holds its change.
+- An empty `landed` list reads nothing and returns an empty `unproven` list.
+- The read is a recorded step named `landing_proof:<name>#<n>`, so a resumed run replays the first answer.
+- A read that fails ends the step with an error. A tip or a member that is not a struct with its text fields fails before any read.
 - A build with no batch host fails the call. A dry run does not fake the read: it reports the step as not run and ends there.
 
 #### `push`

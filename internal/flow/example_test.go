@@ -623,6 +623,8 @@ func TestExample_AGateThatCannotRunEndsTheRunBeforeTheFullReviewOrAnyFix(t *test
 
 // packageGate runs the real gate package on a local project whose gate command is killed by a signal on the first run and exits 0 on the next.
 type packageGate struct {
+	cleanTree
+
 	head, tree string
 	runs       *int
 }
@@ -680,6 +682,8 @@ func (diedThenDoneHost) WorkRoot(context.Context) (string, error) { return "/hom
 
 // hostDiedGate runs the real gate package on a project with a build host. The job of the first run died; the job of the next run succeeds.
 type hostDiedGate struct {
+	cleanTree
+
 	head, tree string
 	waits      *int
 }
@@ -711,6 +715,8 @@ func (g hostDiedGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateR
 // zeroTestGate runs the real gate package on a local project that sets test_report. The gate command exits 0 and writes a report with no test.
 // The first run writes a report with 0 tests; every later run writes one with 3.
 type zeroTestGate struct {
+	cleanTree
+
 	head, tree, dir string
 	runs            *int
 }

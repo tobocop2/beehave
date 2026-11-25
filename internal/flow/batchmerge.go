@@ -16,6 +16,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
@@ -45,10 +46,10 @@ var (
 type batchHost interface {
 	Issues(ctx context.Context, project, base string, integration int, landed []string) (batch.Report, error)
 	// Prove reads the forge to check that each landed member is on the base, merged or on the vehicle commit. It returns the item and the reason for each member it cannot prove.
-	Prove(ctx context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error)
-	Git(ctx context.Context, project, item string) (batch.Git, error)
+	Prove(ctx context.Context, project, base string, start, end landing.Tip, landed []landing.Member) ([]landing.Outcome, error)
+	Git(ctx context.Context, project, item string) (landing.GitCLI, error)
 	Checkout(ctx context.Context, project, item, commit string) (tree string, err error)
-	Tip(ctx context.Context, project, item, base string) (batch.Tip, error)
+	Tip(ctx context.Context, project, item, base string) (landing.Tip, error)
 	Intent(ctx context.Context, project, item, repo, base, tipTree string, now time.Time) (merge.Intent, error)
 	// Pull reads the standing of the pull request of an item: its state, draft flag, head, conflict, change requests and unresolved threads. A read that fails goes into Unread.
 	// A non-empty reviewed is the commit that was marked ready: a head with the tree of that commit is a rewrite. SetDraft marks it a draft, or ready for review when draft is false.
@@ -60,22 +61,21 @@ type batchHost interface {
 // batchCall are the arguments of a merge call after the checks.
 type batchCall struct {
 	name     string
-	members  []batch.Member
+	members  []workflow.PullRequest
 	settings MergeSettings
 	gateRun  []string
 	// integration is the number of the integration pull request, or 0 when the call names none.
 	integration int
 	// handOff is true when the owner merges: the call marks each member ready and watches it, and lands nothing.
 	handOff bool
-	// single is true for a call with `member`: one pull request, merged with the gate result that the call was given.
-	single bool
-	// gate is the `gate` argument of a single call, and gatedTree and expectTree are its trees. A call with no gate has none of them.
-	gate                  starlark.Value
-	gatedTree, expectTree string
+	// union is true for a call with `members`: the members of one gated union, merged in order with the gate result that the call was given.
+	union bool
+	// gate is the `gate` argument of a union call. A call with no gate has none.
+	gate starlark.Value
 }
 
 // batchMerge lands the pull requests of `prs` with one gate run for the whole set, and a split of the set when the gate is red.
-// With `hand_off` it marks them ready and watches them until the owner merges them. With `member` it merges one pull request.
+// With `members` it merges the members of one gated union in order.
 func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	call, err := s.batchCall(b, args, kwargs)
 	if err != nil {
@@ -86,12 +86,8 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, err
 	}
 
-	if call.single {
-		return s.mergeOne(call)
-	}
-
-	if call.handOff {
-		return s.handOff(call)
+	if call.union {
+		return s.mergeUnion(call)
 	}
 
 	return s.landBatch(call)
@@ -105,9 +101,9 @@ func (s *script) landBatch(call batchCall) (starlark.Value, error) { //nolint:ir
 	}
 
 	losses := &callLosses{}
-	deps := batch.Deps{Git: git, Gate: batchGate{s: s, run: call.gateRun, pinBase: call.settings.Base, losses: losses}, Base: &batchBase{s: s, call: call}, Steps: stepRecorder{s: s, call: call.name}, Name: call.name}
+	deps := batch.Deps{Git: git, Gate: batchGate{s: s, run: call.gateRun, pinBase: call.settings.Base, losses: losses}, Base: &batchBase{s: s, call: call, prefix: "batch"}, Steps: stepRecorder{s: s, call: call.name}, Name: call.name}
 
-	done, err := batch.Run(s.ctx, deps, call.members)
+	done, err := batch.Run(s.ctx, deps, batchMembers(call.members))
 	if err != nil {
 		return nil, fmt.Errorf("merge %q: %w", call.name, err)
 	}
@@ -142,28 +138,28 @@ func (s *script) batchOutcome(call batchCall, done batch.Result, losses []hostLo
 		return nil, fmt.Errorf("merge %q: %w", call.name, err)
 	}
 
-	return batchResult(done, report, unproven, losses, nil)
+	return batchResult(done, report, unproven, losses)
 }
 
 // batchProof checks as one recorded step that each merged member is on the base, so a replay returns the first proof and does not read the forge again.
 // A batch that landed nothing proves nothing.
-func (s *script) batchProof(call batchCall, done batch.Result) ([]batch.Outcome, error) {
-	landed := make([]batch.Member, 0, len(done.Merged))
+func (s *script) batchProof(call batchCall, done batch.Result) ([]landing.Outcome, error) {
+	landed := make([]landing.Member, 0, len(done.Merged))
 
 	for _, m := range call.members {
 		if slices.Contains(done.Merged, m.Item) {
-			landed = append(landed, m)
+			landed = append(landed, landing.Member{Item: m.Item, Head: m.Head})
 		}
 	}
 
 	if len(landed) == 0 {
-		return []batch.Outcome{}, nil
+		return []landing.Outcome{}, nil
 	}
 
-	return runStep(s.e, s.ctx, "batch:"+call.name+".prove", func(ctx context.Context) ([]batch.Outcome, error) {
-		unproven, err := s.e.deps.Batch.Prove(ctx, s.in.Project, call.settings.Base, done.Start, done.Tip, landed)
+	return runStep(s.e, s.ctx, "batch:"+call.name+".prove", func(ctx context.Context) ([]landing.Outcome, error) {
+		unproven, err := s.e.deps.Batch.Prove(ctx, s.in.Project, call.settings.Base, landing.Tip(done.Start), landing.Tip(done.Tip), landed)
 		if unproven == nil {
-			unproven = []batch.Outcome{}
+			unproven = []landing.Outcome{}
 		}
 
 		return unproven, err
@@ -189,21 +185,26 @@ func (s *script) batchIssues(call batchCall, done batch.Result) (batch.Report, e
 
 // batchGit makes the worktree of the item, then returns git over it. The worktree exists before the first git call, as it does for an agent step.
 // It asks first whether the gate may run here, so a refused call touches no worktree.
-func (s *script) batchGit(call batchCall) (batch.Git, error) { //nolint:ireturn // the interface of the batch host returns it
+func (s *script) batchGit(call batchCall) (landing.GitCLI, error) {
 	if err := s.batchRefusal(call); err != nil {
-		return nil, err
+		return landing.GitCLI{}, err
 	}
 
-	dir, err := s.tree(s.ctx)
+	return s.itemGit(s.ctx)
+}
+
+// itemGit makes the worktree of the item, then returns git over it.
+func (s *script) itemGit(ctx context.Context) (landing.GitCLI, error) {
+	dir, err := s.tree(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)
+		return landing.GitCLI{}, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)
 	}
 
 	if dir == "" {
-		return nil, fmt.Errorf("item %s of project %s has no folder for the union of merge", s.in.Item, s.in.Project)
+		return landing.GitCLI{}, fmt.Errorf("item %s of project %s has no folder for the union of merge", s.in.Item, s.in.Project)
 	}
 
-	return s.e.deps.Batch.Git(s.ctx, s.in.Project, s.in.Item)
+	return s.e.deps.Batch.Git(ctx, s.in.Project, s.in.Item)
 }
 
 // batchCall unpacks and checks the arguments of the call.
@@ -224,14 +225,14 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	return call, call.read(raw)
 }
 
-// read checks that the keywords make one form, then reads the member or the list.
+// read reads the members of a union or the list of a batch, then the settings.
 func (c *batchCall) read(raw mergeArgs) error {
 	if err := c.form(raw); err != nil {
 		return err
 	}
 
-	if given(raw.member) {
-		return c.fillOne(raw.member, raw.forbid, raw.own)
+	if raw.members != nil {
+		return c.fillUnion(raw.members, raw.forbid, raw.own)
 	}
 
 	return c.fill(raw.prs, raw.gateRun, raw.forbid, raw.own)
@@ -239,7 +240,7 @@ func (c *batchCall) read(raw mergeArgs) error {
 
 // mergeArgs are the arguments of a merge call that the call reads as Starlark values.
 type mergeArgs struct {
-	prs, member, own, forbid, gateRun starlark.Value
+	prs, members, own, forbid, gateRun starlark.Value
 }
 
 // unpack reads the keywords of a merge call into the call and into raw.
@@ -247,18 +248,28 @@ func (c *batchCall) unpack(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	set := &c.settings
 
 	return workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"prs": &raw.prs, "member": &raw.member, baseKeyword: &set.Base, repoKeyword: &set.Repo, holdKeyword: &set.Hold, ownKeyword: &raw.own, "forbid_text": &raw.forbid, "gate_run": &raw.gateRun,
-		"integration": &c.integration, nameKeyword: &c.name, handOffKeyword: &c.handOff,
-		kindGate: &c.gate, "gated_tree": &c.gatedTree, "expect_tree": &c.expectTree,
+		"prs": &raw.prs, membersKeyword: &raw.members, baseKeyword: &set.Base, repoKeyword: &set.Repo, holdKeyword: &set.Hold, ownKeyword: &raw.own, "forbid_text": &raw.forbid,
+		"gate_run": &raw.gateRun, "integration": &c.integration, nameKeyword: &c.name, kindGate: &c.gate,
 	})
 }
 
-// form refuses a call whose keywords make no form: `prs` with a list, or `member` with one pull request.
+// membersKeyword is the keyword of merge that lists the members of one gated union.
+const membersKeyword = "members"
+
+// form refuses a call that names both `members` and `prs`, or neither, and a call with `members` that names a keyword of a batch with a gate of its own.
 func (c *batchCall) form(raw mergeArgs) error {
-	return workflow.MergeForm(workflow.MergeKeywords{
-		Prs: raw.prs != nil, Member: given(raw.member), GateRun: given(raw.gateRun), Integration: c.integration != 0, HandOff: c.handOff,
-		Gate: given(c.gate), GatedTree: c.gatedTree != "", ExpectTree: c.expectTree != "",
-	})
+	switch {
+	case raw.members != nil && raw.prs != nil:
+		return errors.New("merge takes `members` or `prs`, not both. Pass the members of the gated union in `members`")
+	case raw.members == nil && raw.prs == nil:
+		return errors.New("merge needs `members`: the members of the gated union, one struct(item = ..., head = ..., closes = [...]) for each, in the order to land them")
+	case raw.members != nil && (raw.gateRun != nil || c.integration != 0):
+		return errors.New("merge with `members` lands a union that a gate call of this run gated, so it takes no `gate_run` and no `integration`. Remove them from the call")
+	case raw.prs != nil && given(c.gate):
+		return errors.New("merge with `prs` runs its own gate, so it takes no `gate`. Remove `gate` from the call, or pass the gated union in `members`")
+	}
+
+	return nil
 }
 
 // given is true for an argument that the call passed and did not leave as None.
@@ -266,56 +277,30 @@ func given(v starlark.Value) bool {
 	return v != nil && v != starlark.None
 }
 
-// fillOne checks the settings of a call with `member` and reads the member.
-func (c *batchCall) fillOne(member, forbid, own starlark.Value) error {
-	if err := errors.Join(workflow.NotEmpty("base", c.settings.Base), workflow.NotEmpty("repo", c.settings.Repo)); err != nil {
+// fillUnion checks the settings of a call with `members` and reads the members.
+func (c *batchCall) fillUnion(members, forbid, own starlark.Value) (err error) {
+	if err = errors.Join(workflow.NotEmpty("base", c.settings.Base), workflow.NotEmpty("repo", c.settings.Repo)); err != nil {
 		return err
 	}
 
-	pr, err := workflow.Member(member)
-	if err != nil {
+	if c.members, err = workflow.Members(members); err != nil {
 		return err
 	}
 
-	c.single = true
-	c.members = []batch.Member{batch.Member(pr)}
+	c.union = true
 
 	return c.settings.read(forbid, own)
-}
-
-// handOffKeyword is the keyword of merge that hands the landing to the owner.
-const handOffKeyword = "hand_off"
-
-// refuseLanding refuses a keyword that only a landing reads. A call with `hand_off` lands nothing, so each of them would do nothing.
-func (c *batchCall) refuseLanding(gateRun, forbid, own starlark.Value) error {
-	if !c.handOff {
-		return nil
-	}
-
-	set := map[string]bool{"hold": c.settings.Hold != "", "own": own != nil, "forbid_text": forbid != nil, "gate_run": gateRun != nil, "integration": c.integration != 0}
-
-	for _, keyword := range workflow.HandOffLanding() {
-		if set[keyword] {
-			return workflow.HandOffTakes(keyword)
-		}
-	}
-
-	return nil
 }
 
 // fill checks the settings of the call and reads the members, the gate program and the refusal settings from the raw arguments.
 func (c *batchCall) fill(prs, gateRun, forbid, own starlark.Value) (err error) {
 	set := &c.settings
 
-	if err = c.refuseLanding(gateRun, forbid, own); err != nil {
-		return err
-	}
-
 	if err = errors.Join(workflow.NotEmpty("base", set.Base), workflow.NotEmpty("repo", set.Repo)); err != nil {
 		return err
 	}
 
-	if c.members, err = members(prs); err != nil {
+	if c.members, err = workflow.PullRequests(prs); err != nil {
 		return err
 	}
 
@@ -350,27 +335,32 @@ func (s *script) batchScope(name string) error {
 	return nil
 }
 
-// members reads the `prs` argument: a list of structs with the text fields `item` and `head`, and the optional bool field `approved`.
-func members(v starlark.Value) ([]batch.Member, error) {
-	prs, err := workflow.PullRequests(v)
-	if err != nil {
-		return nil, err
-	}
-
+// batchMembers are the members of the `prs` argument as the batch runner takes them.
+func batchMembers(prs []workflow.PullRequest) []batch.Member {
 	list := make([]batch.Member, len(prs))
 	for i, pr := range prs {
 		list[i] = batch.Member(pr)
 	}
 
-	return list, nil
+	return list
+}
+
+// landingOutcomes are the outcomes of the batch runner as the result lists them: the item and the reason.
+func landingOutcomes(list []batch.Outcome) []landing.Outcome {
+	out := make([]landing.Outcome, len(list))
+	for i, o := range list {
+		out[i] = landing.Outcome{Item: o.Item, Reason: o.Reason}
+	}
+
+	return out
 }
 
 // batchResult turns the result of a batch and the report of the read after it into the struct of the builtin.
 // `findings` holds one line for each problem of the issues, `note` says why no read ran, and `unproven` holds an item and a reason for each merged member
 // that is neither in the history of the base nor on the vehicle commit. An item of `merged` that is also named in `unproven` has not landed.
 // `host_loss` lists the record of each lost gate job of the call, and `host_losses` is the count of the host losses of the item tree that the last record read, or 0.
-// `moved` holds the item and the new head of each member of a hand-off that went back to draft because its head moved. It is empty for a landing.
-func batchResult(done batch.Result, report batch.Report, unproven []batch.Outcome, losses []hostLoss, moved []batch.Member) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+// `moved` is empty for a landing: only a hand-off lists the members whose head moved.
+func batchResult(done batch.Result, report batch.Report, unproven []landing.Outcome, losses []hostLoss) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	recorded, count, err := lossFields(losses)
 	if err != nil {
 		return nil, err
@@ -378,15 +368,15 @@ func batchResult(done batch.Result, report batch.Report, unproven []batch.Outcom
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 		mergedField:   textList(done.Merged),
-		"rejected":    outcomes(done.Rejected),
-		"deferred":    outcomes(done.Deferred),
-		"tip":         starlark.String(done.Tip.Commit),
+		rejectedField: outcomes(landingOutcomes(done.Rejected)),
+		deferredField: outcomes(landingOutcomes(done.Deferred)),
+		tipField:      starlark.String(done.Tip.Commit),
 		treeName:      starlark.String(done.Tip.Tree),
 		"gates":       starlark.MakeInt(done.Gates),
 		"findings":    textList(report.Findings),
-		"note":        starlark.String(report.Note),
-		"unproven":    outcomes(unproven),
-		"moved":       movedList(moved),
+		noteField:     starlark.String(report.Note),
+		unprovenField: outcomes(unproven),
+		movedField:    movedList(nil),
 		hostLossKey:   recorded,
 		hostLossesKey: count,
 	}), nil
@@ -417,7 +407,8 @@ func textList(lines []string) *starlark.List {
 	return starlark.NewList(out)
 }
 
-func outcomes(list []batch.Outcome) *starlark.List {
+// outcomes turns members with a reason into a Starlark list of struct(item, reason).
+func outcomes(list []landing.Outcome) *starlark.List {
 	out := make([]starlark.Value, len(list))
 	for i, o := range list {
 		out[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(o.Item), reasonKey: starlark.String(o.Reason)})
@@ -647,21 +638,35 @@ func everyStepIsAPass(steps []GateStep) bool {
 	return len(steps) > 0
 }
 
-// batchBase reads the base tip and merges the members.
+// batchBase reads the base tip and merges the members. prefix is the first word of its step names: batch for a call with `prs`, merge for a union.
 type batchBase struct {
-	s    *script
-	call batchCall
+	s      *script
+	call   batchCall
+	prefix string
 }
 
 func (b *batchBase) Tip(ctx context.Context) (batch.Tip, error) {
+	tip, err := b.tip(ctx)
+
+	return batch.Tip(tip), err
+}
+
+// tip reads the base tip of the call on the forge.
+func (b *batchBase) tip(ctx context.Context) (landing.Tip, error) {
 	return b.s.e.deps.Batch.Tip(ctx, b.s.in.Project, b.s.in.Item, b.call.settings.Base)
 }
 
-// Merge records the intent of the member, then merges through merge.Run with that intent. The intent step comes first, so a merge that the forge
-// made before a crash counts as ours on the replay. A mergeable state that stays UNKNOWN is read again after a durable sleep.
-// The statuses go to the merge run in its settings, and the run posts them after its guards and right before its merge call.
+// Merge merges a member of a batch with `prs`, whose runner reads the tip before the merge itself.
 func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string, statuses []model.CommitStatus) (batch.MergeOutcome, error) {
-	read, err := b.recordedIntent(m)
+	return b.mergeMember(ctx, workflow.PullRequest(m), "", prefixTree, statuses)
+}
+
+// mergeMember records the intent of the member, then merges through merge.Run with that intent. The intent step comes first, so a merge that the forge
+// made before a crash counts as ours on the replay. A mergeable state that stays UNKNOWN is read again after a durable sleep.
+// A non-empty expect is the tree that the base tip must have: the intent step of a tip with another tree ends the member as unsettled with no merge.
+// The statuses go to the merge run in its settings, and the run posts them after its guards and right before its merge call.
+func (b *batchBase) mergeMember(ctx context.Context, m workflow.PullRequest, expect, prefixTree string, statuses []model.CommitStatus) (batch.MergeOutcome, error) {
+	read, err := b.recordedIntent(m, expect)
 	if err != nil {
 		return batch.MergeOutcome{}, err
 	}
@@ -674,15 +679,15 @@ func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string
 }
 
 // recordedIntent is the intent step of the member.
-func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
+func (b *batchBase) recordedIntent(m workflow.PullRequest, expect string) (intentRead, error) {
 	return runStep(b.s.e, b.s.ctx, b.stepName("intent", m.Item, 1), func(ctx context.Context) (intentRead, error) {
-		return b.intent(ctx, m)
+		return b.intent(ctx, m, expect)
 	}, dbos.WithStepMaxRetries(stepRetries))
 }
 
 // memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues, the closed issues and the statuses are facts about this
 // member only, so the call settings never carry them.
-func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, statuses []model.CommitStatus) MergeSettings {
+func (b *batchBase) memberSettings(m workflow.PullRequest, prefixTree string, intent *merge.Intent, statuses []model.CommitStatus) MergeSettings {
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept, settings.Closing = prefixTree, intent, m.Approved, m.Kept, m.Closing
 	settings.OwnDraft, settings.Statuses, settings.Closes = m.OwnDraft, statuses, m.Closes
@@ -691,7 +696,7 @@ func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *me
 }
 
 // mergeReads merges the member and reads again after a durable sleep while the mergeable state stays UNKNOWN, up to unknownReads reads.
-func (b *batchBase) mergeReads(ctx context.Context, m batch.Member, settings MergeSettings) (batch.MergeOutcome, error) {
+func (b *batchBase) mergeReads(ctx context.Context, m workflow.PullRequest, settings MergeSettings) (batch.MergeOutcome, error) {
 	for read := 1; ; read++ {
 		got, err := b.mergeRead(ctx, m, settings)
 		if err != nil {
@@ -714,7 +719,7 @@ func (b *batchBase) mergeReads(ctx context.Context, m batch.Member, settings Mer
 }
 
 // mergeRead runs one merge of the member as a child run on the exclusive queue.
-func (b *batchBase) mergeRead(ctx context.Context, m batch.Member, settings MergeSettings) (merge.Result, error) {
+func (b *batchBase) mergeRead(ctx context.Context, m workflow.PullRequest, settings MergeSettings) (merge.Result, error) {
 	ran, err := b.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindMerge, Run: workflowID(b.s.ctx), RunItem: b.s.in.Item, Project: b.s.in.Project, Item: m.Item, Head: m.Head, Settings: settings})
 	if err != nil {
 		return ran.Merge, err
@@ -724,7 +729,7 @@ func (b *batchBase) mergeRead(ctx context.Context, m batch.Member, settings Merg
 }
 
 // intentRead is the record of the intent step: the intent, the reason the member cannot be merged because its pull request is not OPEN,
-// or Moved when the call named an expect_tree and the base tip has another tree.
+// or Moved when the base tip has another tree than the members before it make.
 type intentRead struct {
 	Intent  merge.Intent
 	Refused string
@@ -745,75 +750,32 @@ func (r intentRead) stop() (out batch.MergeOutcome, stopped bool) {
 
 // intent reads the base tip, then the pull request of the member against that tip. A pull request that is not OPEN is a refusal of the member,
 // recorded as a result: DBOS keeps the text of a recorded error and not its type, so an error would end the run for good.
-// A tip whose tree is not the expect_tree of the call is recorded as moved, and the pull request is not read.
-func (b *batchBase) intent(ctx context.Context, m batch.Member) (intentRead, error) {
-	tip, err := b.Tip(ctx)
+// A tip whose tree is not a non-empty expect is recorded as moved, and the pull request is not read.
+func (b *batchBase) intent(ctx context.Context, m workflow.PullRequest, expect string) (intentRead, error) {
+	tip, err := b.tip(ctx)
 	if err != nil {
 		return intentRead{}, err
 	}
 
-	if b.call.expectTree != "" && tip.Tree != b.call.expectTree {
+	if expect != "" && tip.Tree != expect {
 		return intentRead{Moved: true}, nil
 	}
 
-	return b.readIntent(ctx, m, tip)
-}
-
-// readIntent reads the pull request of the member against the tip, then checks that the gate belongs to the member.
-func (b *batchBase) readIntent(ctx context.Context, m batch.Member, tip batch.Tip) (intentRead, error) {
 	intent, err := b.s.e.deps.Batch.Intent(ctx, b.s.in.Project, m.Item, b.call.settings.Repo, b.call.settings.Base, tip.Tree, b.s.e.deps.Clock.now())
 	if errors.Is(err, ErrMemberNotOpen) {
 		return intentRead{Refused: err.Error()}, nil
 	}
 
-	if err != nil {
-		return intentRead{}, err
-	}
-
-	refused, err := b.gateBinding(ctx, m, tip)
-
-	return intentRead{Intent: intent, Refused: refused}, err
-}
-
-// mergeMade is the result of merging the head of the member into the base tip without a working copy.
-func (b *batchBase) mergeMade(ctx context.Context, m batch.Member, tip batch.Tip) (batch.MergeResult, error) {
-	git, err := b.s.e.deps.Batch.Git(ctx, b.s.in.Project, b.s.in.Item)
-	if err != nil {
-		return batch.MergeResult{}, err
-	}
-
-	return git.MergeTree(ctx, tip.Commit, m.Head)
-}
-
-// gateBinding says why the gate of a call with `gate` does not belong to the member, or gives an empty text. The tree that the merge makes is the tree of the
-// base tip with the head of the member merged in, so that is the tree that the gate must have run on. The check comes before any status is posted.
-func (b *batchBase) gateBinding(ctx context.Context, m batch.Member, tip batch.Tip) (string, error) {
-	if b.call.gatedTree == "" {
-		return "", nil
-	}
-
-	made, err := b.mergeMade(ctx, m, tip)
-	if err != nil {
-		return "", err
-	}
-
-	switch {
-	case made.Conflict:
-		return fmt.Sprintf("the head of item %s conflicts with the base tip, so no gate ran on the tree that the merge makes", m.Item), nil
-	case made.Tree != b.call.gatedTree:
-		return fmt.Sprintf("the gate ran on the tree %s, and the merge of item %s makes the tree %s. Run the gate on the tree that the merge makes", b.call.gatedTree, m.Item, made.Tree), nil
-	}
-
-	return "", nil
+	return intentRead{Intent: intent}, err
 }
 
 // readSeparator comes between a step name and the number of a later read. An item id has no "@", so the name of a later read of one item
 // never equals the name of the first read of another item.
 const readSeparator = "@"
 
-// stepName names a step of one member: batch:<name>.<kind>#<item>, and a later read of the same member adds @<read>.
+// stepName names a step of one member: <prefix>:<name>.<kind>#<item>, and a later read of the same member adds @<read>.
 func (b *batchBase) stepName(kind, item string, read int) string {
-	name := fmt.Sprintf("batch:%s.%s#%s", b.call.name, kind, item)
+	name := fmt.Sprintf("%s:%s.%s#%s", b.prefix, b.call.name, kind, item)
 	if read > 1 {
 		name += fmt.Sprintf("%s%d", readSeparator, read)
 	}

@@ -159,6 +159,9 @@ type gate interface {
 	Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error)
 	Run(ctx context.Context, project, item, host string, job GateJob) (GateResult, error)
 	Key(ctx context.Context, project, item, host, base, pinBase string) (GateKey, error)
+	// State reads the worktree of the item with the reader of the project gate: its folder, its head, the tree of that head and whether it has no change
+	// that is not committed. The program of a gate call reads it before and after the program runs. It reads only.
+	State(ctx context.Context, project, item string) (dir string, state gatepkg.State, err error)
 }
 
 // logins picks the agent login for an item of a project and returns its runner name.

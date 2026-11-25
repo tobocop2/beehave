@@ -28,6 +28,14 @@ func TestCheckSandboxedGates_RefusesEachGateAndMergeCallThatRunsAGateHere(t *tes
 	assert.Contains(t, found[2].Text, "merge")
 }
 
+func TestCheckSandboxedGates_AcceptsAMergeOfAUnionWhichRunsNoGate(t *testing.T) {
+	t.Parallel()
+
+	file := folder(t, map[string]string{"workflow.star": "def main(item):\n    merge(members = [], base = \"main\", repo = \"o/r\", name = \"c\")\n"}, "workflow.star")
+
+	assert.Empty(t, workflow.CheckSandboxedGates(file, "near", refusal, true))
+}
+
 func TestCheckSandboxedGates_AcceptsAProgramGateThatNamesAHost(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -87,16 +88,16 @@ func (w *world) Version(context.Context) (string, error) {
 	return w.version, w.failVersion
 }
 
-func (w *world) MergeTree(_ context.Context, ours, theirs string) (MergeResult, error) {
+func (w *world) MergeTree(_ context.Context, ours, theirs string) (landing.MergeResult, error) {
 	w.mergeTreeCalls++
 	if w.mergeTreeCalls == w.failMergeTree {
-		return MergeResult{}, errBoom
+		return landing.MergeResult{}, errBoom
 	}
 
 	have, item := itemsOf(ours), itemsOf(theirs)[0]
 	clash := w.conflict != nil && w.conflict(have, item)
 
-	return MergeResult{Tree: tree(append(slices.Clone(have), item)), Conflict: clash}, nil
+	return landing.MergeResult{Tree: tree(append(slices.Clone(have), item)), Conflict: clash}, nil
 }
 
 func (w *world) NewCommit(_ context.Context, treeID string, _ ...string) (string, error) {

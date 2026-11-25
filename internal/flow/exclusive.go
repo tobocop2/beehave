@@ -245,7 +245,7 @@ func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOut
 				}
 			}
 
-			return e.programGateOutputs(c, in.Request, in.Head, in.gateSlot())
+			return e.programGateOutputs(c, in.Request, in.gateSlot())
 		})
 	}
 
