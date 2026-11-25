@@ -41,6 +41,7 @@ func NewHost(target string, config model.HostConfig, ssh proc.Runner, opts ...Op
 		return nil, err
 	}
 
+	l = l.WithCredentials(config.Credentials)
 	opts = append([]Option{WithLimit(config.MaxRun)}, opts...)
 
 	return &Host{Queue: New(l, config, noSlot{}, opts...), link: l}, nil
@@ -63,9 +64,17 @@ func checkConfig(config model.HostConfig) (block, error) {
 	return values, nil
 }
 
+// CheckCredentials refuses a head node declared credentials = "none" that ssh would give a credential of the owner. It connects to nothing.
+func (h *Host) CheckCredentials(ctx context.Context) error { return h.link.CheckCredentials(ctx) }
+
 // Up checks that the head node answers, that Slurm lists its nodes and that flock exists there. It is the first call. It is idempotent.
 // The disk is not read here: Status reports it, and the guards refuse a disk that cannot be read.
+// A host declared credentials = "none" is checked first, before any call reaches it.
 func (h *Host) Up(ctx context.Context) error {
+	if err := h.CheckCredentials(ctx); err != nil {
+		return err
+	}
+
 	if _, err := h.draining(ctx); err != nil {
 		return fmt.Errorf("cannot use the head node. Check that `ssh %s` works from this computer and that Slurm runs there: %w", h.link.Target(), err)
 	}

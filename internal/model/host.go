@@ -70,6 +70,26 @@ type HostConfig struct {
 	GateSlots int
 	// Block is the config block of the chosen provider, when the provider declares one and the project gave it. The provider reads its keys once, in its constructor.
 	Block *Block
+	// Credentials is HostCredentialsNone when the owner declares that the host gets no credential of the owner. It is empty otherwise.
+	Credentials HostCredentials
+}
+
+// HostCredentials is what the owner declares about the credentials that a build host gets.
+type HostCredentials string
+
+// HostCredentialsNone declares that the host gets no SSH agent, key or secret variable of the owner.
+const HostCredentialsNone HostCredentials = "none"
+
+// ErrUnknownHostCredentials is returned when text names no value of host.credentials.
+var ErrUnknownHostCredentials = errors.New(`unknown value: the only value is "none"`)
+
+// ParseHostCredentials returns the credentials value that text names.
+func ParseHostCredentials(text string) (HostCredentials, error) {
+	if text == string(HostCredentialsNone) {
+		return HostCredentialsNone, nil
+	}
+
+	return "", fmt.Errorf("%w; got %q", ErrUnknownHostCredentials, text)
 }
 
 // RunLimitSeconds is MaxRun in whole seconds, rounded up, so the limit that a host or a wrap writes is never shorter than MaxRun.

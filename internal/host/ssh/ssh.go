@@ -95,7 +95,7 @@ func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option
 		return nil, err
 	}
 
-	h := &Host{config: config, values: values, link: l}
+	h := &Host{config: config, values: values, link: l.WithCredentials(config.Credentials)}
 	set := h.settingsOf(opts)
 
 	h.nonce, h.bank = set.nonce, set.bank
@@ -151,9 +151,17 @@ func (h *Host) run(ctx context.Context, name string, words ...string) (string, e
 	return result.Stdout, nil
 }
 
+// CheckCredentials refuses a host declared credentials = "none" that ssh would give a credential of the owner. It connects to nothing.
+func (h *Host) CheckCredentials(ctx context.Context) error { return h.link.CheckCredentials(ctx) }
+
 // Up checks that the machine answers, that linger is on for the login user, that the user manager runs, that systemd is new enough,
 // and that the work root exists with the state folder in it. beehave never turns linger on: it is a setting of the owner of the machine.
+// A host declared credentials = "none" is checked first, before any call reaches it.
 func (h *Host) Up(ctx context.Context) error {
+	if err := h.CheckCredentials(ctx); err != nil {
+		return err
+	}
+
 	user, err := h.run(ctx, "id", "id", "-un")
 	if err != nil {
 		return fmt.Errorf("cannot reach the host. Check that `ssh %s` works from this computer: %w", h.target(), err)

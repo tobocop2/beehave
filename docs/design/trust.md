@@ -196,7 +196,7 @@ The step fails closed: no sandbox capability, Windows, a CLI below the minimum v
 
 A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
+A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check runs `ssh -G` with the ssh options of the link of the host, so a `Match` block on the address applies. It refuses any `forwardagent` value but `no`, any `sendenv` but `LANG` and `LC_*`, and a `setenv` with a secret name. Every ssh call to such a host also passes `ForwardAgent=no` and `ClearAllForwardings=yes`. The key and the check are built (see [hosts](hosts.md#the-host-block)); the start rule of a foreign pull request is not built yet.
 
 ### Platform gaps
 

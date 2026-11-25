@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -60,6 +61,8 @@ type Link struct {
 	ssh     proc.Runner
 	options []string // the ssh options of a machine link; empty for a link whose ssh config entry holds them
 	guarded bool     // the target follows a "--", so it cannot become an option
+	// credentials is the declaration of the host. A host declared "none" gets the forced options on every call.
+	credentials model.HostCredentials
 }
 
 // ErrConfig is returned by ForMachine for a setting that could change the ssh command line.
@@ -213,21 +216,30 @@ func (r remoteRunner) Run(ctx context.Context, args []string) model.CommandResul
 
 // args returns the ssh arguments for a command. ssh joins the words with spaces and sends them to the shell of the host, so each word is quoted.
 func (l *Link) args(words []string) []string {
-	args := []string{"-o", "BatchMode=yes", l.target}
-
-	if l.guarded {
-		args = nil
-
-		for _, option := range l.options {
-			args = append(args, "-o", option)
-		}
-
-		args = append(args, "--", l.target)
-	}
+	args := l.head(l.forced())
 
 	for _, word := range words {
 		args = append(args, model.ShellQuote(word))
 	}
 
 	return args
+}
+
+// head returns the options and the target of an ssh call, with extra after the options of the link. A link with no options of a machine passes BatchMode only.
+func (l *Link) head(extra []string) []string {
+	if !l.guarded {
+		return append(optionWords(append([]string{"BatchMode=yes"}, extra...)), l.target)
+	}
+
+	return append(optionWords(append(slices.Clone(l.options), extra...)), "--", l.target)
+}
+
+// optionWords returns each option after its "-o".
+func optionWords(options []string) []string {
+	var words []string
+	for _, option := range options {
+		words = append(words, "-o", option)
+	}
+
+	return words
 }
