@@ -102,7 +102,9 @@ func stepKey(ctx context.Context) string {
 }
 
 // withJobKey returns the context of a step with the job key. It stays a step context, so the readers of the run in the step body still find it.
-func withJobKey(step dbos.Context, key string) context.Context {
+func withJobKey(ctx context.Context, key string) context.Context {
+	step, _ := ctx.(dbos.Context) //nolint:errcheck // the workflow library runs every step body with a DBOS context
+
 	return dbos.From(step, host.WithJobKey(step, key))
 }
 
@@ -114,8 +116,7 @@ func runStep[T any](e *Engine, ctx dbos.Context, name string, fn func(context.Co
 	)
 
 	out, err := dbos.RunAsStep(ctx, func(c context.Context) (T, error) {
-		step, _ := c.(dbos.Context) //nolint:errcheck // the workflow library runs every step body with a DBOS context
-		out, fnErr := fn(withJobKey(step, stepKey(step)))
+		out, fnErr := fn(withJobKey(c, stepKey(c)))
 		ran, own = true, e.scrub(fnErr)
 
 		return out, own

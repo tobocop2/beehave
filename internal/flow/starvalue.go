@@ -25,7 +25,7 @@ type stepResult struct {
 	Final   bool     `json:"final,omitempty"`
 	Stopped *Stopped `json:"stopped,omitempty"`
 	// Again is true for a try of a command call that asks for another try.
-	Again   bool     `json:"again,omitempty"`
+	Again bool `json:"again,omitempty"`
 }
 
 // UnmarshalJSON reads a recorded step with each number kept as a json.Number, so that a replay holds the digits and the int or float kind
