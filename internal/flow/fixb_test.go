@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -48,8 +49,19 @@ func cancelledRunWaitingForTheOwner(t *testing.T) (*harness, *Engine, *Client) {
 
 	require.Error(t, receive(t, done).err)
 	waitOn(t, condition(func() bool { return len(harness.life.releasedBy()) == 1 }))
+	waitOn(t, waiting[struct{}]{what: "the give-back of the canceled claim to end", read: func() (struct{}, bool, error) {
+		pending, err := pendingCancels(engine.dir, engine.logger)
+		_, marked := pending[testRun]
+
+		return struct{}{}, err == nil && !marked, err
+	}})
 
 	return harness, engine, client
+}
+
+// lifecycleTrail names the claims released so far and the lifecycle steps the fake ran, for the message of a failed wait or assertion.
+func lifecycleTrail(h *harness) string {
+	return fmt.Sprintf("releases %v, lifecycle steps %v", h.life.releasedBy(), h.life.seen())
 }
 
 func TestResume_TakesAFreshClaimAndTheRunUsesItsTokenForBeatAndRelease(t *testing.T) {
@@ -61,11 +73,11 @@ func TestResume_TakesAFreshClaimAndTheRunUsesItsTokenForBeatAndRelease(t *testin
 	require.NoError(t, client.Resume(testItem))
 	assert.Equal(t, 2, countOf(harness.life.seen(), "claim"), "the resume takes a new claim")
 
-	waitOn(t, condition(func() bool {
+	waitOn(t, waiting[struct{}]{what: "the run to beat with the fresh token", last: func() string { return lifecycleTrail(harness) }, read: func() (struct{}, bool, error) {
 		harness.tick(t)
 
-		return slices.Contains(harness.beats.seen(), testProject+"/owner-12#2")
-	}))
+		return struct{}{}, slices.Contains(harness.beats.seen(), testProject+"/owner-12#2"), nil
+	}})
 
 	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	waitOn(t, waiting[struct{}]{what: "the run to be done", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
@@ -74,7 +86,7 @@ func TestResume_TakesAFreshClaimAndTheRunUsesItsTokenForBeatAndRelease(t *testin
 		return struct{}{}, err == nil && rows[0].State == runDone, nil
 	}})
 
-	assert.Equal(t, []string{"owner-12", "owner-12#2"}, harness.life.releasedBy(), "the release uses the fresh token")
+	assert.Equal(t, []string{"owner-12", "owner-12#2"}, harness.life.releasedBy(), "the release uses the fresh token; "+lifecycleTrail(harness))
 }
 
 func TestResume_RefusesWhenTheFreshClaimCannotBeTaken(t *testing.T) {
