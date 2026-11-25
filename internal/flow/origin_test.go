@@ -382,7 +382,7 @@ func TestStart_TheCheckOfALaterReadJudgesThePullRequestThatTheSameReadFound(t *t
 	}
 }
 
-func TestStart_ALaterReadOfAnotherItemDoesNotAskWhoWroteTheItemOfTheRun(t *testing.T) {
+func TestStart_ALaterReadOfAnotherItemJudgesNoAuthor(t *testing.T) {
 	t.Parallel()
 
 	for name, body := range map[string]string{
@@ -421,12 +421,14 @@ func TestStart_ALaterReadInAProjectWithNoForgeJudgesNoPullRequest(t *testing.T) 
 	t.Parallel()
 
 	h := newHarness(t)
-	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "OWNER"), originOf("pull", "CONTRIBUTOR")}}
+	// The start of a project with no forge reads no pull request, so the preflight takes the first answer: a foreign pull request.
+	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "CONTRIBUTOR")}}
 	h.preflight = reads
 
 	_, err := walkBody(t, h, "preflight()\n")
 
 	require.NoError(t, err)
+	assert.Equal(t, []string{"issue " + testItem, "preflight " + testItem}, reads.items())
 }
 
 func TestDryPreflight_FindsNoIssue(t *testing.T) {
