@@ -129,6 +129,22 @@ The example refuses any other key under `round`.
 - `print`.
 - An old `.hcl` file. The refusal names the file.
 
+### `beehave init`
+
+`beehave init` runs in the top folder of a git repository. Git decides: a subfolder, a folder with an empty `.git` folder inside a repository, a bare repository and the inside of a `.git` folder are refused. If git is not on PATH, init says so. It writes `projects/<name>.star` into the config folder, and `workflow.star` and `prompts/` (`plan.md`, `implement.md`, `review.md`, `fix.md`) into the repository. The workflow and the prompts are the files of `examples/local`.
+
+The project file holds `source` (the absolute path of the repository), `base_branch`, `sandbox = "on"`, `gate` and `test_report`. The flags set the values:
+
+| Flag | Default |
+|---|---|
+| `--config` | `$BEEHAVE_CONFIG`, then `~/.config/beehave` |
+| `--name` | The folder name of the repository. A name uses letters, digits, `-`, `_` and `.`, with no leading dot. |
+| `--base-branch` | The local branch that `git symbolic-ref HEAD` names, so a branch with no commit yet counts. A detached HEAD, or a HEAD that names a remote ref, needs the flag. |
+| `--gate` | `make check` |
+| `--test-report` | `reports/*.xml` |
+
+`init` checks every target before it writes. If any target exists, it names each one, exits non-zero and writes nothing. It has no flag to replace a file, and a symbolic link at a target counts as a file. A `prompts` folder or a `projects` folder that is a symbolic link is followed, because the user made the link. If a write fails, it names the files that it already wrote and does not remove them. It writes no `runners.star`, makes no commit and stages nothing.
+
 ### `beehave check config`
 
 `beehave check config` loads the folder and prints one line for each problem, with the file path. It also runs the workflow check on each workflow file, and reports it together with any adapter problem. It exits 2 when it finds any problem.

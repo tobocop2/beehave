@@ -61,7 +61,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal, info.GateList, info.Hooks), newDoctorCommand(ctx, env, info.Doctor, info.Registry))
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal, info.GateList, info.Hooks), newDoctorCommand(ctx, env, info.Doctor, info.Registry), newInitCommand(ctx, env))
 	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items, registry: info.Registry, ownProgram: info.OwnProgram, console: info.Console}
 	commands.add(root)
 	commands.addItems(root)
