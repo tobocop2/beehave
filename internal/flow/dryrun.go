@@ -682,3 +682,6 @@ func (dryPreflight) IssueAssignees(context.Context, string, string, int) ([]stri
 func (dryPreflight) IssueAuthor(context.Context, string, string) (model.Authored, error) {
 	return model.Authored{}, nil
 }
+
+// SameItem keys items as their text: the dry run reads no tracker.
+func (dryPreflight) SameItem(_, a, b string) (bool, error) { return a == b, nil }

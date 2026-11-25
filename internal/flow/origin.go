@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -101,9 +102,29 @@ func (e *Engine) mayHoldForeign(ctx context.Context, in ItemInput) (string, bool
 	return "", true
 }
 
-// owns reports whether a later read of the item with the id judges its author: the id names the item of the run, or is empty, and the project has a forge.
-func (s *script) owns(id string) bool {
-	return (id == "" || id == s.in.Item) && s.e.facts(s.in.Project).Forge != ""
+// itemOf is the item that a later read with the id reads: the id, or the item of the run when the id is empty. An id that the run refuses as an item is refused.
+func (s *script) itemOf(id string) (string, error) {
+	item := cmp.Or(id, s.in.Item)
+
+	return item, checkItemID(item)
+}
+
+// owns reports whether a later read of the item judges its author: the project has a forge, and the item is the item of the run as its tracker keys it.
+func (s *script) owns(item string) (bool, error) {
+	if s.e.facts(s.in.Project).Forge == "" {
+		return false, nil
+	}
+
+	if item == s.in.Item {
+		return true, nil
+	}
+
+	same, err := s.e.deps.Preflight.SameItem(s.in.Project, item, s.in.Item)
+	if err != nil {
+		return false, fmt.Errorf("ask the tracker whether item %s is item %s: %w", item, s.in.Item, err)
+	}
+
+	return same, nil
 }
 
 // admitOwn applies the rule of the start again to the pull request that a later read of the item of the run found, because a pull request can open

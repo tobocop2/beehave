@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 
@@ -44,10 +43,23 @@ func (s *script) prRead(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return nil, err
 	}
 
-	return s.durable(prReadKind, label, func(ctx context.Context, _ string) (stepResult, error) {
-		own := s.owns(id)
+	item, err := s.itemOf(id)
+	if err != nil {
+		return nil, err
+	}
 
-		facts, err := s.e.deps.Preflight.ReadPull(ctx, s.in.Project, cmp.Or(id, s.in.Item), own)
+	return s.durable(prReadKind, label, s.readPull(item))
+}
+
+// readPull is the recorded read of one pr_read call, on the pull request of the item.
+func (s *script) readPull(item string) func(context.Context, string) (stepResult, error) {
+	return func(ctx context.Context, _ string) (stepResult, error) {
+		own, err := s.owns(item)
+		if err != nil {
+			return stepResult{}, err
+		}
+
+		facts, err := s.e.deps.Preflight.ReadPull(ctx, s.in.Project, item, own)
 		if err != nil {
 			return stepResult{}, err
 		}
@@ -57,7 +69,7 @@ func (s *script) prRead(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		}
 
 		return stepResult{Outputs: prReadOutputs(facts)}, nil
-	})
+	}
 }
 
 // issueAssignees reads the logins that hold an issue. An empty repo is the repository of the project, and any other repo is read on that repository.

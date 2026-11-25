@@ -256,9 +256,11 @@ func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
 
 // checkItem refuses an item id that is not an item, the parent itself and an item that was listed before.
 func (s *script) checkItem(id string, seen map[string]bool) error {
+	if err := checkItemID(id); err != nil {
+		return err
+	}
+
 	switch {
-	case model.ItemKind(id) == "":
-		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, id)
 	case id == s.in.Item:
 		return fmt.Errorf("item %s cannot spawn itself. Leave it out of items", id)
 	case seen[id]:

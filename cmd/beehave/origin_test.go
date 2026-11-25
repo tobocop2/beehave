@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/store/beads"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 // authorForge is a forge that reads who wrote each issue and pull request, and fails the read of the number failing.
@@ -78,6 +79,7 @@ func TestIssueAuthor_AnItemOfAnotherTrackerReadsNoIssue(t *testing.T) {
 		item    string
 	}{
 		"an item of beads":                   {beads.Tracker, "7"},
+		"a numbered item of the local store": {local.Tracker, "7"},
 		"a GitHub item that is not a number": {storegithub.Tracker, "bb-7"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -92,6 +94,51 @@ func TestIssueAuthor_AnItemOfAnotherTrackerReadsNoIssue(t *testing.T) {
 			assert.Empty(t, f.asked)
 		})
 	}
+}
+
+func TestSameItem_TwoIdsNameOneItemOnlyAsTheTrackerKeysThem(t *testing.T) {
+	t.Parallel()
+
+	tooBig := "99999999999999999999"
+
+	for name, test := range map[string]struct {
+		tracker model.TrackerName
+		a, b    string
+		same    bool
+	}{
+		"the same text in the local store":               {local.Tracker, "fix-login", "fix-login", true},
+		"two numbers of one value in the local store":    {local.Tracker, "0412", "412", false},
+		"two numbers of one value in beads":              {beads.Tracker, "0412", "412", false},
+		"two numbers of one issue on GitHub":             {storegithub.Tracker, "0412", "412", true},
+		"two numbers of two issues on GitHub":            {storegithub.Tracker, "412", "413", false},
+		"a number and an id that is no number on GitHub": {storegithub.Tracker, "412", "bb-412", false},
+		"two ids that are no numbers on GitHub":          {storegithub.Tracker, "bb-7", "BB-7", false},
+		"a number past the range of an issue on GitHub":  {storegithub.Tracker, "0" + tooBig, tooBig, false},
+		"the same number past the range of an issue":     {storegithub.Tracker, tooBig, tooBig, true},
+		"a number with a mark on GitHub":                 {storegithub.Tracker, "#412", "412", false},
+		"a signed number on GitHub":                      {storegithub.Tracker, "+412", "412", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			over := (&authorForge{}).on(test.tracker)
+
+			for _, pair := range [][2]string{{test.a, test.b}, {test.b, test.a}} {
+				same, err := over.SameItem("p", pair[0], pair[1])
+
+				require.NoError(t, err)
+				assert.Equal(t, test.same, same, "%s and %s", pair[0], pair[1])
+			}
+		})
+	}
+}
+
+func TestSameItem_AnUnknownProjectIsAnError(t *testing.T) {
+	t.Parallel()
+
+	_, err := (&authorForge{}).on(storegithub.Tracker).SameItem("zzz", "0412", "412")
+
+	require.ErrorIs(t, err, errUnknownProject)
 }
 
 func TestIssueAuthor_AFailedReadIsAnError(t *testing.T) {

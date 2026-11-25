@@ -67,6 +67,9 @@ func (p *turningPreflight) IssueAuthor(context.Context, string, string) (model.A
 	return model.Authored{}, nil
 }
 
+// SameItem keys items as their text.
+func (p *turningPreflight) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
 // stopLoopRig is the example rig with a review that asks for changes on every pass and a forge that turns at the call turnAt.
 func stopLoopRig(t *testing.T, turnAt int, over map[string]any, gone bool) (*agentRig, string, *turningPreflight) {
 	t.Helper()

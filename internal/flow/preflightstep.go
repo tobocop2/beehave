@@ -27,6 +27,8 @@ type preflighter interface {
 	// IssueAuthor reads who wrote the issue of the item, when the tracker of the project keeps its items as issues on the forge, whatever the forge of the project.
 	// Any other item has none. A failed read and an unknown author are errors.
 	IssueAuthor(ctx context.Context, project, item string) (model.Authored, error)
+	// SameItem reports whether two item ids name one item, as the tracker of the project keys its items.
+	SameItem(project, a, b string) (bool, error)
 }
 
 var errNoPreflight = errors.New("this build cannot read the forge before a step. Use a build that sets a preflight reader")
@@ -54,15 +56,16 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, err
 	}
 
-	if id == "" {
-		id = s.in.Item
+	item, err := s.itemOf(id)
+	if err != nil {
+		return nil, err
 	}
 
 	if s.e.deps.Preflight == nil {
 		return nil, errNoPreflight
 	}
 
-	value, err := s.durable("preflight", label, s.ask(id, req))
+	value, err := s.durable("preflight", label, s.ask(item, req))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}
@@ -88,7 +91,10 @@ func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.T
 // ask is the recorded read of one preflight call, on the pull request of the item with the id.
 func (s *script) ask(id string, req preflight.Request) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
-		own := s.owns(id)
+		own, err := s.owns(id)
+		if err != nil {
+			return stepResult{}, err
+		}
 
 		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req, own)
 		if err != nil {
