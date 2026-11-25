@@ -108,6 +108,9 @@ func (*fakeHosts) LostProof(context.Context, string, string, string) (model.Lost
 	return model.LostProof{}, nil
 }
 
+// CheckCredentials passes every host.
+func (*fakeHosts) CheckCredentials(context.Context, string) error { return nil }
+
 var _ proc.Runner = scriptRunner(nil)
 
 func TestExampleHost_ARoundStartsTheHostOnceBeforeAnyItem(t *testing.T) {
@@ -177,6 +180,8 @@ func (f failingHosts) Ready(context.Context, string, string) (bool, error) { ret
 func (f failingHosts) LostProof(context.Context, string, string, string) (model.LostProof, error) {
 	return model.LostProof{}, f.err
 }
+
+func (f failingHosts) CheckCredentials(context.Context, string) error { return f.err }
 
 func TestStopHost_ACanceledRunRecordsNoResultSoAResumeStopsTheHostAgain(t *testing.T) {
 	t.Parallel()

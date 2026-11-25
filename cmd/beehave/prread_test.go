@@ -39,6 +39,11 @@ func (f *readForge) PullRead(_ context.Context, pr int) (model.PullFacts, error)
 	return model.PullFacts{Number: pr, State: f.state, Draft: true, Labels: []string{"hold"}, Assignees: []string{"maintainer"}}, f.readErr
 }
 
+// Association reads the owner as the author of every pull request.
+func (*readForge) Association(context.Context, int) (model.Association, error) {
+	return model.AssociationOwner, nil
+}
+
 func (f *readForge) IssueAssignees(_ context.Context, repo string, number int) ([]string, error) {
 	return f.issues[repo+"#"+strconv.Itoa(number)], f.issueErr
 }
@@ -68,7 +73,7 @@ func TestPRRead_FindsThePullRequestOfAnItemInTheOrderOfThePreflight(t *testing.T
 
 			f := &readForge{pullForge: pullForge{listed: tc.listed, state: "OPEN"}, found: tc.found}
 
-			facts, err := f.over().ReadPull(t.Context(), "p", "7")
+			facts, err := f.over().ReadPull(t.Context(), "p", "7", true)
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, facts.Number)
@@ -89,14 +94,14 @@ func TestPRRead_FailsWhenAReadFailsOrTheProjectIsUnknown(t *testing.T) {
 	listed := map[string][]model.PullRequest{"open": {{Number: 4}}}
 
 	f := &readForge{pullForge: pullForge{listed: listed}, readErr: errFake}
-	_, err := f.over().ReadPull(t.Context(), "p", "7")
+	_, err := f.over().ReadPull(t.Context(), "p", "7", true)
 	require.ErrorIs(t, err, errFake, "a failed typed read is an error and never a pull request that is not there")
 
 	f = &readForge{pullForge: pullForge{listed: listed, listErr: errFake}}
-	_, err = f.over().ReadPull(t.Context(), "p", "7")
+	_, err = f.over().ReadPull(t.Context(), "p", "7", true)
 	require.ErrorIs(t, err, errFake, "a failed list is an error")
 
-	_, err = (&readForge{}).over().ReadPull(t.Context(), "zzz", "7")
+	_, err = (&readForge{}).over().ReadPull(t.Context(), "zzz", "7", true)
 	require.ErrorIs(t, err, errUnknownProject)
 }
 
@@ -115,7 +120,7 @@ func TestPRRead_AReadWithNoAssigneeListOrABadLinkGivesFactsThatNameWhatIsUnread(
 	} {
 		f := &readForge{pullForge: pullForge{listed: listed}, readErr: tc.err}
 
-		got, err := f.over().ReadPull(t.Context(), "p", "7")
+		got, err := f.over().ReadPull(t.Context(), "p", "7", true)
 
 		require.NoError(t, err, name)
 		assert.Equal(t, tc.want, got.Unread, name)
@@ -130,7 +135,7 @@ func TestPRRead_AReadWithNoAssigneeListOrABadLinkGivesFactsThatNameWhatIsUnread(
 	} {
 		f := &readForge{pullForge: pullForge{listed: listed}, readErr: err}
 
-		_, got := f.over().ReadPull(t.Context(), "p", "7")
+		_, got := f.over().ReadPull(t.Context(), "p", "7", true)
 
 		require.Error(t, got, name+" stays an error")
 	}

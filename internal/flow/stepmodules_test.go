@@ -75,8 +75,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core20.agent16.tracker4.forge12.land16.gate8.host1.round7", applicationVersion("v1"))
-	assert.Equal(t, "v1+core20.agent16.tracker4.forge12.land16.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core20.agent16.tracker4.forge13.land16.gate8.host1.round7", applicationVersion("v1"))
+	assert.Equal(t, "v1+core20.agent16.tracker4.forge13.land16.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {
@@ -230,7 +230,7 @@ func TestModulesUsed_TheStepsThatTheEngineOrAnOlderBuildRecordsForAModuleAreStep
 func TestUnreplayableStep_IsTheFirstStepThatThisBuildDoesNotRecordWithTheModuleOfTheOlderBuild(t *testing.T) {
 	t.Parallel()
 
-	engine := []string{"item", "claim", "ready", "release", "worktree", "make worktree", "others", "phase", "exclusive", "host_job", "DBOS.sleep", "DBOS.getResult"}
+	engine := []string{originStepName, "item", "claim", "ready", "release", "worktree", "make worktree", "others", "phase", "exclusive", "host_job", "DBOS.sleep", "DBOS.getResult"}
 	_, _, found := unreplayableStep(slices.Concat(engine, []string{"wait:w#1", "agent:a#1/render", "batch:b.ready#1", "merge:u.plan", "merge:u.intent#1", "merge:u.poll#1", "merge:u.tip", "now#1", "undo:write:w#1", holdStep}))
 	assert.False(t, found, "this build records every step")
 

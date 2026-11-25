@@ -25,7 +25,7 @@ type fakePreflight struct {
 	items  []string
 }
 
-func (f *fakePreflight) Preflight(_ context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
+func (f *fakePreflight) Preflight(_ context.Context, project, item string, req preflight.Request, _ bool) (preflight.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -216,14 +216,14 @@ type readWorld interface {
 	IssueAssignees(ctx context.Context, repo string, number int) ([]string, error)
 }
 
-func (p preflightOver) Preflight(ctx context.Context, _, _ string, req preflight.Request) (preflight.Result, error) {
+func (p preflightOver) Preflight(ctx context.Context, _, _ string, req preflight.Request, _ bool) (preflight.Result, error) {
 	req.PR = testPull
 
 	return preflight.Check(ctx, p.world, req)
 }
 
 // ReadPull reads the pull request that the fake holds, as the reader of the engine does.
-func (p preflightOver) ReadPull(ctx context.Context, _, _ string) (model.PullFacts, error) {
+func (p preflightOver) ReadPull(ctx context.Context, _, _ string, _ bool) (model.PullFacts, error) {
 	view, err := p.world.PRView(ctx, testPull)
 	if err != nil {
 		return model.PullFacts{}, err
@@ -237,15 +237,24 @@ func (p preflightOver) IssueAssignees(ctx context.Context, _, repo string, numbe
 	return p.world.IssueAssignees(ctx, repo, number)
 }
 
-// noReads is the part of a preflight fake that finds no pull request and no issue holder.
+// IssueAuthor finds no issue.
+func (preflightOver) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
+}
+
+// noReads is the part of a preflight fake that finds no pull request, no issue holder and no foreign author.
 type noReads struct{}
 
-func (noReads) ReadPull(context.Context, string, string) (model.PullFacts, error) {
+func (noReads) ReadPull(context.Context, string, string, bool) (model.PullFacts, error) {
 	return model.PullFacts{}, nil
 }
 
 func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, error) {
 	return nil, nil
+}
+
+func (noReads) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }
 
 // goneBranch is a forge whose head branch is no longer on the remote.
