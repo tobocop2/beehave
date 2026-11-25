@@ -507,13 +507,13 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 	check{r: r}.allFail(forgeCalls(target))
 }
 
-// FailedCommandMethods names every method that a failed-command check runs: forge.Forge, Syncer, Statuses, AssigneeReads, ReadyReads and Boarder.
+// FailedCommandMethods names every method that a failed-command check runs: forge.Forge, Syncer, Statuses, AssigneeReads, ReadyReads, AlertReads and Boarder.
 // A method of those interfaces that is not in the list has no failed-command case.
-// Opener is left out: its three methods only write, so no read can turn an error into an empty answer, and the adapter tests prove each write.
+// Opener and Stacker are left out: their methods only write, so no read can turn an error into an empty answer, and the adapter tests prove each write.
 func FailedCommandMethods() []string {
 	var names []string
 
-	for _, calls := range [][]call{forgeCalls(nil), syncerCalls(nil), statusCalls(nil), assigneeCalls(nil), readyCalls(nil), boarderCalls(nil)} {
+	for _, calls := range [][]call{forgeCalls(nil), syncerCalls(nil), statusCalls(nil), assigneeCalls(nil), readyCalls(nil), alertCalls(nil), boarderCalls(nil)} {
 		for _, one := range calls {
 			names = append(names, one.name)
 		}
@@ -621,6 +621,38 @@ func readyCalls(target forge.ReadyReads) []call {
 	return []call{
 		{"ReadyMarks", func(ctx context.Context) error { _, err := target.ReadyMarks(ctx, Seven); return err }},
 	}
+}
+
+// CheckAlertsFail runs the alert read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckAlertsFail(r Reporter, target forge.AlertReads) {
+	r.Helper()
+
+	check{r: r}.allFail(alertCalls(target))
+}
+
+func alertCalls(target forge.AlertReads) []call {
+	return []call{
+		{"OpenAlerts", func(ctx context.Context) error { _, err := target.OpenAlerts(ctx, Seven, SevenTip); return err }},
+	}
+}
+
+// CheckAbilities fails when the abilities that target has are not the abilities in want. A forge has an ability when it implements the interface of the ability.
+// A forge that lacks every optional interface has the empty set.
+func CheckAbilities(r Reporter, target any, want []forge.Ability) {
+	r.Helper()
+
+	for _, ability := range forge.Abilities() {
+		if got := forge.Has(target, ability); got != slices.Contains(want, ability) {
+			r.Errorf("ability %q: the forge has it: %v, the declared set lists it: %v", ability, got, !got)
+		}
+	}
+}
+
+// TestForgeAbilities checks the abilities of an adapter against the set that it declares. Every adapter test calls it with its set.
+func TestForgeAbilities(t *testing.T, target any, want []forge.Ability) {
+	t.Helper()
+
+	CheckAbilities(t, target, want)
 }
 
 // sevenCard is the card of pull request 7 on board 1, for the board calls of a forge whose commands all fail.

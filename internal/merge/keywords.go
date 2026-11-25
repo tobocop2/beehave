@@ -14,7 +14,7 @@ import (
 const shortSHA = 9
 
 // commitKeywords refuses a commit whose message has a closing keyword for an issue that the item does not name and the owner did not keep.
-// GitHub closes such an issue when the commit reaches the default branch, and the closing references of the pull request do not list it.
+// The forge closes such an issue when the commit reaches the default branch, and the closing references of the pull request do not list it.
 // The commits come from the first read, whose count the own-work guard has already compared with the count of the forge, so a failed or cut read has refused before.
 func (a *attempt) commitKeywords() *refusal {
 	var lines []string

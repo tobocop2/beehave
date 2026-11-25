@@ -3,6 +3,7 @@ package merge
 import (
 	"fmt"
 
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -82,7 +83,7 @@ func (a *attempt) landed(tip string) *refusal {
 
 // provable refuses, before any write, a forge that cannot compare commits. The merge cannot be undone, so the landing must be provable first.
 func (a *attempt) provable() *refusal {
-	history, ok := a.forge.(Ancestry)
+	history, ok := a.forge.(forgepkg.Ancestry)
 	if !ok {
 		return refuse(fmt.Sprintf("REFUSE: the forge cannot compare commits, so it cannot prove that the merge of #%d landed on %s. Nothing was changed.", a.req.PR, a.req.Base))
 	}
@@ -198,7 +199,7 @@ func (a *attempt) nativeStack() *refusal {
 		return nil
 	}
 
-	if queue, ok := a.forge.(Queuer); ok && a.req.Queue {
+	if queue, ok := a.forge.(forgepkg.Queuer); ok && a.req.Queue {
 		a.queue = queue
 
 		return nil

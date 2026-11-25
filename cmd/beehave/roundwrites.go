@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
@@ -21,7 +19,7 @@ type roundWrites struct{ pulls pulls }
 
 // Sync merges the trunk into the sync branch of the round and opens the sync pull request.
 func (r roundWrites) Sync(ctx context.Context, project string, req roundsync.Request) (roundsync.Result, error) {
-	built, err := optionalSide[roundsync.Forge](r.pulls, project, "syncing a branch")
+	built, err := optionalSide[roundsync.Forge](ctx, r.pulls, project, forge.AbilitySyncer, forge.AbilityOpener)
 	if err != nil {
 		return roundsync.Result{}, err
 	}
@@ -42,7 +40,7 @@ func (r roundWrites) label(project, named string) string {
 
 // Land merges the sync pull request pinned to the gated head.
 func (r roundWrites) Land(ctx context.Context, project string, req roundsync.LandRequest) (roundsync.Result, error) {
-	built, err := optionalSide[roundsync.Forge](r.pulls, project, "syncing a branch")
+	built, err := optionalSide[roundsync.Forge](ctx, r.pulls, project, forge.AbilitySyncer, forge.AbilityOpener)
 	if err != nil {
 		return roundsync.Result{}, err
 	}
@@ -62,7 +60,7 @@ func (r roundWrites) Cut(ctx context.Context, project string, req roundcut.Reque
 
 // Integrate finds or opens the integration pull request and writes its body.
 func (r roundWrites) Integrate(ctx context.Context, project string, req roundintegration.Request) (roundintegration.Result, error) {
-	built, err := optionalSide[roundintegration.Forge](r.pulls, project, "opening a pull request or writing its body")
+	built, err := optionalSide[roundintegration.Forge](ctx, r.pulls, project, forge.AbilityOpener)
 	if err != nil {
 		return roundintegration.Result{}, err
 	}
@@ -74,7 +72,7 @@ func (r roundWrites) Integrate(ctx context.Context, project string, req roundint
 
 // Place puts the card on the board and returns the column that the board shows for it.
 func (r roundWrites) Place(ctx context.Context, project string, card model.Card) (string, error) {
-	boarder, err := optionalSide[forge.Boarder](r.pulls, project, "keeping a project board")
+	boarder, err := optionalSide[forge.Boarder](ctx, r.pulls, project, forge.AbilityBoards)
 	if err != nil {
 		return "", err
 	}
@@ -120,10 +118,8 @@ func (r roundWrites) takeSettings(project string, req flow.TakeRequest) (takeove
 // so no other owner holds the claim and the check passes.
 func claimHeld(context.Context) error { return nil }
 
-var errNoOptionalWrite = errors.New("this forge cannot do it")
-
-// optionalSide returns the forge of the project as the interface T, which a forge may lack. what names the missing ability in the error.
-func optionalSide[T any](p pulls, project, what string) (T, error) { //nolint:ireturn // the optional sides of the forge are interfaces
+// optionalSide returns the forge of the project as the interface T, which a forge may lack. The error names each ability that the forge lacks and matches forge.ErrNoCapability.
+func optionalSide[T any](ctx context.Context, p pulls, project string, needs ...forge.Ability) (T, error) { //nolint:ireturn // the optional sides of the forge are interfaces
 	var none T
 
 	built, err := p.forgeOf(project)
@@ -131,12 +127,7 @@ func optionalSide[T any](p pulls, project, what string) (T, error) { //nolint:ir
 		return none, err
 	}
 
-	side, ok := built.Forge.(T) // the optional write sides of the forge are interfaces that only some forges hold
-	if !ok {
-		return none, fmt.Errorf("%w: %s", errNoOptionalWrite, what)
-	}
-
-	return side, nil
+	return sideOf[T](ctx, built.Forge, needs...)
 }
 
 // inRepo runs gh on one repository: it adds -R repo to each call, so a call needs no git folder.

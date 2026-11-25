@@ -3,6 +3,8 @@ package merge
 import (
 	"context"
 	"fmt"
+
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
 )
 
 // queued asks the forge to merge a pull request in a native stack. The forge owns the merge: it holds the queued merge and merges when its requirements pass.
@@ -25,7 +27,7 @@ func (a *attempt) queued() *refusal {
 func Poll(ctx context.Context, forge Forge, req Request, last bool) Result {
 	run := &attempt{ctx: ctx, forge: forge, req: req}
 
-	queue, ok := forge.(Queuer)
+	queue, ok := forge.(forgepkg.Queuer)
 	if !ok {
 		return run.result(refuse("REFUSE: the forge cannot queue a merge, so it cannot read one."))
 	}
@@ -136,7 +138,7 @@ func (a *attempt) disarmed(stop *refusal) *refusal {
 func Disarm(ctx context.Context, forge Forge, req Request) Result {
 	run := &attempt{ctx: ctx, forge: forge, req: req}
 
-	queue, ok := forge.(Queuer)
+	queue, ok := forge.(forgepkg.Queuer)
 	if !ok {
 		return run.result(refuse("REFUSE: the forge cannot queue a merge, so it cannot turn one off."))
 	}

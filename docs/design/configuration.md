@@ -62,7 +62,9 @@ The override of a window is `BEEHAVE_POOL_<NAME>_MAX`, with the name of the wind
 
 ### `project(...)`
 
-The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `test_command`, `test_paths`, `notify`, `pin_file`, `gate_program`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `pr_label`, `max_spawn_depth` and `build_host`.
+The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `test_command`, `test_paths`, `notify`, `pin_file`, `gate_program`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `pr_label`, `max_spawn_depth`, `security_alerts` and `build_host`.
+
+`security_alerts` is `True` or `False`. It defaults to `False`. When it is `True`, a merge reads the open security alerts of the pull request at the gated head, and refuses before any write when one is open. A read that fails also refuses. The start refuses a project whose forge cannot read security alerts, or whose code scanning is off. See [the forge abilities](forge.md).
 
 `max_spawn_depth` is the deepest level below the run a user started at which `spawn` may start a run. It defaults to 3, so a research desk can spawn sources and each source can spawn claims. A project that must not fan out further than one level sets 1. A value below 1 is refused. `beehave check workflow --project <name> --dry-run` uses the cap of the named project.
 

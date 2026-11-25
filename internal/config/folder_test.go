@@ -1127,6 +1127,27 @@ func TestLoadFolder_TheMaxSpawnDepthKeyDefaultsToThreeAndOneBelowOneIsRefused(t 
 	require.Contains(t, problems[0].Error(), "max_spawn_depth is 0: set it to 1 or more")
 }
 
+func TestProject_SecurityAlertsKey_ParsesABool(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.False(t, project.SecurityAlerts, "the key defaults to false")
+
+	project, problems = loadProjectText(t, call(goodProject+`, security_alerts = True`))
+	require.Empty(t, problems)
+	require.True(t, project.SecurityAlerts)
+}
+
+func TestProject_SecurityAlertsKey_RejectsANonBool(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadProjectText(t, call(goodProject+`, security_alerts = "yes"`))
+
+	require.NotEmpty(t, problems)
+	require.ErrorContains(t, problems[0], "security_alerts")
+}
+
 func TestLoadFolder_ThePRLabelKeyDefaultsToMadeByBeehaveAndAnEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()
 

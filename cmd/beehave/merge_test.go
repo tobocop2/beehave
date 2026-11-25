@@ -312,7 +312,7 @@ func TestOpened_AForgeWithoutTreesOrLogsGivesAnErrorNotAPanic(t *testing.T) {
 	_, logErr := none.FailedLog(t.Context(), "x")
 
 	for _, err := range []error{treeErr, blobErr, logErr} {
-		require.ErrorIs(t, err, errNoOptionalRead)
+		require.ErrorIs(t, err, forge.ErrNoCapability)
 	}
 }
 
@@ -326,7 +326,7 @@ func TestOpened_AncestryIsPassedThroughOrGivesAnError(t *testing.T) {
 	t.Parallel()
 
 	_, err := opened{noTreeForge{}}.Compare(t.Context(), "x", "main")
-	require.ErrorIs(t, err, errNoOptionalRead)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 
 	got, err := opened{historyForge{}}.Compare(t.Context(), "x", "main")
 	require.NoError(t, err)
@@ -410,7 +410,7 @@ func TestPulls_DisarmOfAProjectThatIsNotKnownIsAnError(t *testing.T) {
 func TestOpened_ADisableIsPassedThroughOrGivesAnError(t *testing.T) {
 	t.Parallel()
 
-	require.ErrorIs(t, opened{noTreeForge{}}.DisableAutoMergePR(t.Context(), 5), errNoOptionalRead)
+	require.ErrorIs(t, opened{noTreeForge{}}.DisableAutoMergePR(t.Context(), 5), forge.ErrNoCapability)
 
 	queue := &queueForge{}
 
@@ -428,7 +428,7 @@ func TestOpened_TheReadyMarksArePassedThroughOrGiveAnError(t *testing.T) {
 	t.Parallel()
 
 	marks, err := opened{noTreeForge{}}.ReadyMarks(t.Context(), 5)
-	require.ErrorIs(t, err, errNoOptionalRead)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 	assert.Nil(t, marks)
 
 	marks, err = opened{markForge{}}.ReadyMarks(t.Context(), 5)
@@ -440,7 +440,7 @@ func TestOpened_AQueuedMergeIsPassedThroughOrGivesAnError(t *testing.T) {
 	t.Parallel()
 
 	err := opened{noTreeForge{}}.AutoMergePR(t.Context(), 5, "x")
-	require.ErrorIs(t, err, errNoOptionalRead)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 
 	queue := &queueForge{}
 

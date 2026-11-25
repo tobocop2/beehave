@@ -8,7 +8,6 @@ import (
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // Failure is how a child run returns an error: its text and the kind of each known error in its chain. A child run ends with no error,
@@ -42,7 +41,7 @@ func (e *Engine) failureOf(err error) *Failure {
 func productionKnown() []error {
 	return []error{
 		context.Canceled, context.DeadlineExceeded, fs.ErrNotExist,
-		forgepkg.ErrNoForge, forgepkg.ErrNoPull, forgepkg.ErrWorkflowPermission, forgepkg.ErrMergeConflict, ErrMemberNotOpen, merge.ErrNoProtectionRead,
+		forgepkg.ErrNoForge, forgepkg.ErrNoPull, forgepkg.ErrWorkflowPermission, forgepkg.ErrMergeConflict, ErrMemberNotOpen, forgepkg.ErrNoCapability,
 		gatepkg.ErrNoTests, gatepkg.ErrTreeChanged, gatepkg.ErrNoVerdict, gatepkg.ErrNoHead, gatepkg.ErrNoCloneURL, gatepkg.ErrNoBase, gatepkg.ErrCloneOutsideRoot,
 		host.ErrUnbanked, host.ErrNoRepos, host.ErrDiskLow, host.ErrDiskRead, host.ErrInUse, host.ErrInUseRead, host.ErrJobState, host.ErrLost, host.ErrNotDeleted, host.ErrDiskText,
 	}

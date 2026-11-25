@@ -7,14 +7,12 @@ import (
 	"slices"
 	"strings"
 
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// ErrNoProtectionRead is the error of a forge that cannot read the protection of a branch.
-var ErrNoProtectionRead = errors.New("this forge cannot read the protection of a branch")
-
 // Protections is what the merge reads to learn what the forge requires of the base. A forge that also implements Protections lets the merge refuse a base
-// that would not require the gate and the review. A forge that cannot read it returns ErrNoProtectionRead.
+// that would not require the gate and the review. A forge that cannot read it returns an error with the cause forge.ErrNoCapability.
 type Protections interface {
 	Protection(ctx context.Context, branch string) (model.Protection, error)
 }
@@ -66,7 +64,7 @@ func (a *attempt) unreadable(err error) *refusal {
 		return nil
 	}
 
-	if err != nil && !errors.Is(err, ErrNoProtectionRead) {
+	if err != nil && !errors.Is(err, forgepkg.ErrNoCapability) {
 		return transient(fmt.Sprintf("REFUSE: cannot read the protection of the base %s: %v", a.req.Base, err))
 	}
 

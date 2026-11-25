@@ -548,7 +548,7 @@ func TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments(t *testing.
 		ran[name] = true
 	}
 
-	declared, err := ifacetest.Methods([]string{"../forge.go"}, "Forge", "Syncer", "Statuses", "AssigneeReads", "ReadyReads", "Boarder")
+	declared, err := ifacetest.Methods([]string{"../forge.go"}, "Forge", "Syncer", "Statuses", "AssigneeReads", "ReadyReads", "AlertReads", "Boarder")
 	require.NoError(t, err)
 
 	for _, name := range declared {
@@ -561,11 +561,11 @@ func TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments(t *testing.
 		assert.Contains(t, declared, name, "a failed-command case runs %s, which no forge interface has", name)
 	}
 
-	opener, err := ifacetest.Methods([]string{"../forge.go"}, "Opener")
+	writers, err := ifacetest.Methods([]string{"../forge.go"}, "Opener", "Stacker")
 	require.NoError(t, err)
 
-	for _, name := range opener {
-		assert.False(t, ran[name], "Opener only writes and is left out, but %s has a case", name)
+	for _, name := range writers {
+		assert.False(t, ran[name], "Opener and Stacker only write and are left out, but %s has a case", name)
 	}
 }
 

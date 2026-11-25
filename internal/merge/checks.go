@@ -8,9 +8,6 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// workflowDir is the folder of the workflow files. A change there needs a token that can change CI.
-const workflowDir = ".github/workflows/"
-
 // checks refuses a head whose checks are not a pass. A skipped check is not a pass. Zero passes refuse unless the owner allowed it.
 func (a *attempt) checks() *refusal {
 	rows, err := a.forge.PRChecks(a.ctx, a.req.PR)
@@ -32,7 +29,7 @@ func (a *attempt) checks() *refusal {
 	return nil
 }
 
-// buckets holds the names of the checks by what gh judged: the ones that are not green, the ones still running and the ones that skipped.
+// buckets holds the names of the checks by what the forge judged: the ones that are not green, the ones still running and the ones that skipped.
 type buckets struct {
 	bad, running, skipped []string
 	green                 int
@@ -92,13 +89,14 @@ func (b buckets) summary(total int) []string {
 // workflowScope refuses a change to a workflow file that the token cannot land. A project with credentials holds it for the owner and reads nothing,
 // because its writer cannot change CI. A project with no credentials reads whether the token can change CI, only for such a change.
 func (a *attempt) workflowScope() *refusal {
-	if !touchesWorkflow(a.view) {
+	path := a.ciPath()
+	if path == "" {
 		return nil
 	}
 
 	if a.req.Credentialed {
 		return &refusal{stop: NoWorkflowScope, lines: []string{
-			fmt.Sprintf("REFUSE: #%d changes a file in %s: the writer token cannot change CI, so the owner lands this change by hand.", a.req.PR, workflowDir),
+			fmt.Sprintf("REFUSE: #%d changes a file in %s: the writer token cannot change CI, so the owner lands this change by hand.", a.req.PR, path),
 		}}
 	}
 
@@ -107,23 +105,26 @@ func (a *attempt) workflowScope() *refusal {
 		return refuse("REFUSE: cannot read whether the token can change workflow files, so a workflow change cannot be merged")
 	}
 
-	return a.ciRefusal(answer)
+	return a.ciRefusal(answer, path)
 }
 
 // ciRefusal is the refusal of a workflow change for the answer of the forge: none for yes, stop 3 with the fix for no, and a refusal for unknown.
-func (a *attempt) ciRefusal(answer model.CIWrite) *refusal {
+// The fix line is the command of the request, and a request with none shows no line.
+func (a *attempt) ciRefusal(answer model.CIWrite, path string) *refusal {
 	switch answer {
 	case model.CIWriteYes:
 		return nil
 	case model.CIWriteNo:
-		return &refusal{stop: NoWorkflowScope, lines: []string{
-			fmt.Sprintf("REFUSE: #%d touches .github/workflows and the token has no workflow scope.", a.req.PR),
-			"        Run: gh auth refresh -h github.com -s workflow",
-		}}
+		lines := []string{fmt.Sprintf("REFUSE: #%d touches %s and the token has no workflow scope.", a.req.PR, path)}
+		if a.req.CIFix != "" {
+			lines = append(lines, "        Run: "+a.req.CIFix)
+		}
+
+		return &refusal{stop: NoWorkflowScope, lines: lines}
 	case model.CIWriteUnknown:
 	}
 
-	return refuse(fmt.Sprintf("REFUSE: #%d changes a file in %s, and the forge cannot tell whether the token can change workflow files.", a.req.PR, workflowDir))
+	return refuse(fmt.Sprintf("REFUSE: #%d changes a file in %s, and the forge cannot tell whether the token can change workflow files.", a.req.PR, path))
 }
 
 // wholeFileList is the guard before the scope guard. It refuses a list of changed files that is absent or shorter than the forge's count, because a workflow file could hide in the rest.
@@ -140,14 +141,18 @@ func (a *attempt) wholeFileList() *refusal {
 	return nil
 }
 
-func touchesWorkflow(view model.PullRequest) bool {
-	for _, file := range view.Files {
-		if strings.HasPrefix(file.Path, workflowDir) {
-			return true
+// ciPath returns the first CI path of the request that a changed file is in, or empty when no changed file is. A path that ends in a slash is a folder,
+// and any other path is one file.
+func (a *attempt) ciPath() string {
+	for _, file := range a.view.Files {
+		for _, path := range a.req.CIPaths {
+			if file.Path == path || strings.HasSuffix(path, "/") && strings.HasPrefix(file.Path, path) {
+				return path
+			}
 		}
 	}
 
-	return false
+	return ""
 }
 
 // reviews refuses a standing change request and an unresolved thread. An approval or a dismissal lifts a request; a comment does not.

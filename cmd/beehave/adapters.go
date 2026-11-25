@@ -91,10 +91,23 @@ type claimsAdapter struct {
 	check func(project model.Project) error
 }
 
-// forgeAdapter is the registration of a forge: the constructor.
+// forgeAdapter is the registration of a forge: the constructor and the CI files that a merge guards.
 type forgeAdapter struct {
 	registration
 	build func(model.Project) (forge.Forge, error)
+	ci    ciPolicy
+}
+
+// ciPolicy is what a forge says about its CI files: the paths that need a token that can change CI (a folder ends in a slash), and the command that gives the token that right.
+// An empty fix means the forge has no such command.
+type ciPolicy struct {
+	paths []string
+	fix   string
+}
+
+// ciOf returns the CI policy of the forge. A forge with no entry has none.
+func (a adapters) ciOf(name model.ForgeName) ciPolicy {
+	return a.forges[name].ci
 }
 
 // agentAdapter is the registration of an agent: its constructor and its doctor fix texts. The usage read is a method of the adapter that build returns.
@@ -193,7 +206,11 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 		trackers: trackerEntries(bd, state, roles),
 		claims:   claimsEntries(bd, state),
 		forges: map[model.ForgeName]forgeAdapter{
-			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) }},
+			forgegithub.Name: {
+				registration: githubRegistration(forgegithub.Tool),
+				build:        func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) },
+				ci:           ciPolicy{paths: []string{forgegithub.WorkflowDir}, fix: forgegithub.WorkflowFix},
+			},
 		},
 		agents:   agentEntries(env),
 		bd:       bd,

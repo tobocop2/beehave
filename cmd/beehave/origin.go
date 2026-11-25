@@ -16,9 +16,9 @@ var errNoIssueReads = errors.New("this build cannot read who wrote an issue")
 
 // Association reads who wrote an issue or a pull request, when the forge can. A forge that cannot is an error, so the engine never reads an item as the owner's by default.
 func (o opened) Association(ctx context.Context, number int) (model.Association, error) {
-	reads, ok := o.Forge.(forge.AssociationReads)
-	if !ok {
-		return "", fmt.Errorf("%w: who wrote an issue or a pull request", errNoOptionalRead)
+	reads, err := sideOf[forge.AssociationReads](ctx, o.Forge, forge.AbilityAssociation)
+	if err != nil {
+		return "", err
 	}
 
 	return reads.Association(ctx, number)

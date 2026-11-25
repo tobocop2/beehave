@@ -37,23 +37,69 @@ type writers struct {
 }
 
 // start reads the token of the owner for the https hosts of the projects with no credentials and the writer credential of each project that declares one,
-// runs the start probe on the environment of the steps, then refuses a writer token that can change CI.
+// runs the start probe on the environment of the steps, refuses a writer token that can change CI, then refuses a project whose forge lacks an ability that the project needs.
+// The ability check covers every project with a forge, with a writer or not.
 func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Options) error {
 	w.env = opts.Env
 	w.readOwnerTokens(ctx, cfg)
 
 	found, err := readRoles(ctx, cfg, opts)
-	if err != nil || len(found) == 0 {
+	if err != nil {
 		return err
 	}
 
-	if err := probe(found, opts.Env); err != nil {
+	if len(found) > 0 {
+		if err := probe(found, opts.Env); err != nil {
+			return err
+		}
+
+		w.byProject = found
+	}
+
+	if err := w.lockedCI(ctx, cfg); err != nil {
 		return err
 	}
 
-	w.byProject = found
+	return w.abilities(ctx, cfg)
+}
 
-	return w.lockedCI(ctx, cfg)
+// forgeNeeds lists the abilities that the project needs from its forge: commit statuses for a project with a writer, and security alerts when the project sets the key.
+func forgeNeeds(project config.Project) []forge.Ability {
+	var needs []forge.Ability
+
+	if project.HasWriter() {
+		needs = append(needs, forge.AbilityStatuses)
+	}
+
+	if project.SecurityAlerts {
+		needs = append(needs, forge.AbilityAlerts)
+	}
+
+	return needs
+}
+
+// abilities asks the forge of each project whether it has the abilities that the project needs, and refuses the start with the name of each one that it lacks.
+// A project with no forge, or with no need, makes no call.
+func (w *writers) abilities(ctx context.Context, cfg config.Config) error {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		project := cfg.Projects[name]
+
+		needs := forgeNeeds(project)
+		if project.Forge == "" || len(needs) == 0 {
+			continue
+		}
+
+		built, err := w.forges(project.Project)
+		if err != nil {
+			return fmt.Errorf("project %s: %w", name, err)
+		}
+
+		if err := forge.Need(ctx, built, needs...); err != nil {
+			return fmt.Errorf("project %s: the forge cannot serve the project: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 // lockedCI asks the forge of each project with a writer, as the writer, whether the token can change CI, and refuses the start on the answer.

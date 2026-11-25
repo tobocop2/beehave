@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/atomicfile"
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -27,17 +28,6 @@ const (
 // errEmptyLog is the reason for a log that is not saved because the forge returned no text. No file is made, so the next poll reads the log again.
 var errEmptyLog = errors.New("the log is empty")
 
-// Trees is what the merge reads to compare trees. A forge that also implements Trees lets the merge prove the base tip after the merge.
-// CommitTree returns the tree id of a commit. TreeBlobs returns the files of a tree, path to mode and content id; a list cut short is an error.
-type Trees interface {
-	CommitTree(ctx context.Context, commit string) (string, error)
-	TreeBlobs(ctx context.Context, tree string) (map[string]string, error)
-}
-
-// Logs is what the merge reads to save the log of a failed check. FailedLog returns the log of the failed steps of the check run at link.
-type Logs interface {
-	FailedLog(ctx context.Context, link string) (string, error)
-}
 
 // tipTree compares the tree of the base tip after the merge with the tree that was gated. An equal tree passes.
 // A different tree stops the run and lists the paths that differ. A request with no gated tree asks for no proof.
@@ -47,7 +37,7 @@ func (a *attempt) tipTree(tip string) *refusal {
 		return nil
 	}
 
-	trees, ok := a.forge.(Trees)
+	trees, ok := a.forge.(forgepkg.Trees)
 	if !ok || tip == "" {
 		return a.noTrees(ok)
 	}
@@ -61,7 +51,7 @@ func (a *attempt) tipTree(tip string) *refusal {
 }
 
 // compare passes a tip that holds the gated tree and stops on any other.
-func (a *attempt) compare(trees Trees, tip, tree string) *refusal {
+func (a *attempt) compare(trees forgepkg.Trees, tip, tree string) *refusal {
 	if tree != a.req.GatedTree {
 		return a.mismatch(trees, tip, tree)
 	}
@@ -81,7 +71,7 @@ func (a *attempt) noTrees(forgeReads bool) *refusal {
 }
 
 // mismatch is the stop for a base tip whose tree is not the gated tree. It lists the paths that differ.
-func (a *attempt) mismatch(trees Trees, tip, tree string) *refusal {
+func (a *attempt) mismatch(trees forgepkg.Trees, tip, tree string) *refusal {
 	head := fmt.Sprintf("%s tip %s holds tree %s, and the gated tree is %s.", a.req.Base, tip, tree, a.req.GatedTree)
 
 	paths, err := differing(a.ctx, trees, a.req.GatedTree, tree)
@@ -104,7 +94,7 @@ func stopped(lines ...string) *refusal {
 }
 
 // differing lists the paths whose file differs between two trees, or exists in only one. The list is sorted.
-func differing(ctx context.Context, trees Trees, want, got string) ([]string, error) {
+func differing(ctx context.Context, trees forgepkg.Trees, want, got string) ([]string, error) {
 	wanted, err := trees.TreeBlobs(ctx, want)
 	if err != nil {
 		return nil, err
@@ -145,7 +135,7 @@ func (a *attempt) saveLogs(rows []model.Check) {
 		return
 	}
 
-	logs, ok := a.forge.(Logs)
+	logs, ok := a.forge.(forgepkg.Logs)
 	if !ok || a.req.Dir == "" {
 		a.say("check log: not saved, " + a.noLogs())
 
@@ -156,7 +146,7 @@ func (a *attempt) saveLogs(rows []model.Check) {
 }
 
 // readLogs saves the log of each check of failed that has none on disk, up to the cap of one poll, and says which checks the cap leaves out.
-func (a *attempt) readLogs(logs Logs, failed []model.Check) {
+func (a *attempt) readLogs(logs forgepkg.Logs, failed []model.Check) {
 	todo := a.withoutLog(failed)
 	reads := min(len(todo), maxLogReads)
 
@@ -224,7 +214,7 @@ func (a *attempt) logPath(row model.Check) string {
 }
 
 // saveLog reads the log of one check and writes it to path.
-func (a *attempt) saveLog(logs Logs, row model.Check, path string) error {
+func (a *attempt) saveLog(logs forgepkg.Logs, row model.Check, path string) error {
 	text, err := logs.FailedLog(a.ctx, row.Link)
 	if err != nil {
 		return err

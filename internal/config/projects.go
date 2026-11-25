@@ -64,6 +64,8 @@ type rawProject struct {
 	PRLabel         text
 	// MaxSpawnDepth is the deepest level below the run a user started at which spawn may start a run.
 	MaxSpawnDepth int
+	// SecurityAlerts is true when a merge must find no open security alert at the gated head. It defaults to false.
+	SecurityAlerts bool
 
 	// Credentials are the credential blocks of the project, by role.
 	Credentials credentials
@@ -93,7 +95,7 @@ func loadProject(path string, registry Adapters) (Project, error) {
 
 // projectSpec is the schema of the project call. The arguments after the fixed ones are the adapter blocks that the registry declares, each optional and named as its block.
 func projectSpec(declared []Block) spec {
-	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "gate_program?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "max_spawn_depth?", "credentials?", "vars?"}
+	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "gate_program?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "max_spawn_depth?", "security_alerts?", "credentials?", "vars?"}
 
 	for _, block := range declared {
 		args = append(args, block.Name+"?")
@@ -161,7 +163,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple, declared []Block) (
 	host, held := nested[rawHost]{want: hostSpecName}, holders(declared)
 	dests := []any{
 		&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.TestCommand, &raw.TestPaths, &raw.Notify, &raw.PinFile, &raw.GateProgram, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer, &raw.PRLabel,
-		&raw.MaxSpawnDepth, &raw.Credentials, &raw.Vars,
+		&raw.MaxSpawnDepth, &raw.SecurityAlerts, &raw.Credentials, &raw.Vars,
 	}
 
 	err := projectSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
@@ -191,7 +193,7 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, Blocks: blocksOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value, TestCommand: raw.TestCommand.Value,
-		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, GateProgram: slices.Clone(raw.GateProgram), PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Credentials: maps.Clone(raw.Credentials), Vars: raw.Vars,
+		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, GateProgram: slices.Clone(raw.GateProgram), PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, SecurityAlerts: raw.SecurityAlerts, Credentials: maps.Clone(raw.Credentials), Vars: raw.Vars,
 	}, nil
 }
 

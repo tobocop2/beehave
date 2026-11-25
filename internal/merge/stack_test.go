@@ -88,7 +88,7 @@ func TestStack_AChildInTheSameStackIsNotedAndDoesNotBlock(t *testing.T) {
 	w.stacks[5], w.stacks[7] = "S", "S"
 	result := w.run(request())
 
-	assert.Contains(t, result.Lines, "note: #7 is the next layer of stack S; GitHub retargets it when #5 merges")
+	assert.Contains(t, result.Lines, "note: #7 is the next layer of stack S; the forge retargets it when #5 merges")
 	assert.NotContains(t, strings.Join(result.Lines, "\n"), "is the base of")
 	assert.Contains(t, last(result), "REFUSE: #5 is in stack S", "the native stack guard speaks, not the child guard")
 }
