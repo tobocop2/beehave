@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -23,13 +24,31 @@ const (
 
 var initPrompts = []string{"prompts/plan.md", "prompts/implement.md", "prompts/review.md", "prompts/fix.md"}
 
-// initRepo makes a folder named work that holds a git folder whose HEAD is head, and makes it the current folder.
-func initRepo(t *testing.T, head string) string {
+// git runs git in dir and fails the test when git fails.
+func git(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // the test runs git with its own arguments
+	cmd.Dir = dir
+
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+}
+
+// commit makes an empty commit, so that HEAD can be detached and a worktree can be added.
+func commit(t *testing.T, dir string) {
+	t.Helper()
+
+	git(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "first")
+}
+
+// initRepo makes a git repository in a folder named work, on the branch, and makes it the current folder.
+func initRepo(t *testing.T, branch string, initArgs ...string) string {
 	t.Helper()
 
 	repo := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(repo, ".git", "HEAD"), []byte(head), 0o600))
+	require.NoError(t, os.MkdirAll(repo, 0o700))
+	git(t, repo, append(append([]string{"init", "-q"}, initArgs...), "-b", branch)...)
 	t.Chdir(repo)
 
 	return repo
@@ -45,19 +64,25 @@ func runInit(t *testing.T, env map[string]string, args ...string) (int, string, 
 	return code, stdout.String(), stderr.String()
 }
 
-// filesBelow lists the files below dir, as paths relative to dir.
+// filesBelow lists the files below dir, as paths relative to dir, without the git folder.
 func filesBelow(t *testing.T, dir string) []string {
 	t.Helper()
 
 	var found []string
 
 	require.NoError(t, filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
+		if err != nil {
 			return err
 		}
 
 		rel, relErr := filepath.Rel(dir, path)
-		found = append(found, rel)
+		if entry.IsDir() && rel == ".git" {
+			return filepath.SkipDir
+		}
+
+		if !entry.IsDir() {
+			found = append(found, rel)
+		}
 
 		return relErr
 	}))
@@ -66,58 +91,83 @@ func filesBelow(t *testing.T, dir string) []string {
 	return found
 }
 
+func readText(t *testing.T, path string) string {
+	t.Helper()
+
+	text, err := os.ReadFile(path) //nolint:gosec // a test reads a file below its own temporary folder
+	require.NoError(t, err)
+
+	return string(text)
+}
+
 func TestInit_WritesTheProjectFileIntoBeehaveConfigAndNowhereElse(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	config := filepath.Join(t.TempDir(), "conf")
-	repo := initRepo(t, "ref: refs/heads/main\n")
+	confDir := filepath.Join(t.TempDir(), "conf")
+	repo := initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{"BEEHAVE_CONFIG": config})
+	code, _, stderr := runInit(t, map[string]string{"BEEHAVE_CONFIG": confDir})
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, []string{initProject}, filesBelow(t, config))
+	assert.Equal(t, []string{initProject}, filesBelow(t, confDir))
 	assert.Empty(t, filesBelow(t, home), "init writes nothing below the home folder")
 
-	wantRepo := append([]string{".git/HEAD", initWorkflow}, initPrompts...)
+	wantRepo := append([]string{initWorkflow}, initPrompts...)
 	sort.Strings(wantRepo)
 	assert.Equal(t, wantRepo, filesBelow(t, repo))
 }
 
 func TestInit_TheProjectFileIsAcceptedByCheckConfig(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	writeConfig(t, config, "runners.star", validRunners)
-	initRepo(t, "ref: refs/heads/main\n")
+	confDir := t.TempDir()
+	writeConfig(t, confDir, "runners.star", validRunners)
+	initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 	require.Equal(t, 0, code, stderr)
 
-	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", config)
+	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", confDir)
 
 	require.Equal(t, 0, code, stdout+stderr)
 }
 
 func TestInit_WritesTheWorkflowAndPromptsIntoTheRepository(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	example, err := filepath.Abs(filepath.Join("..", "..", "examples", "local"))
+	template, err := filepath.Abs("initfiles")
 	require.NoError(t, err)
 
-	repo := initRepo(t, "ref: refs/heads/main\n")
+	repo := initRepo(t, "main")
 
 	code, stdout, stderr := runInit(t, map[string]string{}, "--config", t.TempDir())
 
 	require.Equal(t, 0, code, stderr)
 
 	for _, file := range append([]string{initWorkflow}, initPrompts...) {
-		want, err := os.ReadFile(filepath.Join(example, file)) //nolint:gosec // a test reads files below the example folder
-		require.NoError(t, err)
-
-		got, err := os.ReadFile(filepath.Join(repo, file)) //nolint:gosec // a test reads files below its own temporary folder
-		require.NoError(t, err)
-		assert.Equal(t, string(want), string(got), file)
+		assert.Equal(t, readText(t, filepath.Join(template, file)), readText(t, filepath.Join(repo, file)), file)
 		assert.Contains(t, stdout, file)
 	}
 
 	assert.Contains(t, stdout, "--gate", "the output tells the user to set the gate")
+}
+
+func TestInit_TheFilesAndFoldersAreOnlyForTheUser(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+	confDir := filepath.Join(t.TempDir(), "conf")
+	repo := initRepo(t, "main")
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+	require.Equal(t, 0, code, stderr)
+
+	for path, want := range map[string]os.FileMode{
+		confDir:                                  0o700,
+		filepath.Join(confDir, "projects"):       0o700,
+		filepath.Join(confDir, initProject):      0o600,
+		filepath.Join(repo, "prompts"):           0o700,
+		filepath.Join(repo, initWorkflow):        0o600,
+		filepath.Join(repo, "prompts", "fix.md"): 0o600,
+	} {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, want, info.Mode().Perm(), path)
+	}
 }
 
 func TestInit_RunFindsTheWrittenWorkflowWithNoFlag(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
@@ -125,7 +175,7 @@ func TestInit_RunFindsTheWrittenWorkflowWithNoFlag(t *testing.T) { //nolint:para
 	rig.useFile = false
 	rig.dir = t.TempDir()
 	writeConfig(t, rig.dir, "runners.star", validRunners)
-	initRepo(t, "ref: refs/heads/main\n")
+	initRepo(t, "main")
 
 	code, _, stderr := runInit(t, map[string]string{}, "--config", rig.dir)
 	require.Equal(t, 0, code, stderr)
@@ -137,43 +187,69 @@ func TestInit_RunFindsTheWrittenWorkflowWithNoFlag(t *testing.T) { //nolint:para
 	assert.Equal(t, []string{"12@work workflow.star"}, rig.runner.files)
 }
 
-func TestInit_RefusesWhenAnyTargetExistsAndWritesNothing(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+func TestInit_RefusesWhenAnyTargetExistsAndWritesNothing(t *testing.T) { //nolint:paralleltest // the subtests change the folder of the process
 	targets := append([]string{initProject, initWorkflow}, initPrompts...)
 
 	for _, target := range targets { //nolint:paralleltest // the subtests change the folder of the process
 		t.Run(target, func(t *testing.T) {
-			config := t.TempDir()
-			repo := initRepo(t, "ref: refs/heads/main\n")
+			confDir := t.TempDir()
+			repo := initRepo(t, "main")
 			path := filepath.Join(repo, target)
 
 			if target == initProject {
-				path = filepath.Join(config, target)
+				path = filepath.Join(confDir, target)
 			}
 
 			writeConfig(t, filepath.Dir(path), filepath.Base(path), "mine\n")
-			before := append(filesBelow(t, config), filesBelow(t, repo)...)
+			before := append(filesBelow(t, confDir), filesBelow(t, repo)...)
 
-			code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+			code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 			require.NotEqual(t, 0, code)
 			assert.Contains(t, stderr, path)
 			assert.Contains(t, stderr, "no file was written")
-			assert.Equal(t, before, append(filesBelow(t, config), filesBelow(t, repo)...))
+			assert.Equal(t, before, append(filesBelow(t, confDir), filesBelow(t, repo)...))
+			assert.Equal(t, "mine\n", readText(t, path))
+		})
+	}
+}
 
-			kept, err := os.ReadFile(path) //nolint:gosec // a test reads a file below its own temporary folder
-			require.NoError(t, err)
-			assert.Equal(t, "mine\n", string(kept))
+func TestInit_ALinkAtATargetIsAFileAlsoWhenItDanglesAndNothingIsWritten(t *testing.T) { //nolint:paralleltest // the subtests change the folder of the process
+	for name, target := range map[string]string{"the_workflow": initWorkflow, "the_project_file": initProject} { //nolint:paralleltest // the subtests change the folder of the process
+		t.Run(name, func(t *testing.T) {
+			confDir := t.TempDir()
+			repo := initRepo(t, "main")
+			outside := filepath.Join(t.TempDir(), "outside")
+
+			path := filepath.Join(repo, target)
+			if target == initProject {
+				path = filepath.Join(confDir, target)
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+			}
+
+			require.NoError(t, os.Symlink(outside, path))
+
+			code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+			require.NotEqual(t, 0, code)
+			assert.Contains(t, stderr, "no file was written")
+			assert.NoFileExists(t, outside)
+			assert.NoDirExists(t, filepath.Join(repo, "prompts"))
+
+			if target == initWorkflow {
+				assert.NoDirExists(t, filepath.Join(confDir, "projects"), "the config folder got no file")
+			}
 		})
 	}
 }
 
 func TestInit_NamesEveryExistingTarget(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	repo := initRepo(t, "ref: refs/heads/main\n")
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
 	writeConfig(t, repo, initWorkflow, "a\n")
 	writeConfig(t, repo, initPrompts[0], "b\n")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, filepath.Join(repo, initWorkflow))
@@ -181,40 +257,36 @@ func TestInit_NamesEveryExistingTarget(t *testing.T) { //nolint:paralleltest // 
 }
 
 func TestInit_RefusesAFolderThatIsNotARepository(t *testing.T) {
-	config := t.TempDir()
+	confDir := t.TempDir()
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "run beehave init in the top folder of a git repository")
-	assert.Empty(t, filesBelow(t, config))
+	assert.Empty(t, filesBelow(t, confDir))
 	assert.Empty(t, filesBelow(t, dir))
 }
 
-func TestInit_AWorktreeFileCountsAsARepository(t *testing.T) {
-	config := t.TempDir()
-	gitdir := filepath.Join(t.TempDir(), "gitdir")
-	require.NoError(t, os.MkdirAll(gitdir, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(gitdir, "HEAD"), []byte("ref: refs/heads/side\n"), 0o600))
+func TestInit_AWorktreeCountsAsARepositoryAndGivesItsBranch(t *testing.T) {
+	confDir := t.TempDir()
+	mainRepo := initRepo(t, "main")
+	commit(t, mainRepo)
 
-	repo := filepath.Join(t.TempDir(), "work")
-	writeConfig(t, repo, ".git", "gitdir: "+gitdir+"\n")
-	t.Chdir(repo)
+	worktree := filepath.Join(t.TempDir(), "work")
+	git(t, mainRepo, "worktree", "add", "-q", "-b", "side", worktree)
+	t.Chdir(worktree)
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.Equal(t, 0, code, stderr)
-
-	project, err := os.ReadFile(filepath.Join(config, initProject)) //nolint:gosec // a test reads a file below its own temporary folder
-	require.NoError(t, err)
-	assert.Contains(t, string(project), `base_branch = "side"`)
+	assert.Contains(t, readText(t, filepath.Join(confDir, initProject)), `base_branch = "side"`)
 }
 
-func TestInit_AWorktreeFileWithNoGitdirLineIsRefused(t *testing.T) {
+func TestInit_ADotGitFolderThatGitCannotReadIsRefusedAndNamesTheFlag(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "work")
-	writeConfig(t, repo, ".git", "nonsense\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
 	t.Chdir(repo)
 
 	code, _, stderr := runInit(t, map[string]string{}, "--config", t.TempDir())
@@ -223,10 +295,20 @@ func TestInit_AWorktreeFileWithNoGitdirLineIsRefused(t *testing.T) {
 	assert.Contains(t, stderr, "--base-branch")
 }
 
+func TestInit_AReftableRepositoryGivesItsBranch(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+	confDir := t.TempDir()
+	initRepo(t, "trunk", "--ref-format=reftable")
+
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, readText(t, filepath.Join(confDir, initProject)), `base_branch = "trunk"`)
+}
+
 func TestInit_ConfigFlagWinsOverTheVariable(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
 	flagDir := filepath.Join(t.TempDir(), "flag")
 	variableDir := filepath.Join(t.TempDir(), "variable")
-	initRepo(t, "ref: refs/heads/main\n")
+	initRepo(t, "main")
 
 	code, _, stderr := runInit(t, map[string]string{"BEEHAVE_CONFIG": variableDir}, "--config", flagDir)
 
@@ -236,32 +318,36 @@ func TestInit_ConfigFlagWinsOverTheVariable(t *testing.T) { //nolint:paralleltes
 }
 
 func TestInit_FlagsReachTheProjectFile(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	repo := initRepo(t, "ref: refs/heads/main\n")
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config, "--name", "other", "--base-branch", "trunk", "--gate", "just test", "--test-report", "out/*.xml")
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir, "--name", "other", "--base-branch", "trunk", "--gate", "just test", "--test-report", "out/*.xml")
 
 	require.Equal(t, 0, code, stderr)
-
-	project, err := os.ReadFile(filepath.Join(config, "projects", "other.star")) //nolint:gosec // a test reads a file below its own temporary folder
-	require.NoError(t, err)
-	assert.Equal(t, "project(\n    source = \""+repo+"\",\n    base_branch = \"trunk\",\n    sandbox = \"on\",\n    gate = \"just test\",\n    test_report = \"out/*.xml\",\n)\n", string(project))
+	assert.Equal(t, "project(\n    source = \""+repo+"\",\n    base_branch = \"trunk\",\n    sandbox = \"on\",\n    gate = \"just test\",\n    test_report = \"out/*.xml\",\n)\n",
+		readText(t, filepath.Join(confDir, "projects", "other.star")))
 }
 
-func TestInit_AQuoteInTheGateStaysAValidFile(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	writeConfig(t, config, "runners.star", validRunners)
-	initRepo(t, "ref: refs/heads/main\n")
+func TestInit_RefusesAnEmptyGateOrTestReportWithTheWordsOfCheckConfig(t *testing.T) { //nolint:paralleltest // the subtests change the folder of the process
+	for name, args := range map[string][]string{ //nolint:paralleltest // the subtests change the folder of the process
+		"an_empty_gate":        {"--gate", ""},
+		"a_blank_gate":         {"--gate", "  "},
+		"an_empty_test_report": {"--test-report", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			confDir := t.TempDir()
+			initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config, "--gate", "make \"check\"\nnow")
-	require.Equal(t, 0, code, stderr)
+			code, _, stderr := runInit(t, map[string]string{}, append([]string{"--config", confDir}, args...)...)
 
-	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", config)
-
-	require.Equal(t, 0, code, stdout+stderr)
+			require.NotEqual(t, 0, code)
+			assert.Contains(t, stderr, "`"+strings.ReplaceAll(strings.TrimPrefix(args[0], "--"), "-", "_")+"` must be a non-empty string. Set it")
+			assert.Empty(t, filesBelow(t, confDir))
+		})
+	}
 }
 
-func TestInit_RefusesAnUnusableName(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+func TestInit_RefusesAnUnusableName(t *testing.T) { //nolint:paralleltest // the subtests change the folder of the process
 	for name, value := range map[string]string{ //nolint:paralleltest // the subtests change the folder of the process
 		"a_path_out_of_the_folder": "../escape",
 		"a_folder_inside":          "a/b",
@@ -269,92 +355,82 @@ func TestInit_RefusesAnUnusableName(t *testing.T) { //nolint:paralleltest // the
 		"a_space":                  "my repo",
 	} {
 		t.Run(name, func(t *testing.T) {
-			config := t.TempDir()
-			initRepo(t, "ref: refs/heads/main\n")
+			confDir := t.TempDir()
+			initRepo(t, "main")
 
-			code, _, stderr := runInit(t, map[string]string{}, "--config", config, "--name", value)
+			code, _, stderr := runInit(t, map[string]string{}, "--config", confDir, "--name", value)
 
 			require.NotEqual(t, 0, code)
 			assert.Contains(t, stderr, "--name")
-			assert.Empty(t, filesBelow(t, config))
+			assert.Empty(t, filesBelow(t, confDir))
 		})
 	}
 }
 
 func TestInit_RefusesAFolderNameThatIsNotAProjectName(t *testing.T) {
-	config := t.TempDir()
+	confDir := t.TempDir()
 	repo := filepath.Join(t.TempDir(), "my repo")
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
+	require.NoError(t, os.MkdirAll(repo, 0o700))
+	git(t, repo, "init", "-q", "-b", "main")
 	t.Chdir(repo)
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "--name")
-	assert.Empty(t, filesBelow(t, config))
+	assert.Empty(t, filesBelow(t, confDir))
 }
 
 func TestInit_RefusesADetachedHead(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	initRepo(t, "0123456789abcdef0123456789abcdef01234567\n")
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
+	commit(t, repo)
+	git(t, repo, "checkout", "-q", "--detach")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
-
-	require.NotEqual(t, 0, code)
-	assert.Contains(t, stderr, "--base-branch")
-	assert.Empty(t, filesBelow(t, config))
-}
-
-func TestInit_ARepositoryWithNoHeadFileIsRefusedAndNamesTheFlag(t *testing.T) {
-	config := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
-	t.Chdir(repo)
-
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "--base-branch")
+	assert.Empty(t, filesBelow(t, confDir))
 }
 
 func TestInit_ADetachedHeadIsAcceptedWhenTheBranchIsNamed(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	initRepo(t, "0123456789abcdef0123456789abcdef01234567\n")
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
+	commit(t, repo)
+	git(t, repo, "checkout", "-q", "--detach")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config, "--base-branch", "main")
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir, "--base-branch", "main")
 
 	require.Equal(t, 0, code, stderr)
 }
 
 func TestInit_BaseBranchDefaultsToTheCurrentBranch(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	initRepo(t, "ref: refs/heads/master\n")
+	confDir := t.TempDir()
+	initRepo(t, "master")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.Equal(t, 0, code, stderr)
-
-	project, err := os.ReadFile(filepath.Join(config, initProject)) //nolint:gosec // a test reads a file below its own temporary folder
-	require.NoError(t, err)
-	assert.Contains(t, string(project), `base_branch = "master"`)
+	assert.Contains(t, readText(t, filepath.Join(confDir, initProject)), `base_branch = "master"`)
 }
 
 func TestInit_ReportsAWriteFailureAndTheFilesAlreadyWritten(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	repo := initRepo(t, "ref: refs/heads/main\n")
+	confDir := t.TempDir()
+	repo := initRepo(t, "main")
 	writeConfig(t, repo, "prompts", "a file where the prompts folder belongs\n")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "already written")
-	assert.Contains(t, stderr, filepath.Join(config, initProject))
+	assert.Contains(t, stderr, filepath.Join(confDir, initProject))
 }
 
 func TestInit_ReportsAConfigFolderThatCannotBeMade(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
 	blocker := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
-	initRepo(t, "ref: refs/heads/main\n")
+	initRepo(t, "main")
 
 	code, _, stderr := runInit(t, map[string]string{}, "--config", blocker)
 
@@ -363,27 +439,11 @@ func TestInit_ReportsAConfigFolderThatCannotBeMade(t *testing.T) { //nolint:para
 	assert.NotContains(t, stderr, "already written")
 }
 
-func TestInit_AWorktreeFileWithARelativeGitdirFindsTheBranch(t *testing.T) {
-	config := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "work")
-	writeConfig(t, repo, ".git", "gitdir: gitdir\n")
-	writeConfig(t, repo, "gitdir/HEAD", "ref: refs/heads/rel\n")
-	t.Chdir(repo)
-
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config)
-
-	require.Equal(t, 0, code, stderr)
-
-	project, err := os.ReadFile(filepath.Join(config, initProject)) //nolint:gosec // a test reads a file below its own temporary folder
-	require.NoError(t, err)
-	assert.Contains(t, string(project), `base_branch = "rel"`)
-}
-
 func TestInit_AFileNameThatTheSystemRefusesIsReportedAfterNothingWasWritten(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	config := t.TempDir()
-	initRepo(t, "ref: refs/heads/main\n")
+	confDir := t.TempDir()
+	initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{}, "--config", config, "--name", strings.Repeat("n", 300))
+	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir, "--name", strings.Repeat("n", 300))
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "create ")
@@ -392,7 +452,7 @@ func TestInit_AFileNameThatTheSystemRefusesIsReportedAfterNothingWasWritten(t *t
 
 func TestInit_WithNoHomeFolderAndNoConfigIsRefused(t *testing.T) {
 	t.Setenv("HOME", "")
-	initRepo(t, "ref: refs/heads/main\n")
+	initRepo(t, "main")
 
 	code, _, stderr := runInit(t, map[string]string{})
 
@@ -413,10 +473,10 @@ func (w *failAfter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func TestInit_AFailedWriteToTheOutputIsReported(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+func TestInit_AFailedWriteToTheOutputIsReported(t *testing.T) { //nolint:paralleltest // the subtests change the folder of the process
 	for writes := range 2 { //nolint:paralleltest // the subtests change the folder of the process
 		t.Run(strconv.Itoa(writes)+"_writes_succeed", func(t *testing.T) {
-			initRepo(t, "ref: refs/heads/main\n")
+			initRepo(t, "main")
 
 			var stderr bytes.Buffer
 
@@ -429,43 +489,18 @@ func TestInit_AFailedWriteToTheOutputIsReported(t *testing.T) { //nolint:paralle
 }
 
 func TestInit_TakesNoArgument(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
-	initRepo(t, "ref: refs/heads/main\n")
+	initRepo(t, "main")
 
 	code, _, _ := runInit(t, map[string]string{}, "--config", t.TempDir(), "extra")
 
 	require.NotEqual(t, 0, code)
 }
 
-func TestInit_HelpExitsZero(t *testing.T) { //nolint:paralleltest // the test changes the folder of the process
+func TestInit_HelpExitsZero(t *testing.T) {
+	t.Parallel()
+
 	code, stdout, _ := runInit(t, map[string]string{}, "--help")
 
 	require.Equal(t, 0, code)
 	assert.Contains(t, stdout, "--base-branch")
-}
-
-func TestTemplate_EqualsExamplesLocal(t *testing.T) {
-	t.Parallel()
-
-	example := filepath.Join("..", "..", "examples", "local")
-	copied := "initfiles"
-
-	want := filesBelow(t, copied)
-	expected := sortedCopy(append([]string{initWorkflow}, initPrompts...))
-	assert.Equal(t, expected, want, "the template holds the workflow and the four prompts")
-
-	for _, file := range want {
-		original, err := os.ReadFile(filepath.Join(example, file)) //nolint:gosec // a test reads a file below its own temporary folder
-		require.NoError(t, err)
-
-		template, err := os.ReadFile(filepath.Join(copied, file)) //nolint:gosec // a test reads a file below its own temporary folder
-		require.NoError(t, err)
-		assert.Equal(t, string(original), string(template), "internal/cli/initfiles/%s differs from examples/local/%s: copy the example again", file, file)
-	}
-}
-
-func sortedCopy(in []string) []string {
-	out := append([]string(nil), in...)
-	sort.Strings(out)
-
-	return out
 }

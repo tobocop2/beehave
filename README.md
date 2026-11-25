@@ -170,8 +170,8 @@ brew install --cask tobocop2/tap/beehave
 cd ~/work/myrepo                  # the top folder of your git repository
 beehave init                      # writes the project file, workflow.star and prompts/
 
-mkdir -p ~/.config/beehave        # one Claude runner, with the login folder of Claude Code
-echo 'runner(name = "claude", agent = "claude", config_dir = "~/.claude")' > ~/.config/beehave/runners.star
+CONFIG="${BEEHAVE_CONFIG:-$HOME/.config/beehave}"   # the folder that init wrote the project file into
+echo 'runner(name = "claude", agent = "claude", config_dir = "~/.claude")' > "$CONFIG/runners.star"   # one Claude runner, with the login folder of Claude Code
 
 beehave check workflow --dry-run  # walk the workflow, no agent calls
 beehave item add myrepo fix-login --title "Fix the login" --body-file task.md

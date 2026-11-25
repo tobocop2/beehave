@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 const (
@@ -20,14 +23,11 @@ const (
 	initTestReportDefault = "reports/*.xml"
 	initNameFlag          = "name"
 	initBranchFlag        = "base-branch"
+	initGateFlag          = "gate"
+	initTestReportFlag    = "test-report"
 	gitEntry              = ".git"
-	gitHeadFile           = "HEAD"
-	gitdirPrefix          = "gitdir:"
-	branchRefPrefix       = "ref: refs/heads/"
-	configDirMode         = 0o700
-	projectFileMode       = 0o600
-	repoDirMode           = 0o755
-	repoFileMode          = 0o644
+	dirMode               = 0o700
+	fileMode              = 0o600
 )
 
 var errNotARepository = errors.New("run beehave init in the top folder of a git repository")
@@ -52,10 +52,9 @@ type initOptions struct {
 type initFile struct {
 	path string
 	data []byte
-	mode os.FileMode
 }
 
-func newInitCommand(env map[string]string) *cobra.Command {
+func newInitCommand(ctx context.Context, env map[string]string) *cobra.Command {
 	var opts initOptions
 
 	command := &cobra.Command{
@@ -64,23 +63,23 @@ func newInitCommand(env map[string]string) *cobra.Command {
 		Long:  initLong,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runInit(cmd.OutOrStdout(), env, opts)
+			return runInit(ctx, cmd.OutOrStdout(), env, opts)
 		},
 	}
 	flags := command.Flags()
 	flags.StringVar(&opts.folder, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
 	flags.StringVar(&opts.name, initNameFlag, "", "the project name (default: the name of the repository folder)")
 	flags.StringVar(&opts.branch, initBranchFlag, "", "the branch that rounds start from (default: the branch that HEAD names)")
-	flags.StringVar(&opts.gate, "gate", initGateDefault, "the command that judges a change; set it to the test command of the repository")
-	flags.StringVar(&opts.testReport, "test-report", initTestReportDefault, "the glob of the JUnit XML files that the gate writes")
+	flags.StringVar(&opts.gate, initGateFlag, initGateDefault, "the command that judges a change; set it to the test command of the repository")
+	flags.StringVar(&opts.testReport, initTestReportFlag, initTestReportDefault, "the glob of the JUnit XML files that the gate writes")
 
 	return command
 }
 
-func runInit(out io.Writer, env map[string]string, opts initOptions) error {
+func runInit(ctx context.Context, out io.Writer, env map[string]string, opts initOptions) error {
 	repo, _ := os.Getwd() //nolint:errcheck // a folder that cannot be read leaves repo empty, and the check for the git entry then refuses it
 
-	files, err := planInit(env, opts, repo)
+	files, err := planInit(ctx, env, opts, repo)
 	if err != nil {
 		return err
 	}
@@ -93,23 +92,19 @@ func runInit(out io.Writer, env map[string]string, opts initOptions) error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(out, "The gate is %q. Set it with --gate, or edit the project file, to the command that tests the repository.\n", opts.gate)
+	_, err = fmt.Fprintf(out, "The gate is %q. Set it with --%s, or edit the project file, to the command that tests the repository.\n", opts.gate, initGateFlag)
 
 	return err
 }
 
 // planInit returns the files that init creates, after it checks every input.
-func planInit(env map[string]string, opts initOptions, repo string) ([]initFile, error) {
-	if _, err := os.Lstat(filepath.Join(repo, gitEntry)); err != nil {
-		return nil, errNotARepository
-	}
-
-	name, err := projectName(repo, opts.name)
+func planInit(ctx context.Context, env map[string]string, opts initOptions, repo string) ([]initFile, error) {
+	name, err := checkInputs(opts, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	branch, err := baseBranch(repo, opts.branch)
+	branch, err := baseBranch(ctx, repo, opts.branch)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +117,35 @@ func planInit(env map[string]string, opts initOptions, repo string) ([]initFile,
 	return initTargets(filepath.Join(folder, "projects", name+".star"), projectFile(repo, branch, opts), repo), nil
 }
 
+// checkInputs refuses a folder that is not the top folder of a repository, an unusable name and an empty gate or test report. It returns the project name.
+func checkInputs(opts initOptions, repo string) (string, error) {
+	if _, err := os.Lstat(filepath.Join(repo, gitEntry)); err != nil {
+		return "", errNotARepository
+	}
+
+	name, err := projectName(repo, opts.name)
+	if err != nil {
+		return "", err
+	}
+
+	return name, errors.Join(requireText(initGateFlag, opts.gate), requireText(initTestReportFlag, opts.testReport))
+}
+
+// requireText refuses an empty or blank flag value, with the words of check config for the same key.
+func requireText(flag, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("`%s` must be a non-empty string. Set it with --%s", strings.ReplaceAll(flag, "-", "_"), flag)
+	}
+
+	return nil
+}
+
 // initTargets returns the project file and each file of the template, with the paths that they get.
 func initTargets(projectPath, project, repo string) []initFile {
-	files := []initFile{{path: projectPath, data: []byte(project), mode: projectFileMode}}
+	files := []initFile{{path: projectPath, data: []byte(project)}}
 
 	for _, file := range readTemplate() {
-		files = append(files, initFile{path: filepath.Join(repo, filepath.FromSlash(file.path)), data: file.data, mode: repoFileMode})
+		files = append(files, initFile{path: filepath.Join(repo, filepath.FromSlash(file.path)), data: file.data})
 	}
 
 	return files
@@ -153,45 +171,23 @@ func projectFile(repo, branch string, opts initOptions) string {
 		starlark.String(repo).String(), starlark.String(branch).String(), starlark.String(opts.gate).String(), starlark.String(opts.testReport).String())
 }
 
-// baseBranch returns the named branch, else the branch that HEAD of the repository names.
-func baseBranch(repo, named string) (string, error) {
+// baseBranch returns the named branch, else the branch that HEAD of the repository names. Git reads the ref, so any ref storage works.
+func baseBranch(ctx context.Context, repo, named string) (string, error) {
 	if named != "" {
 		return named, nil
 	}
 
-	head, err := os.ReadFile(filepath.Join(gitFolder(repo), gitHeadFile))
-	branch, isBranch := strings.CutPrefix(strings.TrimSpace(string(head)), branchRefPrefix)
+	result := gitexec.New(repo, proc.DefaultTimeout).Run(ctx, []string{"symbolic-ref", "--short", "HEAD"})
+	branch := strings.TrimSpace(result.Stdout)
 
-	if err != nil || !isBranch {
+	if result.ExitCode != 0 || result.SetupErr != nil || branch == "" {
 		return "", fmt.Errorf("HEAD of the repository names no branch. Pass the branch that rounds start from with --%s", initBranchFlag)
 	}
 
 	return branch, nil
 }
 
-// gitFolder returns the git folder of a repository. In a linked worktree, .git is a file that names the git folder.
-func gitFolder(repo string) string {
-	folder := filepath.Join(repo, gitEntry)
-
-	pointer, err := os.ReadFile(folder) //nolint:gosec // the path is the git entry of the current folder
-	if err != nil {
-		return folder
-	}
-
-	target, isPointer := strings.CutPrefix(strings.TrimSpace(string(pointer)), gitdirPrefix)
-	if !isPointer {
-		return folder
-	}
-
-	target = strings.TrimSpace(target)
-	if filepath.IsAbs(target) {
-		return target
-	}
-
-	return filepath.Join(repo, target)
-}
-
-// refuseExisting fails when any file exists, and names each one. An absent path and an unreadable path are not files that init would replace.
+// refuseExisting fails when any file exists, and names each one. A symbolic link counts as a file, also a dangling one, because Lstat does not follow it.
 func refuseExisting(files []initFile) error {
 	var existing []string
 
@@ -230,13 +226,13 @@ func createFiles(out io.Writer, files []initFile) error {
 	return err
 }
 
-// createFile makes the folders of a file, then creates the file with O_EXCL so it never replaces one.
+// createFile makes the folders of a file, then creates the file with O_EXCL so it never replaces one. Folders and files are private to the user.
 func createFile(file initFile) error {
-	if err := os.MkdirAll(filepath.Dir(file.path), dirModeOf(file)); err != nil {
+	if err := os.MkdirAll(filepath.Dir(file.path), dirMode); err != nil {
 		return fmt.Errorf("make the folder of %s: %w", file.path, err)
 	}
 
-	handle, err := os.OpenFile(file.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, file.mode)
+	handle, err := os.OpenFile(file.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", file.path, err)
 	}
@@ -244,13 +240,4 @@ func createFile(file initFile) error {
 	_, err = handle.Write(file.data)
 
 	return errors.Join(err, handle.Close())
-}
-
-// dirModeOf gives the config folder the mode of a config file's folder, and the repository folders the usual mode.
-func dirModeOf(file initFile) os.FileMode {
-	if file.mode == projectFileMode {
-		return configDirMode
-	}
-
-	return repoDirMode
 }

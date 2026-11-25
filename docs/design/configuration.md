@@ -139,11 +139,11 @@ The project file holds `source` (the absolute path of the repository), `base_bra
 |---|---|
 | `--config` | `$BEEHAVE_CONFIG`, then `~/.config/beehave` |
 | `--name` | The folder name of the repository. A name uses letters, digits, `-`, `_` and `.`, with no leading dot. |
-| `--base-branch` | The branch that HEAD names. A detached HEAD needs the flag. |
+| `--base-branch` | The branch that `git symbolic-ref --short HEAD` prints, so a branch with no commit yet counts. A detached HEAD needs the flag. |
 | `--gate` | `make check` |
 | `--test-report` | `reports/*.xml` |
 
-`init` checks every target before it writes. If any target exists, it names each one, exits non-zero and writes nothing. It has no flag to replace a file. If a write fails, it names the files that it already wrote and does not remove them. It writes no `runners.star`, makes no commit and stages nothing.
+`init` checks every target before it writes. If any target exists, it names each one, exits non-zero and writes nothing. It has no flag to replace a file, and a symbolic link at a target counts as a file. A `prompts` folder or a `projects` folder that is a symbolic link is followed, because the user made the link. If a write fails, it names the files that it already wrote and does not remove them. It writes no `runners.star`, makes no commit and stages nothing.
 
 ### `beehave check config`
 
