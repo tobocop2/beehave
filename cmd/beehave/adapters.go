@@ -462,6 +462,12 @@ func (a adapters) tracker(ctx context.Context, project model.Project) (store.Tra
 	return entry.build(ctx, project)
 }
 
+// issueReads builds the GitHub access that the GitHub tracker of the project uses: its repository and the runner of its role. The read of who wrote an
+// issue goes through it, so it needs no forge key.
+func (a adapters) issueReads(project model.Project) (forge.Forge, error) { //nolint:ireturn // the same constructor as the forge entry
+	return newGithubForge(a.writers, project)
+}
+
 // forge builds the forge the project names. A project with no forge gets an error that matches forge.ErrNoForge.
 func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
 	if project.Forge == "" {

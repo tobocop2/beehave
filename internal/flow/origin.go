@@ -21,20 +21,42 @@ const (
 // origin runs the recorded step that refuses an item from another account before the claim, unless the run may hold one.
 func (e *Engine) origin(ctx dbos.Context, in ItemInput) error {
 	_, err := runStep(e, ctx, originStepName, func(c context.Context) (struct{}, error) {
-		return struct{}{}, e.admit(c, in, startRefused)
+		origin, err := e.readOrigin(c, in)
+
+		return struct{}{}, e.admit(c, in, startRefused, origin, err)
 	})
 
 	return err
 }
 
-// admit refuses the item of the run when another account wrote its issue or its pull request, or when that cannot be read, unless the run
-// is in the sandbox on a build host declared credentials = "none" that passes its check. A project with no forge reads nothing.
-func (e *Engine) admit(ctx context.Context, in ItemInput, outcome string) error {
-	if e.facts(in.Project).Forge == "" {
-		return nil
+// readOrigin reads who wrote the item: its issue, which the reader finds when the tracker keeps its items as issues on the forge, and, for a project
+// with a forge, the pull request that the one read of its facts finds. A build with no reader reads nothing for a project with no forge.
+func (e *Engine) readOrigin(ctx context.Context, in ItemInput) (model.Origin, error) {
+	forged := e.facts(in.Project).Forge != ""
+
+	reader := e.deps.Preflight
+	if reader == nil {
+		if forged {
+			return model.Origin{}, errNoPreflight
+		}
+
+		return model.Origin{}, nil
 	}
 
-	from, foreign := e.foreignPart(ctx, in)
+	issue, err := reader.IssueAuthor(ctx, in.Project, in.Item)
+	if err != nil || !forged {
+		return model.Origin{Issue: issue}, err
+	}
+
+	facts, err := reader.ReadPull(ctx, in.Project, in.Item)
+
+	return model.Origin{Issue: issue, Pull: facts.Authored()}, err
+}
+
+// admit refuses the item of the run when another account wrote its issue or its pull request, or when the read failed, unless the run
+// is in the sandbox on a build host declared credentials = "none" that passes its check.
+func (e *Engine) admit(ctx context.Context, in ItemInput, outcome string, origin model.Origin, read error) error {
+	from, foreign := foreignPart(origin, read)
 	if !foreign {
 		return nil
 	}
@@ -47,16 +69,11 @@ func (e *Engine) admit(ctx context.Context, in ItemInput, outcome string) error 
 	return fmt.Errorf(`item %s %s: %s. A foreign item runs only in the sandbox on a build host with credentials = "none". %s, then run beehave run %s`, in.Item, outcome, from, fix, in.Item)
 }
 
-// foreignPart reads who wrote the item and says which part another account wrote. A build with no reader and a failed read count as foreign.
-func (e *Engine) foreignPart(ctx context.Context, in ItemInput) (string, bool) {
-	origin, err := model.Origin{}, error(errNoPreflight)
-	if e.deps.Preflight != nil {
-		origin, err = e.deps.Preflight.Origin(ctx, in.Project, in.Item)
-	}
-
+// foreignPart says which part of the item another account wrote. A failed read counts as foreign.
+func foreignPart(origin model.Origin, read error) (string, bool) {
 	switch {
-	case err != nil:
-		return fmt.Sprintf("beehave cannot read who wrote it (%v)", err), true
+	case read != nil:
+		return fmt.Sprintf("beehave cannot read who wrote it (%v)", read), true
 	case origin.Issue.Foreign():
 		return fmt.Sprintf("its issue #%d comes from another account (%s)", origin.Issue.Number, origin.Issue.Association), true
 	case origin.Pull.Foreign():
@@ -78,18 +95,18 @@ func (e *Engine) mayHoldForeign(ctx context.Context, in ItemInput) (string, bool
 	}
 
 	if err := e.deps.Hosts.CheckCredentials(ctx, in.Project); err != nil {
-		return fmt.Sprintf(`Declare the build host with credentials = "none" (%v)`, err), false
+		return fmt.Sprintf("Fix the build host: %v", err), false
 	}
 
 	return "", true
 }
 
-// admitOwn runs the rule of the start again at a later read of the pull request of the item of the run, because a pull request can open after the start.
-// A read of another item is not the item of the run, and passes.
-func (s *script) admitOwn(ctx context.Context, id string) error {
-	if id != "" && id != s.in.Item {
+// admitOwn applies the rule of the start again to the pull request that a later read of the item of the run found, because a pull request can open
+// after the start. The check judges the pull request of that one read. A read of another item, or a project with no forge, passes.
+func (s *script) admitOwn(ctx context.Context, id string, pull model.Authored) error {
+	if (id != "" && id != s.in.Item) || s.e.facts(s.in.Project).Forge == "" {
 		return nil
 	}
 
-	return s.e.admit(ctx, s.in, readRefused)
+	return s.e.admit(ctx, s.in, readRefused, model.Origin{Pull: pull}, nil)
 }

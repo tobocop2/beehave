@@ -678,7 +678,7 @@ func (dryPreflight) IssueAssignees(context.Context, string, string, int) ([]stri
 	return nil, nil
 }
 
-// Origin finds an item that the owner wrote, so the start of a dry run reads no forge and refuses nothing.
-func (dryPreflight) Origin(context.Context, string, string) (model.Origin, error) {
-	return model.Origin{}, nil
+// IssueAuthor finds no issue, so the start of a dry run reads no forge and refuses nothing.
+func (dryPreflight) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }

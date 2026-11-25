@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/preflight"
 )
 
 var (
@@ -19,28 +21,57 @@ var (
 	errLocal      = errors.New("the project has no build host")
 )
 
-// originReads is a preflight reader that answers who wrote the item: the answers are taken in turn, and the last one repeats.
+// originReads is a preflight reader that answers who wrote the item. The issue comes from the first answer. Each read of the pull request, by ReadPull
+// or by Preflight, takes the next answer, and the last one repeats, so a lookup can find another pull request on a later call.
 type originReads struct {
 	*fakePreflight
 
 	mu      sync.Mutex
 	answers []originAnswer
 	asked   []string
+	pulls   int
 }
 
+// originAnswer is one answer of the forge: the issue and the pull request of the item with their authors, and the error of each read.
 type originAnswer struct {
-	origin model.Origin
-	err    error
+	origin   model.Origin
+	issueErr error
+	pullErr  error
 }
 
-func (o *originReads) Origin(_ context.Context, _, item string) (model.Origin, error) {
+func (o *originReads) IssueAuthor(_ context.Context, _, item string) (model.Authored, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	o.asked = append(o.asked, item)
-	answer := o.answers[min(len(o.asked), len(o.answers))-1]
+	o.asked = append(o.asked, "issue "+item)
 
-	return answer.origin, answer.err
+	return o.answers[0].origin.Issue, o.answers[0].issueErr
+}
+
+// nextPull takes the answer of the next read of the pull request.
+func (o *originReads) nextPull(kind, item string) originAnswer {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.asked = append(o.asked, kind+" "+item)
+	o.pulls++
+
+	return o.answers[min(o.pulls, len(o.answers))-1]
+}
+
+func (o *originReads) ReadPull(_ context.Context, _, item string) (model.PullFacts, error) {
+	answer := o.nextPull("pull", item)
+
+	return model.PullFacts{Number: answer.origin.Pull.Number, Association: answer.origin.Pull.Association}, answer.pullErr
+}
+
+func (o *originReads) Preflight(ctx context.Context, project, item string, req preflight.Request) (preflight.Result, error) {
+	answer := o.nextPull("preflight", item)
+
+	result, err := o.fakePreflight.Preflight(ctx, project, item, req)
+	result.Pull = answer.origin.Pull
+
+	return result, cmp.Or(answer.pullErr, err)
 }
 
 func (o *originReads) items() []string {
@@ -66,17 +97,20 @@ func forgeFacts(string) model.Project { return model.Project{Forge: "github"} }
 // the forge does not list, which the reader refuses, and READ_FAILS is a read that fails.
 func originOf(source, association string) originAnswer {
 	parsed, err := model.ParseAssociation(association)
-
-	switch {
-	case association == "READ_FAILS":
-		return originAnswer{err: errFake}
-	case err != nil:
-		return originAnswer{err: err}
-	case source == "issue":
-		return originAnswer{origin: model.Origin{Issue: model.Authored{Number: 12, Association: parsed}}}
+	if association == "READ_FAILS" {
+		err = errFake
 	}
 
-	return originAnswer{origin: model.Origin{Issue: model.Authored{Number: 12, Association: model.AssociationOwner}, Pull: model.Authored{Number: testPull, Association: parsed}}}
+	if source == "issue" {
+		return originAnswer{origin: model.Origin{Issue: model.Authored{Number: 12, Association: parsed}}, issueErr: err}
+	}
+
+	return originAnswer{origin: model.Origin{Issue: model.Authored{Number: 12, Association: model.AssociationOwner}, Pull: model.Authored{Number: testPull, Association: parsed}}, pullErr: err}
+}
+
+// lookupFinds is the answer of a forge whose lookup finds the pull request with the number, written by an account with the association.
+func lookupFinds(number int, association model.Association) originAnswer {
+	return originAnswer{origin: model.Origin{Pull: model.Authored{Number: number, Association: association}}}
 }
 
 // foreignCell is one start of the table of a foreign item: who wrote which part, the sandbox mode of the run, and the answer of the host check.
@@ -171,7 +205,7 @@ func TestStart_TheRefusalOfAForeignItemSaysWhichPartIsForeignAndWhatToChange(t *
 		},
 		"a foreign pull request on a host that fails its check": {
 			answer: originOf("pull", "NONE"), mode: model.SandboxOn, check: errUndeclared,
-			want: []string{fmt.Sprintf("its pull request #%d comes from another account (NONE)", testPull), `Declare the build host with credentials = "none" (` + errUndeclared.Error() + ")"},
+			want: []string{fmt.Sprintf("its pull request #%d comes from another account (NONE)", testPull), "Fix the build host: " + errUndeclared.Error() + ", then run"},
 		},
 		"a read that fails": {
 			answer: originOf("issue", "READ_FAILS"), mode: model.SandboxOff,
@@ -229,17 +263,53 @@ func TestStart_ABuildThatCannotReadOrCheckRefusesAForeignItem(t *testing.T) {
 	}
 }
 
-func TestStart_AProjectWithNoForgeReadsNoAuthor(t *testing.T) {
+func TestStart_AProjectWithNoForgeReadsTheIssueAndNoPullRequest(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		association string
+		mode        model.SandboxMode
+		started     bool
+	}{
+		"a foreign issue with the sandbox off":                {association: "CONTRIBUTOR", mode: model.SandboxOff},
+		"a foreign issue in the sandbox with no checked host": {association: "NONE", mode: model.SandboxOn},
+		"an issue that cannot be read":                        {association: "READ_FAILS", mode: model.SandboxOff},
+		"the owner's issue":                                   {association: "OWNER", mode: model.SandboxOff, started: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("issue", test.association)}}
+			h.preflight = reads
+			h.hosts = checkedHosts{check: errUndeclared}
+
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow("pass\n")), RunSandbox(test.mode))
+
+			assert.Equal(t, []string{"issue " + testItem}, reads.items(), "a project with no forge reads the issue and no pull request")
+
+			if test.started {
+				require.NoError(t, err)
+				assert.Contains(t, h.life.seen(), "claim:"+testItem)
+
+				return
+			}
+
+			require.ErrorContains(t, err, "item "+testItem+" was not started")
+			assert.NotContains(t, h.life.seen(), "claim:"+testItem)
+		})
+	}
+}
+
+func TestStart_ABuildWithNoReaderStartsAProjectWithNoForge(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("issue", "NONE")}}
-	h.preflight = reads
+	h.preflight = nil
 
 	_, err := walkBody(t, h, "pass\n")
 
 	require.NoError(t, err)
-	assert.Empty(t, reads.items(), "a project with no forge has no author to read")
 	assert.Contains(t, h.life.seen(), "claim:"+testItem)
 }
 
@@ -280,7 +350,34 @@ func TestStart_ALaterReadOfThePullRequestOfTheItemRefusesAnItemThatTurnedForeign
 
 			require.ErrorContains(t, err, "item "+testItem+" stopped")
 			require.ErrorContains(t, err, fmt.Sprintf("its pull request #%d comes from another account (CONTRIBUTOR)", testPull))
-			assert.Equal(t, []string{testItem, testItem}, reads.items(), "the start and the later read each ask who wrote the item")
+			assert.Len(t, reads.items(), 3, "the start reads the issue and the pull request, and the later read reads the pull request once")
+		})
+	}
+}
+
+func TestStart_TheCheckOfALaterReadJudgesThePullRequestThatTheSameReadFound(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		body, kind string
+	}{
+		"pr_read":   {body: "pr_read()\n", kind: "pull"},
+		"preflight": {body: "preflight()\n", kind: "preflight"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.facts = forgeFacts
+			// The lookup finds the owner's pull request #31 at the start, and a foreign one, #40, at the later read.
+			reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{lookupFinds(31, model.AssociationOwner), lookupFinds(40, model.AssociationContributor)}}
+			h.preflight = reads
+
+			_, err := walkBody(t, h, test.body)
+
+			require.ErrorContains(t, err, "item "+testItem+" stopped: its pull request #40 comes from another account (CONTRIBUTOR)")
+			assert.Equal(t, []string{"issue " + testItem, "pull " + testItem, test.kind + " " + testItem}, reads.items(),
+				"each read finds the pull request once, so no second lookup can name another one")
 		})
 	}
 }
@@ -302,32 +399,41 @@ func TestStart_ALaterReadOfAnotherItemDoesNotAskWhoWroteTheItemOfTheRun(t *testi
 
 			_, err := walkBody(t, h, body)
 
-			require.NoError(t, err)
-			assert.Equal(t, []string{testItem}, reads.items(), "only the start asks: the read names another item")
+			require.NoError(t, err, "the read of another item judges no author")
 		})
 	}
 }
 
-func TestStart_ALaterReadOfTheItemOfTheRunByItsIdAsksAgain(t *testing.T) {
+func TestStart_ALaterReadOfTheItemOfTheRunByItsIdJudgesItsAuthor(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	h.facts = forgeFacts
-	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "OWNER")}}
+	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "OWNER"), originOf("pull", "CONTRIBUTOR")}}
 	h.preflight = reads
 
 	_, err := walkBody(t, h, "pr_read(id = \""+testItem+"\")\n")
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{testItem, testItem}, reads.items())
+	require.ErrorContains(t, err, "item "+testItem+" stopped")
 }
 
-func TestDryPreflight_FindsAnItemThatTheOwnerWrote(t *testing.T) {
+func TestStart_ALaterReadInAProjectWithNoForgeJudgesNoPullRequest(t *testing.T) {
 	t.Parallel()
 
-	origin, err := dryPreflight{}.Origin(t.Context(), testProject, testItem)
+	h := newHarness(t)
+	reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "OWNER"), originOf("pull", "CONTRIBUTOR")}}
+	h.preflight = reads
+
+	_, err := walkBody(t, h, "preflight()\n")
 
 	require.NoError(t, err)
-	assert.False(t, origin.Issue.Foreign())
-	assert.False(t, origin.Pull.Foreign())
+}
+
+func TestDryPreflight_FindsNoIssue(t *testing.T) {
+	t.Parallel()
+
+	issue, err := dryPreflight{}.IssueAuthor(t.Context(), testProject, testItem)
+
+	require.NoError(t, err)
+	assert.Zero(t, issue)
 }

@@ -15,12 +15,22 @@ import (
 	"github.com/tobocop2/beehave/internal/preflight"
 )
 
-// preflightForge answers the pull request read of a preflight with a full row.
+// preflightForge answers the pull request read of a preflight with a full row. The owner wrote every pull request, and the read of the author of the
+// number failing fails.
 type preflightForge struct {
 	pullForge
 
-	reads []int
-	body  string
+	reads   []int
+	body    string
+	failing int
+}
+
+func (f *preflightForge) Association(_ context.Context, number int) (model.Association, error) {
+	if number == f.failing {
+		return "", errFake
+	}
+
+	return model.AssociationOwner, nil
 }
 
 func (f *preflightForge) PRView(_ context.Context, pr int, _ ...string) (model.PullRequest, error) {

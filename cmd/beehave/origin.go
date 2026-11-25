@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
+
+// errNoIssueReads is the refusal of a build that cannot read who wrote the issue of an item, so the engine never reads an issue as the owner's by default.
+var errNoIssueReads = errors.New("this build cannot read who wrote an issue")
 
 // Association reads who wrote an issue or a pull request, when the forge can. A forge that cannot is an error, so the engine never reads an item as the owner's by default.
 func (o opened) Association(ctx context.Context, number int) (model.Association, error) {
@@ -20,51 +24,43 @@ func (o opened) Association(ctx context.Context, number int) (model.Association,
 	return reads.Association(ctx, number)
 }
 
-// Origin reads who wrote the item: its issue, when the tracker of the project keeps its items as issues on the forge, and its pull request, found as ReadPull finds it.
-// An item of another tracker reads no issue, and an item with no pull request reads no author of one.
-func (p pulls) Origin(ctx context.Context, project, item string) (model.Origin, error) {
+// IssueAuthor reads who wrote the issue of the item when the tracker of the project keeps its items as issues on GitHub. It reads through the GitHub
+// access of the tracker, so a project with no forge key reads it too. An item of another tracker has none.
+func (p pulls) IssueAuthor(ctx context.Context, project, item string) (model.Authored, error) {
 	found, err := p.projectOf(project)
 	if err != nil {
-		return model.Origin{}, err
+		return model.Authored{}, err
 	}
 
-	reads, err := p.forge(found.Project)
-	if err != nil {
-		return model.Origin{}, err
-	}
-
-	issue, err := issueOf(ctx, opened{reads}, found.Tracker, item)
-	if err != nil {
-		return model.Origin{}, err
-	}
-
-	pull, err := pullAuthor(ctx, opened{reads}, item)
-
-	return model.Origin{Issue: issue, Pull: pull}, err
-}
-
-// pullAuthor reads who wrote the pull request of the item, found as ReadPull finds it. An item with no pull request has none.
-func pullAuthor(ctx context.Context, built opened, item string) (model.Authored, error) {
-	number, err := anyState(ctx, built, item)
+	number, err := issueNumber(found.Tracker, item)
 	if err != nil || number == 0 {
 		return model.Authored{}, err
 	}
 
-	return authored(ctx, built, number)
+	if p.issues == nil {
+		return model.Authored{}, errNoIssueReads
+	}
+
+	reads, err := p.issues(found.Project)
+	if err != nil {
+		return model.Authored{}, err
+	}
+
+	return authored(ctx, opened{reads}, number)
 }
 
-// issueOf reads who wrote the issue of the item when the tracker keeps its items as issues on the forge. Any other item has none.
-func issueOf(ctx context.Context, built opened, tracker model.TrackerName, item string) (model.Authored, error) {
+// issueNumber returns the number of the GitHub issue of the item, or 0 when the tracker keeps no GitHub issues or the item is not one.
+func issueNumber(tracker model.TrackerName, item string) (int, error) {
 	if tracker != storegithub.Tracker || model.ItemKind(item) != model.KindForge {
-		return model.Authored{}, nil
+		return 0, nil
 	}
 
 	number, err := strconv.Atoi(item)
 	if err != nil {
-		return model.Authored{}, fmt.Errorf("item %s is not the number of an issue: %w", item, err)
+		return 0, fmt.Errorf("item %s is not the number of an issue: %w", item, err)
 	}
 
-	return authored(ctx, built, number)
+	return number, nil
 }
 
 // authored reads who wrote the issue or pull request with the number.

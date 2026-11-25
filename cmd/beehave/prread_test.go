@@ -39,6 +39,11 @@ func (f *readForge) PullRead(_ context.Context, pr int) (model.PullFacts, error)
 	return model.PullFacts{Number: pr, State: f.state, Draft: true, Labels: []string{"hold"}, Assignees: []string{"maintainer"}}, f.readErr
 }
 
+// Association reads the owner as the author of every pull request.
+func (*readForge) Association(context.Context, int) (model.Association, error) {
+	return model.AssociationOwner, nil
+}
+
 func (f *readForge) IssueAssignees(_ context.Context, repo string, number int) ([]string, error) {
 	return f.issues[repo+"#"+strconv.Itoa(number)], f.issueErr
 }

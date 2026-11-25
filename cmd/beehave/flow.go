@@ -300,7 +300,7 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 
 	return itemLife{
 		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
-		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy(), writers: table.writers},
+		pulls:  pulls{projects: cfg.Projects, forge: table.forge, issues: table.issueReads, runners: runners, trees: trees, copier: newHeadCopy(), writers: table.writers},
 	}
 }
 

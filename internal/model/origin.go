@@ -46,6 +46,9 @@ type Authored struct {
 // Foreign reports whether another account than the owner wrote it.
 func (a Authored) Foreign() bool { return a.Number != 0 && a.Association != AssociationOwner }
 
+// Authored is the pull request of the facts with the association of its author. Facts with number 0 have no pull request.
+func (f PullFacts) Authored() Authored { return Authored{Number: f.Number, Association: f.Association} }
+
 // Origin is who wrote an item: its issue on the forge, and its pull request.
 type Origin struct {
 	Issue Authored

@@ -144,6 +144,9 @@ type PullFacts struct {
 	Reviewers []string
 	// Unread names what a lenient read could not give: the assignee list, or a link of the body. A caller that needs it refuses the facts.
 	Unread []string
+	// Association is how the author of this pull request stands to the repository. The read of an item fills it from the same pull request, so a check of
+	// the author and the facts never name two pull requests. It is empty when no read gave it.
+	Association Association
 }
 
 // Facts is the typed read of the view: a field the view lacks is empty. The links of the body are not read here, because a link can be refused: see Read.

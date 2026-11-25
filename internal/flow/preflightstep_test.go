@@ -237,9 +237,9 @@ func (p preflightOver) IssueAssignees(ctx context.Context, _, repo string, numbe
 	return p.world.IssueAssignees(ctx, repo, number)
 }
 
-// Origin finds an item that the owner wrote.
-func (preflightOver) Origin(context.Context, string, string) (model.Origin, error) {
-	return model.Origin{}, nil
+// IssueAuthor finds no issue.
+func (preflightOver) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }
 
 // noReads is the part of a preflight fake that finds no pull request, no issue holder and no foreign author.
@@ -253,8 +253,8 @@ func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, e
 	return nil, nil
 }
 
-func (noReads) Origin(context.Context, string, string) (model.Origin, error) {
-	return model.Origin{}, nil
+func (noReads) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }
 
 // goneBranch is a forge whose head branch is no longer on the remote.

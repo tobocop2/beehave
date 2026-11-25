@@ -131,9 +131,9 @@ func (e2eFiles) IssueAssignees(context.Context, string, string, int) ([]string, 
 	return nil, nil
 }
 
-// Origin finds an item that the owner wrote.
-func (e2eFiles) Origin(context.Context, string, string) (model.Origin, error) {
-	return model.Origin{}, nil
+// IssueAuthor finds no issue: the items of the scripts are local.
+func (e2eFiles) IssueAuthor(context.Context, string, string) (model.Authored, error) {
+	return model.Authored{}, nil
 }
 
 // CheckCredentials refuses every project: the project of the scripts has no build host.
