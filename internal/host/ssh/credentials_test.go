@@ -52,7 +52,7 @@ func TestUp_AHostDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisplayA
 	require.NotEmpty(t, m.Options)
 
 	for _, options := range m.Options {
-		for _, forced := range []string{"ForwardAgent=no", "ClearAllForwardings=yes", "ForwardX11=no", "ForwardX11Trusted=no", "ControlMaster=no", "ControlPath=none"} {
+		for _, forced := range []string{"ForwardAgent=no", "ClearAllForwardings=yes", "ForwardX11=no", "ForwardX11Trusted=no", "ControlMaster=no", "ControlPath=none", "GSSAPIDelegateCredentials=no"} {
 			assert.True(t, slices.Contains(options, forced), "%s in %v", forced, options)
 		}
 	}

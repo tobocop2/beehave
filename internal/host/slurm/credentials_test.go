@@ -52,7 +52,7 @@ func TestUp_AHeadNodeDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDisp
 	assert.True(t, strings.HasPrefix(s.calls[0], "-G "), "the check comes first")
 	assert.NotContains(t, s.calls[0], "ForwardAgent=no", "the check reads the config of the owner, without the forced options")
 
-	forced := "-o ForwardAgent=no -o ClearAllForwardings=yes -o ForwardX11=no -o ForwardX11Trusted=no -o ControlMaster=no -o ControlPath=none --"
+	forced := "-o ForwardAgent=no -o ClearAllForwardings=yes -o ForwardX11=no -o ForwardX11Trusted=no -o ControlMaster=no -o ControlPath=none -o GSSAPIDelegateCredentials=no --"
 	for _, call := range s.calls[1:] {
 		assert.Contains(t, call, forced, call)
 	}

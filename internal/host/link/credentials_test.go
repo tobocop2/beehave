@@ -35,7 +35,7 @@ func TestWithCredentials_NoneForcesNoAgentNoForwardNoDisplayAndNoSharedConnectio
 	options := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "HostName=10.9.9.9", "-o", "StrictHostKeyChecking=yes"}
 	forced := []string{
 		"-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ForwardX11=no", "-o", "ForwardX11Trusted=no",
-		"-o", "ControlMaster=no", "-o", "ControlPath=none",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "GSSAPIDelegateCredentials=no",
 	}
 
 	assert.Equal(t, [][]string{
@@ -89,6 +89,8 @@ func TestCheckCredentials_AcceptsOnlyNoAgentNoDisplayNoProxyLocaleVariablesAndNo
 		"no agent line":                     {answer: "forwardx11 no\n", refuse: []string{"forwardagent", "box"}},
 		"display on":                        {answer: "forwardagent no\nforwardx11 yes\nforwardx11trusted yes\n", refuse: []string{"forwardx11 yes", "X display", "box"}},
 		"no display line":                   {answer: "forwardagent no\n", refuse: []string{"forwardx11", "box"}},
+		"kerberos kept":                     {answer: clean + "gssapiauthentication yes\ngssapidelegatecredentials no\n"},
+		"kerberos delegated":                {answer: clean + "gssapidelegatecredentials yes\n", refuse: []string{"gssapidelegatecredentials yes", "Kerberos", "box"}},
 		"a jump host":                       {answer: clean + "proxyjump jump\n", refuse: []string{"proxyjump", "box", "credentials = \"none\""}},
 		"a proxy command":                   {answer: clean + "proxycommand ssh -A jump -W %h:%p -o Token=ghp_hidden\n", refuse: []string{"proxycommand", "box"}},
 		"a sent variable that is a secret":  {answer: clean + "sendenv GH_TOKEN\n", refuse: []string{"sendenv GH_TOKEN", "box", "only LANG and LC_*"}},

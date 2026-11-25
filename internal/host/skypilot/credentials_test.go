@@ -66,7 +66,7 @@ func TestUp_AClusterDeclaredCredentialsNoneThatPassesGetsNoAgentNoForwardNoDispl
 
 	forced := []string{
 		"-o", "BatchMode=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ForwardX11=no", "-o", "ForwardX11Trusted=no",
-		"-o", "ControlMaster=no", "-o", "ControlPath=none", clusterName,
+		"-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "GSSAPIDelegateCredentials=no", clusterName,
 	}
 	assert.Equal(t, [][]string{
 		{"-G", "-o", "BatchMode=yes", clusterName},
