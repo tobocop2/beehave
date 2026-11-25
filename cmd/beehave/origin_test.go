@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/store/beads"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 // authorForge is a forge that reads who wrote each issue and pull request, and fails the read of the number failing.
@@ -78,6 +79,7 @@ func TestIssueAuthor_AnItemOfAnotherTrackerReadsNoIssue(t *testing.T) {
 		item    string
 	}{
 		"an item of beads":                   {beads.Tracker, "7"},
+		"a numbered item of the local store": {local.Tracker, "7"},
 		"a GitHub item that is not a number": {storegithub.Tracker, "bb-7"},
 	} {
 		t.Run(name, func(t *testing.T) {

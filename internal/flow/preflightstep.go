@@ -54,15 +54,16 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, err
 	}
 
-	if id == "" {
-		id = s.in.Item
+	item, err := s.itemOf(id)
+	if err != nil {
+		return nil, err
 	}
 
 	if s.e.deps.Preflight == nil {
 		return nil, errNoPreflight
 	}
 
-	value, err := s.durable("preflight", label, s.ask(id, req))
+	value, err := s.durable("preflight", label, s.ask(item, req))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}

@@ -251,6 +251,8 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 `pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers`, `links` and `unread`.
 
+- `id` is an item id, as `beehave run` takes it, such as `12` or `fix-login`. The call refuses any other text, such as `#12` or `+12`, before it reads.
+
 - The call finds the pull request as `preflight` does: the open one on the branch of the item, then an open one that names the item, then the merged one, then the newest closed one. An item with no pull request gives `found` false and empty lists.
 - `reviewers` lists the logins that reviewed the pull request or were asked to. `links` lists the issues that the body names with `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related`. Each link is a dict with `repo` and `number`. An empty `repo` is the repository of the pull request.
 - A read that fails ends the step with an error. A pull request with no draft flag or no label list is refused, because a null would pass as a pull request that nothing holds. A pull request with no assignee list, or a body link whose number is not an int, is not refused: `unread` names what the read could not give, and `claim_stop` ends the step with an error when it has own logins to compare. `unread` is an empty list for a clean read.
@@ -459,7 +461,7 @@ The four steps that post public text (`item_create`, `item_comment`, `pr_comment
 
 ### `preflight`
 
-`preflight(head, base, id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
+`preflight(head, base, id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`. `id` is an item id, as for `pr_read`; the call refuses any other text before it reads.
 
 It checks, in this order:
 

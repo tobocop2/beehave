@@ -729,8 +729,8 @@ func (in ItemInput) check() error {
 		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
 	}
 
-	if model.ItemKind(in.Item) == "" {
-		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
+	if err := checkItemID(in.Item); err != nil {
+		return err
 	}
 
 	if in.Project == "" {
