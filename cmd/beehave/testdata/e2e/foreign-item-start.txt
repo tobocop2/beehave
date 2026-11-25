@@ -1,0 +1,80 @@
+# A foreign item starts only in the sandbox on a build host declared credentials = "none". The real wiring reads who wrote the item through gh.
+# The fake gh answers the author read with the value of ASSOC, and the open pull request of the item with the number in PULL.
+isolate
+
+subst fake/gh
+chmod 755 fake/gh
+
+# A project whose tracker is on GitHub reads the author of the issue even with no forge key: with the sandbox off, a foreign issue is refused before the claim.
+env ASSOC=CONTRIBUTOR
+env PULL=
+exitcode 1 beehavereal run 412 issues-off --workflow flow/pass.star
+stderr 'item 412 was not started: its issue #412 comes from another account \(CONTRIBUTOR\)'
+stderr 'Remove sandbox = "off" from the project'
+! stdout 'finished'
+grep 'issueOrPullRequest' gh.log
+noclaims issues-off
+
+# The same project with the sandbox on and no build host declared credentials = "none" is refused too.
+exitcode 1 beehavereal run 413 issues-on --workflow flow/pass.star
+stderr 'item 413 was not started: its issue #413 comes from another account \(CONTRIBUTOR\)'
+stderr 'the project declares no build host with credentials = "none"'
+! stdout 'finished'
+
+# A local item of a project with a forge whose pull request comes from another account, in the sandbox with no declared host: the host check of the build refuses it.
+env PULL=77
+exec beehavereal item add pulls-on fix-login --title 'Fix the login' --body-file body.txt
+exitcode 1 beehavereal run fix-login pulls-on --workflow flow/pass.star
+stderr 'item fix-login was not started: its pull request #77 comes from another account \(CONTRIBUTOR\)'
+stderr 'the project declares no build host with credentials = "none"'
+! stdout 'finished'
+noclaims pulls-on
+
+# The owner's own issue starts with the sandbox off.
+env ASSOC=OWNER
+env PULL=
+exec beehavereal run 414 issues-off --workflow flow/pass.star
+stdout 'item 414 finished'
+
+-- body.txt --
+Fix the login.
+-- flow/pass.star --
+def main(item):
+    pass
+-- config/projects/issues-off.star --
+project(
+    repo        = "o/r",
+    base_branch = "main",
+    gate        = "true",
+    test_report = "r/*.xml",
+    tracker     = "github",
+    sandbox     = "off",
+)
+-- config/projects/issues-on.star --
+project(
+    repo        = "o/r",
+    base_branch = "main",
+    gate        = "true",
+    test_report = "r/*.xml",
+    tracker     = "github",
+)
+-- config/projects/pulls-on.star --
+project(
+    repo        = "o/r",
+    base_branch = "main",
+    gate        = "true",
+    test_report = "r/*.xml",
+    forge       = "github",
+)
+-- fake/gh --
+#!/bin/sh
+# The stand-in for gh: every call is logged, the author read answers ASSOC, and the open pull request list answers PULL when it is set.
+echo "$*" >> "@WORK@/gh.log"
+case "$*" in
+  "auth token"*) echo fake-token ;;
+  *graphql*issueOrPullRequest*) printf '{"data":{"repository":{"issueOrPullRequest":{"authorAssociation":"%s"}}}}\n' "$ASSOC" ;;
+  "pr list"*"--state open"*) if [ -n "$PULL" ]; then printf '[{"number":%s}]\n' "$PULL"; else echo '[]'; fi ;;
+  "pr view"*) echo '{"number":77,"state":"OPEN","headRefOid":"abc123","baseRefName":"main","author":{"login":"someone"},"assignees":[],"labels":[],"reviews":[],"reviewRequests":[],"isDraft":false,"body":""}' ;;
+  "issue view"*) echo '{"number":412,"title":"Fix it","state":"OPEN","labels":[],"assignees":[],"body":"Fix it."}' ;;
+  *) echo '[]' ;;
+esac
