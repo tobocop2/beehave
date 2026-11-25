@@ -1,4 +1,4 @@
-package batch
+package landing
 
 import (
 	"context"
@@ -26,8 +26,19 @@ var (
 	treePattern    = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 )
 
+// MergeResult is what git's three-way merge of two commits made. A conflict still has a tree id, and it is not a result to use.
+type MergeResult struct {
+	Tree     string
+	Conflict bool
+}
+
+// versioner reads the version text of git.
+type versioner interface {
+	Version(ctx context.Context) (string, error)
+}
+
 // CheckGit fails when the git on the gate host is older than 2.38, the first version with merge-tree --write-tree.
-func CheckGit(ctx context.Context, g Git) error {
+func CheckGit(ctx context.Context, g versioner) error {
 	text, err := g.Version(ctx)
 	if err != nil {
 		return err

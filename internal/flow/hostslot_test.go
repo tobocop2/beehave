@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,22 +32,6 @@ func TestGateSlot_AProjectGateOnABuildHostSubmitsTheGateClassWithTheCountOfGateS
 
 	require.NoError(t, err)
 	assert.Equal(t, []model.Slot{{Class: model.GateClass, Count: 3}}, h.gate.slots)
-}
-
-func TestGateSlot_ABatchGateOnABuildHostSubmitsTheGateClassWithTheRecordedCount(t *testing.T) {
-	t.Parallel()
-
-	rig := newBatchRig(t)
-	engine := rig.engine(t)
-
-	var record ExclusiveInput
-
-	require.NoError(t, json.Unmarshal([]byte(`{"kind":"batch_gate","project":"`+testProject+`","item":"`+testItem+`","commit":"`+rig.heads["1"]+`","host_key":"host:box","slot_count":2}`), &record))
-
-	_, err := engine.startBatchGate(t.Context(), record)
-
-	require.NoError(t, err)
-	assert.Equal(t, []model.Slot{{Class: model.GateClass, Count: 2}}, rig.gate.submitSlots)
 }
 
 func TestGateSlot_AProgramGateQueuedOnABuildHostRunsItsHostJobInTheGateClassWithTheCountOfGateSlots(t *testing.T) {

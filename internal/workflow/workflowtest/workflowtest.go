@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
-// Call is one call of a builtin in a workflow file, with the argument expressions by keyword.
+// Call is one call of a builtin or of a library function in a workflow file, with the argument expressions by keyword.
 type Call struct {
 	Builtin string
 	Args    map[string]syntax.Expr
@@ -18,6 +18,12 @@ type Call struct {
 
 // Calls lists the calls of the builtins in the text of a workflow file, in the order of the text. It reads the syntax only and runs nothing.
 func Calls(name string, text []byte) ([]Call, error) {
+	return CallsTo(name, text, workflow.Builtins()...)
+}
+
+// CallsTo lists the calls of the named functions in the text of a workflow file, in the order of the text, such as a function of a library file.
+// Builtin holds the name of the function. It reads the syntax only and runs nothing.
+func CallsTo(name string, text []byte, functions ...string) ([]Call, error) {
 	parsed, err := model.StarlarkFileOptions().Parse(name, text, 0)
 	if err != nil {
 		return nil, err
@@ -27,7 +33,7 @@ func Calls(name string, text []byte) ([]Call, error) {
 
 	syntax.Walk(parsed, func(n syntax.Node) bool {
 		if call, ok := n.(*syntax.CallExpr); ok {
-			calls = appendBuiltin(calls, call)
+			calls = appendCall(calls, call, functions)
 		}
 
 		return true
@@ -56,10 +62,10 @@ func Constant(file string, text []byte, name string) ([]string, error) {
 	return out, nil
 }
 
-// appendBuiltin adds the call when it calls a builtin by its name.
-func appendBuiltin(calls []Call, call *syntax.CallExpr) []Call {
+// appendCall adds the call when it calls one of the functions by its name.
+func appendCall(calls []Call, call *syntax.CallExpr, functions []string) []Call {
 	fn, ok := call.Fn.(*syntax.Ident)
-	if !ok || !slices.Contains(workflow.Builtins(), fn.Name) {
+	if !ok || !slices.Contains(functions, fn.Name) {
 		return calls
 	}
 

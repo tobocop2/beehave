@@ -100,12 +100,6 @@ type Writes interface {
 	MergePR(ctx context.Context, pr int, sha string) error
 }
 
-// Body is the body of a pull request. The merge records its row there, through EditBody. SetBody refuses a pull request that the owner did not write, so EditBody holds no author check of its own.
-type Body interface {
-	PRBody(ctx context.Context, pr int) (string, error)
-	SetBody(ctx context.Context, pr int, body string) error
-}
-
 // Pins is what the merge reads to check that the pull request is still the one that was gated: the state, the head and the base, from the typed read.
 type Pins interface {
 	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
@@ -118,7 +112,6 @@ type Forge interface {
 	Approvals
 	Closings
 	Writes
-	Body
 }
 
 // Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.star.
@@ -126,7 +119,7 @@ type Forge interface {
 // Approved is true when a step other than the author accepted the head: work of an own identity merges only then.
 // Hold is the label of a pull request that is never merged; empty means no label holds. ForbidText holds the patterns that no line of the body or of a commit message may match.
 // Retarget moves each child pull request onto the base before the merge, where a child would otherwise block it.
-// IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
+// Dir is the state folder: the logs of failed checks go under it.
 // GatedTree is the tree id of the gated head. When it is set, the run reads the tree of the base tip after the merge and stops if it differs; empty asks for no proof.
 // Intent is the record of a caller that wrote it before the merge. With an intent, a pull request in state MERGED counts as done
 // when the intent ties the merge to this run (see Intent) and the guards that still apply to a merged pull request pass. Without one, MERGED refuses.
@@ -149,7 +142,6 @@ type Request struct {
 	Queue         bool
 	Runners       []string
 	Dir           string
-	IntegrationPR int
 	AllowOrphans  bool
 	AllowNoChecks bool
 	AllowReady    bool

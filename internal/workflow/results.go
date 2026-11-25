@@ -41,6 +41,7 @@ const (
 	itemReadName         = "item_read"
 	itemStatusName       = "item_status"
 	baseTipName          = "base_tip"
+	landingProofName     = "landing_proof"
 	issueStateName       = "issue_state"
 	prClosingName        = "pr_closing"
 	prCommentName        = "pr_comment"
@@ -62,6 +63,7 @@ const (
 	statusField          = "status"
 	attemptsField        = "attempts"
 	foundField           = "found"
+	errorField           = "error"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -72,7 +74,7 @@ const (
 func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills", "commit_subject", "commit_body"},
-		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
+		commandName:      {"stdout", "stderr", "rc", attemptsField, errorField},
 		earlierCallsName: {"count"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
@@ -98,8 +100,14 @@ const runsResult = "runs"
 func swarmResultFields() map[string][]string {
 	return map[string][]string{
 		spawnName: {runsResult}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"},
-		mergeName: append(handOffFields(), statusField, reasonField, "commit"), handOffName: handOffFields(),
+		mergeName: mergeFields(), handOffName: handOffFields(),
 	}
+}
+
+// mergeFields are the fields of the result of merge: the members that landed, were refused or were deferred, the members after a refusal,
+// whether the fold was not the gated union and why, and the base tip after the call.
+func mergeFields() []string {
+	return []string{"merged", "rejected", "deferred", "rest", "moved", reasonField, "tip"}
 }
 
 // earlierResultFields holds the fields of the builtins that read the steps of earlier runs.
@@ -123,12 +131,13 @@ func factsResultFields() map[string][]string {
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
 		baseTipName:        {"commit", treeKeyword},
-		issueStateName:     {stateField, foundField},
+		landingProofName:   {"unproven"},
+		issueStateName:     {stateField, foundField, errorField},
 		itemCommentName:    {"id"},
 		itemCreateName:     {"id", "created"},
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},
 		itemStatusName:     {"id", statusField},
-		prClosingName:      {foundField, "issues", "forge"},
+		prClosingName:      {foundField, "issues", "forge", errorField},
 		prCommentName:      {numberField},
 		prOpenName:         {numberField, "created", "stack"},
 		prStateName:        {stateField},

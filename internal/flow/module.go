@@ -47,7 +47,7 @@ func StepModule() step.Module {
 	return module
 }
 
-// recordsCountedStep is false for the builtins that record no counted step. merge names its steps batch:<name>.<kind>#<item>, and sandbox, struct,
+// recordsCountedStep is false for the builtins that record no counted step. merge names its steps merge:<name>.<step> and hand_off batch:<name>.<step>#<item>, and sandbox, struct,
 // paths_outside, closing_references and keep_issues record no step: the last three match text, so a replay computes the same answer from the same input.
 // patched records the marker DBOS.patch-<name>, a step of DBOS and no counted step of a module.
 func recordsCountedStep(builtin string) bool {
@@ -63,7 +63,7 @@ func stepDefs() []builtinDef {
 func repositoryDefs() []builtinDef {
 	return []builtinDef{
 		{name: "gate", call: (*script).gate, repository: true, exempt: "run"},
-		{name: "merge", call: (*script).batchMerge, repository: true},
+		{name: "merge", call: (*script).mergeCall, repository: true},
 		{name: handOffKeyword, call: (*script).handOffCall, repository: true},
 		{name: "pr_comment", call: (*script).prComment, repository: true},
 		{name: prHistoryKind, call: (*script).prHistory, repository: true},
@@ -73,6 +73,7 @@ func repositoryDefs() []builtinDef {
 		{name: issueAssigneesKind, call: (*script).issueAssignees, repository: true},
 		{name: issueStateKind, call: (*script).issueState, repository: true},
 		{name: baseTipKind, call: (*script).baseTip, repository: true},
+		{name: landingProofKind, call: (*script).landingProof, repository: true},
 		{name: prClosingKind, call: (*script).prClosing, repository: true},
 		{name: "preflight", call: (*script).preflight, repository: true},
 		{name: "push", call: (*script).push, repository: true},

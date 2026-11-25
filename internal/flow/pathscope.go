@@ -117,7 +117,7 @@ func takeMark(ctx context.Context, tree proc.Runner) (startMark, error) {
 
 // others maps each untracked file, and each ignored file or build cache folder, of the folder to its stamp. The keys are relative to the root of the repository.
 func others(ctx context.Context, tree proc.Runner) (map[string]string, error) {
-	out, err := git(ctx, tree, "rev-parse", "--show-toplevel")
+	out, err := git(ctx, tree, revParse, "--show-toplevel")
 	if err != nil {
 		return nil, fmt.Errorf("find the root of the item folder: %w", err)
 	}

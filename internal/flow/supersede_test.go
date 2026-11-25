@@ -24,6 +24,8 @@ import (
 
 // supersedeGate holds each gate until the test lets it end or its context ends, and counts the gates that started and the ones that its context stopped.
 type supersedeGate struct {
+	cleanTree
+
 	started *atomic.Int32
 	stopped *atomic.Int32
 	release chan struct{}

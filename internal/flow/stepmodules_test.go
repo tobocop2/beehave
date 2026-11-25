@@ -52,9 +52,10 @@ func TestStepModuleTable_NamesNoStepKindThatTheModuleDoesNotRecord(t *testing.T)
 
 	recorded := StepModule().Kinds
 
+	// merge records merge:<call>.<step> and hand_off records batch:<call>.<step>#<item>: steps named by the call, which no count numbers.
 	for _, module := range moduleTable() {
 		for _, kind := range module.kinds {
-			assert.True(t, kind == kindBatch || slices.Contains(recorded, kind), "the module %s names the kind %q, which no builtin records", module.name, kind)
+			assert.True(t, kind == kindBatch || kind == kindMerge || slices.Contains(recorded, kind), "the module %s names the kind %q, which no builtin records", module.name, kind)
 		}
 	}
 }
@@ -74,8 +75,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core20.agent16.tracker4.forge11.land15.gate7.host1.round7", applicationVersion("v1"))
-	assert.Equal(t, "v1+core20.agent16.tracker4.forge11.land15.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core20.agent16.tracker4.forge12.land16.gate8.host1.round7", applicationVersion("v1"))
+	assert.Equal(t, "v1+core20.agent16.tracker4.forge12.land16.gate7.host1.round7", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionTwenty(t *testing.T) {
@@ -100,10 +101,10 @@ func TestStepModules_TheAgentModuleIsAtVersionSixteen(t *testing.T) {
 	assert.Contains(t, strings.Split(moduleVersions(), "."), "agent16", "the cost of a failed agent run comes from the record of the failed phase at agent16, and the cost event of agent15 is gone")
 }
 
-func TestStepModules_TheLandModuleIsAtVersionFifteen(t *testing.T) {
+func TestStepModules_TheLandModuleIsAtVersionSixteen(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "land15", "merge is the old batch_merge and a merge of one pull request records the batch steps, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "land16", "merge lands one gated union of members and records the steps of the kind merge, hand_off records the batch steps, "+
 		"each member records its scope check as batch:<call>.scope#<item> before its intent, a hand-off records batch:<call>.ready#<item> and batch:<call>.watch#<item>@<round>, "+
 		"the preflight step records no foreign, pr, head or author field, the merge of a member names its run at land9, "+
 		"an owner line that keeps issues records batch:<call>.kept#<item> at land10, "+
@@ -111,15 +112,18 @@ func TestStepModules_TheLandModuleIsAtVersionFifteen(t *testing.T) {
 		"and the first review read and the first merge call of a run that no gate gave a scope record the scope step at land12, "+
 		"and each member records the issues that its pull request must close, which the merge audits, at land13, "+
 		"and a merge of one pull request records batch:<call>.tip after its merge and the moved field of its intent step at land14, "+
-		"and each member records the issues that the owner kept and the closing issues that a check read, and the merge records no scope or kept step, at land15")
+		"and each member records the issues that the owner kept and the closing issues that a check read, and the merge records no scope or kept step, at land15, "+
+		"and a merge of `members` records merge:<call>.plan, then merge:<call>.intent#<item> and merge:<call>.poll#<item> for each member, then merge:<call>.tip, "+
+		"and no batch:<call>.* step of a merge with `prs`, at land16")
 }
 
-func TestStepModules_TheGateModuleIsAtVersionSeven(t *testing.T) {
+func TestStepModules_TheGateModuleIsAtVersionEight(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate7", "the gate step records the step field, the name of its own step, so a run that recorded a gate before this version does not replay it, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "gate8", "the gate step records the step field, the name of its own step, so a run that recorded a gate before this version does not replay it, "+
 		"records a lost job and host_losses, the wait for its proof records gate:lost-start and gate:lost-look.<k>, "+
-		"the owner wait records <call>/lost-ask.<n>, the item run records a lost job with a proof as <call>/host-loss, gate records the revert field, and the kind before_review is retired")
+		"the owner wait records <call>/lost-ask.<n>, the item run records a lost job with a proof as <call>/host-loss, gate records the revert field, and the kind before_review is retired, "+
+		"and a gate with a program records the head and the tree of the worktree that it read, at gate8")
 }
 
 func TestStepModules_TheRoundModuleIsAtVersionSeven(t *testing.T) {
@@ -227,7 +231,7 @@ func TestUnreplayableStep_IsTheFirstStepThatThisBuildDoesNotRecordWithTheModuleO
 	t.Parallel()
 
 	engine := []string{"item", "claim", "ready", "release", "worktree", "make worktree", "others", "phase", "exclusive", "host_job", "DBOS.sleep", "DBOS.getResult"}
-	_, _, found := unreplayableStep(slices.Concat(engine, []string{"wait:w#1", "agent:a#1/render", "batch:b.issues", "now#1", "undo:write:w#1", holdStep}))
+	_, _, found := unreplayableStep(slices.Concat(engine, []string{"wait:w#1", "agent:a#1/render", "batch:b.ready#1", "merge:u.plan", "merge:u.intent#1", "merge:u.poll#1", "merge:u.tip", "now#1", "undo:write:w#1", holdStep}))
 	assert.False(t, found, "this build records every step")
 
 	tests := map[string]struct {
@@ -236,7 +240,6 @@ func TestUnreplayableStep_IsTheFirstStepThatThisBuildDoesNotRecordWithTheModuleO
 	}{
 		"a kind of no module":        {[]string{"claim", "wait:w#1", "unknown_kind:u#1", "other_kind:o#1"}, "unknown_kind:u#1", ""},
 		"the scope check of a merge": {[]string{"claim", "scope-check:m#1", "merge:m#1"}, "scope-check:m#1", moduleRound},
-		"the merge of one pull":      {[]string{"merge:m#1"}, "merge:m#1", moduleLand},
 		"the builtin before_review":  {[]string{"before_review:b#1"}, "before_review:b#1", moduleGate},
 		"the builtin item_assign":    {[]string{"item_assign:a#1"}, "item_assign:a#1", moduleTracker},
 		"the builtin pr_assign":      {[]string{"pr_assign:a#1"}, "pr_assign:a#1", moduleForge},

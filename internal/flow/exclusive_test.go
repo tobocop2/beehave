@@ -14,6 +14,8 @@ import (
 
 // slowGate holds each gate until the test lets it end, and tells the test when it started.
 type slowGate struct {
+	cleanTree
+
 	started chan struct{}
 	release chan struct{}
 }
@@ -58,14 +60,14 @@ func TestExclusive_ABatchMergeOfARepositoryStartsOnlyAfterTheGateOfThatRepositor
 	receive(t, gated.started)
 
 	group.Go(func() {
-		_, err := engine.RunFile("batch-item", testProject, writeFlow(t, bodyFlow(rig.call("1 3", `gate_run = ["check-all"], `))), modeOff())
+		_, err := engine.RunFile("batch-item", testProject, writeFlow(t, bodyFlow(`merge(members = `+rig.members("1 3")+`, base = "main", repo = "o/r", name = "b")`)), modeOff())
 		ended <- err
 	})
 
 	waitOn(t, condition(waitsInTheQueue(engine, 1)))
 
 	// The queue has no recorded poll, so the check spans three polls of the queue. It is a listed wall-time site.
-	require.Never(t, func() bool { return len(rig.h.commands.ran()) > 0 || len(rig.merger.landed()) > 0 }, 3*storePoll, 100*time.Millisecond, "the batch started or merged while the gate of the repository ran")
+	require.Never(t, func() bool { return len(rig.merger.landed()) > 0 }, 3*storePoll, 100*time.Millisecond, "the batch merged while the gate of the repository ran")
 
 	close(gated.release)
 	group.Wait()

@@ -1,6 +1,7 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
+load("@beehave//batch.star", "batch_merge")
 load("@beehave//claims.star", "claim_stop")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//scope.star", "fix_scope", "hold_scope")
@@ -518,35 +519,8 @@ def closes_of(project, base, id, stacked):
 
     return [number]
 
-def integration_reads(base, pr, numbers):
-    """Returns the reads that the audit of a batch needs: the tip of the base, the state of each issue number and the issues that the pull request number pr closes.
-    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    tip = base_tip(base = base, name = "batch-tip")
-    states = {}
-    for number in numbers:
-        states[number] = issue_state(number = number, name = "batch-issue-%d" % number).state
-
-    return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
-
-def land_one(member, base, repo, own, forbid_text, gated, expect_tree, name):
-    """Merges one pull request with the result of a gate call of this run, under the same guards as the list call of the round: the hold label, the own identity and the forbidden text.
-    The engine posts the statuses of the gate and merges only when the tree that the merge makes is the tree of the gate and the base tip has the tree expect_tree.
-    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    return merge(
-        name = name,
-        member = member,
-        base = base,
-        repo = repo,
-        hold = "hold",
-        own = own,
-        forbid_text = forbid_text,
-        gate = gated,
-        gated_tree = gated.tree,
-        expect_tree = expect_tree,
-    )
-
 def hand_to_owner(prs, base, repo, name):
-    """Marks the pull requests ready and waits until the owner merges them. No entry calls it yet: the hand-off of the batch still uses the keyword of merge (#503)."""
+    """Marks the pull requests ready and waits until the owner merges them. The round calls it when the owner merges."""
     return hand_off(prs = prs, base = base, repo = repo, name = name)
 
 def id_patterns(ids):
@@ -732,9 +706,9 @@ def land(approved, project, round_settings, n, run):
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
-        out = merge(name = "round-land-%d" % n, prs = prs, base = base, repo = project.repo, hand_off = True)
+        out = hand_to_owner(prs = prs, base = base, repo = project.repo, name = "round-land-%d" % n)
     else:
-        out = merge(
+        out = batch_merge(
             name = "round-land-%d" % n,
             prs = prs,
             base = base,

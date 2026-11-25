@@ -194,6 +194,8 @@ func TestLostJob_TheLimitIsReadFromTheConfigAtTheTimeOfTheLook(t *testing.T) {
 
 // lostOnceGate loses the host job of its first gate and passes every later gate.
 type lostOnceGate struct {
+	cleanTree
+
 	submits atomic.Int32
 	runs    atomic.Int32
 }

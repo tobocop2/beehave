@@ -20,6 +20,8 @@ import (
 // hostGate is a gate with a host job. It counts its submits and keeps the job of each wait. Its first wait blocks until the run is canceled,
 // as a wait on a host job does when the run stops after the submit, and every later wait passes.
 type hostGate struct {
+	cleanTree
+
 	submits *atomic.Int32
 	started chan struct{}
 	mu      *sync.Mutex

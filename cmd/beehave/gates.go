@@ -355,6 +355,22 @@ func (g projectGate) shell(ctx context.Context, project, dir, command string) (s
 	return result.Stdout + result.Stderr, result.ExitCode
 }
 
+// State reads the worktree of the item with the reader of the project gate: the folder, the head, the tree of the head and whether it is clean.
+func (g projectGate) State(ctx context.Context, project, item string) (string, gate.State, error) {
+	dir, err := g.programs.trees.Path(ctx, project, item)
+	if err != nil {
+		return "", gate.State{}, fmt.Errorf("find the folder of item %s: %w", item, err)
+	}
+
+	if dir == "" {
+		return "", gate.State{}, fmt.Errorf("item %s of project %s has no worktree, so the gate cannot read the commit its program judges. Make the worktree of the item first", item, project)
+	}
+
+	state, err := g.tree(ctx, project, dir)
+
+	return dir, state, err
+}
+
 // treeOf returns the reader of the worktree of an item of the project, which runs the git of the project.
 func (g projectGate) treeOf(project string) func(context.Context, string) (gate.State, error) {
 	return func(ctx context.Context, dir string) (gate.State, error) { return g.tree(ctx, project, dir) }

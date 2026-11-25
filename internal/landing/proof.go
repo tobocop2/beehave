@@ -1,4 +1,5 @@
-package batch
+// Package landing proves that the members of a landed batch are on the base.
+package landing
 
 import (
 	"context"
@@ -8,6 +9,24 @@ import (
 
 	"github.com/tobocop2/beehave/internal/model"
 )
+
+// Tip is the base tip: a commit and its tree.
+type Tip struct {
+	Commit string `json:"commit"`
+	Tree   string `json:"tree"`
+}
+
+// Member is one landed pull request: its item and the full commit id that a reviewer gated.
+type Member struct {
+	Item string `json:"item"`
+	Head string `json:"head"`
+}
+
+// Outcome is a member with the reason that its landing is unproven.
+type Outcome struct {
+	Item   string `json:"item"`
+	Reason string `json:"reason"`
+}
 
 // ProofReads are the forge reads that prove a landing. Compare reads the status and both counts of the comparison of a commit with a branch.
 // CommitTree reads the tree id of a commit, and TreeBlobs lists the files of a tree, path to mode and content id. A list cut short is an error.

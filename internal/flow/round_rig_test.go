@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -419,6 +421,19 @@ func listOf(words string) []any {
 	return list
 }
 
+// closedIssues reads the issue of each item id that is a number as CLOSED, as a merge that closes it leaves it, so the audit after a batch finds nothing.
+func closedIssues(ids []string) map[int]string {
+	closed := map[int]string{}
+
+	for _, id := range ids {
+		if number, err := strconv.Atoi(id); err == nil {
+			closed[number] = issueClosed
+		}
+	}
+
+	return closed
+}
+
 func newRoundRigOf(t *testing.T, items string) *roundRig {
 	t.Helper()
 
@@ -485,7 +500,7 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	r.writer = newFakeWriter()
 	rig.h.writer = r.writer
 
-	r.q = &fakeQueue{items: rows}
+	r.q = &fakeQueue{items: rows, issueStates: closedIssues(append(queued, slices.Collect(maps.Keys(rig.heads))...))}
 	rig.h.queue = &servedOnce{fakeQueue: r.q, turns: kids.turns, writer: r.writer}
 	kids.turns.ended = func(item string) bool { return itemEnded(r.last, item) }
 	rig.h.reader = &fakeReader{}
@@ -508,6 +523,8 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 
 	rig.h.preflight = r.remote
 
+	// The batch library of the round folds and checks out the union with git in the worktree of the round item, which is the repository of the rig.
+	rig.h.commands.git = rig.libraryGit
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
 		if request.Run[0] == integrationProgram {
 			kids.atIntegration()

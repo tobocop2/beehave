@@ -10,7 +10,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -248,7 +247,7 @@ func post(ctx context.Context, deps Deps, verdict Verdict) (Outcome, error) {
 		state = model.StatusSuccess
 	}
 
-	note, err := deps.Post(ctx, []model.CommitStatus{{SHA: verdict.Head, Context: batch.ContextGate, State: state, Description: describe(verdict.Key)}})
+	note, err := deps.Post(ctx, []model.CommitStatus{{SHA: verdict.Head, Context: model.ContextGate, State: state, Description: describe(verdict.Key)}})
 	if err != nil {
 		return Outcome{}, err
 	}

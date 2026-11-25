@@ -1,7 +1,8 @@
-package batch
+package landing
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -53,10 +54,7 @@ func TestCheckGit_VersionTable(t *testing.T) {
 	}
 
 	for text, want := range cases {
-		w := newWorld()
-		w.version = text
-
-		err := CheckGit(context.Background(), w)
+		err := CheckGit(context.Background(), versionText{text: text})
 		if want == "" {
 			require.NoError(t, err, text)
 		} else {
@@ -68,11 +66,19 @@ func TestCheckGit_VersionTable(t *testing.T) {
 func TestCheckGit_VersionCallFails(t *testing.T) {
 	t.Parallel()
 
-	w := newWorld()
-	w.failVersion = errBoom
-
-	require.ErrorIs(t, CheckGit(context.Background(), w), errBoom)
+	require.ErrorIs(t, CheckGit(context.Background(), versionText{err: errBoom}), errBoom)
 }
+
+// errBoom is the failure of a fake git call.
+var errBoom = errors.New("boom")
+
+// versionText is a git that answers the version call with text, or fails with err.
+type versionText struct {
+	text string
+	err  error
+}
+
+func (v versionText) Version(context.Context) (string, error) { return v.text, v.err }
 
 func TestGitCLI_Version(t *testing.T) {
 	t.Parallel()
@@ -128,4 +134,32 @@ func TestGitCLI_NewCommit(t *testing.T) {
 	_, err = g.NewCommit(context.Background(), treeB)
 	require.EqualError(t, err, "git commit-tree failed with exit code 128: fatal: bad tree")
 	assert.NotContains(t, strings.Join(s.calls[1], " "), "-p")
+}
+
+func TestGitCLI_HasCommit(t *testing.T) {
+	t.Parallel()
+
+	s, g := scripted(
+		model.CommandResult{},
+		model.CommandResult{ExitCode: 1},
+		model.CommandResult{ExitCode: 128, Stderr: "fatal: Not a valid object name\n"},
+		model.CommandResult{ExitCode: 2, Stderr: "boom\n"},
+	)
+	ctx := context.Background()
+
+	found, err := g.HasCommit(ctx, "abc")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, []string{"cat-file", "-e", "abc^{commit}"}, s.calls[0])
+
+	found, err = g.HasCommit(ctx, "abc")
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	found, err = g.HasCommit(ctx, "abc")
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	_, err = g.HasCommit(ctx, "abc")
+	require.EqualError(t, err, "git cat-file failed with exit code 2: boom")
 }

@@ -29,6 +29,8 @@ type fakeCommands struct {
 	mu       sync.Mutex
 	requests []CommandRequest
 	reply    func(CommandRequest) (CommandOutput, error)
+	// git answers a request ahead of reply when its second value is true, so a test that sets its own reply keeps the git of the batch library.
+	git func(CommandRequest) (CommandOutput, bool)
 	// before runs ahead of the lock, so it may wait for the context or for a signal of the test. A non-nil error fails the command.
 	before func(ctx context.Context, request CommandRequest) error
 }
@@ -49,6 +51,12 @@ func (c *fakeCommands) Run(ctx context.Context, request CommandRequest) (Command
 	defer c.mu.Unlock()
 
 	c.requests = append(c.requests, request)
+
+	if c.git != nil {
+		if out, ok := c.git(request); ok {
+			return out, nil
+		}
+	}
 
 	if c.reply == nil {
 		return CommandOutput{}, nil

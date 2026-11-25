@@ -445,6 +445,13 @@ func newDryGate(dir, head string, script *fixtureRun) dryGate {
 	return dryGate{dir: dir, head: head, script: script, runs: new(atomic.Int32)}
 }
 
+// State reads the commit of the dry-run folder, which no step of a dry run leaves dirty.
+func (g dryGate) State(ctx context.Context, _, _ string) (string, gatepkg.State, error) {
+	tree, err := dryGit(ctx, g.dir, []string{revParse, g.head + "^{tree}"})
+
+	return g.dir, gatepkg.State{Head: g.head, Tree: tree, Clean: true}, err
+}
+
 func (dryGate) Key(context.Context, string, string, string, string, string) (GateKey, error) {
 	return GateKey{}, nil
 }

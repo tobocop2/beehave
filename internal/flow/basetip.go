@@ -34,8 +34,13 @@ func (s *script) baseTip(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 	return s.durable(baseTipKind, label, func(ctx context.Context, _ string) (stepResult, error) { return s.readBaseTip(ctx, base) })
 }
 
-// readBaseTip reads the tip of the base. A tip with no commit is a failed read.
+// readBaseTip makes the worktree of the item when it has none, then reads the tip of the base into it. A tip with no commit is a failed read.
+// The git commands of the batch library run in that worktree, so the library reads the tip before its first git command.
 func (s *script) readBaseTip(ctx context.Context, base string) (stepResult, error) {
+	if _, err := s.tree(ctx); err != nil {
+		return stepResult{}, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)
+	}
+
 	tip, err := s.e.deps.Batch.Tip(ctx, s.in.Project, s.in.Item, base)
 	if err == nil && tip.Commit == "" {
 		err = errEmptyTip

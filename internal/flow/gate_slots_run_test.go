@@ -18,6 +18,8 @@ import (
 // eventGate holds the gate of each project until the test releases that project, and sends "start <project>" and "end <project>" as each gate starts and ends.
 // The first gate of the project lost returns a lost job instead.
 type eventGate struct {
+	cleanTree
+
 	events  chan string
 	release map[string]chan struct{}
 	lost    string

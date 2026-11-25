@@ -34,12 +34,12 @@ func TestCheck_RefusesTheArgumentsOfTheRunThatAreText(t *testing.T) {
 		{"item_comment id", `item_comment(id = "", text = "t", key = "k")`, "item_comment: id must not be empty"},
 		{"item_comment text", `item_comment(id = "i", text = "", key = "k")`, "item_comment: text must not be empty"},
 		{"item_comment key", `item_comment(id = "i", text = "t", key = "")`, "item_comment: key must not be empty"},
-		{"merge base", `merge(prs = x, base = "", repo = "r", name = "n")`, "merge: base must not be empty"},
-		{"merge repo", `merge(prs = x, base = "b", repo = "", name = "n")`, "merge: repo must not be empty"},
+		{"merge base", `merge(members = x, base = "", repo = "r", name = "n")`, "merge: base must not be empty"},
+		{"merge repo", `merge(members = x, base = "b", repo = "", name = "n")`, "merge: repo must not be empty"},
 		{"outputs beside a computed element", `agent("p", "m", outputs = [str(item), 1])`, "agent: outputs must hold strings only"},
 		{"stop_on_rc beside a computed element", `command(run = ["x"], stop_on_rc = [str(item), 0])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
-		{"prs beside a computed element", `merge(prs = [x, 1], base = "b", repo = "r", name = "n")`, "merge: prs[1]: the member has the type int, not struct"},
-		{"own logins beside a computed element", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"logins": [str(item), 1]})`, "merge: own.logins must hold strings only"},
+		{"members beside a computed element", `merge(members = [x, 1], base = "b", repo = "r", name = "n")`, "merge: members[1]: the member has the type int, not struct"},
+		{"own logins beside a computed element", `merge(members = x, base = "b", repo = "r", name = "n", own = {"logins": [str(item), 1]})`, "merge: own.logins must hold strings only"},
 	}
 
 	for _, tc := range cases {
@@ -68,8 +68,8 @@ func TestCheck_AcceptsTheArgumentsThatTheRunAccepts(t *testing.T) {
 		"    item_create(title = str(item), key = str(item))\n"+
 		"    item_status(id = \"i\", status = \"open\")\n"+
 		"    item_comment(id = \"i\", text = \"t\", key = \"k\")\n"+
-		"    merge(prs = [x, struct(item = \"a\", head = \"h\", closes = [])], base = \"b\", repo = \"r\", name = \"n\")\n"+
-		"    merge(prs = x, base = str(item), repo = \"r\", name = \"m\")\n"+
+		"    merge(members = [x, struct(item = \"a\", head = \"h\", closes = [])], base = \"b\", repo = \"r\", name = \"n\")\n"+
+		"    merge(members = x, base = str(item), repo = \"r\", name = \"m\")\n"+
 		"    command(run = [\"x\"], stop_on_rc = [str(item), 2])\n")
 
 	assert.Empty(t, got)
