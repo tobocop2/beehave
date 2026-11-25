@@ -41,7 +41,7 @@ func issue(number int, title string, labels ...string) map[string]any {
 		names[i] = map[string]string{"name": label}
 	}
 
-	return map[string]any{"number": number, "title": title, "labels": names, "assignees": []any{}}
+	return map[string]any{"number": number, "title": title, "labels": names, "assignees": []any{}, "authorAssociation": "OWNER"}
 }
 
 func TestNew_NeedsOwnerAndName(t *testing.T) {
@@ -78,13 +78,35 @@ func TestGithubItemList_SkipsEpicsAndReadsLabels(t *testing.T) {
 	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{
-		{ID: "1", Severity: model.SeverityUnknown, Title: "plain"},
-		{ID: "3", Severity: model.SeverityP2, Hold: true, Assignee: "ann,bob", Title: "has two", Labels: []string{"P2", "P1", "hold"}},
-		{ID: "4", Severity: model.SeverityP3, Title: "holding", Labels: []string{"holder", "P3"}},
-		{ID: "5", Severity: model.SeverityP1, Title: "not an epic: x", Labels: []string{"P1"}},
-		{ID: "6", Severity: model.SeverityUnknown, Title: "no hold", Labels: []string{"Hold", "P4"}},
+		{ID: "1", Severity: model.SeverityUnknown, Title: "plain", Association: model.AssociationOwner},
+		{ID: "3", Severity: model.SeverityP2, Hold: true, Assignee: "ann,bob", Title: "has two", Labels: []string{"P2", "P1", "hold"}, Association: model.AssociationOwner},
+		{ID: "4", Severity: model.SeverityP3, Title: "holding", Labels: []string{"holder", "P3"}, Association: model.AssociationOwner},
+		{ID: "5", Severity: model.SeverityP1, Title: "not an epic: x", Labels: []string{"P1"}, Association: model.AssociationOwner},
+		{ID: "6", Severity: model.SeverityUnknown, Title: "no hold", Labels: []string{"Hold", "P4"}, Association: model.AssociationOwner},
 	}, items)
-	assert.Equal(t, []string{"issue", "list", "--repo", ghRepo, "--state", "open", "--limit", "1000", "--json", "number,title,labels,assignees"}, run.Calls[0])
+	assert.Equal(t, []string{"issue", "list", "--repo", ghRepo, "--state", "open", "--limit", "1000", "--json", "number,title,labels,assignees,authorAssociation"}, run.Calls[0])
+}
+
+func TestItemList_ReadsTheAuthorAssociation(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+	foreign := issue(2, "from a contributor")
+	foreign["authorAssociation"] = "CONTRIBUTOR"
+	missing := issue(3, "no association")
+	delete(missing, "authorAssociation")
+	run.Plan(toJSON(t, []any{issue(1, "own"), foreign, missing}), "issue", "list")
+
+	items, err := gh.ItemList(context.Background(), "")
+	require.NoError(t, err)
+
+	got := make([]model.Association, len(items))
+	for i, item := range items {
+		got[i] = item.Association
+	}
+
+	assert.Equal(t, []model.Association{model.AssociationOwner, model.AssociationContributor, ""}, got, "the list asks for the association and keeps what the forge says, and a row with none has none")
+	assert.Contains(t, run.Calls[0], "number,title,labels,assignees,authorAssociation")
 }
 
 func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {

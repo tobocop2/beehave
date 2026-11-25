@@ -37,6 +37,9 @@ func ParseAssociation(text string) (Association, error) {
 	return "", fmt.Errorf("%w %q", ErrUnknownAssociation, text)
 }
 
+// Foreign reports whether another account than the owner wrote it. An empty association counts as foreign.
+func (a Association) Foreign() bool { return a != AssociationOwner }
+
 // Authored is one issue or pull request of an item and the association of its author. Number 0 is an item with no such thing.
 type Authored struct {
 	Number      int
@@ -44,7 +47,7 @@ type Authored struct {
 }
 
 // Foreign reports whether another account than the owner wrote it.
-func (a Authored) Foreign() bool { return a.Number != 0 && a.Association != AssociationOwner }
+func (a Authored) Foreign() bool { return a.Number != 0 && a.Association.Foreign() }
 
 // Authored is the pull request of the facts with the association of its author. Facts with number 0 have no pull request.
 func (f PullFacts) Authored() Authored { return Authored{Number: f.Number, Association: f.Association} }

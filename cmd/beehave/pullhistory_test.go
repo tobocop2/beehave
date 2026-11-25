@@ -119,7 +119,7 @@ const closeTime = "2026-11-10T12:00:00Z"
 // priorRow is a listed pull request with the fields that History reads. A row that is not open closed at closeTime.
 func priorRow(number int, title, body, state, branch, mergedAt string) model.PullRequest {
 	base := "main"
-	row := model.PullRequest{Number: number, Title: title, Body: body, State: &state, HeadRefName: &branch, BaseRefName: &base}
+	row := model.PullRequest{Number: number, Title: title, Body: body, State: &state, HeadRefName: &branch, BaseRefName: &base, AuthorAssociation: model.AssociationOwner}
 
 	if mergedAt != "" {
 		row.MergedAt = &mergedAt
@@ -135,7 +135,7 @@ func priorRow(number int, title, body, state, branch, mergedAt string) model.Pul
 
 // said is a comment with its time.
 func said(body, at string) model.Comment {
-	return model.Comment{Body: body, CreatedAt: at}
+	return model.Comment{Body: body, CreatedAt: at, AuthorAssociation: model.AssociationOwner}
 }
 
 func TestPulls_HistoryListsThePullRequestsOfTheBranchAndOfTheIssueWithTheirClosingComment(t *testing.T) {
@@ -166,8 +166,8 @@ func TestPulls_HistoryListsThePullRequestsOfTheBranchAndOfTheIssueWithTheirClosi
 		{Number: 9, Title: "retry", State: "OPEN", Branch: "41", Base: "main"},
 	}, got, "the branch and the issue join by number; a title alone that names the item keeps a pull request; a longer number in the body or the title is dropped")
 	assert.Equal(t, [][]string{
-		{"--state", "all", "--head", "41", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
-		{"--state", "all", "--search", "#41 in:title,body", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
+		{"--state", "all", "--head", "41", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt,authorAssociation"},
+		{"--state", "all", "--search", "#41 in:title,body", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt,authorAssociation"},
 	}, f.asked, "each list names the fields that the history reads, the close time among them")
 	assert.Equal(t, []int{forge.OpenPullLimit, forge.OpenPullLimit}, f.limits, "the lists of every state get the limit of the open pull requests, not the one of the open search")
 	assert.Equal(t, []int{4, 6, 8}, f.commentsAsked, "an open pull request has no closing comment to read")
@@ -253,4 +253,31 @@ func TestPulls_AHistoryReadThatFailsIsAnError(t *testing.T) {
 	badTime := &priorForge{onBranch: []model.PullRequest{priorRow(4, "t", "", "CLOSED", "41", "")}, comments: map[int][]model.Comment{4: {said("x", "yesterday")}}}
 	_, err = historyOver(badTime).History(t.Context(), "p", "41")
 	require.ErrorContains(t, err, "a comment of pull request 4 has no valid time")
+}
+
+func TestHistory_ReadsTheAuthorAssociation(t *testing.T) {
+	t.Parallel()
+
+	foreign := priorRow(5, "from a contributor", "", "CLOSED", "41", "")
+	foreign.AuthorAssociation = model.AssociationContributor
+	nobody := priorRow(6, "no association", "", "OPEN", "41", "")
+	nobody.AuthorAssociation = ""
+	ownByStranger := priorRow(7, "own pull request", "", "CLOSED", "41", "")
+
+	f := &priorForge{
+		onBranch: []model.PullRequest{priorRow(4, "own", "", "OPEN", "41", ""), foreign, nobody, ownByStranger},
+		comments: map[int][]model.Comment{
+			5: {said("owner answer", "2026-11-10T11:00:00Z")},
+			7: {{Body: "stranger answer", CreatedAt: "2026-11-10T11:00:00Z", AuthorAssociation: model.AssociationNone}},
+		},
+	}
+
+	got, err := historyOver(f).History(t.Context(), "p", "bb-1")
+
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	assert.Equal(t, []bool{false, true, true, false}, []bool{got[0].Foreign, got[1].Foreign, got[2].Foreign, got[3].Foreign}, "a pull request of another account, or with no association, is foreign")
+	assert.Equal(t, []bool{false, false, false, true}, []bool{got[0].ClosingForeign, got[1].ClosingForeign, got[2].ClosingForeign, got[3].ClosingForeign}, "the closing comment is judged by its own author, and a pull request with no comment has no foreign comment")
+	assert.Equal(t, "owner answer", got[1].ClosingComment, "the adapter keeps the text: the step module withholds it")
+	assert.Contains(t, f.asked[0], "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt,authorAssociation")
 }

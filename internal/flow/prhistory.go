@@ -3,9 +3,11 @@ package flow
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"go.starlark.net/starlark"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -35,6 +37,8 @@ func (s *script) prHistory(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 			return stepResult{}, fmt.Errorf("read the pull requests of item %s: %w", of, err)
 		}
 
-		return stepResult{Outputs: prHistoryOutputs(pulls)}, nil
+		foreign := slices.ContainsFunc(pulls, func(p model.PriorPull) bool { return p.Foreign || p.ClosingForeign })
+
+		return stepResult{Outputs: prHistoryOutputs(pulls, s.e.withholdForeign(ctx, s.in, foreign))}, nil
 	})
 }

@@ -157,3 +157,62 @@ func errText(err error) string {
 
 	return "unreadable: " + err.Error()
 }
+
+func TestExampleQueue_TheAuditGetsNoTitleOfAForeignPullRequest(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1 3")
+	rig.q.pulls = []model.PullRequest{
+		openPullBy(t, 7, "own-branch", "OWN-TITLE", "OWNER"),
+		openPullBy(t, 8, "FOREIGN-BRANCH", "FOREIGN-TITLE", "CONTRIBUTOR"),
+		openPullBy(t, 9, "3", "FOREIGN-TITLE-OF-AN-ITEM-BRANCH", "MEMBER"),
+	}
+
+	var (
+		mu    sync.Mutex
+		texts []string
+	)
+
+	inner := rig.h.agents.result
+	rig.h.agents.result = func(request AgentRequest) agent.Result {
+		if strings.Contains(request.Prompt, "## What the queue audit must do") {
+			raw, err := os.ReadFile(filepath.Clean(request.DataFile))
+
+			mu.Lock()
+			texts = append(texts, string(raw)+errText(err))
+			mu.Unlock()
+		}
+
+		return inner(request)
+	}
+
+	_, err := rig.run(t)
+	require.NoError(t, err)
+	require.NotEmpty(t, texts, "the round runs a queue audit")
+
+	var got struct {
+		Pulls []struct {
+			Number  int    `json:"number"`
+			Branch  string `json:"branch"`
+			Title   string `json:"title"`
+			Foreign bool   `json:"foreign"`
+			Item    string `json:"item"`
+		} `json:"pulls"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(texts[0]), &got), texts[0])
+	require.Len(t, got.Pulls, 3)
+
+	assert.Equal(t, "OWN-TITLE", got.Pulls[0].Title, "the title of an own pull request stays")
+	assert.False(t, got.Pulls[0].Foreign)
+	assert.Equal(t, "own-branch", got.Pulls[0].Branch)
+
+	assert.Empty(t, got.Pulls[1].Title, "the title of a foreign pull request is withheld")
+	assert.True(t, got.Pulls[1].Foreign)
+	assert.Empty(t, got.Pulls[1].Branch, "the branch of a foreign pull request that names no open item is withheld")
+
+	assert.Empty(t, got.Pulls[2].Title)
+	assert.Equal(t, "3", got.Pulls[2].Branch, "the branch that is the id of an open item stays: the audit joins on it")
+	assert.Equal(t, "3", got.Pulls[2].Item)
+	assert.NotContains(t, texts[0], "FOREIGN")
+}

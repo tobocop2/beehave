@@ -50,6 +50,8 @@ type Item struct {
 	Title    string
 	// Labels are the tracker labels of the item. A tracker that sends none leaves it empty.
 	Labels []string
+	// Association is how the author of the item stands to the repository. A tracker with no authors sets AssociationOwner. An empty one counts as foreign.
+	Association Association
 }
 
 // ItemBranch is the branch of the item with id: the engine names the branch of an item for the item.

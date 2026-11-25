@@ -154,7 +154,7 @@ func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error
 	}
 
 	return list(ctx, s.db, "the open items", func(rows *sql.Rows) (model.Item, error) {
-		item := model.Item{Severity: model.SeverityUnknown}
+		item := model.Item{Severity: model.SeverityUnknown, Association: model.AssociationOwner}
 		var state string
 		err := rows.Scan(&item.ID, &item.Title, &state, &item.Parent)
 		item.Hold = state == string(store.StatusHold)

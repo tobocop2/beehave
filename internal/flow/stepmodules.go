@@ -94,7 +94,8 @@ const landVersion = 16
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 // Version 3 adds the item_stop step. Version 4 adds the item_list step.
-const trackerVersion = 4
+// Version 5 adds the foreign field to each row of item_list and withholds the title of a foreign row.
+const trackerVersion = 5
 
 // forgeVersion is the version of the forge module. Version 2 added the pr_state step. Version 3 retires the kind pr_assign, which version 2 recorded.
 // Version 4 retires the kind board_sync, which version 3 recorded. Version 5 adds the push step. Version 6 adds the pr_history step.
@@ -104,7 +105,8 @@ const trackerVersion = 4
 // It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
 // Version 13 adds the step of the engine that reads who wrote the item before the claim of every run (originStepName).
 // No builtin records that step, so a move to this build compares the forge module for every run (requireSameStartModules).
-const forgeVersion = 13
+// Version 14 adds the foreign field to each row of pr_list and pr_history, and withholds the title of a foreign row and a closing comment that another account wrote.
+const forgeVersion = 14
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).

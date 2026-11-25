@@ -64,9 +64,9 @@ func conformanceServing(t *testing.T) forge.Forge {
 	whole(forgetest.NoLabelsPull, "labels")
 	whole(forgetest.NoAssigneesPull, "assignees")
 	run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
-	seven := fields{"number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "baseRefName": forgetest.SevenBase, "author": fields{"login": forgetest.SevenReviewer}, "isDraft": false, "title": forgetest.SevenTitle, "labels": []fields{{"name": forgetest.SevenLabel}}, "reviewDecision": "APPROVED"}
-	other := fields{"number": forgetest.OtherPull, "headRefName": "other", "baseRefName": forgetest.OtherBase, "author": fields{"login": forgetest.SevenAssignee}, "isDraft": true, "title": "Other work", "labels": []fields{}, "reviewDecision": ""}
-	run.Plan(toJSON(t, []fields{seven, other}), "--state", "open", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title")
+	seven := fields{"number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "baseRefName": forgetest.SevenBase, "author": fields{"login": forgetest.SevenReviewer}, "isDraft": false, "title": forgetest.SevenTitle, "labels": []fields{{"name": forgetest.SevenLabel}}, "reviewDecision": "APPROVED", "authorAssociation": "OWNER"}
+	other := fields{"number": forgetest.OtherPull, "headRefName": "other", "baseRefName": forgetest.OtherBase, "author": fields{"login": forgetest.SevenAssignee}, "isDraft": true, "title": "Other work", "labels": []fields{}, "reviewDecision": "", "authorAssociation": "OWNER"}
+	run.Plan(toJSON(t, []fields{seven, other}), "--state", "open", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,authorAssociation,isDraft,title")
 	run.Plan(toJSON(t, []fields{seven}), "--base", forgetest.SevenBase)
 	run.Plan(toJSON(t, []fields{other}), "--base", forgetest.OtherBase)
 	run.Plan(toJSON(t, []fields{}), "--base", forgetest.EmptyBase)

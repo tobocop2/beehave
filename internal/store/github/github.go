@@ -26,10 +26,11 @@ const (
 )
 
 type ghIssue struct {
-	Number    int       `json:"number"`
-	Title     *string   `json:"title"`
-	Labels    []ghLabel `json:"labels"`
-	Assignees []ghUser  `json:"assignees"`
+	Number            int               `json:"number"`
+	Title             *string           `json:"title"`
+	Labels            []ghLabel         `json:"labels"`
+	Assignees         []ghUser          `json:"assignees"`
+	AuthorAssociation model.Association `json:"authorAssociation"`
 }
 
 type ghLabel struct {
@@ -114,7 +115,7 @@ func (i ghIssue) item(number, title string) model.Item {
 		logins[index] = user.Login
 	}
 
-	return model.Item{ID: number, Severity: severity, Hold: hold, Assignee: strings.Join(logins, ","), Title: title, Labels: labels}
+	return model.Item{ID: number, Severity: severity, Hold: hold, Assignee: strings.Join(logins, ","), Title: title, Labels: labels, Association: i.AuthorAssociation}
 }
 
 // severityOf gives the first label that names a severity, or P? when none does.
@@ -157,7 +158,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 func (s *Store) openPage(ctx context.Context, label string) ([]ghIssue, error) {
 	args := []string{
 		argIssue, argList, argRepo, s.repo, argState, "open",
-		argLimit, strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees",
+		argLimit, strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees,authorAssociation",
 	}
 	if label != "" {
 		args = append(args, "--label", label)

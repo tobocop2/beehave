@@ -136,3 +136,14 @@ func (s *script) admitOwn(ctx context.Context, own bool, pull model.Authored) er
 
 	return s.e.admit(ctx, s.in, readRefused, model.Origin{Pull: pull}, nil)
 }
+
+// withholdForeign says whether a list read withholds the text of its foreign rows: at least one row is foreign, and the run may not hold foreign text.
+func (e *Engine) withholdForeign(ctx context.Context, in ItemInput, foreign bool) bool {
+	if !foreign {
+		return false
+	}
+
+	_, allowed := e.mayHoldForeign(ctx, in)
+
+	return !allowed
+}

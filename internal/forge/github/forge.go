@@ -138,7 +138,7 @@ func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
 }
 
 // openPullFields are the fields of gh pr list that the typed list read decodes.
-const openPullFields = "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title"
+const openPullFields = "number,headRefName,baseRefName,labels,reviewDecision,author,authorAssociation,isDraft,title"
 
 // OpenPulls lists the open pull requests of the base branch, or every open pull request when base is empty. A pull request with no number, head branch or base branch is a hole.
 // The list holds every pull request, holes included, and the error joins one *model.IncompletePull for each hole, so a caller can use the pull requests it can trust.

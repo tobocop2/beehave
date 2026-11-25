@@ -126,7 +126,7 @@ func (q *fakeQueue) hold(id string, on bool) {
 }
 
 func queueItem(id string, severity model.Severity) model.Item {
-	return model.Item{ID: id, Severity: severity}
+	return model.Item{ID: id, Severity: severity, Association: model.AssociationOwner}
 }
 
 // queuePull is an open pull request on a branch, with the named labels.
@@ -138,7 +138,7 @@ func queuePull(t *testing.T, number int, branch string, labels ...string) model.
 		named[i] = map[string]string{"name": name}
 	}
 
-	text, err := json.Marshal(map[string]any{"number": number, "headRefName": branch, "labels": named})
+	text, err := json.Marshal(map[string]any{"number": number, "headRefName": branch, "labels": named, "authorAssociation": "OWNER"})
 	require.NoError(t, err)
 
 	var pull model.PullRequest

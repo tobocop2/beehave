@@ -48,7 +48,7 @@ const pullsFlow = queueLoad + `def main(item):
 func openPullOf(t *testing.T, number int, branch, base, author, title string, draft bool) model.PullRequest {
 	t.Helper()
 
-	text, err := json.Marshal(map[string]any{"number": number, "headRefName": branch, "baseRefName": base, "author": map[string]string{"login": author}, "title": title, "isDraft": draft})
+	text, err := json.Marshal(map[string]any{"number": number, "headRefName": branch, "baseRefName": base, "author": map[string]string{"login": author}, "title": title, "isDraft": draft, "authorAssociation": "OWNER"})
 	require.NoError(t, err)
 
 	var pull model.PullRequest
