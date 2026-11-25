@@ -305,6 +305,25 @@ func TestClient_ResumeOnThisBuildRefusesARunOfABuildWithAnOlderForgeModuleAndNam
 	}
 }
 
+func TestClient_ResumeOnThisBuildRefusesARunRecordedAtForgeTwelveWhichHasNoOriginStep(t *testing.T) {
+	t.Parallel()
+
+	// Forge 12 is the last version of the forge module whose runs record no origin step, so this build must not move such a run.
+	const lastWithoutOrigin = 12
+
+	h, other := olderRoundRun(t, testItem, moduleForge, lastWithoutOrigin)
+
+	// The run of that build recorded no origin step.
+	_, err := sqlOf(t, h).ExecContext(t.Context(), "DELETE FROM operation_outputs WHERE workflow_uuid = ? AND function_name = ?", runID(testItem, 1), originStepName)
+	require.NoError(t, err)
+
+	err = other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("forge module at version %d", lastWithoutOrigin))
+	require.ErrorContains(t, err, `the step "origin"`)
+}
+
 func TestClient_ResumeOnThisBuildMovesARunOfAnItemThatIsNotARoundWhenOnlyTheRoundModuleChanged(t *testing.T) {
 	t.Parallel()
 
