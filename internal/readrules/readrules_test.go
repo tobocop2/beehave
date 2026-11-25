@@ -103,7 +103,7 @@ var rules = map[string]rule{
 	"internal/flow.queueReader.ItemList":    {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "itemsErr"},
 	"internal/flow.queueReader.OpenPulls":   {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "pullsErr"},
 	"internal/flow.queueReader.IssueState":  {Proof: "TestIssueState_AReadThatFailsGivesTheErrorAndNoState", Needle: "issueErr"},
-	"internal/flow.queueReader.PullClosing": {Proof: "TestPRClosing_AReadOfAPullRequestNumberThatFailsFailsTheStepAndNeverGivesAnEmptySet", Needle: "closingErr"},
+	"internal/flow.queueReader.PullClosing": {Proof: "TestPRClosing_AReadOfAPullRequestNumberThatFailsGivesTheCauseInErrorAndNotFound", Needle: "closingErr"},
 	"internal/flow.queueReader.PullState":   {Proof: "TestQueue_AFailedReadOfTheRecordedPullRequestFailsTheStepAndReturnsNoGuess", Needle: "stateErr"},
 	"internal/flow.reader.Comments":         {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
 	"internal/flow.reader.Parent":           {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
