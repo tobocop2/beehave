@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const runPrefix = "item-"
@@ -72,6 +74,15 @@ func (r run) cancelable() bool {
 // failed reports whether the attempt ended with an error. Only beehave resume continues it.
 func (r run) failed() bool {
 	return stateOf(r.Status.Status) == runFailed
+}
+
+// checkItemID refuses an id that is not an item id, with the sentence that every entry point of an item gives.
+func checkItemID(id string) error {
+	if model.ItemKind(id) == "" {
+		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, id)
+	}
+
+	return nil
 }
 
 // failedError tells the owner why a new attempt does not start after a failed one.

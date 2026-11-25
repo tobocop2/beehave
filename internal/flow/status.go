@@ -826,8 +826,8 @@ func latestOf(client storeView, version, item string) (run, error) {
 
 // newestOf returns the newest run of an item, whatever build started it.
 func newestOf(client storeView, item string) (run, error) {
-	if model.ItemKind(item) == "" {
-		return run{}, fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, item)
+	if err := checkItemID(item); err != nil {
+		return run{}, err
 	}
 
 	last, found, err := latestRun(client, item)
