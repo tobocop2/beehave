@@ -100,7 +100,7 @@ func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue Qu
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, values: values, sizes: sizes, sky: sky, link: link.New(cluster, ssh), write: os.WriteFile}
+	h := &Host{cluster: cluster, config: config, values: values, sizes: sizes, sky: sky, link: link.New(cluster, ssh).WithCredentials(config.Credentials), write: os.WriteFile}
 
 	if err = h.apply(options); err != nil {
 		return nil, err
@@ -188,7 +188,7 @@ func (h *Host) UpQueued(ctx context.Context, queued int) error {
 		return err
 	}
 
-	return h.link.CheckFlock(ctx)
+	return h.ready(ctx)
 }
 
 // launchArgs returns the words of the sky launch call, without a task file.
@@ -264,6 +264,20 @@ func (h *Host) setupScript() string {
 
 	return strings.Join(lines, "\n")
 }
+
+// ready checks a cluster that sky launched. The ssh config entry of the cluster exists only now, so a cluster declared credentials = "none" is checked here,
+// before the first call reaches it.
+func (h *Host) ready(ctx context.Context) error {
+	if err := h.CheckCredentials(ctx); err != nil {
+		return err
+	}
+
+	return h.link.CheckFlock(ctx)
+}
+
+// CheckCredentials refuses a cluster declared credentials = "none" that ssh would give a credential of the owner. It connects to nothing.
+// Before sky launch, ssh has no entry for the cluster, so the check reads the entries for every host.
+func (h *Host) CheckCredentials(ctx context.Context) error { return h.link.CheckCredentials(ctx) }
 
 func (h *Host) infra() string {
 	cloud, region := h.values.cloud, h.values.region

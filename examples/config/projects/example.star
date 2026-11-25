@@ -100,6 +100,8 @@ project(
     # host = host(
     #     provider = "ssh",
     #     disk_floor_gb = 50,
+    #     credentials = "none",         # optional, for a host that runs code you do not trust: it gets no SSH agent, key, X display, Kerberos credential or secret variable of yours. check config refuses it when ssh -G shows one, or a jump host
+
     #     ssh = ssh(
     #         address = "10.0.0.5",         # the name or IP to connect to; the default is the ssh alias in build_host
     #         user = "ci",                  # the login user; the default is your ssh config

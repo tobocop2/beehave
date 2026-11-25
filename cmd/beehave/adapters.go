@@ -476,8 +476,20 @@ func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:i
 	return entry.build(project)
 }
 
-// host builds the build host the project names. A project with no host block builds locally and has none.
+// host builds the build host the project names, with the disk floor. A project with no host block builds locally and has none.
 func (a adapters) host(project model.Project) (host.Host, error) { //nolint:ireturn // the host block names the adapter to build
+	built, err := a.buildHost(project)
+	if err != nil {
+		return nil, err
+	}
+
+	wait := time.Duration(project.Host.DiskWaitMinutes) * time.Minute
+
+	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll, a.fleets.of(project.Host.Provider, project.BuildHost)), nil
+}
+
+// buildHost builds the host of the adapter that the host block names, with no wrapper.
+func (a adapters) buildHost(project model.Project) (host.Host, error) { //nolint:ireturn // the host block names the adapter to build
 	if project.Host == nil {
 		return nil, fmt.Errorf("project %s: no host block, so no build host", project.Name)
 	}
@@ -487,14 +499,50 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 		return nil, fmt.Errorf("project %s: no host adapter named %q", project.Name, project.Host.Provider)
 	}
 
-	built, err := entry.build(project)
-	if err != nil {
-		return nil, err
+	return entry.build(project)
+}
+
+// credentialCheck is a build host that checks what ssh would give it of the credentials of the owner.
+type credentialCheck interface {
+	CheckCredentials(ctx context.Context) error
+}
+
+// checkHosts builds the host of each cluster that the project declares, and runs the credential check of each one for a host declared credentials = "none".
+func (a adapters) checkHosts(ctx context.Context, project model.Project) error {
+	clusters := project.BuildHosts
+	if len(clusters) == 0 {
+		clusters = []string{project.BuildHost}
 	}
 
-	wait := time.Duration(project.Host.DiskWaitMinutes) * time.Minute
+	for _, cluster := range clusters {
+		project.BuildHost = cluster
 
-	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll, a.fleets.of(project.Host.Provider, project.BuildHost)), nil
+		built, err := a.buildHost(project)
+		if err != nil {
+			return err
+		}
+
+		if err = checkCredentials(ctx, project, built); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkCredentials runs the credential check of a host declared credentials = "none". A provider without the check is refused, never skipped.
+func checkCredentials(ctx context.Context, project model.Project, built host.Host) error {
+	if project.Host.Credentials != model.HostCredentialsNone {
+		return nil
+	}
+
+	// The host contract holds no credential check; each provider of the table adds its own.
+	checker, ok := built.(credentialCheck)
+	if !ok {
+		return fmt.Errorf("project %s: the host provider %q cannot check credentials = \"none\". Remove the key, or use the ssh, slurm or skypilot provider", project.Name, project.Host.Provider)
+	}
+
+	return checker.CheckCredentials(ctx)
 }
 
 // agent builds the adapter of the agent. It returns nil for an agent that has no adapter, and a run with no adapter does not start.
@@ -646,6 +694,7 @@ func (a adapters) checkClaims(project model.Project) error {
 }
 
 // check builds what the project names and reports why it cannot: the tracker, the forge, the build host and the claim store.
+// A host declared credentials = "none" also gets its credential check, which reads the ssh config and connects to nothing.
 // A local tracker and a local claim store open no file here. A project that names beads needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
 // A project that names no beads never calls bd. `beehave check config` calls check for each project.
 func (a adapters) check(ctx context.Context, project model.Project) error {
@@ -658,7 +707,7 @@ func (a adapters) check(ctx context.Context, project model.Project) error {
 	}
 
 	if project.Host != nil {
-		if _, err := a.host(project); err != nil {
+		if err := a.checkHosts(ctx, project); err != nil {
 			return err
 		}
 	}
