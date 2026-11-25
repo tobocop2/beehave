@@ -448,6 +448,27 @@ func TestRoundSync_ALineOrAnExitCodeTheRoundDoesNotKnowStopsTheRun(t *testing.T)
 	}
 }
 
+func TestRoundSync_AConflictWhoseBranchesTheRoundCannotFetchStopsTheRunBeforeTheAgent(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "")
+	withSync(t, rig, &syncScript{lines: []string{"state=conflict branch=" + syncBranch + " source=main base_tip=abc"}})
+
+	fetched := rig.h.commands.reply
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if strings.Join(request.Run, " ") == "git fetch origin "+syncBranch+" main" {
+			return CommandOutput{RC: 1, Stderr: "no remote"}, nil
+		}
+
+		return fetched(request)
+	}
+
+	_, _, err := runSync(t, rig, false)
+
+	require.ErrorContains(t, err, "the step sync-resolve-fetch-1 could not fetch "+syncBranch+" and main")
+	assert.NotContains(t, strings.Join(stepNames(t, rig.last), " "), "agent:sync-resolve-1#", "no agent starts on a folder without both branches")
+}
+
 // A write of the sync that the forge refuses ends the item with the error of the forge as its lines. The run does not fail.
 func TestRoundSync_AWriteThatTheForgeRefusesEndsTheItemWithTheError(t *testing.T) {
 	t.Parallel()
@@ -558,7 +579,7 @@ func TestRoundSync_AConflictThatTheAgentResolvesIsGatedReviewedAndLandedInTheSam
 	require.NoError(t, err)
 
 	names := stepNames(t, rig.last)
-	order := []string{"round_sync:sync-1#", "agent:sync-resolve-1#", "push:push-sync-1#", "round_sync:sync-again-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "round_land:sync-land-1#", "agent:queue-audit-1#"}
+	order := []string{"round_sync:sync-1#", "command:sync-resolve-fetch-1#", "agent:sync-resolve-1#", "push:push-sync-1#", "round_sync:sync-again-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "round_land:sync-land-1#", "agent:queue-audit-1#"}
 
 	for i := 1; i < len(order); i++ {
 		require.GreaterOrEqual(t, at(names, order[i]), 0, "the step %s ran: %v", order[i], names)

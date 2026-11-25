@@ -1,6 +1,6 @@
 Do the task below in this work folder. Add or update tests for it, and run the checks of the project.
 
-Commit the change, then push it to the branch named {{ .item.id }} and open a pull request from that branch to {{ .base }}. Use `git push origin HEAD:refs/heads/{{ .item.id }}`, then `gh pr create --base {{ .base }} --head {{ .item.id }}`. Do not merge the pull request. Do not push to any other branch.
+Commit the change on the current branch. Do not push: the run pushes the branch {{ .item.id }} and opens the pull request to {{ .base }} after this step.
 
 ## The task
 

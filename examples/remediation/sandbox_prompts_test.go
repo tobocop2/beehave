@@ -143,6 +143,52 @@ func TestPrompts_ThePlanAndTheQueueAuditRunInASandboxWithNoNetwork(t *testing.T)
 	}
 }
 
+func TestPrompts_NoSandboxOfTheExamplesReachesAHostBecauseTheEngineDoesEveryForgeCall(t *testing.T) {
+	t.Parallel()
+
+	// The least count of sandbox calls in each file, so a walk that finds none fails.
+	files := map[string]int{"workflow.star": 6, "../queue/workflow.star": 1, "../local/workflow.star": 5}
+
+	for path, least := range files {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			built, listed := sandboxHosts(t, path)
+
+			require.GreaterOrEqual(t, built, least, "the walk finds the sandboxes of the example")
+			assert.Empty(t, listed, "the engine pushes, opens and fetches for every step, so no sandbox lists a host")
+		})
+	}
+}
+
+// sandboxHosts returns the count of sandbox calls in the workflow file at path, and the position of each call that lists hosts.
+func sandboxHosts(t *testing.T, path string) (built int, listed []string) {
+	t.Helper()
+
+	file, err := (&syntax.FileOptions{}).Parse(path, nil, 0)
+	require.NoError(t, err)
+
+	syntax.Walk(file, func(n syntax.Node) bool {
+		call, ok := n.(*syntax.CallExpr)
+		if !ok {
+			return true
+		}
+
+		if fn, named := call.Fn.(*syntax.Ident); named && fn.Name == "sandbox" {
+			built++
+
+			// The only parameter of sandbox is the network list, so any argument, by keyword, by position or in a splat, lists hosts.
+			if len(call.Args) > 0 {
+				listed = append(listed, call.Lparen.String())
+			}
+		}
+
+		return true
+	})
+
+	return built, listed
+}
+
 func TestPrompts_TheGhCheckFindsAnAskAndPassesAProhibition(t *testing.T) {
 	t.Parallel()
 

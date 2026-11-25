@@ -428,7 +428,8 @@ The round of `examples/remediation/workflow.star` runs the sync at the start of 
 | Step | What it does |
 |---|---|
 | `sync-<n>` | The engine step `round_sync` with the round base and `base_branch`, run as the writer. A forge failure ends the run with its error. |
-| `sync-resolve-<n>` | Runs only on `conflict`. One agent step (`prompts/sync.md`) merges `source` into the sync branch, resolves, commits the merge commit and pushes. |
+| `sync-resolve-fetch-<n>` | Runs only on `conflict`. A `command` step fetches the sync branch and `source` into the folder of the round, so the agent needs no network. A failed fetch stops the run. |
+| `sync-resolve-<n>` | Runs only on `conflict`. One agent step (`prompts/sync.md`), in a sandbox with no network, merges `source` into the sync branch, resolves and commits the merge commit. The engine pushes it (`push-sync-<n>`). |
 | `sync-again-<n>` | Runs `round_sync` again after the agent. A second `conflict` ends the pass. |
 | `sync-fetch-<n>`, `sync-checkout-<n>` | Put the folder of the round at the head of a `synced` line, so the gate and the review read that head. |
 | `sync-gate-<n>` | The gate with no base: the gate command only, with no new-tests check and no mutation step. |

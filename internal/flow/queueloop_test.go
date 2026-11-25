@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -100,6 +101,47 @@ func TestQueueLoop_AnItemWithAnOpenPullRequestOfAnotherLoginStartsNoAgentAndIsHe
 	assert.Equal(t, []string{testProject + "|22|hold"}, r.w.statuses)
 	require.Len(t, r.w.notes, 1)
 	assert.Contains(t, r.w.notes[0], "its author is 'dev', who is not on the list of own logins. The item is claimed.")
+}
+
+func TestQueueLoop_TheEnginePushesAndOpensThePullRequestOnlyForAnAgentThatCommitted(t *testing.T) {
+	t.Parallel()
+
+	for name, commits := range map[string]bool{"commits": true, "commits_nothing": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newLoopRig(t, queueItem("21", model.SeverityP1))
+			r.agents.setAct(func(ctx context.Context, _ string) error {
+				if !commits {
+					return nil
+				}
+
+				commit := exec.CommandContext(ctx, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "work of 21")
+				commit.Dir = r.h.trees.dir
+
+				return commit.Run()
+			})
+
+			require.NoError(t, r.run(t))
+
+			r.h.forge.mu.Lock()
+			pushed, opened := slices.Clone(r.h.forge.pushed), slices.Clone(r.h.forge.opened)
+			r.h.forge.mu.Unlock()
+
+			if !commits {
+				assert.Empty(t, pushed, "a step with no commit pushes nothing")
+				assert.Empty(t, opened, "a step with no commit opens nothing")
+
+				return
+			}
+
+			require.Len(t, pushed, 1)
+			// The fake item reader gives every item the id testItem, and the branch is the id of the item.
+			assert.True(t, strings.HasPrefix(pushed[0], testProject+"|21|"+testItem+"|"), "the engine pushes the branch of the item: %s", pushed[0])
+			require.Len(t, opened, 1)
+			assert.True(t, strings.HasSuffix(opened[0], "|integration|"), "the pull request goes to BASE: %s", opened[0])
+		})
+	}
 }
 
 func TestQueueLoop_APullRequestOpenedSinceTheLastPassStopsTheItemThatThePassReads(t *testing.T) {
