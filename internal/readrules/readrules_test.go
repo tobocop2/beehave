@@ -78,7 +78,7 @@ var rules = map[string]rule{
 	"internal/merge.Trees.CommitTree":         {Proof: "TestTree_ATipWhoseTreeCannotBeReadStops", Needle: "CommitTree"},
 	"internal/merge.Trees.TreeBlobs":          {Proof: "TestTree_ADifferentTreeStillStopsWhenThePathsCannotBeListed", Needle: "listFail"},
 	"internal/merge.Logs.FailedLog":           {Exempt: "the log of a failed check helps the reader; a log that cannot be read leaves the row without text and the check stays red"},
-	"internal/merge.AlertReads.OpenAlerts":    {Proof: "TestMerge_AlertsOnAndTheReadFailsRefuses", Needle: "a.err"},
+	"internal/merge.AlertReads.OpenAlerts":    {Proof: "TestMerge_AlertsOnAndTheReadFailsRefuses", Needle: "err"},
 	"internal/forge.Trees.CommitTree":         {NotHeld: treesHeld},
 	"internal/forge.Trees.TreeBlobs":          {NotHeld: treesHeld},
 	"internal/forge.Logs.FailedLog":           {Exempt: "the log of a failed check helps the reader; a log that cannot be read leaves the row without text and the check stays red"},

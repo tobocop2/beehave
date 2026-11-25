@@ -60,7 +60,9 @@ func TestMerge_CIPathsComeFromTheRequest(t *testing.T) {
 func TestMergePolicyText_NamesNoForge(t *testing.T) {
 	t.Parallel()
 
-	files, err := filepath.Glob("*.go")
+	here := os.DirFS(".")
+
+	files, err := fs.Glob(here, "*.go")
 	require.NoError(t, err)
 
 	checked := 0
@@ -70,7 +72,7 @@ func TestMergePolicyText_NamesNoForge(t *testing.T) {
 			continue
 		}
 
-		text, err := os.ReadFile(file)
+		text, err := fs.ReadFile(here, file)
 		require.NoError(t, err)
 
 		checked++
