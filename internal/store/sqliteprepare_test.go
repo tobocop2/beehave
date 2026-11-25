@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
-	"net/url"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -56,13 +55,13 @@ func (c countingConn) BeginTx(ctx context.Context, opts driver.TxOptions) (drive
 	return c.fullConn.BeginTx(ctx, opts)
 }
 
-func countedBegins(t *testing.T, file SQLiteFile) int32 {
+// countedBegins prepares the file in dir and returns the count of transactions that the preparation began.
+func countedBegins(t *testing.T, dir string, file SQLiteFile) int32 {
 	t.Helper()
 
 	var begins atomic.Int32
 
-	dsn := SQLiteDSN(filepath.Join(t.TempDir(), file.Name), file.BusyMs, url.Values{"_pragma": {"journal_mode(WAL)"}, "_txlock": {"immediate"}})
-	db := sql.OpenDB(countingConnector{dsn: dsn, begins: &begins})
+	db := sql.OpenDB(countingConnector{dsn: walDSN(filepath.Join(dir, file.Name), file.BusyMs), begins: &begins})
 
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -76,5 +75,15 @@ func TestPrepareSQLite_ReadsTheVersionAndRunsTheSchemaInOneTransaction(t *testin
 
 	file := SQLiteFile{Name: "one.db", Schema: `CREATE TABLE IF NOT EXISTS t (x INTEGER); PRAGMA user_version = 1;`, Version: 1, Owned: []string{"t"}, BusyMs: 1000}
 
-	assert.Equal(t, int32(1), countedBegins(t, file), "the check of the version and the schema share one transaction, so no writer runs between them")
+	assert.Equal(t, int32(1), countedBegins(t, t.TempDir(), file), "the check of the version and the schema share one transaction, so no writer runs between them")
+}
+
+func TestPrepareSQLite_BeginsNoTransactionOnAnUpToDateFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	file := SQLiteFile{Name: "one.db", Schema: `CREATE TABLE IF NOT EXISTS t (x INTEGER); PRAGMA user_version = 1;`, Version: 1, Owned: []string{"t"}, BusyMs: 1000}
+
+	require.Equal(t, int32(1), countedBegins(t, dir, file), "the first preparation makes the table")
+	assert.Zero(t, countedBegins(t, dir, file), "a file at the version of the build with every table is only read")
 }
