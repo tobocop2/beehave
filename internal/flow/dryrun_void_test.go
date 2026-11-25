@@ -39,6 +39,19 @@ func TestDryRun_ALocalExampleItemStopsWithAReasonAfterTheThirdGateWithNoVerdict(
 	assert.NotContains(t, out.String(), "agent:review", "the code was never judged, so nothing reviews it")
 }
 
+func TestDryRun_ALocalExampleApprovedHeadIsPushedByTheEngineAndNoCommandStepPushes(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	fixture := `{"gate:check": {"passed": true},"agent:plan": {}, "agent:implement": {}, "agent:review": {"outputs": {"verdict": "approve"}}}`
+	require.NoError(t, DryRun(t.Context(), dryLocalFile, "12", nil, &out, WithFixture(fixtureOf(t, fixture))), out.String())
+
+	text := out.String()
+	assert.Equal(t, 1, strings.Count(text, " push:push#"), "the engine pushes the approved head once: %s", text)
+	assert.NotContains(t, text, "command:", "no command step of the example pushes")
+}
+
 func TestDryRun_ALocalExampleRedGateWithEveryStepKnownStillGoesToTheFixAgent(t *testing.T) {
 	t.Parallel()
 

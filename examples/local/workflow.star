@@ -68,7 +68,7 @@ def main(item):
         capped(fix, "fix", item)
 
     # The branch goes into the source repository under the id of the item. An item that used all of its passes is not pushed.
-    # A command gets no token and no SSH agent, but it keeps HOME, so ssh still finds a key file in ~/.ssh. This push suits a source on this machine, which needs no key.
-    # The push builtin needs a project with a forge, and a forge makes the gate look up pull requests.
+    # The engine pushes the head that the gate and the review saw, so no step of the item needs a credential. With no lease, git takes only a new branch or a fast forward.
+    # The push is the last step, so it needs no patched: a run that passed the old command push has ended, and a resume of a run whose push failed starts again at the failed step.
     if approved:
-        command(name = "push", run = ["git", "push", "origin", "HEAD:refs/heads/" + item.id])
+        push(name = "push", branch = item.id, head = check.head, expect = "")

@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // The flows of the patched() tests. A change to the step after the question sits behind patched("greeting"): the new code reads the facts, the old code reads the clock.
@@ -268,4 +271,76 @@ func TestPatched_ANameWithACharacterOfAStepNameIsRefused(t *testing.T) {
 	_, err := walkBody(t, newHarness(t), "patched(\"a:b\")")
 
 	require.ErrorContains(t, err, `patched: name "a:b" holds a character other than`)
+}
+
+// A run of the local example from before the engine push failed in its command push. A resume on the file of now starts again at the failed step, so the
+// engine push runs in its place with no unexpected step, and the example needs no patched for it. The old file is the current one with the command push.
+func TestPatched_ARunOfTheOldLocalExampleWhoseCommandPushFailedPushesThroughTheEngineAfterAdoption(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	h := rig.h
+	// No agent commits, so the gate and the review see the head of the folder, and the engine pushes it.
+	h.gate.results = []GateResult{{Passed: true, Head: rig.head, Steps: stepsPass}}
+	h.agents.result = func(request AgentRequest) agent.Result {
+		if request.OutputFile != "" {
+			rig.put(request.OutputFile, `{"verdict":"approve"}`)
+		}
+
+		return costing(1)
+	}
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if len(request.Run) > 1 && request.Run[0] == "git" && request.Run[1] == "push" {
+			return CommandOutput{}, errFake
+		}
+
+		return CommandOutput{}, nil
+	}
+
+	file := localExampleFile(t, false)
+	current, err := os.ReadFile(file) //nolint:gosec // the file lies in the temp folder of this test
+	require.NoError(t, err)
+
+	old := strings.Replace(string(current), `push(name = "push", branch = item.id, head = check.head, expect = "")`, `command(name = "push", run = ["git", "push", "origin", "HEAD:refs/heads/" + item.id])`, 1)
+	require.NotEqual(t, string(current), old, "the example holds the engine push")
+	require.NoError(t, os.WriteFile(file, []byte(old), 0o600)) //nolint:gosec // the file lies in the temp folder of this test
+
+	first, err := NewEngine(t.Context(), h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	_, err = first.RunFile(testItem, testProject, file, modeOff())
+	require.ErrorContains(t, err, errFake.Error(), "the command push of the old file failed")
+	require.NoError(t, first.Shutdown())
+
+	client := h.client(t, testVersion)
+	before, err := client.stepNames(testRun)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(before, func(name string) bool { return strings.HasPrefix(name, "command:push#") }), "the old run recorded the command push: %v", before)
+
+	require.NoError(t, os.WriteFile(file, current, 0o600)) //nolint:gosec // the file lies in the temp folder of this test
+	require.NoError(t, client.ResumeOnThisFile(testItem))
+
+	engine := h.engine(t)
+
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool {
+		last, found, readErr := latestRun(engine.store(), testItem)
+
+		return readErr == nil && found && last.terminal()
+	}))
+
+	last, found, err := latestRun(engine.store(), testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NoError(t, last.Status.Error, "the replay meets no unexpected step and the engine push ends the run")
+
+	names, err := client.stepNames(testRun)
+	require.NoError(t, err)
+	assert.False(t, slices.ContainsFunc(names, func(name string) bool { return strings.HasPrefix(name, "command:push#") }), "the failed command push is not in the resumed run: %v", names)
+
+	h.forge.mu.Lock()
+	pushed := slices.Clone(h.forge.pushed)
+	h.forge.mu.Unlock()
+	require.Len(t, pushed, 1, "the engine pushes the approved head once")
+	assert.True(t, strings.HasPrefix(pushed[0], testProject+"|"+testItem+"|"+testItem+"|"+rig.head+"|"), "the engine pushes the gated head to the branch named by the id of the item: %s", pushed[0])
 }
