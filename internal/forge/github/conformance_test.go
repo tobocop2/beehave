@@ -96,7 +96,7 @@ func conformanceServing(t *testing.T) forge.Forge {
 	run.Plan(forgetest.SevenReviewer+"\n", "api", "user")
 	run.Plan("", "api", "-X", "POST", "repos/owner/name/git/refs")
 	run.Plan("", "api", "-X", "POST", "repos/owner/name/issues/7/assignees")
-	run.Plan("github.com\n  - Token scopes: '"+forgetest.ScopeRepo+"', '"+forgetest.ScopeWorkflow+"'\n", "auth", "status")
+	run.Plan(authJSON(t, fields{"scopes": forgetest.ScopeRepo + ", " + forgetest.ScopeWorkflow}), "auth", "status")
 
 	return newForge(t, repo, run)
 }

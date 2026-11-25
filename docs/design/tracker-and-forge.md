@@ -119,7 +119,7 @@ The writes are `PostComment`, `SetDraft`, `MergePR`, `CreateBranch`, `SetBase` a
 
 `MergePR` runs `gh pr merge --merge --match-head-commit`. It refuses a pin that is not a full commit id before `gh` runs.
 
-`CanWriteCI` reads the scope line of `gh auth status --active`: `yes` when it holds `workflow`, `no` when it does not, and `unknown` when gh prints no line and exits 0, as for a fine-grained token. No line with a failed exit is an error.
+`CanWriteCI` reads the `scopes` of the active account in `gh auth status --active --hostname github.com --json hosts`: `yes` when they hold `workflow` in any case, `no` when they do not, and `unknown` when the account has no scopes, as for a fine-grained token. A failed exit, JSON that does not parse, no active account on github.com and a login in a state other than `success` are errors.
 
 ### Conversation methods
 

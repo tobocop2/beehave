@@ -125,7 +125,7 @@ At start, for each project with a `writer`, the engine asks the forge adapter, a
 - `yes`: the engine refuses to start, whatever `ci_locked` says. On GitHub, a classic token whose scopes hold `workflow` gives `yes`.
 - `unknown`: the engine starts only when the `writer` entry sets `ci_locked = True`. A fine-grained token gives `unknown`, because the engine cannot read its permissions. `ci_locked` is the statement of the owner that the token has no Workflows permission.
 
-On GitHub the answer is the scope line of `gh auth status --active`. A line that holds `workflow` is `yes`, and a line without it is `no`. gh prints the line only for a classic or an OAuth token, so no line with exit code 0 is `unknown`. No line with any other exit code is a read that failed.
+On GitHub the answer is the `scopes` field of the active account on github.com in `gh auth status --active --hostname github.com --json hosts`. The engine reads the JSON only, never the text. Scopes that hold `workflow`, in any case, are `yes`, and scopes without it are `no`. GitHub shows scopes only for a classic or an OAuth token, so an account with no scopes is `unknown`. These answers are a read that failed: a failed exit, JSON that the engine cannot read, no active account on github.com, and a login that GitHub did not accept. A gh older than the `--json` flag of `auth status` fails the read. Use gh 2.101 or newer.
 
 ## The forge enforces the merge
 

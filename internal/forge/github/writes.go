@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -12,15 +11,17 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-const scopesMarker = "Token scopes:"
-
-// workflowScope is the scope of a token that can change the workflow files of a repository.
-const workflowScope = "workflow"
-
-var (
-	commitID    = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	quotedScope = regexp.MustCompile(`'([^']+)'`)
+const (
+	// workflowScope is the scope of a token that can change the workflow files of a repository.
+	workflowScope = "workflow"
+	// githubHost is the host whose login the CI read asks about.
+	githubHost = "github.com"
+	// authLoggedIn is the state of an account whose token GitHub accepted.
+	authLoggedIn  = "success"
+	cmdAuthStatus = "gh auth status"
 )
+
+var commitID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // workflowRefusal is the text of GitHub's refusal of a push that changes a workflow file without the workflow permission.
 const workflowRefusal = "create or update workflow"
@@ -91,29 +92,72 @@ func (f *Forge) DisableAutoMergePR(ctx context.Context, pr int) error {
 	return nil
 }
 
-// CanWriteCI answers from the scope line of the active account: yes when it holds the workflow scope, no when it does not.
-// gh prints the line only for a token that has scopes, so no line with a clean exit is unknown, and no line with a failed exit is a refusal.
+// CanWriteCI answers from the scopes of the active account on github.com, read as JSON: yes when they hold the workflow scope, in any case, and no when
+// they do not. gh leaves the scopes out when GitHub shows none, as for a fine-grained token, so that is unknown. Any answer it cannot read is an error.
 func (f *Forge) CanWriteCI(ctx context.Context) (model.CIWrite, error) {
-	done := f.run.Run(ctx, []string{"auth", "status", "--active"})
-
-	// gh prints the status to stderr when it exits with an error, so both streams are read.
-	for line := range strings.Lines(done.Stdout + "\n" + done.Stderr) {
-		if _, list, found := strings.Cut(line, scopesMarker); found {
-			return writeOf(scopeNames(list)), nil
-		}
-	}
-
+	done := f.run.Run(ctx, []string{"auth", "status", "--active", "--hostname", githubHost, argJSON, "hosts"})
 	if done.ExitCode != 0 {
-		return model.CIWriteUnknown, refused(done, "gh auth status exited with code %d", done.ExitCode)
+		return model.CIWriteUnknown, ciUnread(refused(done, "%s exited with code %d", cmdAuthStatus, done.ExitCode))
 	}
 
-	return model.CIWriteUnknown, nil
+	status, err := model.Decode[authStatus](cmdAuthStatus, done.Stdout)
+	if err != nil {
+		return model.CIWriteUnknown, ciUnread(err)
+	}
+
+	account, err := status.active()
+	if err != nil {
+		return model.CIWriteUnknown, ciUnread(err)
+	}
+
+	return account.write(), nil
 }
 
-// writeOf is the answer of a list of scopes: yes when it holds the workflow scope.
-func writeOf(scopes []string) model.CIWrite {
-	if slices.Contains(scopes, workflowScope) {
-		return model.CIWriteYes
+// ciUnread is the refusal for an answer of gh auth status that the read cannot use. It keeps the cause in the text.
+func ciUnread(err error) error {
+	return &forge.Error{Code: forge.CodeRefused, Message: "cannot read whether the token can change workflow files: " + err.Error(), Err: err}
+}
+
+// authStatus is the answer of `gh auth status --json hosts`: the accounts of each host.
+type authStatus struct {
+	Hosts map[string][]authAccount `json:"hosts"`
+}
+
+// authAccount is one account in the answer. Scopes is the X-OAuth-Scopes header of GitHub, a list split by commas, and empty when GitHub sends none.
+type authAccount struct {
+	State  string `json:"state"`
+	Error  string `json:"error"`
+	Active bool   `json:"active"`
+	Scopes string `json:"scopes"`
+}
+
+// active returns the active account on github.com whose login GitHub accepted. No such account is an error that keeps what gh said.
+func (s authStatus) active() (authAccount, error) {
+	for _, account := range s.Hosts[githubHost] {
+		if !account.Active {
+			continue
+		}
+
+		if account.State != authLoggedIn {
+			return authAccount{}, fmt.Errorf("the login to %s is in state %q: %s", githubHost, account.State, account.Error)
+		}
+
+		return account, nil
+	}
+
+	return authAccount{}, fmt.Errorf("gh shows no active account on %s", githubHost)
+}
+
+// write is the answer of the scopes of the account.
+func (a authAccount) write() model.CIWrite {
+	if strings.TrimSpace(a.Scopes) == "" {
+		return model.CIWriteUnknown
+	}
+
+	for scope := range strings.SplitSeq(a.Scopes, ",") {
+		if strings.EqualFold(strings.TrimSpace(scope), workflowScope) {
+			return model.CIWriteYes
+		}
 	}
 
 	return model.CIWriteNo
@@ -132,17 +176,6 @@ func (f *Forge) Login(ctx context.Context) (string, error) {
 	}
 
 	return strings.TrimSpace(login), nil
-}
-
-// scopeNames returns the quoted words of a scope list. The text none has no quotes and gives no scope.
-func scopeNames(list string) []string {
-	var names []string
-
-	for _, match := range quotedScope.FindAllStringSubmatch(list, -1) {
-		names = append(names, match[1])
-	}
-
-	return names
 }
 
 // CreateBranch makes a branch at the commit. An existing branch is an error from the forge.

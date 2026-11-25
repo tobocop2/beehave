@@ -137,7 +137,7 @@ func TestScope_AProjectWithCredentialsHoldsAWorkflowChangeForTheOwnerAndReadsNot
 
 		assert.Equal(t, merge.NoWorkflowScope, result.Stop, ci)
 		assert.Equal(t, 3, result.Stop.Code(), ci)
-		assert.Equal(t, "REFUSE: #5 changes .github/workflows. The writer token cannot change CI, so the owner lands this change by hand.", last(result), ci)
+		assert.Equal(t, "REFUSE: #5 changes a file in .github/workflows/: the writer token cannot change CI, so the owner lands this change by hand.", last(result), ci)
 		assert.False(t, s.called("CanWriteCI"), "a project with credentials reads no CI answer")
 		assert.Empty(t, s.writes, ci)
 	}
@@ -152,7 +152,7 @@ func TestScope_AProjectWithNoCredentialsRefusesAWorkflowChangeWhenTheForgeCannot
 
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Equal(t, 2, result.Stop.Code())
-	assert.Equal(t, "REFUSE: #5 changes .github/workflows, and the forge cannot tell whether the token can change workflow files.", last(result))
+	assert.Equal(t, "REFUSE: #5 changes a file in .github/workflows/, and the forge cannot tell whether the token can change workflow files.", last(result))
 	assert.True(t, w.called("CanWriteCI"))
 	assert.Empty(t, w.writes)
 }

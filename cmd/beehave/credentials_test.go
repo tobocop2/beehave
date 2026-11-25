@@ -462,7 +462,7 @@ func TestEngineStart_EveryEntryPointReadsTheCIAnswerAsTheWriterAndRefusesATokenW
 	bin := t.TempDir()
 	log := filepath.Join(bin, "gh-calls")
 	script := "#!/bin/sh\necho \"$* | GH_TOKEN=${GH_TOKEN:-unset} | GH_CONFIG_DIR=${GH_CONFIG_DIR:-unset}\" >> " + log + "\n" +
-		"printf 'github.com\\n  - Token scopes: %s\\n' \"'repo', 'workflow'\"\n"
+		`printf '%s\n' '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","scopes":"repo, workflow"}]}}'` + "\n"
 	require.NoError(t, exectest.Write(filepath.Join(bin, "gh"), script))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+testPath)
 	t.Setenv("GH_TOKEN", "owner-token")
@@ -478,7 +478,7 @@ func TestEngineStart_EveryEntryPointReadsTheCIAnswerAsTheWriterAndRefusesATokenW
 	_, err = ownProgramFor(t.Context(), cfg, opts, "p")
 	require.ErrorIs(t, err, credential.ErrCIWritable, "the owner command")
 
-	want := "auth status --active | GH_TOKEN=" + writerToken + " | GH_CONFIG_DIR=" + filepath.Join(opts.StateDir, "roles", "p", "gh")
+	want := "auth status --active --hostname github.com --json hosts | GH_TOKEN=" + writerToken + " | GH_CONFIG_DIR=" + filepath.Join(opts.StateDir, "roles", "p", "gh")
 	assert.Equal(t, []string{want, want, want}, ghCalls(t, log), "each start reads the answer once, as the writer and never as the owner")
 }
 

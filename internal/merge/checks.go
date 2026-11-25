@@ -98,7 +98,7 @@ func (a *attempt) workflowScope() *refusal {
 
 	if a.req.Credentialed {
 		return &refusal{stop: NoWorkflowScope, lines: []string{
-			fmt.Sprintf("REFUSE: #%d changes .github/workflows. The writer token cannot change CI, so the owner lands this change by hand.", a.req.PR),
+			fmt.Sprintf("REFUSE: #%d changes a file in %s: the writer token cannot change CI, so the owner lands this change by hand.", a.req.PR, workflowDir),
 		}}
 	}
 
@@ -123,7 +123,7 @@ func (a *attempt) ciRefusal(answer model.CIWrite) *refusal {
 	case model.CIWriteUnknown:
 	}
 
-	return refuse(fmt.Sprintf("REFUSE: #%d changes .github/workflows, and the forge cannot tell whether the token can change workflow files.", a.req.PR))
+	return refuse(fmt.Sprintf("REFUSE: #%d changes a file in %s, and the forge cannot tell whether the token can change workflow files.", a.req.PR, workflowDir))
 }
 
 // wholeFileList is the guard before the scope guard. It refuses a list of changed files that is absent or shorter than the forge's count, because a workflow file could hide in the rest.
