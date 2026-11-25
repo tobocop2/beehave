@@ -614,6 +614,25 @@ func TestAdaptive_StartControllerFailsWhenTheQueueRowCannotBeRead(t *testing.T) 
 	require.ErrorContains(t, err, "read the agents queue for the controller")
 }
 
+func TestAdaptive_StartControllerFailsWhenTheQueueRefusesTheFloor(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Concurrency = config.ConcurrencyAdaptive
+	h.opts.MaxConcurrent = 4
+	h.opts.PerLogin = 2
+
+	engine, err := NewEngine(t.Context(), h.opts, h.deps())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	// The queue row holds a partition limit of 2, so a floor of 1 is below it and the row refuses it.
+	engine.perLogin = 1
+
+	err = engine.startController()
+	require.ErrorContains(t, err, "set the limit of the agents queue to 1")
+}
+
 func TestDryLogins_HaveNoHeadroomBecauseADryRunStartsNoController(t *testing.T) {
 	t.Parallel()
 
