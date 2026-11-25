@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/store"
 )
 
@@ -180,6 +181,53 @@ func TestOpenSQLite_RefusesAFileThatIsNotADatabaseAndNamesTheFix(t *testing.T) {
 	_, err := store.OpenSQLite(t.Context(), dir, testSpec())
 	require.ErrorContains(t, err, "cannot open test.db")
 	require.ErrorContains(t, err, "move test.db away")
+}
+
+func TestOpenSQLite_AFolderThatCannotBeWrittenNamesItsOwnCauseAndNeverTellsTheOwnerToMoveTheFile(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() == 0 {
+		t.Skip("a process of the root user writes to a read-only folder")
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, openTest(t, dir).Close())
+	require.NoError(t, exectest.ChmodFolder(dir, 0o500))
+	t.Cleanup(func() { require.NoError(t, exectest.ChmodFolder(dir, 0o700)) })
+
+	_, err := store.OpenSQLite(t.Context(), dir, testSpec())
+	require.ErrorContains(t, err, "cannot open test.db")
+	assert.NotContains(t, err.Error(), "move", "a permission error is not a damaged file")
+	assert.NotContains(t, err.Error(), "away")
+}
+
+func TestOpenSQLite_ALockThatDoesNotEndNamesItsOwnCauseAndNeverTellsTheOwnerToMoveTheFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, openTest(t, dir).Close())
+
+	holder, err := sql.Open("sqlite", filepath.Join(dir, testFile))
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = holder.Close() })
+
+	conn, err := holder.Conn(t.Context())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = conn.Close() })
+
+	_, err = conn.ExecContext(t.Context(), `BEGIN IMMEDIATE`)
+	require.NoError(t, err)
+
+	spec := testSpec()
+	spec.BusyMs = 50
+
+	_, err = store.OpenSQLite(t.Context(), dir, spec)
+	require.ErrorContains(t, err, "cannot open test.db")
+	require.ErrorContains(t, err, "locked")
+	assert.NotContains(t, err.Error(), "move", "a busy lock is not a damaged file")
+	assert.NotContains(t, err.Error(), "away")
 }
 
 func TestOpenSQLite_RefusesAFolderThatDoesNotExist(t *testing.T) {

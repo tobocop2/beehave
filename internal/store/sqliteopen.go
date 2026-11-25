@@ -12,11 +12,16 @@ import (
 	"strings"
 
 	// The driver registers itself under the name sqlite, as it does for the workflow store.
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// sqliteFileMode is the mode of a SQLite file of the state folder, and of its -wal and -shm files.
-const sqliteFileMode = 0o600
+const (
+	// sqliteFileMode is the mode of a SQLite file of the state folder, and of its -wal and -shm files.
+	sqliteFileMode = 0o600
+	// primaryCodeMask keeps the primary result code of an extended SQLite result code.
+	primaryCodeMask = 0xff
+)
 
 // SQLiteFile describes a SQLite file of the state folder and the schema it must hold.
 // Name is the file name in the folder. Schema is a list of statements that each run again on a file that has them, and that sets user_version to Version.
@@ -43,7 +48,7 @@ func OpenSQLite(ctx context.Context, dir string, file SQLiteFile) (*sql.DB, erro
 	if err == nil {
 		err = prepareSQLite(ctx, db, file)
 		if err != nil {
-			err = errors.Join(err, db.Close())
+			err = errors.Join(adviseDamaged(err, file.Name), db.Close())
 		}
 	}
 
@@ -52,6 +57,20 @@ func OpenSQLite(ctx context.Context, dir string, file SQLiteFile) (*sql.DB, erro
 	}
 
 	return db, nil
+}
+
+// adviseDamaged adds the advice to move the file away when SQLite reports a damaged file or a file that is not a database. Every other error keeps its own cause.
+func adviseDamaged(err error, name string) error {
+	var sqliteErr *sqlite.Error
+
+	if errors.As(err, &sqliteErr) {
+		switch sqliteErr.Code() & primaryCodeMask {
+		case sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB:
+			return fmt.Errorf("%w. If the file is damaged, move %s away and start again", err, name)
+		}
+	}
+
+	return err
 }
 
 // secureFiles makes the file when it is missing, and sets mode 0600 on it and on its -wal and -shm files. The folder is the root of every path, so no name leaves it.
@@ -113,7 +132,7 @@ func secure(root *os.Root, name string, create bool) error {
 func prepareSQLite(ctx context.Context, db *sql.DB, file SQLiteFile) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("%w. If the file is damaged, move %s away and start again", err, file.Name)
+		return err
 	}
 
 	err = checkSQLite(ctx, tx, file)
