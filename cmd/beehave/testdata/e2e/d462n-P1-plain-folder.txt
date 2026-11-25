@@ -34,7 +34,8 @@ base marker
 -- origin/MOVED_MARKER --
 moved
 -- config/projects/plain.star --
-project()
+# The sandbox is off because a sandboxed step here ends not-started: the tree has no git user.name or user.email, and the fake claude prints version 1.0.0, below the version that the sandbox needs.
+project(sandbox = "off")
 -- flow/wf.star --
 def main(item):
     agent(name = "probe", prompt = "prompts/probe.md", model = "m")

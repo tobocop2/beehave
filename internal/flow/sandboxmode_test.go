@@ -155,13 +155,12 @@ func TestSpawn_AChildOfARunWithNoStoredModeStoresTheModeItsParentRunsWith(t *tes
 	t.Parallel()
 
 	rig := newAgentRig(t)
-	rig.h.sandboxDefault = func(string) bool { return true }
 	spawner := "def worker(item):\n    command(name = \"w\", run = [\"w\"])\n\ndef main(item):\n    gather(spawn(items = [\"21\"], entry = \"worker\"))\n"
 
 	_, err := runOldRecord(t, rig, spawner)
 	require.NoError(t, err)
 
-	assert.Equal(t, model.SandboxOn, storedInput(t, rig.h.client(t, testVersion), "21").Sandbox, "the child stores on or off, never the empty mode of an old parent")
+	assert.Equal(t, model.SandboxOff, storedInput(t, rig.h.client(t, testVersion), "21").Sandbox, "the child stores off, the mode of an old parent, never the empty mode")
 }
 
 func TestResume_ARunWithNoRecordedSandboxModeKeepsRunningItsStepsUnsandboxed(t *testing.T) {
@@ -174,44 +173,24 @@ func TestResume_ARunWithNoRecordedSandboxModeKeepsRunningItsStepsUnsandboxed(t *
 
 	rig := newAgentRig(t)
 	rig.reply("", exited)
-	rig.h.sandboxDefault = func(string) bool { return false }
 
 	_, err := runOldRecord(t, rig, agentFlow(`sandbox = None, `))
 
-	require.NoError(t, err, "the live config of the project says off, so the None step starts")
+	require.NoError(t, err, "a run with no stored mode runs with the mode off, so the None step starts")
 	assert.Nil(t, sandboxSeen(t, rig))
 }
 
-func TestResume_ARunWithNoRecordedSandboxModeInAProjectWithTheSandboxOnRefusesASandboxNoneStep(t *testing.T) {
+func TestResume_ARunWithNoRecordedSandboxModeRunsAStepWithNoKeywordWithNoSandbox(t *testing.T) {
 	t.Parallel()
 
 	rig := newAgentRig(t)
 	rig.reply("", exited)
 
-	asked := ""
-	rig.h.sandboxDefault = func(project string) bool { asked = project; return true }
-
-	_, err := runOldRecord(t, rig, agentFlow(`sandbox = None, `))
-
-	require.ErrorContains(t, err, "sets sandbox = None", "an old run reads the live config, which says on")
-	assert.Equal(t, testProject, asked)
-	assert.Empty(t, rig.h.agents.seen())
-}
-
-func TestRun_ARunWithAStoredModeNeverReadsTheLiveConfigOfTheProject(t *testing.T) {
-	t.Parallel()
-
-	rig := newAgentRig(t)
-	rig.sandbox = model.SandboxOff
-	rig.reply("", exited)
-	reads := 0
-	rig.h.sandboxDefault = func(string) bool { reads++; return true }
-
-	_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
+	_, err := runOldRecord(t, rig, agentFlow(``))
 
 	require.NoError(t, err)
-	assert.Zero(t, reads, "the engine reads the live config only for a run with no stored mode")
-	assert.Nil(t, sandboxSeen(t, rig))
+	assert.Len(t, rig.h.agents.seen(), 1)
+	assert.Nil(t, sandboxSeen(t, rig), "a run recorded before the mode was stored keeps running with no sandbox")
 }
 
 func TestRun_TheRefusalOfASandboxNoneStepTellsTheOwnerHowToStartAgain(t *testing.T) {
@@ -311,24 +290,6 @@ func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 	}
 }
 
-func TestJoinRun_AJoinFromAClientWithTheKeyUnsetStoresOffInAnEngineWhoseConfigIsOn(t *testing.T) {
-	t.Parallel()
-
-	rig := newAgentRig(t)
-	rig.reply("", exited)
-	reads := 0
-	rig.h.sandboxDefault = func(string) bool { reads++; return true }
-	rig.h.engine(t)
-	client := rig.h.client(t, testVersion)
-
-	_, err := client.JoinRun(t.Context(), testItem, testProject, flowFile(t, agentFlow(`sandbox = None, `), "x"), RunSandbox(model.Project{}.RunSandboxMode()))
-
-	require.NoError(t, err, "the client stores off, so the engine config that says on does not refuse the step")
-	assert.Equal(t, model.SandboxOff, storedInput(t, client, testItem).Sandbox)
-	assert.Zero(t, reads, "the engine never reads its own config for the run")
-	assert.Len(t, rig.h.agents.seen(), 1)
-}
-
 func TestResume_ARunKeepsItsStoredModeAfterTheConfigOfTheProjectChanges(t *testing.T) {
 	t.Parallel()
 
@@ -336,10 +297,9 @@ func TestResume_ARunKeepsItsStoredModeAfterTheConfigOfTheProjectChanges(t *testi
 	rig.reply("", exited)
 
 	file := flowFile(t, bodyFlow("wait(name = \"ask\", question = \"go?\")\n"+agentCallText("sandbox = None, ")), "x")
-	interrupted(t, rig.h, file, RunSandbox(model.Project{}.RunSandboxMode()))
+	interrupted(t, rig.h, file, RunSandbox(model.SandboxOff))
 
-	// The config of the project now says on, and the restarted engine and the next run both see it.
-	rig.h.sandboxDefault = func(string) bool { return true }
+	// The config of the project now says on, and the next run passes that mode.
 	next := rig.h.engine(t)
 	client := rig.h.client(t, testVersion)
 	done := make(chan runOutcome, 1)
@@ -562,13 +522,11 @@ func TestServe_TheEngineSaysTheOffLineAtItsStartForAnOpenRunThatStoredOffAndForN
 
 	for name, test := range map[string]struct {
 		stored model.SandboxMode
-		live   bool
 		lines  int
 	}{
-		"a stored off":                      {model.SandboxOff, true, 1},
-		"a stored on":                       {model.SandboxOn, false, 0},
-		"an empty record in an off project": {"", false, 1},
-		"an empty record in an on project":  {"", true, 0},
+		"a stored off":    {model.SandboxOff, 1},
+		"a stored on":     {model.SandboxOn, 0},
+		"an empty record": {"", 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -581,8 +539,6 @@ func TestServe_TheEngineSaysTheOffLineAtItsStartForAnOpenRunThatStoredOffAndForN
 			} else {
 				interrupted(t, h, file, RunSandbox(test.stored))
 			}
-
-			h.sandboxDefault = func(string) bool { return test.live }
 
 			var out safeBuffer
 
@@ -637,7 +593,7 @@ func TestServe_ARunStartedAfterTheEngineStartedSaysNoOffLineNeitherItsChildNorAJ
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, spawner), RunSandbox(model.SandboxOff))
 	require.NoError(t, err)
 
-	// A project with the key unset runs with the mode off until the default flips, and a joined run of it stores off too.
+	// A project with sandbox = "off" runs with the mode off, and a joined run of it stores off too.
 	_, err = h.client(t, testVersion).JoinRun(t.Context(), "23", testProject, writeFlow(t, bodyFlow("command(name = \"w\", run = [\"w\"])\n")), RunSandbox(model.SandboxOff))
 	require.NoError(t, err)
 
@@ -654,47 +610,34 @@ func TestOpenRun_ReadsTheModeAndFileOfTheOpenRunOnly(t *testing.T) {
 
 	h := newHarness(t)
 	client := h.client(t, testVersion)
-	live := func(string) bool { return true }
 
-	open, err := client.OpenRun(testItem, live)
+	open, err := client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.Equal(t, OpenRun{}, open, "an item with no run has no open run")
 
 	file := askingFlow(t)
-	interrupted(t, h, file, RunSandbox(model.SandboxOff))
+	interrupted(t, h, file, RunSandbox(model.SandboxOn))
 
-	open, err = client.OpenRun(testItem, live)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
-	assert.Equal(t, OpenRun{Open: true, File: file, Sandbox: model.SandboxOff}, open, "the stored mode wins over the live default")
+	assert.Equal(t, OpenRun{Open: true, File: file, Sandbox: model.SandboxOn}, open, "the open run gives its stored mode")
 
 	require.NoError(t, client.Cancel(testItem))
 
-	open, err = client.OpenRun(testItem, live)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.False(t, open.Open, "a run that ended is not open")
 }
 
-func TestOpenRun_AnOldRecordUsesTheLiveDefaultOfItsProject(t *testing.T) {
+func TestOpenRun_AnOldRecordUsesTheModeOff(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	interruptedOldRecord(t, h, askingFlow(t))
 
-	client := h.client(t, testVersion)
-
-	for live, want := range map[bool]model.SandboxMode{true: model.SandboxOn, false: model.SandboxOff} {
-		open, err := client.OpenRun(testItem, func(project string) bool {
-			assert.Equal(t, testProject, project)
-
-			return live
-		})
-		require.NoError(t, err)
-		assert.Equal(t, want, open.Sandbox)
-	}
-
-	open, err := client.OpenRun(testItem, nil)
+	open, err := h.client(t, testVersion).OpenRun(testItem)
 	require.NoError(t, err)
-	assert.Equal(t, model.SandboxOff, open.Sandbox, "no live default means off")
+	assert.Equal(t, model.SandboxOff, open.Sandbox, "a run recorded before the mode was stored runs with the mode off")
 }
 
 func TestServe_AnEngineThatCannotListItsOpenRunsFailsItsLaunch(t *testing.T) {

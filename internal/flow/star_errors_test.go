@@ -284,20 +284,20 @@ func TestOpenRun_ReadsTheFileOfTheOpenRunOnly(t *testing.T) {
 	h := newHarness(t)
 	client := h.client(t, testVersion)
 
-	open, err := client.OpenRun(testItem, nil)
+	open, err := client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.Empty(t, open.File, "an item with no run has no file")
 
 	path := writeFlow(t, crashFlow)
 	interrupted(t, h, path)
 
-	open, err = client.OpenRun(testItem, nil)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.Equal(t, path, open.File)
 
 	require.NoError(t, client.Cancel(testItem))
 
-	open, err = client.OpenRun(testItem, nil)
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.Empty(t, open.File, "a run that ended has no file")
 }

@@ -105,7 +105,9 @@ agents(max_concurrent = 2)
 runner(name = "one", agent = "claude", config_dir = "@WORK@/login")
 runner(name = "two", agent = "claude", config_dir = "@WORK@/login")
 -- config/projects/round.star --
+# The sandbox is off because the gate runs here, and isolate puts the tool wrappers, sh among them, in a test folder on PATH that a sandboxed gate may not read.
 project(
+    sandbox = "off",
     repo = "o/r",
     source = "file://@WORK@/remote.git",
     forge = "github",

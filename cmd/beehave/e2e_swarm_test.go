@@ -556,9 +556,10 @@ func swarmInit(ts *testscript.TestScript, dir string, work *os.Root) {
 
 	remote := filepath.Join(dir, "remote.git")
 	login := filepath.Join(dir, "login") // sandboxHome made it: the login folder is a credential path, so it is not the folder of the state
+	// The project sets sandbox = "off" because isolate puts the tool wrappers, sh among them, in a test folder on PATH that a sandboxed gate may not read, so the merge gate fails.
 	files := map[string]string{
 		"config/runners.star":        "agents(max_concurrent = 2)\nrunner(name = \"one\", agent = \"claude\", config_dir = \"" + login + "\")\nrunner(name = \"two\", agent = \"claude\", config_dir = \"" + login + "\")\n",
-		"config/projects/swarm.star": "project(repo = \"o/r\", source = \"" + remote + "\", forge = \"github\", base_branch = \"main\", gate = \"make check\", test_report = \"reports/*.xml\")\n",
+		"config/projects/swarm.star": "project(repo = \"o/r\", source = \"" + remote + "\", forge = \"github\", base_branch = \"main\", gate = \"make check\", test_report = \"reports/*.xml\", sandbox = \"off\")\n",
 		"seed/Makefile":              "check: ; @mkdir -p reports && echo '<testsuite tests=\"1\"><testcase name=\"t\"/></testsuite>' > reports/r.xml\n",
 		"seed/.gitignore":            "reports/\n",
 	}
