@@ -11,7 +11,6 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/config"
 	forgepkg "github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
@@ -28,18 +27,15 @@ const (
 	gateJobName = "gate:job"
 	// gateReuseName is the step that reuses an earlier pass before a gate that runs on a build host waits for the host.
 	gateReuseName = "gate:reuse"
-	// batchGateJobName is the step that checks out the union commit of a batch gate and records its tree and its host job before the gate waits.
-	batchGateJobName = "batch_gate:job"
 
-	kindGate      = "gate"
-	kindMerge     = "merge"
-	kindBatchGate = "batch_gate"
+	kindGate  = "gate"
+	kindMerge = "merge"
 	// kindCommand is a command call that names a slot class. It runs as a host job on the queue of its class and never on the exclusive queue.
 	kindCommand = "command"
 )
 
-// ExclusiveInput is one gate or one merge of a repository, or the host job of a command call with a slot class. Kind is "gate", "merge", "batch_gate" or "command".
-// Request belongs to a command call. Request and Head belong to a gate. Head and Settings belong to a merge. Commit and GateRun belong to a batch gate.
+// ExclusiveInput is one gate or one merge of a repository, or the host job of a command call with a slot class. Kind is "gate", "merge" or "command".
+// Request belongs to a command call. Request and Head belong to a gate. Head and Settings belong to a merge.
 // Run is the id of the run that queued the merge or the command, and RunItem is the item whose claim that run holds. A call with no Run is refused.
 type ExclusiveInput struct {
 	Kind    string `json:"kind"`
@@ -47,10 +43,8 @@ type ExclusiveInput struct {
 	RunItem string `json:"run_item,omitempty"`
 	Project string `json:"project"`
 	Item    string `json:"item"`
-	// BuildHost is the build host that the run recorded in host_up, for a batch gate. A gate carries it in Request.
-	BuildHost string `json:"build_host,omitempty"`
-	Head      string `json:"head,omitempty"`
-	// Severity is the severity of the item of a gate, which sets its place in the queue. It is empty for a merge and a batch gate.
+	Head    string `json:"head,omitempty"`
+	// Severity is the severity of the item of a gate, which sets its place in the queue. It is empty for a merge.
 	Severity string `json:"severity,omitempty"`
 	// Tip is the head of the pull request that a gate judges, set when the gate is queued. A gate of a newer head stops a gate whose Tip is another head.
 	Tip string `json:"tip,omitempty"`
@@ -65,22 +59,17 @@ type ExclusiveInput struct {
 	// SlotCount is the count of the slot class of a command call or a gate, set when the job is queued. A gate reads it to name its queue, and the rewind of a reopened job reads it too.
 	// A command replay asks Deps.Slots again, so a changed host block gives the replay the new count.
 	SlotCount int `json:"slot_count,omitempty"`
-	// Call is the key of the gate call, such as gate:check, which a dry run reads to script the gate. It is empty in a real run, for a batch gate and for a merge, so the record of a real run has no such field.
-	Call string `json:"call,omitempty"`
-	// PinBase is the base of the merge call, for a batch gate: the pin file is read at that branch. A gate carries it in Request.
-	PinBase  string         `json:"pin_base,omitempty"`
-	Commit   string         `json:"commit,omitempty"`
-	GateRun  []string       `json:"gate_run,omitempty"`
+	// Call is the key of the gate call, such as gate:check, which a dry run reads to script the gate. It is empty in a real run and for a merge, so the record of a real run has no such field.
+	Call     string         `json:"call,omitempty"`
 	Request  CommandRequest `json:"request"`
 	Settings MergeSettings  `json:"settings"`
 }
 
 // ExclusiveOutput is what a gate or a merge returned. Outputs is the record of a gate. Merge is the result of a merge.
-// Batch is the outcome of a batch gate. Failure is set when the call failed: the run itself ends with no error, see Failure.
+// Failure is set when the call failed: the run itself ends with no error, see Failure.
 type ExclusiveOutput struct {
-	Outputs map[string]any    `json:"outputs,omitempty"`
-	Merge   merge.Result      `json:"merge"`
-	Batch   batch.GateOutcome `json:"batch"`
+	Outputs map[string]any `json:"outputs,omitempty"`
+	Merge   merge.Result   `json:"merge"`
 	// Command is the output of a command call with a slot class.
 	Command CommandOutput `json:"command"`
 	Failure *Failure      `json:"failure,omitempty"`
@@ -88,7 +77,7 @@ type ExclusiveOutput struct {
 	Key string `json:"key,omitempty"`
 	// Project is the project of a run that holds a Key; the lookup reads a pass only from a run of the same project.
 	Project string `json:"project,omitempty"`
-	// Lost is the host job of a gate or a batch gate whose wait ended as lost, after the wait for its proof. It is nil for every other run.
+	// Lost is the host job of a gate whose wait ended as lost, after the wait for its proof. It is nil for every other run.
 	Lost *LostJob `json:"lost,omitempty"`
 	// HostStarted is the cluster that this gate started because host_up had left it for the first gate. It is empty for every other run.
 	HostStarted string `json:"host_started,omitempty"`
@@ -117,11 +106,11 @@ func (e *Engine) endCall(out *ExclusiveOutput, err error) (ExclusiveOutput, erro
 	return *out, nil
 }
 
-// trackGate lists a running gate or batch gate with the runs that the tick cancels. DBOS does not interrupt a step that runs, so a gate that a newer head
+// trackGate lists a running gate with the runs that the tick cancels. DBOS does not interrupt a step that runs, so a gate that a newer head
 // or a person canceled stops when the tick cancels its context, and a wait for the proof of a lost job reads the proof once more (lostStopped).
 // The returned function ends the gate: it cancels the context and marks the run as ended. A run of another kind is not listed.
 func (e *Engine) trackGate(parent dbos.Context, in ExclusiveInput) (dbos.Context, func()) { //nolint:ireturn // the context of a run is the interface of the workflow library
-	if in.Kind != kindGate && in.Kind != kindBatchGate {
+	if in.Kind != kindGate {
 		return parent, func() {}
 	}
 
@@ -219,8 +208,6 @@ func (e *Engine) runCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutp
 		out.Outputs, err = e.gateCall(ctx, in, out)
 	case kindMerge:
 		out.Merge, err = runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) { return e.claimedMerge(c, in) })
-	case kindBatchGate:
-		out.Batch, err = e.batchGateCall(ctx, in, out)
 	case kindCommand:
 		out.Command, err = runStep(e, ctx, kindCommand, func(c context.Context) (CommandOutput, error) { return e.claimedCommand(c, in) })
 	default:
@@ -245,7 +232,7 @@ func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOut
 				}
 			}
 
-			return e.programGateOutputs(c, in.Request, in.Head, in.gateSlot())
+			return e.programGateOutputs(c, in.Request, in.gateSlot())
 		})
 	}
 
@@ -333,17 +320,14 @@ func (in ExclusiveInput) gateSlot() model.Slot {
 
 // recordedHost is the host that the run recorded in host_up, and whether the call runs on a build host at all.
 func (in ExclusiveInput) recordedHost() (string, bool) {
-	switch {
-	case in.Kind == kindGate && (len(in.Request.Run) == 0 || in.Request.Host != ""):
+	if in.Kind == kindGate && (len(in.Request.Run) == 0 || in.Request.Host != "") {
 		return in.Request.BuildHost, true
-	case in.Kind == kindBatchGate && len(in.GateRun) == 0:
-		return in.BuildHost, true
 	}
 
 	return "", false
 }
 
-// hostJob runs the build job of a gate or a batch gate on the slot queue of the class gate, keyed by the host.
+// hostJob runs the build job of a gate on the slot queue of the class gate, keyed by the host.
 // The exclusive queue keeps one gate or merge for each project, so a merge never starts while a gate of its project runs.
 // The slot queue keeps as many build jobs for each host as host.gate_slots says, so the gates of all projects on one host share those slots.
 // The two queues cannot deadlock: a gate holds its slot in the exclusive queue while it waits for its job, and no job on the slot queue waits for a slot
@@ -556,7 +540,7 @@ type queuePlan struct {
 	Priority uint   `json:"priority"`
 }
 
-// planOf reads the pull request of a gate in a recorded step. A merge or a batch gate reads nothing and has the last place (6).
+// planOf reads the pull request of a gate in a recorded step. A merge reads nothing and has the last place (6).
 func (e *Engine) planOf(run dbos.Context, in ExclusiveInput) (queuePlan, error) {
 	if in.Kind != kindGate {
 		return queuePlan{Priority: priorityNormal}, nil
@@ -727,7 +711,7 @@ func severityOfItem(fields map[string]string) model.Severity {
 	return severity
 }
 
-// priorityOf gives a gate its place from the severity of its item and the standing of its pull request. The merges and the batch gates keep the normal place.
+// priorityOf gives a gate its place from the severity of its item and the standing of its pull request. The merges keep the normal place.
 // The standing is the read that the lifecycle makes already. A pull request that cannot be read counts as one that nobody waits on, and a line says so.
 // A P0 with nobody waiting comes before a person who waits.
 func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {

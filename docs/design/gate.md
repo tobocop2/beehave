@@ -91,7 +91,7 @@ When the wait of `gate` ends as `lost`, the steps `gate:lost-start` and `gate:lo
 
 The workflow library cannot record from inside a step, so the id needs a step of its own. After a crash between the two steps, the replay finds the id on record and the wait reads the same job: the host gets one job. A crash inside `gate:job`, after the host accepted the job and before the step is recorded, can still submit a second job.
 
-The project gate of `merge` has the same two steps, `batch_gate:job` and `batch_gate`. After a lost job with a proof, the batch gates the same commit once more. See "A lost batch gate job" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`, and a `merge` with `gate_run` is one step, `batch_gate`.
+The batch library gates each union with this `gate` call, so it has the same two steps. After a lost job with a proof, `batch_merge` gates the same union once more, and a second loss in one call ends the call. See "The batch library" in [workflow-files.md](workflow-files.md). A gate call that names a program is one step, `gate`.
 
 ### Gate steps
 
@@ -209,7 +209,7 @@ The secret scan needs gitleaks 8.30.1, which `make setup` and the CI `test` job 
 
 A gate with no failed step and at least one `unknown` step is void, not red.
 
-- A batch gate stops the batch and blames no member (`ErrGateVoid`).
+- `batch_merge` of the batch library ends the call with "the gate gave no result" and blames no member.
 - The review loop of one item starts no fix agent for it. The loop reruns a void gate twice in the same run. Each rerun is a new recorded gate step, because a resume replays a recorded result and never runs a recorded step again.
 - After the reruns, the loop asks the owner, and an answer runs the gate again. After three answers it refuses and names the steps with no result.
 - The loop of `examples/local` still reads a void gate as red.

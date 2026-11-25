@@ -24,21 +24,23 @@ const (
 
 var errNoClosingReader = &absentError{message: "this build cannot read the issues that a pull request closes. Use a build that sets a forge", step: "read the issues that a pull request closes"}
 
-// closingRead is what pr_closing records and what earlier_reads gives back for it: whether the item has a pull request, the issues that merging it closes, and whether the project has a forge.
+// closingRead is what pr_closing records and what earlier_reads gives back for it: whether the item has a pull request, the issues that merging it closes,
+// whether the project has a forge, and the cause of a failed read of a pull request named by its number.
 type closingRead struct {
 	Found  bool             `json:"found"`
 	Issues []model.IssueRef `json:"issues"`
 	Forge  bool             `json:"forge"`
+	Error  string           `json:"error,omitempty"`
 }
 
 // prClosingOutputs are the fields of pr_closing. The issues are never nil: an item with no pull request, and a project with no forge, close none.
 func prClosingOutputs(read closingRead) map[string]any {
-	return map[string]any{foundField: read.Found, "issues": append([]model.IssueRef{}, read.Issues...), "forge": read.Forge}
+	return map[string]any{foundField: read.Found, "issues": append([]model.IssueRef{}, read.Issues...), "forge": read.Forge, errorField: read.Error}
 }
 
 // prClosing reads the issues that merging a pull request closes, in one recorded step. The pull request is the one with the number pr, or else the pull request of the item.
 // The item is the item of the run when the call names none. A call with both item and pr is refused.
-// A replay returns the first read. A read that fails ends the step. A project with no forge gives forge false and no issues, and an item with no pull request gives found false.
+// A replay returns the first read. A failed read of the pull request of an item ends the step, and a failed read of a pull request named by its number gives its cause in error. A project with no forge gives forge false and no issues, and an item with no pull request gives found false.
 // A pull request that is named by its number is found when the read succeeds: a pull request that is gone is a failed read.
 func (s *script) prClosing(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var (
@@ -65,7 +67,7 @@ func closingStep(ctx context.Context, reader func(context.Context) (closingRead,
 		return stepResult{Outputs: prClosingOutputs(closingRead{})}, nil
 	}
 
-	return stepResult{Outputs: prClosingOutputs(closingRead{Found: read.Found, Issues: read.Issues, Forge: true})}, err
+	return stepResult{Outputs: prClosingOutputs(closingRead{Found: read.Found, Issues: read.Issues, Forge: true, Error: read.Error})}, err
 }
 
 // closingReader checks the item and the number of a pr_closing call and returns the read to run: the pull request of the item, or the pull request with the number.
@@ -79,7 +81,7 @@ func (s *script) closingReader(item string, pr int) (func(context.Context) (clos
 	case pr > 0 && s.e.deps.Queue == nil, pr == 0 && s.e.deps.Forge == nil:
 		return nil, errNoClosingReader
 	case pr > 0:
-		return func(ctx context.Context) (closingRead, error) { return s.readClosingOfPull(ctx, pr) }, nil
+		return func(ctx context.Context) (closingRead, error) { return s.closingOfPull(ctx, pr) }, nil
 	}
 
 	item = cmp.Or(item, s.in.Item)
@@ -95,6 +97,17 @@ func (s *script) readClosing(ctx context.Context, item string) (closingRead, err
 	}
 
 	return closingRead{Found: found, Issues: sortedIssues(issues)}, nil
+}
+
+// closingOfPull reads the closing issues of the pull request with the number. A failed read gives its cause in Error and found false, so the caller records it
+// and goes on, as the audit after a batch does. A read that the end of the run stops, and a project with no forge, end the step as before.
+func (s *script) closingOfPull(ctx context.Context, pr int) (closingRead, error) {
+	read, err := s.readClosingOfPull(ctx, pr)
+	if err == nil || ctx.Err() != nil || errors.Is(err, forgepkg.ErrNoForge) {
+		return read, err
+	}
+
+	return closingRead{Error: s.e.redact(err.Error())}, nil
 }
 
 // readClosingOfPull reads the closing issues of the pull request with the number, sorted and without a repeat.

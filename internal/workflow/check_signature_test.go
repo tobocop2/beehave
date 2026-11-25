@@ -1,7 +1,6 @@
 package workflow_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -27,8 +26,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
 		{"agent skill that is a path", `agent(prompt = "p", model = "m", skill = "a/b")`, `"a/b" is not the name of a skill`},
 		{"agent number for the skill", `agent(prompt = "p", model = "m", skill = 3)`, "skill must be a text, not an int."},
-		{"merge unknown keyword", `merge(prs = item.id, base = "b", repo = "r", name = "n", limit = 2)`, "merge takes no argument limit"},
-		{"merge missing base", `merge(prs = item.id, repo = "r", name = "n")`, "merge needs the `base` keyword"},
+		{"merge unknown keyword", `merge(members = item.id, base = "b", repo = "r", name = "n", limit = 2)`, "merge takes no argument limit"},
+		{"merge missing base", `merge(members = item.id, repo = "r", name = "n")`, "merge needs the `base` keyword"},
 		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, slots, sandbox, name, retries, backoff, failure."},
 		{"command cap as text", `command(run = ["a"], max_new_processes = "5")`, "max_new_processes must be an int, not a text."},
 		{"command cap of zero", `command(run = ["a"], max_new_processes = 0)`, "command: max_new_processes must be a whole number from 1 to 100000."},
@@ -70,6 +69,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"base_tip missing base", `base_tip(name = "t")`, "base_tip needs the `base` keyword"},
 		{"base_tip empty base", `base_tip(base = "")`, "base_tip"},
 		{"base_tip unknown keyword", `base_tip(base = "main", repo = "o/r")`, "base_tip takes no argument repo"},
+		{"landing_proof missing landed", `landing_proof(base = "main", start = None, end = None)`, "landing_proof needs the `landed` keyword"},
+		{"landing_proof text for landed", `landing_proof(base = "main", start = None, end = None, landed = "1")`, "landed must be a list, not a text."},
 		{"issue_state missing number", `issue_state(name = "s")`, "issue_state needs the `number` keyword"},
 		{"issue_state text for number", `issue_state(number = "7")`, "number must be an int, not a text."},
 		{"pr_closing int for item", `pr_closing(item = 9)`, "item must be a text, not an int."},
@@ -124,7 +125,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`agent("p", "m", forbid_commands = ["protected-path"], protect_paths = ["/own/checkout"])`,
 		`agent("p", "m", skill = "lint-pass")`,
 		`agent("p", "m", skill = "")`,
-		`merge(item.id, "b", "r", name = "n", gate_run = ["make"])`,
+		`merge(item.id, "b", "r", name = "n", hold = "hold")`,
 		`command(["a"], env = {"A": "b"}, stop_on_rc = [1], name = "n")`,
 		`command(["a"], max_new_processes = 50)`,
 		`command(["a"], max_new_processes = len(item))`,
@@ -143,6 +144,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`pr_closing(item = "9", name = "n")`,
 		`pr_closing(pr = 41, name = "n")`,
 		`base_tip(base = "main", name = "n")`,
+		`landing_proof(base = "main", start = struct(commit = "c", tree = "t"), end = struct(commit = "c", tree = "t"), landed = [], name = "n")`,
 		`issue_state(number = 7, name = "n")`,
 		`earlier_reads(kind = "pr_closing", name = "n", item = "9", own_run = True)`,
 		`sleep("90s", name = "n")`,
@@ -319,7 +321,7 @@ func TestUnpack_RefusesADestinationOfAnotherTypeThanTheKindOfItsKeyword(t *testi
 	require.ErrorContains(t, agent(map[string]any{"inputs": &text}), want)
 }
 
-func TestCheck_MergeTakesTheKeywordsOfABatchAndNoKeywordOfTheOldSingleMerge(t *testing.T) {
+func TestCheck_MergeTakesNoKeywordOfTheOldSingleMerge(t *testing.T) {
 	t.Parallel()
 
 	for _, keyword := range []string{`head = "abc"`, `tree = "t"`, `steps = []`, `approved = True`, `children = "refuse"`, `merge = False`, `by = "owner"`} {
@@ -328,10 +330,26 @@ func TestCheck_MergeTakesTheKeywordsOfABatchAndNoKeywordOfTheOldSingleMerge(t *t
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", "+keyword+")\n")
+			got := checkText(t, "def main(item):\n    merge(name = \"land\", members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", "+keyword+")\n")
 
 			require.NotEmpty(t, got)
-			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name, member, gate, gated_tree, expect_tree.")
+			assert.Contains(t, got[0], "merge takes no argument "+name+". Use one of: members, base, repo, gate, hold, own, forbid_text, name.")
+		})
+	}
+}
+
+func TestCheck_MergeRefusesEachKeywordOfTheBatchAndNamesBatchMerge(t *testing.T) {
+	t.Parallel()
+
+	for _, keyword := range workflow.BatchKeywords() {
+		t.Run(keyword, func(t *testing.T) {
+			t.Parallel()
+
+			got := checkText(t, "def main(item):\n    merge(name = \"land\", members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", "+keyword+" = [])\n")
+
+			require.Len(t, got, 1)
+			assert.Contains(t, got[0], workflow.MergeBatchRefusal(keyword))
+			assert.Contains(t, got[0], `load("@beehave//batch.star", "batch_merge")`)
 		})
 	}
 }
@@ -339,12 +357,12 @@ func TestCheck_MergeTakesTheKeywordsOfABatchAndNoKeywordOfTheOldSingleMerge(t *t
 func TestCheck_MergeNeedsTheNameKeywordAndAcceptsAMergeOfOnePullRequest(t *testing.T) {
 	t.Parallel()
 
-	got := checkText(t, "def main(item):\n    merge(prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\")\n")
+	got := checkText(t, "def main(item):\n    merge(members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\")\n")
 
 	require.NotEmpty(t, got)
 	assert.Contains(t, got[0], "merge needs the `name` keyword")
 
-	one := "def main(item):\n    out = merge(name = \"land\", prs = [struct(item = item.id, head = \"h\", approved = True, closes = [])], base = \"main\", repo = \"o/r\")\n    print(out.merged)\n"
+	one := "def main(item):\n    out = merge(name = \"land\", members = [struct(item = item.id, head = \"h\", approved = True, closes = [])], base = \"main\", repo = \"o/r\")\n    print(out.merged)\n"
 	assert.Empty(t, checkText(t, one), "a merge of one pull request is a merge")
 }
 
@@ -361,53 +379,17 @@ func TestCheck_AFileThatCallsBatchMergeIsRefusedAsAnUndefinedName(t *testing.T) 
 func TestCheck_TheResultOfMergeHasNoStateField(t *testing.T) {
 	t.Parallel()
 
-	got := checkText(t, "def main(item):\n    out = merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\")\n    print(out.state)\n")
+	got := checkText(t, "def main(item):\n    out = merge(name = \"land\", members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\")\n    print(out.state)\n")
 
 	require.NotEmpty(t, got)
 	assert.Contains(t, got[0], "state is not a field of the result of merge")
 }
 
-func TestCheck_MergeTakesHandOffAsABool(t *testing.T) {
+func TestCheck_MergeTakesNoHandOffKeyword(t *testing.T) {
 	t.Parallel()
 
-	const call = "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = %s)\n"
-
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "True")))
-
-	got := checkText(t, fmt.Sprintf(call, `"yes"`))
+	got := checkText(t, "def main(item):\n    merge(name = \"land\", members = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = True)\n")
 
 	require.NotEmpty(t, got)
-	assert.Contains(t, got[0], "hand_off")
-}
-
-func TestCheck_MergeWithHandOffRefusesEachKeywordOfALanding(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]string{
-		"hold":        `hold = "hold"`,
-		"own":         `own = {"logins": ["me"]}`,
-		"forbid_text": `forbid_text = ["x"]`,
-		"gate_run":    `gate_run = ["check"]`,
-		"integration": `integration = 5`,
-	}
-
-	for name, extra := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			got := checkText(t, "def main(item):\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = True, "+extra+")\n")
-
-			require.Len(t, got, 1)
-			assert.Contains(t, got[0], "merge with `hand_off` lands nothing, so it takes no `"+name+"`")
-		})
-	}
-}
-
-func TestCheck_MergeWithHandOffFalseOrComputedTakesTheKeywordsOfALanding(t *testing.T) {
-	t.Parallel()
-
-	const call = "def main(item):\n    flag = item == \"x\"\n    merge(name = \"land\", prs = [struct(item = \"1\", head = \"h\", closes = [])], base = \"main\", repo = \"o/r\", hand_off = %s, gate_run = [\"check\"])\n"
-
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "False")), "a landing that is not handed off takes gate_run")
-	assert.Empty(t, checkText(t, fmt.Sprintf(call, "flag")), "a flag that only the run knows is left to the run")
+	assert.Contains(t, got[0], "merge takes no argument hand_off")
 }

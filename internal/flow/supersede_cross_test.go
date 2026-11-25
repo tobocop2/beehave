@@ -184,7 +184,11 @@ func TestSuperseded_AGateWhoseReadOfTheHeadIsOldNeverStopsTheGateOfTheCurrentHea
 }
 
 // passThenHold passes the first gate and holds every later gate until its context ends.
-type passThenHold struct{ runs atomic.Int32 }
+type passThenHold struct {
+	cleanTree
+
+	runs atomic.Int32
+}
 
 func (g *passThenHold) Key(context.Context, string, string, string, string, string) (GateKey, error) {
 	return GateKey{}, nil

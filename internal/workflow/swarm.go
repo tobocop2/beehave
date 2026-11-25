@@ -182,15 +182,26 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 		return "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}."
 	case builtin == spawnName && keyword == DebounceKeyword:
 		return "spawn takes no argument debounce. debounce is an option of beehave run."
-	case removedPRArgument(builtin, keyword) != "":
-		return removedPRArgument(builtin, keyword)
-	case builtin == preflightName && slices.Contains(ClaimKeywords(), keyword):
-		return PreflightClaimRefusal(keyword)
+	case movedArgument(builtin, keyword) != "":
+		return movedArgument(builtin, keyword)
 	case len(allowed) == 0:
 		return fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, keyword)
 	}
 
 	return fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, keyword, strings.Join(allowed, ", "))
+}
+
+// movedArgument is the sentence for an argument that moved out of the builtin: the claim of preflight, the batch of merge and the removed arguments of a pull request.
+// It is empty for any other keyword.
+func movedArgument(builtin, keyword string) string {
+	switch {
+	case builtin == preflightName && slices.Contains(ClaimKeywords(), keyword):
+		return PreflightClaimRefusal(keyword)
+	case builtin == mergeName && slices.Contains(BatchKeywords(), keyword):
+		return MergeBatchRefusal(keyword)
+	}
+
+	return removedPRArgument(builtin, keyword)
 }
 
 // removedPRArgument is the sentence for an argument that pr_open or pr_comment no longer takes. It is empty for any other keyword.

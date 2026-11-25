@@ -1008,7 +1008,7 @@ func rewroteHistory(ctx context.Context, tree proc.Runner, start, head string) (
 
 // folderHead returns the commit at HEAD of the item folder.
 func folderHead(ctx context.Context, tree proc.Runner) (string, error) {
-	out, err := git(ctx, tree, "rev-parse", "HEAD")
+	out, err := git(ctx, tree, revParse, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("read HEAD of the item folder: %w", err)
 	}

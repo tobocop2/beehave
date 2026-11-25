@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/config"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
@@ -243,6 +244,22 @@ func (g *fakeGate) gatedOn() []string {
 	defer g.mu.Unlock()
 
 	return slices.Clone(g.hosts)
+}
+
+// cleanTree is the worktree reader of a fake gate: a clean worktree with no head and no tree, which never changes.
+type cleanTree struct{}
+
+func (cleanTree) State(context.Context, string, string) (string, gatepkg.State, error) {
+	return "", gatepkg.State{Clean: true}, nil
+}
+
+// State reads the worktree through via when it is set, and else reads a clean worktree.
+func (g *fakeGate) State(ctx context.Context, project, item string) (string, gatepkg.State, error) {
+	if g.via != nil {
+		return g.via.State(ctx, project, item)
+	}
+
+	return cleanTree{}.State(ctx, project, item)
 }
 
 // Key answers from keys in order, the last repeating. With no keys it gives an empty key, so no gate reuses a pass.

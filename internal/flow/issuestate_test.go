@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,20 +77,22 @@ func TestIssueState_ABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
 	require.ErrorIs(t, err, errNoIssueStateReader)
 }
 
-func TestIssueState_AReadThatFailsEndsTheStepWithAnError(t *testing.T) {
+// issueReadFlow is a workflow file whose main passes the found, state and error fields of one read of issue 7 to the command seen.
+const issueReadFlow = "def main(item):\n    r = issue_state(number = 7)\n    command(name = \"seen\", run = [\"seen\", str(r.found), \"[\" + r.state + \"]\", r.error])\n"
+
+func TestIssueState_AReadThatFailsGivesTheErrorAndNoState(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.queue = &fakeQueue{issueErr: errFake}
+	h.queue = &fakeQueue{issueStates: map[int]string{7: issueOpen}, issueErr: errFake}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, issueStateFlow(`issue_state(number = 7)`)), modeOff())
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, issueReadFlow), modeOff())
 
-	require.ErrorIs(t, err, errFake)
-	require.ErrorContains(t, err, "read the state of issue 7")
-	assert.Empty(t, h.commands.ranBy(testItem), "the run ends at the read")
+	require.NoError(t, err, "the caller reads the error and decides; the check after a batch makes it a finding")
+	assert.Equal(t, []string{"seen False [] " + errFake.Error()}, h.commands.ranBy(testItem), "a failed read gives no state, so no caller reads a guess")
 }
 
-func TestIssueState_AnAnswerThatIsNeitherStateEndsTheStep(t *testing.T) {
+func TestIssueState_AnAnswerThatIsNeitherStateGivesTheErrorAndNoState(t *testing.T) {
 	t.Parallel()
 
 	for name, state := range map[string]string{"empty": "", "other": "MERGED"} {
@@ -99,12 +102,37 @@ func TestIssueState_AnAnswerThatIsNeitherStateEndsTheStep(t *testing.T) {
 			h := newHarness(t)
 			h.queue = &fakeQueue{issueStates: map[int]string{7: state}}
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, issueStateFlow(`issue_state(number = 7)`)), modeOff())
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, issueReadFlow), modeOff())
 
-			require.ErrorContains(t, err, "not OPEN or CLOSED")
-			assert.Empty(t, h.commands.ranBy(testItem), "the run ends at the read")
+			require.NoError(t, err)
+			assert.Equal(t, []string{`seen False [] the forge answered "` + state + `", not OPEN or CLOSED`}, h.commands.ranBy(testItem))
 		})
 	}
+}
+
+func TestIssueState_AReadThatTheEndOfTheRunStopsEndsTheStep(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancel(errFake)
+
+	s := &script{e: &Engine{deps: Deps{Queue: &fakeQueue{issueErr: context.Canceled}}}}
+
+	_, err := s.readIssueState(ctx, 7)
+
+	require.ErrorIs(t, err, errFake, "a stopped read is no answer of the forge, so it is not recorded as one")
+}
+
+func TestIssueState_AFoundStateHasNoError(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.queue = &fakeQueue{issueStates: map[int]string{7: issueClosed}}
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, issueReadFlow), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"seen True [CLOSED] "}, h.commands.ranBy(testItem))
 }
 
 func TestIssueState_ACallWithAnArgumentOfTheWrongTypeIsRefusedByTheBuiltin(t *testing.T) {

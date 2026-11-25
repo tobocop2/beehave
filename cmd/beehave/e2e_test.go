@@ -240,7 +240,17 @@ func errJoin(first, second error) error {
 
 // e2eHeadOf reads the commit of the git folder that e2eSetup makes. The gate and the pull request show it.
 func e2eHeadOf(ctx context.Context, dir string) (string, error) {
-	result := proc.NewExecRunner("git", filepath.Join(dir, "tree")).Run(ctx, []string{"rev-parse", "HEAD"})
+	return e2eRevParse(ctx, dir, "HEAD")
+}
+
+// e2eTreeOf reads the tree of the commit of the git folder that e2eSetup makes, as a real gate reports it.
+func e2eTreeOf(ctx context.Context, dir string) (string, error) {
+	return e2eRevParse(ctx, dir, "HEAD^{tree}")
+}
+
+// e2eRevParse reads the object that the revision names in the git folder that e2eSetup makes.
+func e2eRevParse(ctx context.Context, dir, revision string) (string, error) {
+	result := proc.NewExecRunner("git", filepath.Join(dir, "tree")).Run(ctx, []string{"rev-parse", revision})
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf("git rev-parse: %s", result.Stderr)
 	}
@@ -252,13 +262,32 @@ func e2eHeadOf(ctx context.Context, dir string) (string, error) {
 // and a revert run in which the new test fails on the base code.
 type e2eGate struct{ dir string }
 
+// e2eGated reads the commit and the tree of the git folder that e2eSetup makes: the code that the gate ran on.
+func e2eGated(ctx context.Context, dir string) (string, string, error) {
+	head, err := e2eHeadOf(ctx, dir)
+	if err != nil {
+		return "", "", err
+	}
+
+	tree, err := e2eTreeOf(ctx, dir)
+
+	return head, tree, err
+}
+
+// State reads the commit of the git folder that e2eSetup makes, with its tree, as a clean worktree.
+func (g e2eGate) State(ctx context.Context, _, _ string) (string, gate.State, error) {
+	head, tree, err := e2eGated(ctx, g.dir)
+
+	return filepath.Join(g.dir, "tree"), gate.State{Head: head, Tree: tree, Clean: true}, err
+}
+
 func (e2eGate) Submit(_ context.Context, _, _, _, base, _, _ string, _ model.Slot) (flow.GateJob, error) {
 	return flow.GateJob{Plan: gate.Plan{Base: base}}, nil
 }
 
 func (g e2eGate) Run(ctx context.Context, _, _, _ string, job flow.GateJob) (flow.GateResult, error) {
-	head, err := e2eHeadOf(ctx, g.dir)
-	result := flow.GateResult{Passed: true, Head: head, Tree: "tree-of-" + head}
+	head, tree, err := e2eGated(ctx, g.dir)
+	result := flow.GateResult{Passed: true, Head: head, Tree: tree}
 
 	if job.Plan.Base != "" {
 		result.Checks = &flow.GateChecks{NewTests: []string{"shop TestE2E"}, New: 1, Secrets: new(int), Complete: true, Revert: model.RevertPass, RevertCases: 1}

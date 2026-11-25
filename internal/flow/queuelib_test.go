@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"slices"
@@ -28,9 +29,10 @@ type fakeQueue struct {
 	states         map[int]string
 	stateErr       error
 	stateAsked     []int
-	// issueStates answers IssueState and pullClosing answers PullClosing, each by number. issueErr and closingErr fail the read. issueAsked and closingAsked hold the numbers asked.
+	// issueStates answers IssueState and pullClosing answers PullClosing, each by number. issueErr and closingErr fail the read, and issueErrs fails the read of one number. issueAsked and closingAsked hold the numbers asked.
 	issueStates map[int]string
 	issueErr    error
+	issueErrs   map[int]error
 	// noIssueNumbers makes IssueState answer found false, as a project whose tracker has no issue numbers does.
 	noIssueNumbers bool
 	issueAsked     []int
@@ -98,7 +100,7 @@ func (q *fakeQueue) IssueState(_ context.Context, _ string, number int) (string,
 
 	q.issueAsked = append(q.issueAsked, number)
 
-	return q.issueStates[number], !q.noIssueNumbers, q.issueErr
+	return q.issueStates[number], !q.noIssueNumbers, cmp.Or(q.issueErrs[number], q.issueErr)
 }
 
 // PullClosing answers with the issues that the test set for the pull request number, unsorted as set, and records each number it was asked about.

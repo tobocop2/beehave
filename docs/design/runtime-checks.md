@@ -261,7 +261,7 @@ A failed read stops the poll with an `UnreadError` that names the read and its c
 
 ## Closing issues
 
-The engine step `merge` keeps the scope of the first review of an item. The remediation example has no tool for it. The first review row of the ledger records the issues that its pull request closes, as `remedy ledger add --pr` reads them.
+The library `scope.star`, which a workflow calls before `batch_merge` of `lib/batch.star`, keeps the scope of the first review of an item. The remediation example has no tool for it. The first review row of the ledger records the issues that its pull request closes, as `remedy ledger add --pr` reads them.
 
 ### How the closed issues are read
 

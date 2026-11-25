@@ -383,9 +383,9 @@ linters:
           files:
             - "**/internal/check/shell/**"
             - "**/internal/ci/*.go"
-            - "**/internal/batch/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
+            - "**/internal/landing/**"
             - "**/internal/lease/**"
             - "**/internal/merge/**"
             - "**/internal/ownprogram/**"
@@ -408,7 +408,7 @@ linters:
             - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
             - github.com/tobocop2/beehave/internal/ci$
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
             - github.com/tobocop2/beehave/internal/lease
@@ -453,7 +453,7 @@ linters:
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/sandbox
             - github.com/tobocop2/beehave/internal/check/shell
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
             - github.com/tobocop2/beehave/internal/lease
@@ -486,7 +486,7 @@ linters:
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
-            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/landing
             - github.com/tobocop2/beehave/internal/merge
             - github.com/tobocop2/beehave/internal/review
             - github.com/tobocop2/beehave/internal/pool
@@ -526,10 +526,10 @@ linters:
             - "!**/internal/roundintegration/**"
             - "!**/internal/takeover/**"
             - "!**/internal/gomod/**"
+            - "!**/internal/landing/**"
             - "!**/internal/ledger/**"
             - "!**/internal/check/**"
             - "!**/internal/ci/**"
-            - "!**/internal/batch/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
             - "!**/internal/lease/**"

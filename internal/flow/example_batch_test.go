@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/landing"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
@@ -151,13 +151,13 @@ func TestExampleBatch_ItemsThatAreDoneAtOneQueueReadLandAsOneBatchAndTheSplitHol
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
 	assert.Len(t, rig.gate.ran(), 4, "one gate run on the union of the three items, then the gate runs of the split of the red union")
 	assert.Equal(t, []string{testProject + "|2|hold"}, heldOf(rig.writer))
-	assert.Equal(t, []string{testProject + " main 0 1,3"}, rig.host.issueReads(), "one read after the one batch that landed both items; the batch that landed nothing makes no read")
+	assert.Equal(t, []int{1, 3}, rig.q.issueAsked, "one read of each item after the one batch that landed both items; the batch that landed nothing makes no read")
 	assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t))
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
-	assert.Contains(t, joined, "round-land-2.union#", "the pass 2 lands items 1 and 3 in one batch")
-	assert.NotContains(t, joined, "round-land-3.union#", "no third batch")
-	landedAt, bodyAt := strings.Index(joined, "round-land-2.union#"), strings.Index(joined, "integration_pull:round-integration-land-2#")
+	assert.Contains(t, joined, "gate:round-land-2.gate#", "the pass 2 lands items 1 and 3 in one batch")
+	assert.NotContains(t, joined, "gate:round-land-3.gate#", "no third batch")
+	landedAt, bodyAt := strings.Index(joined, "gate:round-land-2.gate#"), strings.Index(joined, "integration_pull:round-integration-land-2#")
 	require.GreaterOrEqual(t, bodyAt, 0, "the round makes the body of the integration pull request again after a landing")
 	assert.Greater(t, bodyAt, landedAt, "and it does so after the batch that landed")
 
@@ -499,10 +499,11 @@ func TestExampleBatch_TheIntegrationPullRequestOfTheRoundReachesTheReadAfterTheB
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{testProject + " main 7 1", testProject + " main 7 3"}, rig.host.issueReads(), "the members end in turn, so each lands in its own batch and each read has the number")
+	assert.Equal(t, []int{1, 3}, rig.q.issueAsked, "the issue of each landed item is read")
+	assert.Equal(t, []int{7, 7}, rig.q.closingAsked, "the members end in turn, so each lands in its own batch and each audit reads pull request 7")
 }
 
-func TestExampleBatch_ARoundWithNoIntegrationPullRequestReadsWithNumberZero(t *testing.T) {
+func TestExampleBatch_ARoundWithNoIntegrationPullRequestReadsNoClosingList(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
@@ -510,20 +511,21 @@ func TestExampleBatch_ARoundWithNoIntegrationPullRequestReadsWithNumberZero(t *t
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{testProject + " main 0 1", testProject + " main 0 3"}, rig.host.issueReads())
+	assert.Equal(t, []int{1, 3}, rig.q.issueAsked)
+	assert.Empty(t, rig.q.closingAsked)
 }
 
 func TestExampleBatch_AFindingStopsTheRunWithARefuseForTheOwner(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
-	rig.host.report = batch.Report{Findings: []string{"issue #1 of item 1 is not closed after the batch landed"}}
+	rig.q.issueStates[1] = issueOpen
 
 	_, err := rig.run(t)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "REFUSE")
-	assert.Contains(t, err.Error(), "issue #1 of item 1 is not closed after the batch landed")
+	assert.Contains(t, err.Error(), `issue #1 of item 1 is not closed after the batch landed (the forge says "OPEN")`)
 	assert.Contains(t, err.Error(), "by hand")
 }
 
@@ -531,7 +533,7 @@ func TestExampleBatch_AnUnprovenMemberStopsTheRunWithARefuseThatNamesTheItemAndT
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
-	rig.host.unproven = []batch.Outcome{{Item: "3", Reason: "its branch holds another commit now"}}
+	rig.host.unproven = []landing.Outcome{{Item: "3", Reason: "its branch holds another commit now"}}
 
 	_, err := rig.run(t)
 
@@ -543,13 +545,15 @@ func TestExampleBatch_AnUnprovenMemberStopsTheRunWithARefuseThatNamesTheItemAndT
 func TestExampleBatch_ANoteIsPrintedAsAnIssueCheckThatDidNotRun(t *testing.T) {
 	t.Parallel()
 
-	rig := newRoundRig(t, "1 3")
-	rig.host.report = batch.Report{Note: "the base is not the default branch"}
+	// Item 2 is red at the gate, so its batch lands nothing and the issue check does not run.
+	rig := newRoundRig(t, "2")
 
 	_, err := rig.run(t)
 
-	require.NoError(t, err)
-	assert.Empty(t, notesWithKey(rig.writer, "rejected"), "the round has no item issue for the note, so it prints it in the run record")
+	require.NoError(t, err, "the note of a batch that landed nothing does not stop the round")
+	assert.Empty(t, rig.merger.landed())
+	assert.Empty(t, rig.q.issueAsked)
+	assert.Equal(t, []string{testProject + "|2|hold"}, heldOf(rig.writer), "the round has no item issue for the note, so it prints it in the run record")
 }
 
 func TestExampleBatch_AReportWithNoFindingAndNoNoteSaysNothing(t *testing.T) {

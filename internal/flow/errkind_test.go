@@ -152,7 +152,7 @@ func TestKnownErrors_AKeptErrorAddsToTheProductionListAndNeverReplacesIt(t *test
 	assert.Contains(t, engine.knownErrors(), context.DeadlineExceeded)
 }
 
-type deadlineGate struct{}
+type deadlineGate struct{ cleanTree }
 
 // Run hits a real deadline of its own and returns the error of it.
 func (deadlineGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {

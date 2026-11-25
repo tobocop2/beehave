@@ -320,11 +320,12 @@ func (s *script) exclusiveGate(request CommandRequest, head, label string) (map[
 }
 
 // programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.
-func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string, slot model.Slot) (map[string]any, error) {
+// It records the head and the tree of the worktree of the item that the program ran on, and never the head keyword of the call.
+func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, slot model.Slot) (map[string]any, error) {
 	request.Gate = true
 	request.SlotClass, request.SlotCount = slot.Class, slot.Count
 
-	out, err := e.deps.Commands.Run(ctx, request)
+	state, out, err := e.programOnTree(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +335,50 @@ func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest,
 		status = failStatus
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}, e.requiredSteps(request.Project), nil), nil
+	return gateOutputs(out.RC == 0, state.Head, state.Tree, out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}, e.requiredSteps(request.Project), nil), nil
+}
+
+// programOnTree reads the worktree of the item before and after the program, as the project gate does. A worktree with changes that are not committed
+// is refused before the program, and a head or a tree that changes while the program runs is refused after it. A project with no repository has no
+// worktree: the program runs, and the state it returns has no head and no tree.
+func (e *Engine) programOnTree(ctx context.Context, request CommandRequest) (gatepkg.State, CommandOutput, error) {
+	if !e.hasRepository(request.Project) {
+		out, err := e.deps.Commands.Run(ctx, request)
+
+		return gatepkg.State{}, out, err
+	}
+
+	dir, before, err := e.cleanTree(ctx, request)
+	if err != nil {
+		return gatepkg.State{}, CommandOutput{}, err
+	}
+
+	out, err := e.deps.Commands.Run(ctx, request)
+	if err != nil {
+		return gatepkg.State{}, out, err
+	}
+
+	return before, out, e.sameTree(ctx, request, dir, before)
+}
+
+// sameTree reads the worktree of the item again after the program and refuses a head or a tree that is not the one before it.
+func (e *Engine) sameTree(ctx context.Context, request CommandRequest, dir string, before gatepkg.State) error {
+	_, after, err := e.deps.Gate.State(ctx, request.Project, request.Item)
+	if err != nil {
+		return err
+	}
+
+	return gatepkg.RequireSame(dir, before, after)
+}
+
+// cleanTree reads the worktree of the item and refuses one with changes that are not committed.
+func (e *Engine) cleanTree(ctx context.Context, request CommandRequest) (string, gatepkg.State, error) {
+	dir, state, err := e.deps.Gate.State(ctx, request.Project, request.Item)
+	if err == nil {
+		err = gatepkg.RequireClean(dir, state)
+	}
+
+	return dir, state, err
 }
 
 // gateStart is what the first step of a project gate records: the pass of an earlier gate that the key reuses, or the host job that the gate submitted.

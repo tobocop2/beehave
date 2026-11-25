@@ -1,6 +1,7 @@
 package remediation_test
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -14,14 +15,14 @@ import (
 	"github.com/tobocop2/beehave/internal/workflow/workflowtest"
 )
 
-// loadedPatterns reads the `forbid_text` patterns of the merge step of the remediation example once.
+// loadedPatterns reads the `forbid_text` patterns of the batch_merge call of the remediation example once.
 var loadedPatterns = sync.OnceValues(func() ([]string, error) {
 	text, err := os.ReadFile("workflow.star")
 	if err != nil {
 		return nil, err
 	}
 
-	listed, err := workflowtest.Calls("workflow.star", text)
+	listed, err := workflowtest.CallsTo("workflow.star", text, "batch_merge")
 	if err != nil {
 		return nil, err
 	}
@@ -31,11 +32,11 @@ var loadedPatterns = sync.OnceValues(func() ([]string, error) {
 		return nil, err
 	}
 
-	for _, call := range listed {
-		if call.Builtin == "merge" {
-			patterns = append(patterns, workflowtest.Literals(call.Args["forbid_text"])...)
-		}
+	if len(listed) != 1 {
+		return nil, fmt.Errorf("the example has %d batch_merge calls, and the patterns are read from one", len(listed))
 	}
+
+	patterns = append(patterns, workflowtest.Literals(listed[0].Args["forbid_text"])...)
 
 	return patterns, nil
 })

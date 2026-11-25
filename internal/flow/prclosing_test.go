@@ -207,17 +207,30 @@ func TestPRClosing_ACallWithAPullRequestNumberAndABuildWithNoQueueReaderFailsThe
 	require.ErrorIs(t, err, errNoClosingReader)
 }
 
-func TestPRClosing_AReadOfAPullRequestNumberThatFailsFailsTheStepAndNeverGivesAnEmptySet(t *testing.T) {
+func TestPRClosing_AReadOfAPullRequestNumberThatFailsGivesTheCauseInErrorAndNotFound(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	h.queue = &fakeQueue{closingErr: errFake}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing(pr = 41)`)), modeOff())
+	body := "def main(item):\n    c = pr_closing(pr = 41)\n    command(name = \"seen\", run = [\"seen\", str(c.found), str(len(c.issues)), c.error])\n"
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
-	require.ErrorIs(t, err, errFake)
-	require.ErrorContains(t, err, "read the issues that pull request 41 closes")
-	assert.Empty(t, h.commands.ranBy(testItem), "the run ends at the read")
+	require.NoError(t, err, "the failed read is a value, so the caller records it and goes on")
+	assert.Equal(t, []string{"seen False 0 read the issues that pull request 41 closes: " + errFake.Error()}, h.commands.ranBy(testItem),
+		"found is false, so a failed read never passes as an empty set")
+}
+
+func TestPRClosing_AReadOfThePullRequestOfAnItemThatFailsEndsTheStep(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.forge.closingErr = errFake
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, prClosingFlow(`pr_closing()`)), modeOff())
+
+	require.ErrorIs(t, err, errFake, "the scope library reads the pull request of an item, and a failed read never passes there")
+	assert.Empty(t, h.commands.ranBy(testItem))
 }
 
 func TestPRClosing_AProjectWithNoForgeGivesForgeFalseForAPullRequestNumberToo(t *testing.T) {

@@ -67,11 +67,46 @@ func PullRequests(v starlark.Value) ([]PullRequest, error) {
 		return nil, errNoPullRequest
 	}
 
-	return pullRequestMembers(entries)
+	return pullRequestMembers("prs", entries)
 }
 
-// pullRequestMembers reads each member of the prs list. A computed member has no value to read and is skipped.
-func pullRequestMembers(entries []starlark.Value) ([]PullRequest, error) {
+// Members reads the members argument of a merge call: a non-empty list of member structs in landing order, with no item twice.
+// An error names the member by its place in the list, as members[1].
+func Members(v starlark.Value) ([]PullRequest, error) {
+	entries, ok := Elements(v)
+	if !ok {
+		return nil, errors.New("`members` must be a list of struct(item = ..., head = ..., closes = [...]), in the order to land them")
+	}
+
+	if len(entries) == 0 {
+		return nil, errors.New("`members` is empty. Pass the members of the gated union, one struct(item = ..., head = ..., closes = [...]) for each")
+	}
+
+	list, err := pullRequestMembers("members", entries)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := onceEach(list); err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
+// onceEach refuses a union that names one item twice. A member whose item only the run knows is not compared.
+func onceEach(list []PullRequest) error {
+	for i, m := range list {
+		if m.Item != "" && slices.ContainsFunc(list[:i], func(o PullRequest) bool { return o.Item == m.Item }) {
+			return fmt.Errorf("`members` names item %s twice. Name each member of the union once", m.Item)
+		}
+	}
+
+	return nil
+}
+
+// pullRequestMembers reads each member of a list keyword. A computed member has no value to read and is skipped.
+func pullRequestMembers(keyword string, entries []starlark.Value) ([]PullRequest, error) {
 	list := make([]PullRequest, 0, len(entries))
 
 	for i, entry := range entries {
@@ -81,7 +116,7 @@ func pullRequestMembers(entries []starlark.Value) ([]PullRequest, error) {
 
 		pr, err := pullRequest(entry)
 		if err != nil {
-			return nil, fmt.Errorf("prs[%d]: %w", i, err)
+			return nil, fmt.Errorf("%s[%d]: %w", keyword, i, err)
 		}
 
 		list = append(list, pr)
@@ -324,73 +359,3 @@ func ownerList(dict *starlark.Dict, key string) ([]string, error) {
 
 // integrationKeyword is the keyword of merge that names the integration pull request.
 const integrationKeyword = "integration"
-
-// MergeKeywords says which keywords a merge call names. The run reads it from the arguments and the check reads it from the file, so MergeForm owns the rule.
-type MergeKeywords struct {
-	Prs, Member, GateRun, Integration, HandOff, Gate, GatedTree, ExpectTree bool
-}
-
-// MergeForm refuses a merge call whose keywords do not make one form. A call with `prs` lands a list with a gate of its own. A call with `member` lands one pull request
-// and takes the gate it was given. A keyword of the other form would do nothing, so it is refused.
-func MergeForm(k MergeKeywords) error {
-	switch {
-	case k.Prs && k.Member:
-		return errors.New("merge takes `prs` or `member`, not both. Use `prs` for a list of pull requests and `member` for one")
-	case !k.Prs && !k.Member:
-		return errors.New("merge needs `prs` or `member`. Pass `member = struct(item = ..., head = ..., closes = [])` for one pull request")
-	case k.Member:
-		return memberForm(k)
-	}
-
-	for _, named := range []struct {
-		keyword string
-		given   bool
-	}{{"gate", k.Gate}, {"gated_tree", k.GatedTree}, {"expect_tree", k.ExpectTree}} {
-		if named.given {
-			return fmt.Errorf("merge with `prs` runs its own gate, so it takes no `%s`. Remove `%s` from the call, or merge one pull request with `member`", named.keyword, named.keyword)
-		}
-	}
-
-	return nil
-}
-
-// memberForm refuses the keywords of a list in a call with `member`, and a gate with no tree or a tree with no gate.
-func memberForm(k MergeKeywords) error {
-	for _, named := range []struct {
-		keyword string
-		given   bool
-	}{{"gate_run", k.GateRun}, {integrationKeyword, k.Integration}, {"hand_off", k.HandOff}} {
-		if named.given {
-			return fmt.Errorf("merge with `member` lands one pull request, so it takes no `%s`. Remove `%s` from the call", named.keyword, named.keyword)
-		}
-	}
-
-	switch {
-	case k.Gate && !k.GatedTree:
-		return errors.New("merge with `gate` needs `gated_tree`, the tree that the gate ran on. Pass gated_tree = gate_result.tree")
-	case k.GatedTree && !k.Gate:
-		return errors.New("merge with `gated_tree` needs `gate`, the result of the gate call. Pass gate = gate_result")
-	}
-
-	return nil
-}
-
-// Member reads the `member` argument of a merge call: one struct with the fields of a member of `prs`.
-func Member(v starlark.Value) (PullRequest, error) {
-	pr, err := pullRequest(v)
-	if err != nil {
-		return PullRequest{}, fmt.Errorf("member: %w", err)
-	}
-
-	return pr, nil
-}
-
-// HandOffLanding lists the keywords of merge that only a landing reads, in the order that the refusal looks at them.
-func HandOffLanding() []string {
-	return []string{holdKeyword, "own", "forbid_text", "gate_run", integrationKeyword}
-}
-
-// HandOffTakes is the refusal of a keyword of a landing on a merge call with hand_off. The call lands nothing, so the keyword would do nothing.
-func HandOffTakes(keyword string) error {
-	return fmt.Errorf("merge with `hand_off` lands nothing, so it takes no `%s`. Remove `%s` from the call", keyword, keyword)
-}

@@ -267,6 +267,12 @@ func prsRule(v starlark.Value) error {
 	return err
 }
 
+func membersRule(v starlark.Value) error {
+	_, err := Members(v)
+
+	return err
+}
+
 func stopRule(v starlark.Value) error {
 	_, err := StopCodes(v)
 
@@ -445,17 +451,14 @@ func swarmSignatures() map[string][]Param {
 	}
 }
 
-// mergeParams are the parameters of merge. The first ten keep their places for a call that passes them by position. `prs` lands a list with a gate of its own.
-// `member`, `gate`, `gated_tree` and `expect_tree` merge one pull request with a gate that an earlier call recorded.
+// mergeParams are the parameters of merge: the members of one union in landing order, and the gate that an earlier call of the run recorded on that union.
 func mergeParams() []Param {
 	return []Param{
-		{Name: "prs", Kind: KindList, Rule: prsRule, Members: true},
-		filled("base"), filled("repo"), opt(holdKeyword, KindText), ruled("own", KindDict, ownRule),
-		forbidText(), words("gate_run"), opt(integrationKeyword, KindInt), opt("hand_off", KindBool),
-		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
-		{Name: "member", Kind: KindAny, AsValue: true},
+		{Name: "members", Kind: KindList, Rule: membersRule, Members: true},
+		filled("base"), filled("repo"),
 		{Name: gateName, Kind: KindAny, AsValue: true},
-		opt("gated_tree", KindText), opt("expect_tree", KindText),
+		opt(holdKeyword, KindText), ruled("own", KindDict, ownRule), forbidText(),
+		{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 	}
 }
 
@@ -475,6 +478,7 @@ func readSignatures() map[string][]Param {
 		prStateName:        {req("pr", KindInt), opt(nameKeyword, KindText)},
 		prClosingName:      {opt(itemKeyword, KindText), opt("pr", KindInt), opt(nameKeyword, KindText)},
 		baseTipName:        {filled("base"), opt(nameKeyword, KindText)},
+		landingProofName:   {filled("base"), req("start", KindAny), req("end", KindAny), req("landed", KindList), opt(nameKeyword, KindText)},
 		issueStateName:     {req("number", KindInt), opt(nameKeyword, KindText)},
 		prHistoryName:      {opt(itemKeyword, KindText), opt(nameKeyword, KindText)},
 		prReadName:         {opt("id", KindText), opt(nameKeyword, KindText)},
@@ -670,8 +674,6 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.retrying(call, builtin, params)
 	case waitName:
 		g.asking(call, params)
-	case mergeName:
-		g.mergeForm(call, params)
 	case gatherName:
 		g.deadlineMode(call, params)
 	case firstOfName:
@@ -724,44 +726,6 @@ func (g *graph) deadlineMode(call *syntax.CallExpr, params []Param) {
 
 	if err := DeadlineMode(paramArg(call, params, timeoutKeyword) != nil, mode != nil); err != nil {
 		g.report(placeOf(syntax.Start(mode)), gatherName+": "+err.Error()+".")
-	}
-}
-
-// mergeForm refuses a merge call whose keywords make no form, as the run does. A value that only the run knows is left to the run.
-func (g *graph) mergeForm(call *syntax.CallExpr, params []Param) {
-	named := func(keyword string) bool {
-		arg := paramArg(call, params, keyword)
-
-		return arg != nil && !isNone(arg)
-	}
-
-	flag, isName := paramArg(call, params, "hand_off").(*syntax.Ident)
-
-	err := MergeForm(MergeKeywords{
-		Prs: paramArg(call, params, "prs") != nil, Member: named("member"), GateRun: named("gate_run"), Integration: named(integrationKeyword), HandOff: isName && flag.Name == trueName,
-		Gate: named("gate"), GatedTree: named("gated_tree"), ExpectTree: named("expect_tree"),
-	})
-	if err != nil {
-		g.reportRule(call, err)
-
-		return
-	}
-
-	g.handingOff(call, params, flag, isName)
-}
-
-// handingOff refuses a keyword of a landing on a merge call whose hand_off is the literal True, as the run does. A flag that only the run knows is left to the run.
-func (g *graph) handingOff(call *syntax.CallExpr, params []Param, flag *syntax.Ident, isName bool) {
-	if !isName || flag.Name != trueName {
-		return
-	}
-
-	for _, keyword := range HandOffLanding() {
-		if paramArg(call, params, keyword) != nil {
-			g.reportRule(call, HandOffTakes(keyword))
-
-			return
-		}
 	}
 }
 
