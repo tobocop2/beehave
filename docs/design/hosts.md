@@ -22,9 +22,9 @@ The config names three providers, and each one runs:
 
 ### The job key
 
-A `Submit` with a key returns the job that the host already holds for that key, and starts no second job. The engine builds the key from the run id and the step id. A `command` call with retries adds the number of the try, so each try has its own key and a retry of a failed job starts a new job.
+A `Submit` with a key returns the job that the host already holds for that key, and starts no second job. The engine builds the key from the run id and the step id. Each try of a `command` call with retries is a step of its own, so each try has its own key and a retry of a failed job starts a new job.
 
-A step that runs again after a crash counts its tries from 1 again. Slurm keeps ended jobs in accounting, so the re-run finds the job of the try that the crash cut short. The ssh provider releases the unit of a try in `Wait`. A crash during try 2 therefore runs try 1 again, because its unit is gone. The base had the same duplicate on any crash. The follow-up issue tracks it.
+A try that runs again after a crash has the key of its first run, and the tries before it are recorded steps that do not run again. A crash during try 2 therefore waits on the job of try 2, which the host still holds, and starts no job for try 1. One window is left: a crash after `Wait` returned and before the step recorded the result. The ssh provider has then released the unit, so that try starts again. A call with no retries has the same window.
 
 ### Shared packages and imports
 
@@ -301,7 +301,7 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 - A job that was queued by a build before the count was recorded has no count in its input. A resume cannot put it back in a queue, and it fails with an error that names the run, the step and the job. Run the item again from its start. Before an upgrade, let the slot queues drain.
 - A call names a class that the `host` block of its project lists. Any other class is refused when the workflow calls it, and the refusal names the class and the host.
 - Projects share a host by name. If two projects declare the same host and give different counts for one class, the config load is refused, and the refusal names the host, the class, both projects and both counts. Equal counts are fine.
-- A `command` call with a `host` and no `slots` runs in the class `default`. Its count is the entry `default` in `slots`, and 1 when the block names none. Two projects that declare one host must give the same count for `default`. The `beehave` program always has the slots resolver, so a project with no `slots` entry runs its host jobs one at a time on each host. A call with `retries` takes no slot, because it is one step and a step cannot wait on a queue.
+- A `command` call with a `host` and no `slots` runs in the class `default`. Its count is the entry `default` in `slots`, and 1 when the block names none. Two projects that declare one host must give the same count for `default`. The `beehave` program always has the slots resolver, so a project with no `slots` entry runs its host jobs one at a time on each host. A call with `retries` takes no slot: a slot job waits on its queue once, before the step of the call, and the tries of a retried call are steps of their own.
 - A gate uses the reserved class `gate` with the count `gate_slots`, on the queue `slots:gate:<count>`.
 - A gate that was queued before an upgrade waits on the old queue `hosts`. That queue is gone. Let the gates drain before an upgrade, or run the item again from its start.
 
