@@ -26,7 +26,25 @@ func (c *Client) reopen(id string, opts ...dbos.RewindWorkflowOption) error {
 		return err
 	}
 
-	return c.rewind(id, min(from, openStart(steps)), opts...)
+	return c.rewind(id, min(from, openStart(steps), firstGap(steps)), opts...)
+}
+
+// refusedRun is the number of step ids in a row with no record that a refused step leaves: its own record and its failure record.
+const refusedRun = 2
+
+// firstGap returns the first id of the first refusedRun or more step ids in a row with no record, else the length of the history.
+func firstGap(steps []dbos.StepInfo) int {
+	next := 0
+
+	for _, step := range steps {
+		if step.StepID-next >= refusedRun {
+			return next
+		}
+
+		next = step.StepID + 1
+	}
+
+	return len(steps)
 }
 
 // openStart returns the first look at the caps or start mark after the last agent step, or the length of the history when there is none.
