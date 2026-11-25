@@ -18,11 +18,13 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// leaderPrelude makes a fake `timeout` the leader of its own group, as `timeout` is. The perl line is the setpgid(0, 0) call that a shell script cannot make.
+// leaderPrelude makes a fake `timeout` the leader of its own group, as `timeout` is. The script removes its marker variable at once, so a second fake that this one starts (the step limit under the run limit)
+// leads its own group too. The perl line is the setpgid(0, 0) call that a shell script cannot make.
 const leaderPrelude = `#!/bin/sh
 if [ -z "$FAKE_TIMEOUT_LEADER" ]; then
 	FAKE_TIMEOUT_LEADER=1 exec perl -e 'setpgrp(0, 0); exec @ARGV' "$0" "$@"
 fi
+unset FAKE_TIMEOUT_LEADER
 `
 
 // exit124Timeout models a `timeout` that sends TERM to its child only, does not wait for the child, and exits 124. A child that ignores TERM survives it.
