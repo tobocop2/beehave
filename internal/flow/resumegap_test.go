@@ -34,9 +34,13 @@ func gapCases() []gapCase {
 		}
 	}
 
+	// The record and the failure record of the agent step of the phase child are refused, and the cost event follows the hole: the resume does not change.
 	return append(cases, gapCase{
 		id: "limit-noreset-refuse-none", results: []agent.Result{limited(time.Time{}, 0.7), exited},
 		want: "first=failed firstcost=0.70 resume=ok agents=2 cost=0.70",
+	}, gapCase{
+		id: "child-agent-refused", refuse: []string{"agent"}, results: []agent.Result{limited(time.Time{}, 0.7), exited},
+		want: "first=refused firstcost=0.70 resume=ok agents=2 cost=0.70",
 	})
 }
 

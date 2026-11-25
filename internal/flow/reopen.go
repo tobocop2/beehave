@@ -29,12 +29,19 @@ func (c *Client) reopen(id string, opts ...dbos.RewindWorkflowOption) error {
 	return c.rewind(id, min(from, openStart(steps), firstGap(steps)), opts...)
 }
 
-// firstGap returns the step id where the history has no record (the store refused it), moved back to the look that opens it; else the length of the history.
+// refusedRun is the number of step ids in a row with no record that a refused step leaves: its own record and its failure record.
+const refusedRun = 2
+
+// firstGap returns the first id of the first refusedRun or more step ids in a row with no record, else the length of the history.
 func firstGap(steps []dbos.StepInfo) int {
-	for i, step := range steps {
-		if step.StepID != i {
-			return firstOpenStart(steps, i)
+	next := 0
+
+	for _, step := range steps {
+		if step.StepID-next >= refusedRun {
+			return next
 		}
+
+		next = step.StepID + 1
 	}
 
 	return len(steps)
