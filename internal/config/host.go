@@ -49,13 +49,14 @@ type rawHost struct {
 	PrivateRemote string
 	Slots         slotTable
 	GateSlots     int
+	Credentials   text
 	SetupCommand  text
 	Blocks        map[string]*model.Block
 }
 
 // hostSpec is the schema of the host constructor: the keys every provider shares, and one optional argument for each provider block that the registry declares.
 func hostSpec(declared []Block) spec {
-	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "gate_slots?", "private_remote?", "lost_after?", "stop_limit?", "setup_command?"}
+	args := []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "lost_job_wait?", "slots?", "gate_slots?", "private_remote?", "lost_after?", "stop_limit?", "credentials?", "setup_command?"}
 
 	return spec{hostSpecName, append(args, blockArgs(declared)...)}
 }
@@ -68,7 +69,7 @@ func newHost(declared []Block) func(at syntax.Position, kwargs []starlark.Tuple)
 	return func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
 		raw := &rawHost{At: at, GateSlots: 1, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget, LostJobWait: defaultLostJobWaitText(), LostAfter: minutesText(DefaultLostAfter), StopLimit: minutesText(DefaultStopLimit)}
 		held := holders(declared)
-		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.GateSlots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit, &raw.SetupCommand}
+		dests := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.LostJobWait, &raw.Slots, &raw.GateSlots, &raw.PrivateRemote, &raw.LostAfter, &raw.StopLimit, &raw.Credentials, &raw.SetupCommand}
 
 		err := hostSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
 		raw.Blocks = heldBlocks(declared, held)
@@ -166,7 +167,7 @@ func startHost(raw rawHost, provider model.HostProvider, entry *Entry) model.Hos
 	return host
 }
 
-// checkBlocks refuses a block of another provider, and idle_minutes and setup_command for a provider that beehave does not create the machine of.
+// checkBlocks refuses a block of another provider, idle_minutes and setup_command for a provider that beehave does not create the machine of, and credentials = "none" where the provider cannot keep it.
 func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 	for _, name := range slices.Sorted(maps.Keys(raw.Blocks)) {
 		if entry.Block != nil && name == entry.Block.Name {
@@ -184,7 +185,16 @@ func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 		return refuseAt(raw.At, "`host.setup_command` is not allowed for provider %q: beehave does not create the machine. Remove the key.", provider)
 	}
 
-	return nil
+	return checkCredentialsKey(raw, provider, entry)
+}
+
+// checkCredentialsKey refuses credentials = "none" for a provider whose own start tool can give the machine a credential of the owner. Any other value is refused later, for the value.
+func checkCredentialsKey(raw rawHost, provider model.HostProvider, entry *Entry) error {
+	if !entry.StartsWithOwnerCredentials || raw.Credentials.Value != string(model.HostCredentialsNone) {
+		return nil
+	}
+
+	return refuseAt(raw.At, "`host.credentials` = \"none\" is not allowed for provider %q: the tool that starts the machine can forward your SSH agent and copies your cloud credentials to it, so beehave cannot keep that promise. Remove the key.", provider)
 }
 
 // fillKeys sets the keys of host that are not the provider name.
@@ -203,7 +213,24 @@ func fillKeys(raw rawHost, host *model.HostConfig) error {
 		return err
 	}
 
+	if err := fillCredentials(raw, host); err != nil {
+		return err
+	}
+
 	return fillDurations(raw, host)
+}
+
+// fillCredentials sets host.credentials. A host without the key keeps the empty value.
+func fillCredentials(raw rawHost, host *model.HostConfig) error {
+	if !raw.Credentials.Set {
+		return nil
+	}
+
+	var err error
+
+	host.Credentials, err = parseKey(raw.At, "host.credentials", raw.Credentials.Value, model.ParseHostCredentials)
+
+	return err
 }
 
 // fillDurations sets the keys of host that are durations.

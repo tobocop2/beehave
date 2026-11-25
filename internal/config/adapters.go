@@ -76,6 +76,8 @@ type Entry struct {
 	Tools []string
 	// Idle is true for a host provider that beehave deletes after idle_minutes.
 	Idle bool
+	// StartsWithOwnerCredentials is true for a host provider whose own start tool can forward the agent of the owner or copy the cloud credentials of the owner to the machine. Such a provider refuses credentials = "none".
+	StartsWithOwnerCredentials bool
 	// LoadsSkills is true for an agent whose CLI has a line that loads a skill before the first turn.
 	LoadsSkills bool
 	// Windows are the usage windows of an agent, from the shortest to the longest, each with the default cap. A pool cap names one of them. An agent that cannot report usage declares none.
