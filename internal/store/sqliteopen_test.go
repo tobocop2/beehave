@@ -3,6 +3,8 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +86,54 @@ func TestOpenSQLite_SetsModeZeroSixHundredOnAnExistingFileAndItsWalAndSharedMemo
 	for _, name := range []string{testFile, testFile + "-wal", testFile + "-shm"} {
 		assert.Equal(t, os.FileMode(0o600), modeOf(t, filepath.Join(dir, name)), name)
 	}
+}
+
+func TestOpenSQLite_DoesNotFailAtTheModeStepWhenAnotherProcessRemovesTheSharedMemoryFile(t *testing.T) {
+	t.Parallel()
+
+	const opens = 1000
+
+	dir := t.TempDir()
+	shm := filepath.Join(dir, testFile+"-shm")
+	openTest(t, dir)
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
+			// The remover stands for the last close of another process. The remove may meet a file that SQLite already took away.
+			assert.NoError(t, os.WriteFile(shm, nil, 0o600))
+			_ = os.Remove(shm)
+		}
+	}()
+
+	var failures []error
+
+	for range opens {
+		db, err := store.OpenSQLite(t.Context(), dir, testSpec())
+		// SQLite itself reports other errors when its own -shm file is removed under it; only the mode step is under test.
+		if errors.Is(err, fs.ErrNotExist) {
+			failures = append(failures, err)
+		}
+
+		if err == nil {
+			require.NoError(t, db.Close())
+		}
+	}
+
+	close(stop)
+	<-done
+
+	assert.Empty(t, failures, "opens whose mode step met a file that was gone")
 }
 
 func TestOpenSQLite_RefusesASymbolicLinkAtThePathAndWritesNothingToItsTarget(t *testing.T) {
