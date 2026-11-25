@@ -90,15 +90,15 @@ The Change column says how the pair differs from the contract that the five piec
 | `cancel` | `run` | #593: new | 2: `examples/planner/workflow.star`, `examples/supervisor/workflow.star` |
 | `closing_references` | `-` | #586: new, reads the issues that the pull request of the item closes | 1: `internal/workflow/lib/review_fix.star` |
 | `closing_references` | `text` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
-| `command` | `-` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 18 more |
+| `command` | `-` | unchanged | 19: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 17 more |
 | `command` | `backoff` | #594: new, the wait before the first retry, which doubles before each later retry | 1: `examples/research-desk/workflow.star` |
 | `command` | `env` | unchanged | 4: `examples/research-desk/workflow.star`, `examples/research/workflow.star` and 2 more |
 | `command` | `failure` | #753: new, `"return"` gives an error of the step as the field `error` of the result, with `rc` -1 | 1: `examples/remediation/workflow.star` |
 | `command` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `max_new_processes` | unchanged | 1: `examples/maintenance/bump.star` |
-| `command` | `name` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 18 more |
+| `command` | `name` | unchanged | 19: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 17 more |
 | `command` | `retries` | #594: new, a try that fails starts again, up to 10 times; the result has `attempts` | 1: `examples/research-desk/workflow.star` |
-| `command` | `run` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 18 more |
+| `command` | `run` | unchanged | 19: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 17 more |
 | `command` | `sandbox` | #381: new, runs the program under the enforcer of the gate | 1: `examples/planner/workflow.star` |
 | `command` | `slots` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `stdin` | unchanged | 9: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 7 more |
@@ -213,8 +213,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `-` | #586: new, lists the changed paths outside an allowed set | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `allow` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
-| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
-| `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
+| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 2: `examples/local/workflow.star`, `examples/remediation/workflow.star` |
+| `patched` | `name` | #933: new | 2: `examples/local/workflow.star`, `examples/remediation/workflow.star` |
 | `pr_closing` | `-` | #500: new, reads the issues that the pull request of an item closes | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
 | `pr_closing` | `item` | #500: new | 1: `internal/workflow/lib/scope.star` |
 | `pr_closing` | `name` | #500: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/scope.star` |
@@ -230,13 +230,13 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_list` | `-` | #498: new, reads the open pull requests of the project, on one base | 1: `internal/workflow/lib/queue.star` |
 | `pr_list` | `base` | #498: new | 1: `internal/workflow/lib/queue.star` |
 | `pr_list` | `name` | #498: new | 1: `internal/workflow/lib/queue.star` |
-| `pr_open` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `body` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_open` | `-` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `pr_open` | `base` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `pr_open` | `body` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `pr_open` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_open` | `name` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `pr_open` | `parent` | unchanged | 1: `examples/remediation/workflow.star` |
-| `pr_open` | `title` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_open` | `title` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `pr_read` | `-` | #499: new, returns the facts of the pull request of an item: state, draft flag, labels, author, assignees, reviewers and linked issues | 1: `internal/workflow/lib/claims.star` |
 | `pr_read` | `id` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `pr_read` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
@@ -263,11 +263,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `publish` | `key` | #589: new | 1: `examples/planner/workflow.star` |
 | `publish` | `name` | #589: new | 1: `examples/planner/workflow.star` |
 | `publish` | `value` | #589: new | 1: `examples/planner/workflow.star` |
-| `push` | `-` | #697: new, the engine pushes the head of a step to a branch with a lease | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `push` | `branch` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `push` | `expect` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `push` | `head` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `push` | `name` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
+| `push` | `-` | #697: new, the engine pushes the head of a step to a branch with a lease | 4: `examples/local/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `push` | `branch` | #697: new | 4: `examples/local/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `push` | `expect` | #697: new | 4: `examples/local/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `push` | `head` | #697: new | 4: `examples/local/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `push` | `name` | #697: new | 4: `examples/local/workflow.star`, `examples/queue/workflow.star` and 2 more |
 | `recv` | `-` | #588: new, waits for the next message of a topic on the inbox of the run | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `name` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `timeout` | #588: new, required | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
@@ -288,7 +288,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `round_sync` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
 | `round_sync` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
 | `sandbox` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
-| `sandbox` | `network` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
+| `sandbox` | `network` | unchanged | 1: `examples/swarm/workflow.star` |
 | `run_read` | `-` | #498: new, reads the free slots and the last run of each listed item | 1: `internal/workflow/lib/queue.star` |
 | `run_read` | `items` | #498: new | 1: `internal/workflow/lib/queue.star` |
 | `run_read` | `name` | #498: new | 1: `internal/workflow/lib/queue.star` |
