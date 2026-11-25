@@ -599,7 +599,7 @@ func TestAdaptive_ACountOfWaitingPhasesOnAStoppedEngineIsAnError(t *testing.T) {
 	require.ErrorContains(t, err, "list the phases that wait")
 }
 
-func TestAdaptive_LaunchFailsWhenTheFloorCannotBeWritten(t *testing.T) {
+func TestAdaptive_StartControllerFailsWhenTheQueueRowCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -609,6 +609,25 @@ func TestAdaptive_LaunchFailsWhenTheFloorCannotBeWritten(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
 	require.NoError(t, engine.Shutdown())
+
+	err = engine.startController()
+	require.ErrorContains(t, err, "read the agents queue for the controller")
+}
+
+func TestAdaptive_StartControllerFailsWhenTheQueueRefusesTheFloor(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Concurrency = config.ConcurrencyAdaptive
+	h.opts.MaxConcurrent = 4
+	h.opts.PerLogin = 2
+
+	engine, err := NewEngine(t.Context(), h.opts, h.deps())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	// The queue row holds a partition limit of 2, so a floor of 1 is below it and the row refuses it.
+	engine.perLogin = 1
 
 	err = engine.startController()
 	require.ErrorContains(t, err, "set the limit of the agents queue to 1")
@@ -642,7 +661,7 @@ func TestAdaptive_TheControllerTicksOnTheIntervalOfTheControllerAndThatIntervalI
 
 	h := newHarness(t)
 	engine := h.engine(t)
-	assert.Equal(t, time.Minute, engine.newController().tick, "the controller of an engine takes the constant")
+	assert.Equal(t, time.Minute, engine.newController(engine.queue).tick, "the controller of an engine takes the constant")
 
 	counted := make(chan struct{}, 1)
 	control := controllerOf(1, 4, &queueFake{}, new(bool), new(int), nil)
