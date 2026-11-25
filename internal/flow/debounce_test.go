@@ -325,13 +325,13 @@ func TestDebounce_TheOpenRunOfAHeldStartIsDelayedUntilTheWindowEnds(t *testing.T
 
 	soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusDelayed, "item-12-r1", files[0]) }, "the start holds its window")
 
-	open, err := client.OpenRun(testItem, func(string) bool { return false })
+	open, err := client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.True(t, open.Delayed, "the run waits in its window")
 
 	soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusPending, "item-12-r1", files[0]) }, "the run starts when the window ends")
 
-	open, err = client.OpenRun(testItem, func(string) bool { return false })
+	open, err = client.OpenRun(testItem)
 	require.NoError(t, err)
 	assert.False(t, open.Delayed, "a run that started is not delayed")
 

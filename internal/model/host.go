@@ -68,8 +68,30 @@ type HostConfig struct {
 	Slots map[string]int
 	// GateSlots is the number of gates that the host builds at once. The loader always sets it, from 1 to 1048576, and 1 is the default.
 	GateSlots int
+	// SetupCommand is the command that runs once, in a clone of the project, when beehave creates the machine. Empty means no set-up. Only a provider that beehave creates takes it.
+	SetupCommand string
 	// Block is the config block of the chosen provider, when the provider declares one and the project gave it. The provider reads its keys once, in its constructor.
 	Block *Block
+	// Credentials is HostCredentialsNone when the owner declares that the host gets no credential of the owner. It is empty otherwise.
+	Credentials HostCredentials
+}
+
+// HostCredentials is what the owner declares about the credentials that a build host gets.
+type HostCredentials string
+
+// HostCredentialsNone declares that the host gets no credential of the owner: no agent, key, display, Kerberos credential or secret variable.
+const HostCredentialsNone HostCredentials = "none"
+
+// ErrUnknownHostCredentials is returned when text names no value of host.credentials.
+var ErrUnknownHostCredentials = errors.New(`unknown value: the only value is "none"`)
+
+// ParseHostCredentials returns the credentials value that text names.
+func ParseHostCredentials(text string) (HostCredentials, error) {
+	if text == string(HostCredentialsNone) {
+		return HostCredentialsNone, nil
+	}
+
+	return "", fmt.Errorf("%w; got %q", ErrUnknownHostCredentials, text)
 }
 
 // RunLimitSeconds is MaxRun in whole seconds, rounded up, so the limit that a host or a wrap writes is never shorter than MaxRun.

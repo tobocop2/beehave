@@ -143,7 +143,12 @@ func (e *Engine) startController() error {
 		return nil
 	}
 
-	c := e.newController()
+	queue, err := dbos.RetrieveQueue(e.ctx, queueName)
+	if err != nil {
+		return fmt.Errorf("read the agents queue for the controller: %w", err)
+	}
+
+	c := e.newController(queue)
 
 	if err := c.launch(); err != nil {
 		return err
@@ -168,10 +173,11 @@ func (e *Engine) runController(c *controller) {
 }
 
 // newController builds the controller of this engine: the floor is agents.per_login, the ceiling is agents.max_concurrent.
-func (e *Engine) newController() *controller {
+// The controller writes the limit through queue, a handle that no phase reads.
+func (e *Engine) newController(queue dbos.Queue) *controller {
 	return &controller{
 		floor: e.perLogin, ceiling: e.maxConcurrent, tick: adaptiveTick,
-		set:     func(limit int) error { return e.queue.SetGlobalConcurrency(e.ctx, &limit) },
+		set:     func(limit int) error { return queue.SetGlobalConcurrency(e.ctx, &limit) },
 		room:    e.deps.Logins.Headroom,
 		waiting: e.waitingPhases, limited: e.limited, logger: e.logger,
 	}

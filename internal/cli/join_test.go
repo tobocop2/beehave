@@ -40,7 +40,8 @@ var clientProjects = map[string]struct {
 	stored  model.SandboxMode
 }{
 	"key on":    {sandboxedProject(), model.SandboxOn},
-	"key unset": {validProject, model.SandboxOff},
+	"key off":   {strings.Replace(validProject, `test_report = "r.xml")`, `test_report = "r.xml", sandbox = "off")`, 1), model.SandboxOff},
+	"key unset": {validProject, model.SandboxOn},
 }
 
 func TestRun_AJoinCarriesTheSandboxModeOfTheProjectOfTheClient(t *testing.T) {
@@ -57,7 +58,7 @@ func TestRun_AJoinCarriesTheSandboxModeOfTheProjectOfTheClient(t *testing.T) {
 			code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 			require.Equal(t, 0, code, stderr)
-			assert.Equal(t, []model.SandboxMode{test.stored}, rig.steering.joinedSandboxes, "an unset key stores off, never an empty mode")
+			assert.Equal(t, []model.SandboxMode{test.stored}, rig.steering.joinedSandboxes, "an unset key stores on, never an empty mode")
 		})
 	}
 }
@@ -75,7 +76,7 @@ func TestRun_AnOwnEngineRunCarriesTheSandboxModeOfTheProject(t *testing.T) {
 			code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 			require.Equal(t, 0, code, stderr)
-			assert.Equal(t, []model.SandboxMode{test.stored}, rig.runner.sandboxes, "an unset key stores off, never an empty mode")
+			assert.Equal(t, []model.SandboxMode{test.stored}, rig.runner.sandboxes, "an unset key stores on, never an empty mode")
 		})
 	}
 }

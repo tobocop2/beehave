@@ -157,7 +157,7 @@ func TestStoreView_OpenRunReportsARunUnderAMoveAsOpen(t *testing.T) {
 	t.Parallel()
 
 	inTheGap(t, func(g theGap) {
-		open, err := g.client.OpenRun(testItem, func(string) bool { return false })
+		open, err := g.client.OpenRun(testItem)
 
 		require.NoError(t, err)
 		assert.True(t, open.Open, "beehave run prints no pinned file for a run under a move")

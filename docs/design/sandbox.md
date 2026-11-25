@@ -4,9 +4,9 @@ Part of the [beehave architecture](../architecture.md).
 
 The `forbid_commands` hook reads the text of a command. It is not a sandbox (see [Agent runs](agent-runs.md#the-setting-forbid_commands)). The setting `sandbox` of an `agent` step runs the Claude Code sandbox on the shell of the step, and the operating system enforces it (Seatbelt on macOS, bubblewrap on Linux). With the sandbox on, a gate on this machine runs under a sandbox enforcer too.
 
-The default is off. A project opts in with `sandbox = "on"` in its project file.
+The default is on. A project with no `sandbox` key runs its agent steps in the sandbox, and `beehave check config` prints one note for each such project. A project opts out with `sandbox = "off"` in its project file. A step with `sandbox = None` in a project with the sandbox on is refused (see [The trust boundary](trust.md#the-sandbox-is-on-by-default)).
 
-[The trust boundary](trust.md#the-sandbox-is-on-by-default) describes the planned change: the default becomes on, and a step with `sandbox = None` in such a project is refused.
+A run stores its sandbox mode when it starts, so a change of the project file never changes a run in flight. A run recorded before the mode was stored runs with the mode off.
 
 ## The setting
 
@@ -226,7 +226,9 @@ The step ends as `not-started`, with a note, when:
 
 A Claude Code that does not know a sandbox key ignores it and exits with code 0, so the minimum version is the only guard.
 
-No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = "off"` in the project on purpose.
+No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = "off"` in the project on purpose. The OpenCode adapter has no sandbox yet, so a project that runs an OpenCode step sets `sandbox = "off"`.
+
+On Linux, the Claude Code sandbox needs `bwrap` and `socat`. beehave sets `failIfUnavailable`, so Claude Code exits at start when either is missing, and the step fails with no unsandboxed run. Until the Linux smoke run passes, a project on Linux sets `sandbox = "off"`. beehave installs no package.
 
 ## The gate under the sandbox
 
@@ -386,6 +388,8 @@ Each of these refuses in the step that starts the gate, with a note that says so
 A run that recorded a gate pass while the sandbox was off keeps that pass when it resumes with the sandbox on. The replay reads the record and is not refused.
 
 To run the gate on this machine, set `sandbox = "off"` in the project file. `beehave check config` prints the same note for each such project, and `beehave check workflow --project` lists each such call with its position.
+
+When an enforcer runs on this machine, the gate of a project with no `sandbox` key runs in the sandbox. The gate reads nothing under the home folder except the `sandbox_read` paths, so a gate tool under it, such as a mise or asdf shim or `~/go/bin`, fails. `beehave check config` prints one note for each such project. To fix it, add the folders of those tools to `sandbox_read`, or set `sandbox = "off"`.
 
 ### A gate on a build host
 

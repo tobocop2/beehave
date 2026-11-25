@@ -52,25 +52,6 @@ func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigHasALineThatLoadsASkill
 	require.Equal(t, map[string]bool{"a": true, "o": false}, deps.Facts("p").RunnerSkillLoads, "the Claude runner has the line, the OpenCode runner has none, and a runner with no adapter is left out")
 }
 
-func TestDepsOn_ARunWithNoStoredModeReadsTheSandboxKeyOfItsProject(t *testing.T) {
-	t.Parallel()
-
-	cfg := config.Config{Projects: map[string]config.Project{
-		"on":    {Project: model.Project{Name: "on", Sandbox: model.SandboxOn}},
-		"off":   {Project: model.Project{Name: "off", Sandbox: model.SandboxOff}},
-		"unset": {Project: model.Project{Name: "unset"}},
-		"bad":   {Project: model.Project{Name: "bad", Sandbox: "bogus"}},
-	}}
-
-	deps := depsOn(cfg, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
-
-	require.True(t, deps.SandboxDefault("on"))
-	require.False(t, deps.SandboxDefault("bad"), "an invalid mode is off")
-	require.False(t, deps.SandboxDefault("off"))
-	require.False(t, deps.SandboxDefault("unset"), "an unset key is off")
-	require.False(t, deps.SandboxDefault("missing"), "a project the config lacks is off")
-}
-
 func TestDepsOn_TheEngineWritesTheForgeForARoundThroughTheRoundWriterOfTheBuild(t *testing.T) {
 	t.Parallel()
 

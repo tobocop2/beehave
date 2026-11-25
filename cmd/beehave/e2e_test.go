@@ -578,6 +578,7 @@ runner(name = "a", agent = "claude", config_dir = "%DIR%")
 runner(name = "b", agent = "claude", config_dir = "%DIR%")
 `
 
+// e2eProject sets sandbox = "off" because the fake claude of the scripts does not model the sandbox. The sandboxed scripts set their own project.
 const e2eProject = `project(
     repo = "example/shop",
     tracker = "github",

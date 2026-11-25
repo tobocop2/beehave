@@ -76,8 +76,8 @@ type Steering interface {
 	Messaging
 	Resuming
 	Forking
-	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses. live is the live default of a project.
-	OpenRun(item string, live func(project string) bool) (flow.OpenRun, error)
+	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses.
+	OpenRun(item string) (flow.OpenRun, error)
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
 	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
@@ -326,8 +326,8 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 }
 
 // sayOffLine prints the line for a run that uses the sandbox mode off. An open run continues with the mode that it stored.
-// A new run uses the mode of its project, and the line names the project file: a project with no sandbox key stores off too, and says nothing.
-// The mode of an open run is the one that the store returns, which already holds the live default for a run recorded before the mode existed.
+// A new run uses the mode of its project: a project with no sandbox key has the sandbox on and prints no line.
+// The mode of an open run is the one that the store returns, which is off for a run recorded before the mode existed.
 func sayOffLine(stderr io.Writer, open flow.OpenRun, project config.Project, item string) {
 	off := open.Sandbox == model.SandboxOff
 	if !open.Open {
@@ -482,7 +482,7 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
 // It says the off line when the run uses the sandbox mode off.
 func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, project, item, file string) (string, bool, error) {
-	open, err := f.openRun(stdout, client, cfg, opts, item)
+	open, err := f.openRun(stdout, client, opts, item)
 	if err != nil {
 		return "", false, err
 	}
@@ -621,9 +621,9 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 }
 
 // openRun returns the open run of the item. It says which file the run continues with, or that the start replaces the run.
-// beehave run ignores --workflow when it joins an open run. A run recorded before the mode existed uses the live default of its project.
-func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, opts flow.Options, item string) (flow.OpenRun, error) {
-	open, err := client.OpenRun(item, cfg.SandboxDefault)
+// beehave run ignores --workflow when it joins an open run.
+func (f flowCommands) openRun(stdout io.Writer, client Steering, opts flow.Options, item string) (flow.OpenRun, error) {
+	open, err := client.OpenRun(item)
 	if err != nil || open.File == "" {
 		return open, err
 	}

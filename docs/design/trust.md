@@ -190,17 +190,17 @@ A project of an organization can use a merge queue instead. That variant is not 
 
 ## The sandbox is on by default
 
-An unset `sandbox` in a project gives `on`. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
+An unset `sandbox` in a project gives `on`, and `beehave check config` prints one note for each project with no key. `sandbox = "off"` stays, as an explicit choice of the owner for the whole project. `beehave run` prints one line that names it at the start of every run of such a project.
 
 A step with `sandbox = None` in a project with the sandbox on is refused by `beehave check workflow` and does not start. A step that needs `docker` runs as a `command` step.
 
-The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it reads the live sandbox mode of its project.
+The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it runs with the mode off.
 
 The step fails closed: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
 
 A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
+A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check runs `ssh -G` with the ssh options of the link of the host, so a `Match` block on the address applies. It refuses any `forwardagent` or `forwardx11` value but `no`, a `gssapidelegatecredentials yes`, any `sendenv` but `LANG` and `LC_*`, a `setenv` with a secret name, and any `proxyjump` or `proxycommand`, because the check cannot see what ssh gives a jump host. Every ssh call to such a host also passes `ForwardAgent=no`, `ClearAllForwardings=yes`, `ForwardX11=no`, `ForwardX11Trusted=no`, `ControlMaster=no`, `ControlPath=none` and `GSSAPIDelegateCredentials=no`, so no call joins a connection opened earlier with the agent. Only the `ssh` and `slurm` providers accept the key. The `skypilot` provider refuses it, because `sky launch` can forward the agent of the owner and copies the cloud credentials of the owner to the cluster, and beehave cannot stop either. The key and the check are built (see [hosts](hosts.md#the-host-block)); the start rule of a foreign pull request is not built yet.
 
 ### Platform gaps
 
