@@ -26,33 +26,15 @@ import (
 // files its item with the keyword shared, and no entry calls foreign_followup while the engine refuses every foreign pull request.
 // The follow-up of a foreign review belongs to #438. take_over of the same file calls pr_take, and no entry calls take_over for the same reason.
 // The test fails when an entry reaches the pair, so the exception ends with #438.
-// integration_reads of the remediation example calls base_tip, issue_state and pr_closing with pr, and no entry calls it until the batch leaves the engine (#503).
-// land_union of the remediation example calls merge with members and gate, and no entry calls it until the batch leaves the engine (#503).
-// prove_landing of the remediation example calls landing_proof, and no entry calls it until the batch leaves the engine (#503).
 var contractUnreached = map[contractPair]string{
-	{"merge", "members"}:         "#503",
-	{"landing_proof", noKeyword}: "#503",
-	{"landing_proof", "base"}:    "#503",
-	{"landing_proof", "start"}:   "#503",
-	{"landing_proof", "end"}:     "#503",
-	{"landing_proof", "landed"}:  "#503",
-	{"landing_proof", "name"}:    "#503",
-	{"merge", "gate"}:            "#503",
-	{"base_tip", noKeyword}:      "#503",
-	{"base_tip", "base"}:         "#503",
-	{"base_tip", "name"}:         "#503",
-	{"issue_state", noKeyword}:   "#503",
-	{"issue_state", "number"}:    "#503",
-	{"issue_state", "name"}:      "#503",
-	{"pr_closing", "pr"}:         "#503",
-	{"item_create", "shared"}:    "#438",
-	{"pr_take", noKeyword}:       "#438",
-	{"pr_take", "grace"}:         "#438",
-	{"pr_take", "idle"}:          "#438",
-	{"pr_take", "me"}:            "#438",
-	{"pr_take", "name"}:          "#438",
-	{"pr_take", "pr"}:            "#438",
-	{"pr_take", "step"}:          "#438",
+	{"item_create", "shared"}: "#438",
+	{"pr_take", noKeyword}:    "#438",
+	{"pr_take", "grace"}:      "#438",
+	{"pr_take", "idle"}:       "#438",
+	{"pr_take", "me"}:         "#438",
+	{"pr_take", "name"}:       "#438",
+	{"pr_take", "pr"}:         "#438",
+	{"pr_take", "step"}:       "#438",
 }
 
 // contractLibrary is the label of the embedded library in a load, and the folder that holds it.

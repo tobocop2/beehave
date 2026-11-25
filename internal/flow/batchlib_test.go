@@ -49,6 +49,20 @@ func (r *batchRig) runGit() {
 	}
 }
 
+// batchIdentity is the word after `git -c` in each git command of the batch library: the author of its union commits.
+const batchIdentity = "user.name=beehave"
+
+// libraryGit runs a git command of the batch library in the repository of the rig, as the worktree of the round item does. It answers no other command.
+func (r *batchRig) libraryGit(request CommandRequest) (CommandOutput, bool) {
+	if len(request.Run) < 3 || request.Run[0] != gitWord || request.Run[2] != batchIdentity {
+		return CommandOutput{}, false
+	}
+
+	res := r.repo.Run(context.Background(), request.Run[1:])
+
+	return CommandOutput{Stdout: res.Stdout, Stderr: res.Stderr, RC: res.ExitCode}, true
+}
+
 // libCall writes a call of batch_merge over the listed items and a report command with the lists of the result. extra holds more keywords, each followed by a comma.
 func (r *batchRig) libCall(items, extra string) string {
 	var prs []string

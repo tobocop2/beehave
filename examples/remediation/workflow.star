@@ -1,6 +1,7 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
+load("@beehave//batch.star", "batch_merge")
 load("@beehave//claims.star", "claim_stop")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//scope.star", "fix_scope", "hold_scope")
@@ -518,39 +519,6 @@ def closes_of(project, base, id, stacked):
 
     return [number]
 
-def integration_reads(base, pr, numbers):
-    """Returns the reads that the audit of a batch needs: the tip of the base, the state of each issue number and the issues that the pull request number pr closes.
-    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    tip = base_tip(base = base, name = "batch-tip")
-    states = {}
-    for number in numbers:
-        states[number] = issue_state(number = number, name = "batch-issue-%d" % number).state
-
-    return struct(commit = tip.commit, tree = tip.tree, states = states, closing = pr_closing(pr = pr, name = "batch-closing").issues)
-
-def land_union(members, base, repo, own, forbid_text, gated, name):
-    """Merges the members of one union in order with the result of a gate call of this run on that union, under the same guards as the list call of the round: the hold label,
-    the own identity and the forbidden text. The engine folds the member heads on the base tip and merges nothing when the fold is not the tree of the gate.
-    No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    return merge(
-        name = name,
-        members = members,
-        base = base,
-        repo = repo,
-        hold = "hold",
-        own = own,
-        forbid_text = forbid_text,
-        gate = gated,
-    )
-
-def prove_landing(base, start, end, members, merged, name):
-    """Returns each merged member that the forge cannot show on the base, with the reason. start and end are the tips of the base before and after the unions,
-    as base_tip returns them. No entry calls it yet: the batch still runs inside the engine until the library function for it lands (#503)."""
-    heads = {m.item: m.head for m in members}
-    landed = [struct(item = item, head = heads[item]) for item in merged]
-
-    return landing_proof(base = base, start = start, end = end, landed = landed, name = name).unproven
-
 def hand_to_owner(prs, base, repo, name):
     """Marks the pull requests ready and waits until the owner merges them. The round calls it when the owner merges."""
     return hand_off(prs = prs, base = base, repo = repo, name = name)
@@ -740,7 +708,7 @@ def land(approved, project, round_settings, n, run):
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
         out = hand_to_owner(prs = prs, base = base, repo = project.repo, name = "round-land-%d" % n)
     else:
-        out = merge(
+        out = batch_merge(
             name = "round-land-%d" % n,
             prs = prs,
             base = base,

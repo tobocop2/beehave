@@ -92,7 +92,7 @@ func TestExampleRestarted_AChildThatEndedInAPassLandsOnceInThePassAfter(t *testi
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.NotContains(t, joined, "round-land-1.", "the round lands from the queue read of the pass after the child ended, not from the gather of that pass")
-	assert.Contains(t, joined, "round-land-2.union#")
+	assert.Contains(t, joined, "gate:round-land-2.gate#")
 }
 
 func TestExampleRestarted_AnItemThatALandingRejectedIsOfferedOnce(t *testing.T) {
