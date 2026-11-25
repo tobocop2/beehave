@@ -672,6 +672,19 @@ func TestDryAgents_TheUncausedOutputIsAnEmptyList(t *testing.T) {
 	assert.JSONEq(t, `{"report":"0","uncaused":"[]"}`, string(raw), "the text 0 is no JSON list, so a dry run would refuse in the filing of the workflow")
 }
 
+func TestDryAgents_TheHoldOutputIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "out.json")
+
+	_, err := dryAgents{}.Run(t.Context(), AgentRequest{OutputFile: file, Outputs: []string{"report", "hold"}})
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(file) //nolint:gosec // the test names its own output file
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"report":"0","hold":""}`, string(raw), "the text 0 is a note, so a dry run would hold every item and refuse the note")
+}
+
 func TestDryAgents_TheOutputsOfTheReviewLedgerAreEmptyLists(t *testing.T) {
 	t.Parallel()
 
