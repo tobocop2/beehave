@@ -6,14 +6,21 @@ import (
 	"strings"
 )
 
-// BlockEntry is one argument of an adapter block: the text of a text key, or the whole number of a whole key.
+// BlockEntry is one argument of an adapter block: the text of a text key, the whole number of a whole key, or the True or False of a bool key.
 type BlockEntry struct {
 	Key string
-	// Text holds the value of a text key, and Number holds the value of a whole-number key.
+	// Text holds the value of a text key, Number holds the value of a whole-number key, and Truth holds the value of a bool key.
 	Text   string
 	Number int
-	// Whole says the key holds the whole number in Number rather than the text in Text.
+	Truth  bool
+	// Whole says the key holds the whole number in Number rather than the text in Text. Flag says the key holds the bool in Truth.
 	Whole bool
+	Flag  bool
+}
+
+// BoolEntry returns the entry of a bool key.
+func BoolEntry(key string, value bool) BlockEntry {
+	return BlockEntry{Key: key, Truth: value, Flag: true}
 }
 
 // TextEntry returns the entry of a text key.
@@ -27,7 +34,7 @@ func WholeEntry(key string, value int) BlockEntry {
 }
 
 // Block is the config block of one adapter, as the project file wrote it. The adapter that owns the block
-// reads each key once, at its edge, with Text and Whole; it holds no keys itself.
+// reads each key once, at its edge, with Text, Whole and Bool; it holds no keys itself.
 type Block struct {
 	at      string
 	entries []BlockEntry
@@ -57,9 +64,13 @@ func (b *Block) String() string {
 	parts := make([]string, len(entries))
 
 	for i, entry := range entries {
-		parts[i] = fmt.Sprintf("%s=%q", entry.Key, entry.Text)
-		if entry.Whole {
+		switch {
+		case entry.Whole:
 			parts[i] = fmt.Sprintf("%s=%d", entry.Key, entry.Number)
+		case entry.Flag:
+			parts[i] = fmt.Sprintf("%s=%t", entry.Key, entry.Truth)
+		default:
+			parts[i] = fmt.Sprintf("%s=%q", entry.Key, entry.Text)
 		}
 	}
 
@@ -73,12 +84,27 @@ func (b *Block) Text(key string) (string, bool) {
 	}
 
 	for _, entry := range b.entries {
-		if entry.Key == key && !entry.Whole {
+		if entry.Key == key && !entry.Whole && !entry.Flag {
 			return entry.Text, true
 		}
 	}
 
 	return "", false
+}
+
+// Bool returns the True or False of a key, and whether the call gave the key.
+func (b *Block) Bool(key string) (value, given bool) {
+	if b == nil {
+		return false, false
+	}
+
+	for _, entry := range b.entries {
+		if entry.Key == key && entry.Flag {
+			return entry.Truth, true
+		}
+	}
+
+	return false, false
 }
 
 // Whole returns the whole number of a key, and whether the call gave the key.
