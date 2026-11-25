@@ -93,8 +93,6 @@ func secureEach(root *os.Root, name string) error {
 		info, err := root.Lstat(name + suffix)
 
 		switch {
-		case errors.Is(err, fs.ErrNotExist) && suffix != "":
-			continue
 		case err == nil && info.Mode()&fs.ModeSymlink != 0:
 			return fmt.Errorf("%s is a symbolic link. Remove the link, or point the state folder at a folder that holds the file itself", name+suffix)
 		case err != nil && !errors.Is(err, fs.ErrNotExist):
@@ -109,7 +107,7 @@ func secureEach(root *os.Root, name string) error {
 	return nil
 }
 
-// secure sets mode 0600 on a file. It makes the file first when create is true and the file is missing.
+// secure sets mode 0600 on a file. It makes the file first when create is true and the file is missing. A file that is not made and is gone, such as a -wal or -shm file that SQLite removed, needs no mode and is skipped.
 func secure(root *os.Root, name string, create bool) error {
 	var err error
 
@@ -123,6 +121,10 @@ func secure(root *os.Root, name string, create bool) error {
 
 	if err == nil {
 		err = root.Chmod(name, sqliteFileMode)
+	}
+
+	if !create && errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
 
 	return err
