@@ -452,7 +452,9 @@ The argument `fix_outputs` of `review_fix` (default: an empty list) names more o
 
 The argument `lane_check` (default: none) is a function of one argument, the lane that made the candidate head: the result of the implement agent, or of the last fix agent. It runs for each candidate after the checks before review and before the list `checks`. It returns an empty text for a clean lane, or the findings as text, which send the candidate back to a fix. The example reads the output `report` of the lane and checks it with `remedy report`.
 
-A caller that passes neither argument gets no extra output and no extra step.
+The argument `lane_asks` (default: none) is a function of one argument, each fix agent right after it ran. It returns the note for the owner that the fix wrote, or an empty text. A note ends the loop with the result field `asked` set, before the ledger and the push of that fix, and no more agent starts. The caller holds the item with the note (the library function `hold_item`). The example reads the output `hold` of the fix.
+
+A caller that passes none of these arguments gets no extra output and no extra step.
 
 #### Violations of the lane runs
 

@@ -1,7 +1,7 @@
 ## Acceptance: the script decides, before the code and after it
 
 **Run the acceptance script before your first edit and compare with the result at the base.** A
-difference before you edit means the base moved or the script is wrong: stop and report it.
+difference before you edit means the base moved or the script is wrong: write the output `hold` and stop.
 **Run it again before you stop, and put its log path in the report.** A row that was green at the base
 and is red at your head is a regression of this pull request: fix it in this lane, and count it in the
 handoff. Do not change the script to make a row pass; a wrong row is a finding for the orchestrator.
@@ -11,7 +11,14 @@ When the item names no script and no expected-behavior file, the change has no o
 check.** A cell that the table does not list as changed equals the base at your head. Run every cell at
 your head and report the cells that differ from the table. **Of two fixes that both
 close the reported case, take the one that changes fewer cells.** If you think that a cell outside the
-table must change, stop and report it: a wider rule is the owner's decision.
+table must change, write the output `hold` and stop: a wider rule is the owner's decision.
+
+## When the item needs the owner
+
+**Write the output `hold` when the item needs the owner.** Write one JSON object with the keys `question`, `options` and `recommendation`.
+`options` is a list of at least two texts, and `recommendation` names the option that you choose and why.
+A note with no recommendation, or with fewer than two options, fails the run. Write an empty text when you need no decision.
+After you write `hold`, make no more edits and stop: the item goes on hold with your note, and no more agent starts.
 
 ## Before you write
 
