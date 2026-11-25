@@ -141,7 +141,7 @@ func TestRetention_TheFixLimitHoldsAfterEveryRunOlderThanTheRetentionIsDeleted(t
 	require.NoError(t, err)
 	require.Empty(t, rows, "the retention deleted the only run of the item")
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "the fix call of the deleted run still counts")
@@ -225,7 +225,7 @@ func TestSpend_ANewTryOfACallWritesARowThatIsNotAnotherLane(t *testing.T) {
 	assert.Equal(t, "agent:a#1", rows[0].Name)
 	assert.Equal(t, "agent:a#1"+ledger.RerunMark, rows[1].Name)
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("a")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "a")
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "the two tries are one lane")
 }
@@ -242,6 +242,17 @@ func TestStartSpend_AnAgentThatHasNotExitedLeavesARowWithAnUnknownCost(t *testin
 	require.Len(t, rows, 1)
 	assert.Equal(t, execution, rows[0].Call)
 	assert.False(t, rows[0].Cost.Valid, "a crash before the exit of the agent leaves the cost unknown")
+}
+
+func TestStartSpend_AContextOfTheEngineThatIsNoStepStopsThePhaseBeforeTheAgentStarts(t *testing.T) {
+	t.Parallel()
+
+	engine := newAgentRig(t).h.opened(t)
+
+	_, err := engine.startSpend(engine.ctx, PhaseInput{Run: "r", Item: "12", Call: "agent:x#1"})
+
+	require.ErrorContains(t, err, "read the step number of the agent step agent:x#1 of item 12")
+	assert.Empty(t, spendRows(t, engine), "a phase that stops before the agent starts writes no row")
 }
 
 func TestStartSpend_ALedgerThatRefusesTheRowStopsThePhaseBeforeTheAgentStarts(t *testing.T) {

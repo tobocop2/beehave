@@ -601,6 +601,13 @@ func (s *script) runPastLimits(name string, base PhaseInput, try int) (PhaseOutp
 // and the run cap count it after a resume too. The write and its step record are one transaction, so a replay appends nothing.
 // The error of the failed run stays the error of the step, so a failure to write the cost is not reported over it.
 func (s *script) runOnce(name string, in PhaseInput) (PhaseOutput, error) {
+	tree, err := rootRun(s.e.store(), workflowID(s.ctx))
+	if err != nil {
+		return PhaseOutput{}, fmt.Errorf("find the item tree of item %s: %w", s.in.Item, err)
+	}
+
+	in.Tree = tree
+
 	ended, err := s.e.queuePhase(s.ctx, in)
 	if err == nil || !s.running() {
 		return ended, err

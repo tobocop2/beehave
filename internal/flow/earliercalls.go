@@ -26,8 +26,8 @@ func (s *script) earlierCalls(b *starlark.Builtin, args starlark.Tuple, kwargs [
 		return nil, err
 	}
 
-	return s.durable("earlier_calls", label, func(context.Context, string) (stepResult, error) {
-		count, err := s.countEarlier(call)
+	return s.durable("earlier_calls", label, func(ctx context.Context, _ string) (stepResult, error) {
+		count, err := s.countEarlier(ctx, call)
 
 		return stepResult{Outputs: earlierOutputs(count)}, err
 	})
@@ -36,13 +36,13 @@ func (s *script) earlierCalls(b *starlark.Builtin, args starlark.Tuple, kwargs [
 func earlierOutputs(count int) map[string]any { return map[string]any{"count": count} }
 
 // countEarlier counts the agent calls named call that the item started and that no step of this run recorded.
-func (s *script) countEarlier(call string) (int, error) {
+func (s *script) countEarlier(ctx context.Context, call string) (int, error) {
 	own, err := s.e.executionsOf(workflowID(s.ctx))
 	if err != nil {
 		return 0, err
 	}
 
-	return s.e.ledger.CountCalls(s.e.ctx, s.in.Item, "agent:"+call+"#", own)
+	return s.e.ledger.CountCalls(ctx, s.in.Item, "agent:"+call+"#", own)
 }
 
 // executionsOf lists the ids of the agent executions that the steps of the run recorded. A caller outside a run has an empty run id and gets none.

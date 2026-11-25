@@ -89,7 +89,7 @@ func spentCandidates(t *testing.T, engine *Engine) int {
 	spent := 0
 
 	for _, call := range []string{"fix-scoped-1", "scoped-review-implement"} {
-		count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(call)
+		count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), call)
 		require.NoError(t, err)
 
 		spent += count
@@ -158,7 +158,7 @@ func TestLaneLayout_AResumedRunKeepsTheCountOfEarlierFixLanesItStartedWith(t *te
 	require.NoError(t, err)
 	waitOn(t, condition(func() bool { return len(h.agents.seen()) >= 2 }))
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 	require.NoError(t, err)
 	require.Equal(t, 2, count, "both runs started a fix lane, so a live read now gives two")
 
@@ -231,7 +231,7 @@ func TestLaneLayout_AStoreThatIsShutDownGivesNoCountOfEarlierCalls(t *testing.T)
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
-	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 	require.ErrorContains(t, err, "count the agent calls of item 12 in the ledger")
 
 	_, err = engine.executionsOf("item-12-r1")
@@ -257,7 +257,7 @@ func TestLaneLayout_TheCountOfEarlierCallsLeavesOutTheExecutionsThatTheStepsOfTh
 	require.NoError(t, err)
 	assert.Empty(t, none, "a caller outside a run has no own execution")
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "a script outside the run counts the execution of the run as earlier")
 

@@ -35,7 +35,7 @@ func TestStartCall_WritesARowWithAnUnknownCostAndEndCallSetsTheCostAndTheSession
 
 	read()
 	assert.False(t, cost.Valid, "a call that started and has not ended has no cost")
-	assert.Equal(t, "", session)
+	assert.Empty(t, session)
 	assert.Equal(t, 4, step)
 	assert.Equal(t, epoch.UnixMilli(), at)
 

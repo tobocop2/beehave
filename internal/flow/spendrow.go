@@ -15,12 +15,15 @@ import (
 // startSpend writes the spend row of an agent execution that starts now, with an unknown cost, and returns the id of the execution.
 // The id is random, so the run id and the step number of a rewind or of a reused run give no row its identity. A failed write stops the phase before the agent starts.
 func (e *Engine) startSpend(ctx context.Context, in PhaseInput) (string, error) {
-	step, _ := ctx.(dbos.Context) //nolint:errcheck // a context that is no step reads as nil, and the step number of nil is the zero value
-	number, _ := dbos.GetStepID(step)
+	number := 0
 
-	tree, err := rootRun(e.store(), in.Run)
-	if err != nil {
-		return "", fmt.Errorf("find the item tree of item %s: %w", in.Item, err)
+	if step, isStep := ctx.(dbos.Context); isStep {
+		id, err := dbos.GetStepID(step)
+		if err != nil {
+			return "", fmt.Errorf("read the step number of the agent step %s of item %s: %w", in.Call, in.Item, err)
+		}
+
+		number = id
 	}
 
 	name := in.Call
@@ -28,8 +31,8 @@ func (e *Engine) startSpend(ctx context.Context, in PhaseInput) (string, error) 
 		name += ledger.RerunMark
 	}
 
-	call := ledger.Call{ID: rand.Text(), Tree: tree, Run: in.Run, Step: number, Item: in.Item, Name: name, At: e.deps.Clock.wall()}
-	if err = e.ledger.StartCall(ctx, call); err != nil {
+	call := ledger.Call{ID: rand.Text(), Tree: in.Tree, Run: in.Run, Step: number, Item: in.Item, Name: name, At: e.deps.Clock.wall()}
+	if err := e.ledger.StartCall(ctx, call); err != nil {
 		return "", fmt.Errorf("the agent step %s of item %s does not start: %w", in.Call, in.Item, err)
 	}
 

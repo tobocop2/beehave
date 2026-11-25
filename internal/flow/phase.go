@@ -21,6 +21,8 @@ import (
 // Model, Timeout and IdleTimeout go to the agent as they are. Forbid lists the kinds of command that the step forbids.
 type PhaseInput struct {
 	Run string `json:"run"`
+	// Tree is the root run of the item tree of Run, which the spend row of the phase names. The script sets it before it queues the phase.
+	Tree string `json:"tree,omitempty"`
 	// Call is the name of the agent call, such as agent:fix#1. The stop at a cap and the error of a look name it.
 	Call    string `json:"call,omitempty"`
 	Item    string `json:"item"`
@@ -166,7 +168,12 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 
 	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, named, said))
 
-	out, err := e.judgePhase(ctx, in, result, err)
+	return e.finishAgent(ctx, in, execution, lost, result, err)
+}
+
+// finishAgent judges the end of the phase, names the execution and the run that it resumes in the output, and sets the cost of the execution in the ledger.
+func (e *Engine) finishAgent(ctx context.Context, in PhaseInput, execution string, lost *LostRun, result agent.Result, runErr error) (PhaseOutput, error) {
+	out, err := e.judgePhase(ctx, in, result, runErr)
 	out.ResumeOf, out.Execution = lost.session(), execution
 	e.endSpend(ctx, execution, in, out)
 
