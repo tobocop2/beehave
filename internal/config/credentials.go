@@ -15,7 +15,7 @@ const credentialSpecName = "credential"
 
 // credentialSpec is the schema of the credential constructor.
 func credentialSpec() spec {
-	return spec{credentialSpecName, []string{"file?", "command?"}}
+	return spec{credentialSpecName, []string{"file?", "command?", "ci_locked?"}}
 }
 
 // credentials is the credentials argument of the project call: a dict from a role name to a credential(...) block.
@@ -80,7 +80,9 @@ func newCredential(at syntax.Position, kwargs []starlark.Tuple) (*model.Credenti
 
 	var words command
 
-	if err := credentialSpec().unpack(at, kwargs, &path, &words); err != nil {
+	var locked truth
+
+	if err := credentialSpec().unpack(at, kwargs, &path, &words, &locked); err != nil {
 		return nil, err
 	}
 
@@ -93,5 +95,5 @@ func newCredential(at syntax.Position, kwargs []starlark.Tuple) (*model.Credenti
 		return nil, refuseAt(at, "`command` of `credential` holds no program or an empty word. Write the program and its arguments.")
 	}
 
-	return &model.Credential{File: path.Value, Command: slices.Clone(words.Words)}, nil
+	return &model.Credential{File: path.Value, Command: slices.Clone(words.Words), CILocked: locked.Value}, nil
 }

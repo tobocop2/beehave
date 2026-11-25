@@ -45,6 +45,24 @@ func TestLoadFolder_ACredentialThatIsNotExactlyOneSourceOrNotInAWriterEntryIsRef
 	}
 }
 
+func TestLoadFolder_CILockedIsABoolOfTheCredentialThatDefaultsToFalse(t *testing.T) {
+	t.Parallel()
+
+	for args, want := range map[string]bool{`, ci_locked = True`: true, `, ci_locked = False`: false, ``: false} {
+		file, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(file = "~/.config/beehave/credentials/w.token"`+args+`)}`))
+		require.Empty(t, problems, args)
+		require.Equal(t, map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/w.token", CILocked: want}}, file.Credentials, args)
+	}
+
+	for _, value := range []string{`"yes"`, `None`, `1`} {
+		_, problems := loadProjectText(t, "\n"+call(localProject+`, credentials = {"writer": credential(file = "a", ci_locked = `+value+`)}`))
+
+		require.NotEmpty(t, problems, value)
+		require.Contains(t, problems[0].Error(), "ci_locked", value)
+		require.Contains(t, problems[0].Error(), "want True or False", value)
+	}
+}
+
 func TestLoadFolder_ACredentialBlockThatNoCredentialsArgumentHoldsIsRefusedAndNamesTheProjectCall(t *testing.T) {
 	t.Parallel()
 

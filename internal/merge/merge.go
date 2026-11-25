@@ -53,7 +53,7 @@ func (s Stop) String() string {
 	return "UNKNOWN"
 }
 
-// Reads is what the guards read from the forge. TokenScopes is read only for a pull request that changes a workflow.
+// Reads is what the guards read from the forge. CanWriteCI is read only for a pull request that changes a workflow, in a project with no credentials.
 type Reads interface {
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 	PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error)
@@ -63,7 +63,7 @@ type Reads interface {
 	OpenChangeRequests(ctx context.Context, pr int) ([]model.ChangeRequest, error)
 	UnresolvedThreads(ctx context.Context, pr int) ([]model.ReviewThread, error)
 	StackID(ctx context.Context, pr int) (string, error)
-	TokenScopes(ctx context.Context) ([]string, error)
+	CanWriteCI(ctx context.Context) (model.CIWrite, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 }
 

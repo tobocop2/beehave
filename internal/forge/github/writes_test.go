@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -15,7 +16,8 @@ import (
 )
 
 const (
-	tip      = "0123456789abcdef0123456789abcdef01234567"
+	tip = "0123456789abcdef0123456789abcdef01234567"
+	// authText is the text answer of gh 2.101.0. The read takes JSON only, so this text is a refusal.
 	authText = "github.com\n  ✓ Logged in to github.com account me (keyring)\n  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'\n"
 )
 
@@ -115,47 +117,100 @@ func TestDisableAutoMergePR_AFailedCallIsARefusal(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot turn off the queued merge of pull request 4")
 }
 
-func TestTokenScopes_ReadsTheQuotedScopesOfTheTokenLine(t *testing.T) {
-	t.Parallel()
+// authJSON is the answer of `gh auth status --json hosts` (gh v2.101.0, pkg/cmd/auth/status/status.go, type authEntry) for one account on github.com.
+func authJSON(t *testing.T, entry fields) string {
+	t.Helper()
 
-	f, run := fixed(t, authText)
+	account := fields{"state": "success", "active": true, "host": "github.com", "login": "me", "tokenSource": "GH_TOKEN", "gitProtocol": "https"}
+	maps.Copy(account, entry)
 
-	scopes, err := f.TokenScopes(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, []string{"gist", "read:org", "repo", "workflow"}, scopes)
-	assert.Equal(t, [][]string{{"auth", "status", "--active"}}, run.Calls)
+	return toJSON(t, fields{"hosts": fields{"github.com": []fields{account}}})
 }
 
-func TestTokenScopes_ReadsTheScopesFromStderrToo(t *testing.T) {
+func TestCanWriteCI_TheScopesOfTheActiveAccountDecideWithoutRegardToCase(t *testing.T) {
 	t.Parallel()
 
-	f, _ := failing(t, authText)
+	for scopes, want := range map[string]model.CIWrite{
+		"gist, read:org, repo, workflow": model.CIWriteYes,
+		"workflow":                       model.CIWriteYes,
+		"repo,WORKFLOW":                  model.CIWriteYes,
+		"repo, Workflow , gist":          model.CIWriteYes,
+		"repo, read:org":                 model.CIWriteNo,
+		"workflows, repo":                model.CIWriteNo,
+		"admin:repo_hook, public_repo":   model.CIWriteNo,
+	} {
+		f, run := fixed(t, authJSON(t, fields{"scopes": scopes}))
 
-	scopes, err := f.TokenScopes(context.Background())
-	require.NoError(t, err)
-	assert.Contains(t, scopes, "workflow")
-}
-
-func TestTokenScopes_ATokenWithNoScopeLineHasNoScopes(t *testing.T) {
-	t.Parallel()
-
-	f, _ := fixed(t, "github.com\n  - Token scopes: none\n")
-
-	scopes, err := f.TokenScopes(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, scopes)
-}
-
-func TestTokenScopes_AnAnswerWithNoTokenLineIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	for name, stdout := range map[string]string{"empty": "", "logged out": "You are not logged into any GitHub hosts.\n"} {
-		f, _ := fixed(t, stdout)
-
-		_, err := f.TokenScopes(context.Background())
-		require.Error(t, err, name)
-		assert.Contains(t, err.Error(), "cannot read the token scopes", name)
+		answer, err := f.CanWriteCI(context.Background())
+		require.NoError(t, err, scopes)
+		assert.Equal(t, want, answer, scopes)
+		assert.Equal(t, [][]string{{"auth", "status", "--active", "--hostname", "github.com", "--json", "hosts"}}, run.Calls, scopes)
 	}
+}
+
+func TestCanWriteCI_AnAccountWhoseScopesGitHubDoesNotShowIsUnknownNeverNo(t *testing.T) {
+	t.Parallel()
+
+	// gh leaves out the scopes when GitHub sends no X-OAuth-Scopes header, as for a fine-grained token.
+	for name, entry := range map[string]fields{"no scopes field": {}, "empty scopes": {"scopes": ""}} {
+		f, _ := fixed(t, authJSON(t, entry))
+
+		answer, err := f.CanWriteCI(context.Background())
+		require.NoError(t, err, name)
+		assert.Equal(t, model.CIWriteUnknown, answer, name)
+	}
+}
+
+func TestCanWriteCI_AnAnswerThatCannotBeReadIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	requireUnread(t, map[string]model.CommandResult{
+		"the text of a gh before 2.40, which does not quote the scopes": {Stdout: "github.com\n  ✓ Token scopes: gist, read:org, repo, workflow\n"},
+		"the text of gh 2.101 with quoted scopes":                       {Stdout: authText},
+		"a gh that has no --json flag on auth status":                   {ExitCode: 1, Stderr: "unknown flag: --json\n"},
+		"no output":                      {},
+		"a null answer":                  {Stdout: "null"},
+		"a fatal error after the answer": {ExitCode: 1, Stdout: authJSON(t, fields{"scopes": "repo"})},
+	})
+}
+
+func TestCanWriteCI_AnAnswerThatIsNotLoggedInIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	requireUnread(t, map[string]model.CommandResult{
+		"not logged in to any host":       {Stdout: `{"hosts":{}}`},
+		"an account on another host only": {Stdout: `{"hosts":{"example.com":[{"state":"success","active":true,"scopes":"workflow"}]}}`},
+		"an account that is not active":   {Stdout: authJSON(t, fields{"active": false, "scopes": "workflow"})},
+		"a token that GitHub refuses":     {Stdout: authJSON(t, fields{"state": "error", "error": "HTTP 401: Bad credentials"})},
+		"a timeout":                       {Stdout: authJSON(t, fields{"state": "timeout", "scopes": "repo"})},
+	})
+}
+
+// requireUnread checks that each answer of gh is a refusal of the CI read, never an answer.
+func requireUnread(t *testing.T, answers map[string]model.CommandResult) {
+	t.Helper()
+
+	for name, answer := range answers {
+		f := newForge(t, repo, proctest.Always(answer))
+
+		got, err := f.CanWriteCI(context.Background())
+
+		var refusal *forge.Error
+
+		require.ErrorAs(t, err, &refusal, name)
+		assert.Equal(t, forge.CodeRefused, refusal.Code, name)
+		assert.Equal(t, model.CIWriteUnknown, got, name)
+	}
+}
+
+func TestCanWriteCI_ARefusalNamesWhatGitHubSaid(t *testing.T) {
+	t.Parallel()
+
+	f, _ := fixed(t, authJSON(t, fields{"state": "error", "error": "HTTP 401: Bad credentials"}))
+
+	_, err := f.CanWriteCI(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 401: Bad credentials")
 }
 
 func TestLogin_ReadsTheLoginOfTheActiveAccount(t *testing.T) {

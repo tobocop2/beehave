@@ -19,4 +19,16 @@ type Credential struct {
 	File string
 	// Command is a program and its arguments, run once at start with no shell. Its trimmed output is the token.
 	Command []string
+	// CILocked is the statement of the owner that the token cannot change CI files, for a token whose permissions the forge does not show.
+	CILocked bool
 }
+
+// CIWrite is the answer of a forge to whether a token can change the CI files of the repository.
+type CIWrite uint8
+
+// The closed set of answers. The zero value is CIWriteUnknown, so an answer that was never read is never CIWriteNo.
+const (
+	CIWriteUnknown CIWrite = iota
+	CIWriteNo
+	CIWriteYes
+)

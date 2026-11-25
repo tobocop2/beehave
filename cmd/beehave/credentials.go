@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/credential"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/forge"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -31,10 +32,12 @@ type writers struct {
 	env       map[string]string
 	// owner is the token of the owner for each https host, for the git calls of the projects that have no writer.
 	owner ownerTokens
+	// forges builds the forge of a project, which answers whether the writer token can change CI.
+	forges func(model.Project) (forge.Forge, error)
 }
 
 // start reads the token of the owner for the https hosts of the projects with no credentials and the writer credential of each project that declares one,
-// then runs the start probe on the environment of the steps.
+// runs the start probe on the environment of the steps, then refuses a writer token that can change CI.
 func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Options) error {
 	w.env = opts.Env
 	w.readOwnerTokens(ctx, cfg)
@@ -50,7 +53,39 @@ func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Option
 
 	w.byProject = found
 
+	return w.lockedCI(ctx, cfg)
+}
+
+// lockedCI asks the forge of each project with a writer, as the writer, whether the token can change CI, and refuses the start on the answer.
+func (w *writers) lockedCI(ctx context.Context, cfg config.Config) error {
+	for _, name := range slices.Sorted(maps.Keys(w.byProject)) {
+		project := cfg.Projects[name].Project
+
+		answer, err := w.ciAnswer(ctx, project)
+		if err != nil {
+			return fmt.Errorf("project %s: cannot read whether the writer token can change workflow files: %w", name, err)
+		}
+
+		if err := credential.CIStart(answer, project.Credentials[model.RoleWriter].CILocked); err != nil {
+			return fmt.Errorf("project %s: %w", name, err)
+		}
+	}
+
 	return nil
+}
+
+// ciAnswer reads the answer of the forge of the project. A project with no forge has no one to ask, so its answer is unknown.
+func (w *writers) ciAnswer(ctx context.Context, project model.Project) (model.CIWrite, error) {
+	if project.Forge == "" {
+		return model.CIWriteUnknown, nil
+	}
+
+	built, err := w.forges(project)
+	if err != nil {
+		return model.CIWriteUnknown, err
+	}
+
+	return built.CanWriteCI(ctx)
 }
 
 // readRoles reads the writer role of each project that declares credentials, in the order of the project names.

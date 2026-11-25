@@ -39,7 +39,7 @@ type world struct {
 	strict     bool
 	children   []model.PullRequest
 	checks     []model.Check
-	scopes     []string
+	ci         model.CIWrite
 	requests   []model.ChangeRequest
 	threads    []model.ReviewThread
 	stacks     map[int]string
@@ -152,7 +152,7 @@ func newWorld(t *testing.T) *world {
 	first := pullJSON(t, nil)
 
 	return &world{
-		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, scopes: []string{"repo", "workflow"},
+		first: &first, checks: []model.Check{{Name: "ci", Bucket: model.CheckPass}}, ci: model.CIWriteYes,
 		stacks: map[int]string{}, tip: tipSHA, tipFound: true, fails: map[string]bool{},
 		closingRefs: &model.ClosingRefs{BaseBranch: "main", DefaultBranch: "main", Issues: []int{}},
 	}
@@ -308,10 +308,10 @@ func (w *world) StackID(_ context.Context, number int) (string, error) {
 	return w.stacks[number], nil
 }
 
-func (w *world) TokenScopes(context.Context) ([]string, error) {
-	w.calls = append(w.calls, "TokenScopes")
+func (w *world) CanWriteCI(context.Context) (model.CIWrite, error) {
+	w.calls = append(w.calls, "CanWriteCI")
 
-	return w.scopes, w.fail("TokenScopes")
+	return w.ci, w.fail("CanWriteCI")
 }
 
 func (w *world) BranchRef(_ context.Context, branch string) (string, bool, error) {

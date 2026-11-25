@@ -253,11 +253,11 @@ func TestRun_TheRefusalsComeInTheOrderOfTheList(t *testing.T) {
 	assert.Contains(t, last(w.run(request())), "is not the gated", "head before mergeable")
 
 	w = newWorld(t).set(t, map[string]any{"files": []any{map[string]any{"path": ".github/workflows/ci.yml"}}})
-	w.checks, w.scopes = []model.Check{{Name: "ci", Bucket: "fail"}}, nil
+	w.checks, w.ci = []model.Check{{Name: "ci", Bucket: "fail"}}, model.CIWriteNo
 	result := w.run(request())
 
 	assert.Contains(t, all(result), "checks are not green", "checks before scope")
-	assert.False(t, w.called("TokenScopes"))
+	assert.False(t, w.called("CanWriteCI"))
 
 	w = newWorld(t)
 	w.requests = []model.ChangeRequest{{Login: "rev", Commit: sha}}
