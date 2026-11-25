@@ -32,6 +32,14 @@ type originReads struct {
 	asked   []string
 	authors []string
 	pulls   int
+	// oneItem maps an id to the id that the tracker keys the same item by, as a GitHub tracker keys 012 as issue 12.
+	oneItem map[string]string
+	sameErr error
+}
+
+// SameItem answers as a tracker that keys each id in oneItem as its value, and every other id as its text.
+func (o *originReads) SameItem(_, a, b string) (bool, error) {
+	return cmp.Or(o.oneItem[a], a) == cmp.Or(o.oneItem[b], b), o.sameErr
 }
 
 // originAnswer is one answer of the forge: the issue and the pull request of the item with their authors, and the error of each read.
@@ -533,13 +541,63 @@ func TestStart_ALaterReadByTheNumberOfTheItemOfTheRunInAnotherSpellingJudgesItsA
 
 			h := newHarness(t)
 			h.facts = forgeFacts
+			reads := &originReads{
+				fakePreflight: &fakePreflight{}, oneItem: map[string]string{"0" + testItem: testItem},
+				answers: []originAnswer{originOf("pull", "OWNER"), originOf("pull", "CONTRIBUTOR")},
+			}
+			h.preflight = reads
+
+			_, err := h.engine(t).RunFile("0"+testItem, testProject, writeFlow(t, bodyFlow(body)), modeOff())
+
+			require.ErrorContains(t, err, "item 0"+testItem+" stopped", "the tracker keys 012 as 12, so a read of 12 is a read of the item of the run")
+			assert.Len(t, reads.authorReads(), 2, "the read of the same item asks for the author of its pull request")
+		})
+	}
+}
+
+func TestStart_ALaterReadOfAnIdThatTheTrackerKeysAsAnotherItemJudgesNoAuthor(t *testing.T) {
+	t.Parallel()
+
+	for name, body := range map[string]string{
+		"pr_read":   "pr_read(id = \"" + testItem + "\")\n",
+		"preflight": "preflight(id = \"" + testItem + "\")\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.facts = forgeFacts
+			// A tracker that keys ids as text, as the local store does: 012 and 12 are two items.
 			reads := &originReads{fakePreflight: &fakePreflight{}, answers: []originAnswer{originOf("pull", "OWNER"), originOf("pull", "CONTRIBUTOR")}}
 			h.preflight = reads
 
 			_, err := h.engine(t).RunFile("0"+testItem, testProject, writeFlow(t, bodyFlow(body)), modeOff())
 
-			require.ErrorContains(t, err, "item 0"+testItem+" stopped", "the run of 012 reads issue 12, so a read of 12 is a read of its own item")
-			assert.Len(t, reads.authorReads(), 2, "the read of the same number asks for the author of its pull request")
+			require.NoError(t, err, "a read of another item of the tracker judges no author")
+			assert.Len(t, reads.authorReads(), 1, "only the start asks for an author")
+		})
+	}
+}
+
+func TestStart_ALaterReadEndsTheRunWhenTheTrackerCannotSayWhetherTheIdIsTheItemOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	for name, body := range map[string]string{
+		"pr_read":   "pr_read(id = \"13\")\n",
+		"preflight": "preflight(id = \"13\")\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+			h.facts = forgeFacts
+			reads := &originReads{fakePreflight: &fakePreflight{}, sameErr: errFake, answers: []originAnswer{originOf("pull", "OWNER")}}
+			h.preflight = reads
+
+			_, err := walkBody(t, h, body)
+
+			require.ErrorIs(t, err, errFake)
+			assert.Equal(t, []string{"issue " + testItem, "pull " + testItem}, reads.items(), "the read makes no lookup when it cannot say whose item it reads")
 		})
 	}
 }
@@ -566,4 +624,13 @@ func TestDryPreflight_FindsNoIssue(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Zero(t, issue)
+}
+
+func TestDryPreflight_KeysItemsAsTheirText(t *testing.T) {
+	t.Parallel()
+
+	same, err := dryPreflight{}.SameItem(testProject, "0"+testItem, testItem)
+
+	require.NoError(t, err)
+	assert.False(t, same, "the dry run reads no tracker, so it names no other spelling as the item of the run")
 }

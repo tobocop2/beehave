@@ -109,9 +109,22 @@ func (s *script) itemOf(id string) (string, error) {
 	return item, checkItemID(item)
 }
 
-// owns reports whether a later read of the item judges its author: the item is the item of the run, in any spelling, and the project has a forge.
-func (s *script) owns(item string) bool {
-	return model.SameItem(item, s.in.Item) && s.e.facts(s.in.Project).Forge != ""
+// owns reports whether a later read of the item judges its author: the project has a forge, and the item is the item of the run as its tracker keys it.
+func (s *script) owns(item string) (bool, error) {
+	if s.e.facts(s.in.Project).Forge == "" {
+		return false, nil
+	}
+
+	if item == s.in.Item {
+		return true, nil
+	}
+
+	same, err := s.e.deps.Preflight.SameItem(s.in.Project, item, s.in.Item)
+	if err != nil {
+		return false, fmt.Errorf("ask the tracker whether item %s is item %s: %w", item, s.in.Item, err)
+	}
+
+	return same, nil
 }
 
 // admitOwn applies the rule of the start again to the pull request that a later read of the item of the run found, because a pull request can open

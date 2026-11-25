@@ -63,6 +63,24 @@ func issueNumber(tracker model.TrackerName, item string) (int, error) {
 	return number, nil
 }
 
+// SameItem reports whether two item ids name one item: the same text, or, when the tracker keeps GitHub issues, two numbers of one issue, as 0412 and 412.
+// An id that is the number of no issue, such as one past the range of an issue, names only itself.
+func (p pulls) SameItem(project, a, b string) (bool, error) {
+	if a == b {
+		return true, nil
+	}
+
+	found, err := p.projectOf(project)
+	if err != nil {
+		return false, err
+	}
+
+	numberA, errA := issueNumber(found.Tracker, a)
+	numberB, errB := issueNumber(found.Tracker, b)
+
+	return errA == nil && errB == nil && numberA != 0 && numberA == numberB, nil
+}
+
 // authored reads who wrote the issue or pull request with the number.
 func authored(ctx context.Context, built opened, number int) (model.Authored, error) {
 	association, err := built.Association(ctx, number)

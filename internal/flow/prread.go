@@ -54,7 +54,10 @@ func (s *script) prRead(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 // readPull is the recorded read of one pr_read call, on the pull request of the item.
 func (s *script) readPull(item string) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
-		own := s.owns(item)
+		own, err := s.owns(item)
+		if err != nil {
+			return stepResult{}, err
+		}
 
 		facts, err := s.e.deps.Preflight.ReadPull(ctx, s.in.Project, item, own)
 		if err != nil {

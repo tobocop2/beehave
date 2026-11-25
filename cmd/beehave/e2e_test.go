@@ -136,6 +136,9 @@ func (e2eFiles) IssueAuthor(context.Context, string, string) (model.Authored, er
 	return model.Authored{}, nil
 }
 
+// SameItem keys items as their text, as the local store does.
+func (e2eFiles) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
 // CheckCredentials refuses every project: the project of the scripts has no build host.
 func (e2eFiles) CheckCredentials(context.Context, string) error { return errNoNoneHost }
 

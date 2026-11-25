@@ -242,6 +242,9 @@ func (preflightOver) IssueAuthor(context.Context, string, string) (model.Authore
 	return model.Authored{}, nil
 }
 
+// SameItem keys items as their text.
+func (preflightOver) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
 // noReads is the part of a preflight fake that finds no pull request, no issue holder and no foreign author.
 type noReads struct{}
 
@@ -256,6 +259,9 @@ func (noReads) IssueAssignees(context.Context, string, string, int) ([]string, e
 func (noReads) IssueAuthor(context.Context, string, string) (model.Authored, error) {
 	return model.Authored{}, nil
 }
+
+// SameItem keys items as their text, as the local store does.
+func (noReads) SameItem(_, a, b string) (bool, error) { return a == b, nil }
 
 // goneBranch is a forge whose head branch is no longer on the remote.
 type goneBranch struct{ *shipWorld }

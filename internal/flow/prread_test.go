@@ -55,6 +55,9 @@ func (f *readsFake) IssueAuthor(context.Context, string, string) (model.Authored
 	return model.Authored{}, nil
 }
 
+// SameItem keys items as their text.
+func (f *readsFake) SameItem(_, a, b string) (bool, error) { return a == b, nil }
+
 func readsHarness(t *testing.T, fake *readsFake) (*harness, *fakeWriter) {
 	t.Helper()
 

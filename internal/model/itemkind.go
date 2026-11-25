@@ -1,9 +1,6 @@
 package model
 
-import (
-	"strconv"
-	"strings"
-)
+import "strings"
 
 // The kinds of work item an id can name.
 const (
@@ -38,22 +35,6 @@ func ItemKind(item string) string {
 	}
 
 	return KindBeads
-}
-
-// SameItem reports whether two item ids name one item: the same text, or two forge numbers of the same value, as "0412" and "412" name issue 412.
-func SameItem(a, b string) bool {
-	if a == b {
-		return true
-	}
-
-	if ItemKind(a) != KindForge || ItemKind(b) != KindForge {
-		return false
-	}
-
-	numberA, errA := strconv.Atoi(a)
-	numberB, errB := strconv.Atoi(b)
-
-	return errA == nil && errB == nil && numberA == numberB
 }
 
 // RoundBase returns the base branch of a round item and true. It returns an empty string and false for any other item.

@@ -36,31 +36,6 @@ func TestItemKind_AMalformedRoundIdIsNoItem(t *testing.T) {
 	}
 }
 
-func TestSameItem_TwoSpellingsOfOneForgeNumberNameOneItem(t *testing.T) {
-	t.Parallel()
-
-	tooBig := "99999999999999999999"
-
-	tests := map[string]struct {
-		a, b string
-		same bool
-	}{
-		"the same text":                            {"fix-login", "fix-login", true},
-		"a forge number with a leading zero":       {"0412", "412", true},
-		"two forge numbers of two values":          {"412", "413", false},
-		"a forge number and a beads id":            {"412", "bb-412", false},
-		"two beads ids that differ in case":        {"bb-7", "BB-7", false},
-		"a number too large for an int":            {"0" + tooBig, tooBig, false},
-		"the same number too large for an int":     {tooBig, tooBig, true},
-		"a number that is the run of another text": {"#412", "412", false},
-		"a signed number that is no item id":       {"+412", "412", false},
-	}
-	for name, test := range tests {
-		assert.Equal(t, test.same, model.SameItem(test.a, test.b), name)
-		assert.Equal(t, test.same, model.SameItem(test.b, test.a), name+", either order")
-	}
-}
-
 func TestRoundBase_ReturnsTheBaseOfARoundIdAndNothingForAnyOtherItem(t *testing.T) {
 	t.Parallel()
 

@@ -251,7 +251,7 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 `pr_read(id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `found`, `number`, `state`, `draft`, `labels`, `author`, `assignees`, `reviewers`, `links` and `unread`.
 
-- `id` is an item id, as `beehave run` takes it, such as `12` or `fix-login`. The call refuses any other text, such as `#12` or `+12`, before it reads.
+- `id` is an item id, as `beehave run` takes it, such as `12` or `fix-login`. The call refuses any other text, such as `#12` or `+12`, before it reads. A dry run refuses it too, as the run does.
 
 - The call finds the pull request as `preflight` does: the open one on the branch of the item, then an open one that names the item, then the merged one, then the newest closed one. An item with no pull request gives `found` false and empty lists.
 - `reviewers` lists the logins that reviewed the pull request or were asked to. `links` lists the issues that the body names with `Closes`, `Fixes`, `Resolves`, `Part of`, `Refs` or `Related`. Each link is a dict with `repo` and `number`. An empty `repo` is the repository of the pull request.
