@@ -28,7 +28,7 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		return err
 	}
 
-	dir, err := p.copyHead(ctx, project, branch, head)
+	dir, err := p.copyHead(ctx, project, item, branch, head)
 	if err != nil {
 		return fmt.Errorf("push %s to the branch %s for item %s: %w", head, branch, item, err)
 	}
@@ -88,10 +88,10 @@ type headCopy struct {
 // newHeadCopy returns the copy with the enforcers of this machine and this program.
 func newHeadCopy() headCopy { return headCopy{enforcer: chooseEnforcer, executable: os.Executable} }
 
-// copyHead fetches head from the clone of the project onto refs/heads/branch of the push repository of the project, under the lock of the clone, and
+// copyHead fetches head from the lane of the item onto refs/heads/branch of the push repository of the project, under the lock of the clone, and
 // returns the repository. The repository is made on the first copy and kept, so a later copy fetches only the new objects.
-func (p pulls) copyHead(ctx context.Context, project, branch, head string) (string, error) {
-	folder, program, err := p.copySource(project)
+func (p pulls) copyHead(ctx context.Context, project, item, branch, head string) (string, error) {
+	folder, program, err := p.copySource(project, item)
 	if err != nil {
 		return "", err
 	}
@@ -103,17 +103,18 @@ func (p pulls) copyHead(ctx context.Context, project, branch, head string) (stri
 	return dir, err
 }
 
-// copySource returns the clone folder of the project with its links resolved, and the upload-pack program that reads it under the enforcer of the project.
-// A machine where no enforcer runs, and a project with no clone, are errors.
-func (p pulls) copySource(project string) (folder, program string, err error) {
+// copySource returns the lane folder of the item with its links resolved, and the upload-pack program that reads it under the enforcer of the project.
+// The lane holds the commits of the item, and it holds its objects as files of its own, so the copy refuses no list of other object stores.
+// A machine where no enforcer runs, and an item with no lane, are errors.
+func (p pulls) copySource(project, item string) (folder, program string, err error) {
 	enforcer, err := p.copier.enforcer(p.projects[project].SandboxEnforcer)
 	if err != nil {
 		return "", "", fmt.Errorf("the push copies the head from the clone under the sandbox, and %w. Set sandbox_enforcer to an enforcer that runs on this machine", err)
 	}
 
-	folder, err = filepath.EvalSymlinks(filepath.Join(p.trees.repos, model.SafeName(project)))
+	folder, err = filepath.EvalSymlinks(laneOf(filepath.Join(p.trees.repos, model.SafeName(project)), item))
 	if err != nil {
-		return "", "", fmt.Errorf("%w: project %s: %w", errNoCloneToPush, project, err)
+		return "", "", fmt.Errorf("%w: item %s of project %s: %w", errNoCloneToPush, item, project, err)
 	}
 
 	self, err := p.copier.executable()

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -84,6 +85,10 @@ type agents struct {
 	repos gitexec.Repositories
 	// modules names and fills the Go module cache of a project in a worktree.
 	modules moduleFill
+	// clones holds the lock of the clone of a project, for the checkout of a review step.
+	clones cloneLock
+	// checkouts is the folder that holds the checkouts of review steps. Only the owner can write it.
+	checkouts string
 }
 
 // moduleFill names the Go module cache of a project in a worktree, or "" for a worktree that needs none, and fills it.
@@ -111,6 +116,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		identity: gitIdentity,
 		repos:    repos,
 		modules:  moduleFiller(opts),
+		clones: cloneLock{repos: reposFolder(opts.StateDir)}, checkouts: filepath.Join(os.TempDir(), fmt.Sprintf("beehave-review-%d", os.Getuid())),
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
 		traceParent: cfg.Agents.TraceParent, contextWindow: int64(cfg.Agents.ContextWindowTokens),
 		prices: agent.DefaultPrices(),
@@ -230,7 +236,62 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 		return agent.Result{}, err
 	}
 
-	return a.runIn(ctx, request, runner, dir)
+	checkout, done, err := a.reviewCheckout(ctx, request, dir)
+	if err != nil {
+		return agent.Result{}, err
+	}
+
+	defer done()
+
+	return a.runIn(ctx, request, runner, checkout)
+}
+
+// reviewCheckout returns the folder that a step with no edits works in: a fresh detached worktree at the head of the item, made with the code of the gate copy,
+// and the function that discards it. The step cannot move a branch or leave a file in the worktree of the item. Any other step, and a project with no repository, works in dir.
+func (a agents) reviewCheckout(ctx context.Context, request flow.AgentRequest, dir string) (string, func(), error) {
+	if !request.NoEdits || !isRepository(dir) {
+		return dir, func() {}, nil
+	}
+
+	clone := gateClone{hold: a.clones.of(request.Project), git: gitOf(a.projects, request.Project, a.repos)}
+
+	tmp, err := a.reviewFolder(request)
+	if err != nil {
+		return "", nil, fmt.Errorf("make the folder for the checkout of the review: %w", err)
+	}
+
+	discard(ctx, tmp, dir, clone)
+
+	if err = os.MkdirAll(tmp, ownerOnly); err != nil {
+		return "", nil, fmt.Errorf("make the folder for the checkout of the review: %w", err)
+	}
+
+	copied, release, err := disposableTree(ctx, dir, tmp, clone)
+	if err != nil {
+		discard(context.WithoutCancel(ctx), tmp, dir, clone)
+
+		return "", nil, fmt.Errorf("make the checkout of the review: %w", err)
+	}
+
+	return copied.WorkTree, func() {
+		release()
+		discard(context.WithoutCancel(ctx), tmp, dir, clone)
+	}, nil
+}
+
+// reviewFolder returns the folder of the checkout of one step of one item. The path is the same on every run of that step, so a rerun that resumes
+// the session of the CLI starts in the working directory that holds the session. The root is a folder that only the owner can write.
+func (a agents) reviewFolder(request flow.AgentRequest) (string, error) {
+	root := a.checkouts
+	if err := os.Mkdir(root, ownerOnly); err != nil && !errors.Is(err, fs.ErrExist) {
+		return "", err
+	}
+
+	if err := fstree.TrustedRoot(root, os.Getuid()); err != nil {
+		return "", err
+	}
+
+	return filepath.Join(root, model.SafeName(request.Project), model.SafeName(request.Item), model.SafeName(cmp.Or(request.Call, "step"))), nil
 }
 
 // runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.

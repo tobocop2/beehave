@@ -34,6 +34,7 @@ var (
 	errHostJob      = errors.New("the host job did not succeed")
 	errNotListed    = errors.New("the folder of the item exists and git does not list it as a worktree")
 	errKeptChanges  = errors.New("a fresh run of a round item does not reuse a worktree with changes")
+	errSharedLayout = errors.New("the worktree of the item is in the clone of the project and has no clone of its own")
 )
 
 // folderMode is the mode of a folder that holds worktrees or clones.
@@ -107,6 +108,10 @@ func (w worktrees) ensureLocked(ctx context.Context, project config.Project, clo
 		return w.addLocked(ctx, project, clone, item, start, base)
 	}
 
+	if err := refuseSharedLayout(clone, dir, item); err != nil {
+		return "", err
+	}
+
 	if base, round := model.RoundBase(item); round && start == "" {
 		if err := w.moveToTip(ctx, project, clone, dir, base, item); err != nil {
 			return "", err
@@ -119,7 +124,9 @@ func (w worktrees) ensureLocked(ctx context.Context, project config.Project, clo
 // moveToTip moves the kept worktree of a round item to the tip of its base on the remote. A worktree with tracked or untracked changes, or with commits
 // that no remote branch holds, is refused, and the error names it, the commits and how to remove it.
 func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone, dir, base, item string) error {
-	if err := w.refuseChanges(ctx, clone, dir, item, "an earlier run left"); err != nil {
+	lane := laneOf(clone, item)
+
+	if err := w.refuseChanges(ctx, lane, dir, item, "an earlier run left"); err != nil {
 		return err
 	}
 
@@ -127,7 +134,11 @@ func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone,
 		return err
 	}
 
-	if err := w.refuseUnpushed(ctx, clone, dir, item); err != nil {
+	if err := w.syncLane(ctx, clone, lane); err != nil {
+		return err
+	}
+
+	if err := w.refuseUnpushed(ctx, lane, dir, item); err != nil {
 		return err
 	}
 
@@ -152,8 +163,10 @@ func (w worktrees) Place(ctx context.Context, project, item, head, branch string
 
 // placeLocked is Place while Place holds the lock of the clone.
 func (w worktrees) placeLocked(ctx context.Context, project config.Project, clone, item, head, branch string) error {
-	if err := w.run(ctx, clone, "cat-file", "-e", head+"^{commit}"); err != nil {
-		return fmt.Errorf("the clone of project %s does not hold the commit %s that the fork starts at. Start the item again: beehave run %s: %w", project.Name, head, item, err)
+	lane := laneOf(clone, item)
+
+	if err := w.run(ctx, lane, "cat-file", "-e", head+"^{commit}"); err != nil {
+		return fmt.Errorf("the clone of item %s does not hold the commit %s that the fork starts at. Start the item again: beehave run %s: %w", item, head, item, err)
 	}
 
 	dir, err := w.lookup(ctx, project.Name, item)
@@ -162,16 +175,16 @@ func (w worktrees) placeLocked(ctx context.Context, project config.Project, clon
 	}
 
 	if dir == "" {
-		return w.placeNew(ctx, clone, filepath.Join(w.root, model.SafeName(project.Name), model.SafeName(item)), item, head, branch)
+		return w.placeNew(ctx, lane, filepath.Join(w.root, model.SafeName(project.Name), model.SafeName(item)), item, head, branch)
 	}
 
-	return w.placeKept(ctx, clone, dir, item, head, branch)
+	return w.placeKept(ctx, lane, dir, item, head, branch)
 }
 
-// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made. Git drops the record of a removed folder first, so that record does not hold the branch.
-func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch string) error {
+// placeNew adds the worktree of the item at head, from the lane of the item. A tracker item gets branch, which a try of the same attempt before it can have made. Git drops the record of a removed folder first, so that record does not hold the branch.
+func (w worktrees) placeNew(ctx context.Context, lane, dir, item, head, branch string) error {
 	if _, round := model.RoundBase(item); round {
-		_, err := w.add(ctx, clone, dir, item, head)
+		_, err := w.add(ctx, lane, dir, item, head)
 
 		return err
 	}
@@ -180,21 +193,21 @@ func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch 
 		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
 	}
 
-	if err := w.prune(ctx, clone); err != nil {
+	if err := w.prune(ctx, lane); err != nil {
 		return err
 	}
 
-	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
+	return w.run(ctx, lane, gitWorktree, gitAdd, "-B", branch, dir, head)
 }
 
 // prune drops the records of the worktrees whose folder is gone, so that no such record holds a branch. A branch that a live worktree holds stays held.
-func (w worktrees) prune(ctx context.Context, clone string) error {
-	return w.run(ctx, clone, gitWorktree, "prune")
+func (w worktrees) prune(ctx context.Context, lane string) error {
+	return w.run(ctx, lane, gitWorktree, "prune")
 }
 
 // placeKept moves the kept worktree of the item to head. The move never takes work off the worktree: changes stop it, and so do the commits of a round worktree that no remote branch holds.
-func (w worktrees) placeKept(ctx context.Context, clone, dir, item, head, branch string) error {
-	if err := w.refuseChanges(ctx, clone, dir, item, "the run before the fork left"); err != nil {
+func (w worktrees) placeKept(ctx context.Context, lane, dir, item, head, branch string) error {
+	if err := w.refuseChanges(ctx, lane, dir, item, "the run before the fork left"); err != nil {
 		return err
 	}
 
@@ -202,7 +215,7 @@ func (w worktrees) placeKept(ctx context.Context, clone, dir, item, head, branch
 		return w.run(ctx, dir, "checkout", "--quiet", "-B", branch, head)
 	}
 
-	if err := w.refuseUnpushed(ctx, clone, dir, item, head); err != nil {
+	if err := w.refuseUnpushed(ctx, lane, dir, item, head); err != nil {
 		return err
 	}
 
@@ -210,14 +223,14 @@ func (w worktrees) placeKept(ctx context.Context, clone, dir, item, head, branch
 }
 
 // refuseChanges fails when the worktree has tracked or untracked changes. left names who left them.
-func (w worktrees) refuseChanges(ctx context.Context, clone, dir, item, left string) error {
+func (w worktrees) refuseChanges(ctx context.Context, lane, dir, item, left string) error {
 	status := w.git(dir).Run(ctx, []string{"status", "--porcelain"})
 	if err := gitExit("status", dir, status); err != nil {
 		return err
 	}
 
 	if strings.TrimSpace(status.Stdout) != "" {
-		return keptTree(clone, dir, item, "changes that "+left+". Save what you need")
+		return keptTree(lane, dir, item, "changes that "+left+". Save what you need")
 	}
 
 	return nil
@@ -240,7 +253,7 @@ func (w worktrees) markPlaced(ctx context.Context, dir string) error {
 // refuseUnpushed fails when the worktree holds commits that no remote branch holds, and the error names each commit and how to remove the worktree.
 // The commit that beehave placed the worktree at, and its history, are no work of the item, also after a force-push of the base took them off the remote.
 // A commit that a commit in keep holds is not counted: a move back to that commit leaves it in place. With no keep, every commit counts.
-func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string, keep ...string) error {
+func (w worktrees) refuseUnpushed(ctx context.Context, lane, dir, item string, keep ...string) error {
 	args := append([]string{"log", "--format=%h %s", "HEAD", "--not"}, keep...)
 
 	unpushed := w.git(dir).Run(ctx, append(args, "--remotes", "--glob="+placedMarks))
@@ -249,16 +262,40 @@ func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string, 
 	}
 
 	if commits := strings.TrimSpace(unpushed.Stdout); commits != "" {
-		return keptTree(clone, dir, item, "commits that are on no remote branch ("+strings.ReplaceAll(commits, "\n", "; ")+"). Push or save them")
+		return keptTree(lane, dir, item, "commits that are on no remote branch ("+strings.ReplaceAll(commits, "\n", "; ")+"). Push or save them")
 	}
 
 	return nil
 }
 
-// keptTree is the error for a kept worktree that a fresh run refuses: it names the worktree, what it holds and the command that removes it.
-func keptTree(clone, dir, item, holds string) error {
+// keptTree is the error for a kept worktree that a fresh run refuses: it names the worktree, what it holds and the command that removes it from its lane.
+func keptTree(lane, dir, item, holds string) error {
 	return fmt.Errorf("%w: the worktree %s of item %s holds %s, remove the worktree with git -C %s worktree remove --force %s, then run the item again",
-		errKeptChanges, dir, item, holds, clone, dir)
+		errKeptChanges, dir, item, holds, lane, dir)
+}
+
+// laneMark joins the folder of the clone of a project to the name of an item in the folder of the lane. A name that SafeName makes never holds a dot, so no
+// project clone and no lock file of a clone has the name of a lane.
+const laneMark = ".lane."
+
+// laneOf returns the folder of the private clone of the item, beside the clone of the project.
+func laneOf(clone, item string) string {
+	return clone + laneMark + model.SafeName(item)
+}
+
+// refuseSharedLayout fails when the worktree dir of the item has no lane: git lists it under the clone of the project, where every lane would share its refs.
+// The error names the command that removes it.
+func refuseSharedLayout(clone, dir, item string) error {
+	_, err := os.Lstat(laneOf(clone, item))
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read the clone of item %s: %w", item, err)
+	}
+
+	return fmt.Errorf("%w: remove the worktree %s of item %s with git -C %s worktree remove --force %s, then run the item again", errSharedLayout, dir, item, clone, dir)
 }
 
 // cloneLock is the file lock of the clone of each project under the folder repos. Every git worktree command on a clone runs under it, so no two of them
@@ -312,7 +349,77 @@ func (w worktrees) addLocked(ctx context.Context, project config.Project, clone,
 		return "", err
 	}
 
-	return w.add(ctx, clone, dir, item, revision)
+	lane, err := w.lane(ctx, project, clone, item)
+	if err != nil {
+		return "", err
+	}
+
+	return w.add(ctx, lane, dir, item, revision)
+}
+
+// lane returns the private clone of the item, and makes it when it is missing. The clone is cut from the clone of the project with hard links, so it shares
+// no ref with it and holds no object twice. Its origin is the address of the project, so a fetch in a step reaches the remote as before. Each call copies the
+// remote branches of the clone of the project into the lane.
+func (w worktrees) lane(ctx context.Context, project config.Project, clone, item string) (string, error) {
+	lane := laneOf(clone, item)
+
+	remote, err := cloneSource(project.Project, w.forge)
+	if err != nil {
+		return "", err
+	}
+
+	if err := w.cut(ctx, project.Name, clone, lane); err != nil {
+		return "", err
+	}
+
+	if err := w.run(ctx, lane, "remote", "set-url", "origin", remote); err != nil {
+		return "", err
+	}
+
+	return lane, w.syncLane(ctx, clone, lane)
+}
+
+// cut clones the clone of the project into the folder lane with hard links and no checkout, unless it is there.
+func (w worktrees) cut(ctx context.Context, project, clone, lane string) error {
+	_, err := os.Stat(filepath.Join(lane, ".git"))
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read the clone %s: %w", lane, err)
+	}
+
+	return gitExit("clone", w.repos, w.reach(project, w.repos, clone).Run(ctx, []string{"clone", "-q", "--local", "--no-checkout", clone, lane}))
+}
+
+// syncLane copies the remote branches and the tags of the clone of the project into the lane over the file transport. The symbolic ref origin/HEAD stays out,
+// because it names a branch that the same fetch updates.
+func (w worktrees) syncLane(ctx context.Context, clone, lane string) error {
+	return w.run(ctx, lane, "fetch", "-q", "--no-tags", "--no-write-fetch-head", clone, "+"+remoteRefs+":"+remoteRefs, "+refs/tags/*:refs/tags/*", "^"+remoteHead)
+}
+
+// syncLanes copies the remote branches and the tags of the clone of the project into each lane of the project.
+func (w worktrees) syncLanes(ctx context.Context, clone string) error {
+	return w.eachLane(clone, func(lane string) error { return w.syncLane(ctx, clone, lane) })
+}
+
+// eachLane runs fn for each lane of the project whose clone is clone. A lane that fn fails on stays as it is and does not stop the other lanes: an agent can
+// change the config of its own lane, the engine refuses that lane, and the refusal must not block the gates and the fetches of the other items. The item of
+// that lane meets the refusal at its next call in the lane, with the text of git.
+func (w worktrees) eachLane(clone string, fn func(lane string) error) error {
+	entries, err := os.ReadDir(filepath.Dir(clone))
+	if err != nil {
+		return fmt.Errorf("read the folder of the clones: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), filepath.Base(clone)+laneMark) {
+			_ = fn(filepath.Join(filepath.Dir(clone), entry.Name())) //nolint:errcheck // a lane that fails does not stop the others, see the comment of the function
+		}
+	}
+
+	return nil
 }
 
 // refresh makes the clone of the project if it is missing, fetches the branch of the item into it, and returns the revision to add the worktree at.
@@ -367,11 +474,18 @@ func (w worktrees) fetchAll(ctx context.Context, project config.Project, clone s
 		return err
 	}
 
-	return w.run(ctx, clone, "fetch", "-q", "--no-write-fetch-head", repo.dir, "+"+remoteRefs+":"+remoteRefs)
+	if err := w.run(ctx, clone, "fetch", "-q", "--no-write-fetch-head", repo.dir, "+"+remoteRefs+":"+remoteRefs); err != nil {
+		return err
+	}
+
+	return w.syncLanes(ctx, clone)
 }
 
-// remoteRefs are the refs of the branches of the remote, in the push repository and in the clone.
-const remoteRefs = "refs/remotes/origin/*"
+// remoteRefs are the refs of the branches of the remote, in the push repository, the clone and each lane. remoteHead is the symbolic ref that a clone makes for the remote head.
+const (
+	remoteRefs = "refs/remotes/origin/*"
+	remoteHead = "refs/remotes/origin/HEAD"
+)
 
 // fetchBase fetches the base branch of a round item into the clone. A base that the remote lacks gives an error that names it.
 func (w worktrees) fetchBase(ctx context.Context, project config.Project, clone, base, item string) error {
@@ -467,7 +581,14 @@ func (w worktrees) FetchCommit(ctx context.Context, project, remote, sha string)
 			return fmt.Errorf("a fetch by id needs a source that serves a commit by its id (git protocol version 2); if the base moved since the read, run again: %w", err)
 		}
 
-		return w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+		if err := w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha); err != nil {
+			return err
+		}
+
+		// A gate reads the commit in the lane of its item, so each lane takes it too.
+		return w.eachLane(clone, func(lane string) error {
+			return w.run(ctx, lane, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+		})
 	})
 }
 
@@ -547,20 +668,20 @@ func absent(dir string) error {
 	return nil
 }
 
-// add makes the worktree dir from the clone. A round item gets a detached worktree at revision, with --force, so git replaces the record of a round
+// add makes the worktree dir from the lane of the item. A round item gets a detached worktree at revision, with --force, so git replaces the record of a round
 // worktree whose folder someone removed and forgets no other record. Any other item first drops the records of removed folders, then uses the branch
-// named item if the clone has one, and else starts that branch at revision. It returns dir.
-func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (string, error) {
+// named item if the lane has one, and else starts that branch at revision. It returns dir.
+func (w worktrees) add(ctx context.Context, lane, dir, item, revision string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
 		return "", fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
 	}
 
-	args, err := w.addArgs(ctx, clone, dir, item, revision)
+	args, err := w.addArgs(ctx, lane, dir, item, revision)
 	if err != nil {
 		return "", err
 	}
 
-	if err := w.run(ctx, clone, args...); err != nil {
+	if err := w.run(ctx, lane, args...); err != nil {
 		return "", err
 	}
 
@@ -574,14 +695,14 @@ func (w worktrees) add(ctx context.Context, clone, dir, item, revision string) (
 }
 
 // addArgs returns the git arguments that add the worktree dir of the item at revision. An existing branch of the item is added after a prune, so the record of a removed folder does not hold it.
-func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision string) ([]string, error) {
+func (w worktrees) addArgs(ctx context.Context, lane, dir, item, revision string) ([]string, error) {
 	if _, round := model.RoundBase(item); round {
 		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}, nil
 	}
 
 	branch := model.ItemBranch(item)
-	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
-		return []string{gitWorktree, gitAdd, dir, branch}, w.prune(ctx, clone)
+	if w.git(lane).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
+		return []string{gitWorktree, gitAdd, dir, branch}, w.prune(ctx, lane)
 	}
 
 	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}, nil

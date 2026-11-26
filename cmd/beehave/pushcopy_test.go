@@ -252,9 +252,9 @@ func TestPulls_TheCopyOfTheHeadReadsOnlyTheCloneFolderWithNoWriteAndNoNetwork(t 
 	fake := &recorded{name: "fake"}
 	rig.pulls.copier.enforcer = func(string) (sandbox.Enforcer, error) { return fake, nil }
 
-	folder, program, err := rig.pulls.copySource("p")
+	folder, program, err := rig.pulls.copySource("p", pushItem)
 	require.NoError(t, err)
-	assert.Equal(t, evaluated(t, filepath.Join(rig.opts.StateDir, "repos", "p")), folder, "the read folder is the clone folder, not its git folder")
+	assert.Equal(t, evaluated(t, laneOf(filepath.Join(rig.opts.StateDir, "repos", "p"), pushItem)), folder, "the read folder is the lane folder, not its git folder")
 
 	args := shellWords(t, program+" "+folder)
 	self, err := os.Executable()

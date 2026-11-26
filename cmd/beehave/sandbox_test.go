@@ -32,6 +32,7 @@ func newSandboxRig(t *testing.T) *sandboxRig {
 
 	r := newFolderRig(t)
 	runGit(t, r.work, "init", "-q")
+	commitIn(t, r.work, "start")
 
 	return r
 }
@@ -45,6 +46,7 @@ func newFolderRig(t *testing.T) *sandboxRig {
 	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
 	f.agents.trees = treeAt(work)
 	f.agents.repos = gitexec.NewRepositories(filepath.Dir(work))
+	f.agents.clones, f.agents.checkouts = cloneLock{repos: filepath.Dir(work)}, filepath.Join(t.TempDir(), "checkouts")
 	f.agents.home = func() (string, error) { return home, nil }
 	f.agents.identity = func(context.Context, gitexec.Runner) agent.GitIdentity { return rigIdentity() }
 	f.agents.projects = repositoryProject()

@@ -30,11 +30,11 @@ func workIn(t *testing.T, dir, name string) string {
 	return gitOut(t, dir, "rev-parse", "HEAD")
 }
 
-// removeTree takes the worktree dir away and leaves its commits in the clone, as a release does.
+// removeTree takes the worktree dir away and leaves its commits in the lane of its item, as a release does. The folder of the worktree is named for the item.
 func (r roundRig) removeTree(t *testing.T, dir string) {
 	t.Helper()
 
-	runGit(t, r.clone(), "worktree", "remove", "--force", dir)
+	runGit(t, r.clone()+laneMark+filepath.Base(dir), "worktree", "remove", "--force", dir)
 }
 
 // chmodTest sets the mode of a folder that the test made.
@@ -213,11 +213,11 @@ func TestWorktrees_PlaceRefusesAFolderThatCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t)
-	dir, err := rig.trees.Ensure(t.Context(), "p", roundItem, "", "")
+	loop, err := rig.trees.Ensure(t.Context(), "p", "loop", "", "")
 	require.NoError(t, err)
 
-	head := workIn(t, dir, "one")
-	loop := filepath.Join(rig.trees.root, "p", "loop")
+	head := workIn(t, loop, "one")
+	rig.removeTree(t, loop)
 	require.NoError(t, os.Symlink(loop, loop))
 
 	require.ErrorContains(t, rig.trees.Place(t.Context(), "p", "loop", head, "loop-r2"), "read the folder")
@@ -235,7 +235,7 @@ func TestWorktrees_PlaceRefusesWhenTheFolderOfTheWorktreesCannotBeWritten(t *tes
 	t.Parallel()
 
 	rig := newRoundRig(t)
-	dir, err := rig.trees.Ensure(t.Context(), "p", roundItem, "", "")
+	dir, err := rig.trees.Ensure(t.Context(), "p", trackerItem, "", "")
 	require.NoError(t, err)
 
 	head := workIn(t, dir, "one")

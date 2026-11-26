@@ -84,7 +84,7 @@ func (g *fakeGit) answer(dir string, args []string) model.CommandResult {
 
 	switch {
 	case args[0] == "clone":
-		makeFolder(filepath.Join(args[2], ".git"))
+		makeFolder(filepath.Join(args[len(args)-1], ".git"))
 	case args[0] == "rev-parse" && !g.branch:
 		return model.CommandResult{ExitCode: 1}
 	case args[0] == "worktree" && args[1] == "add":
@@ -160,10 +160,23 @@ func TestWorktrees_EnsureAddsAWorktreeOnABranchNamedForTheItemFromTheBaseBranch(
 	assert.Equal(t, want, got)
 	calls := []string{filepath.Join(state, "repos") + ": clone https://example.test/owner/name.git " + clone}
 	calls = append(calls, baseFetch(state, "main")...)
-	assert.Equal(t, append(calls,
-		clone+": rev-parse --verify --quiet refs/heads/bb-1",
-		clone+": worktree add -b bb-1 "+want+" origin/main",
-	), git.calls)
+	lane := laneOf(clone, "bb-1")
+	assert.Equal(t, append(append(calls, laneCalls(state, "bb-1")...),
+		lane+": rev-parse --verify --quiet refs/heads/bb-1",
+		lane+": worktree add -b bb-1 "+want+" origin/main",
+	), git.calls, "the worktree is added from the lane of the item, never from the clone of the project")
+}
+
+// laneCalls is the git calls that make the lane of item from the clone of the project, point its origin at the remote and copy the remote branches into it.
+func laneCalls(state, item string) []string {
+	clone := filepath.Join(state, "repos", "p")
+	lane := laneOf(clone, item)
+
+	return []string{
+		filepath.Join(state, "repos") + ": clone -q --local --no-checkout " + clone + " " + lane,
+		lane + ": remote set-url origin https://example.test/owner/name.git",
+		lane + ": fetch -q --no-tags --no-write-fetch-head " + clone + " +refs/remotes/origin/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* ^refs/remotes/origin/HEAD",
+	}
 }
 
 func TestWorktrees_EnsureClonesFromTheSourceOfTheProjectAndNeverAsksTheForge(t *testing.T) {
@@ -197,7 +210,8 @@ func TestWorktrees_EnsureAddsTheWorktreeOnAnExistingItemBranchAndNeverResetsIt(t
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
-	assert.Equal(t, []string{clone + ": rev-parse --verify --quiet refs/heads/bb-1", clone + ": worktree prune", clone + ": worktree add " + want + " bb-1"}, git.calls[len(git.calls)-3:],
+	lane := laneOf(clone, "bb-1")
+	assert.Equal(t, []string{lane + ": rev-parse --verify --quiet refs/heads/bb-1", lane + ": worktree prune", lane + ": worktree add " + want + " bb-1"}, git.calls[len(git.calls)-3:],
 		"a prune drops the record of a removed folder, then a plain add with no force flag takes the branch")
 
 	for _, call := range git.calls {
@@ -245,8 +259,9 @@ func TestWorktrees_EnsureReusesTheWorktreeOfAResumeAndTheClone(t *testing.T) {
 
 	_, err = trees.Ensure(t.Context(), "p", "bb-2", "", "")
 	require.NoError(t, err)
-	assert.Len(t, git.calls, 7, "the second item fetches, looks for its branch and adds, and does not clone again")
+	assert.Len(t, git.calls, 10, "the second item fetches, makes its lane, looks for its branch and adds, and does not clone the project again")
 	assert.Equal(t, baseFetch(state, "main"), git.calls[:5])
+	assert.Equal(t, laneCalls(state, "bb-2"), git.calls[5:8])
 }
 
 func TestWorktrees_EnsureNamesTheGitCallThatFailed(t *testing.T) {
@@ -263,6 +278,43 @@ func TestWorktrees_EnsureNamesTheGitCallThatFailed(t *testing.T) {
 		require.ErrorContains(t, err, "git "+step)
 		require.ErrorContains(t, err, "exited with code 128: fatal: refused")
 		assert.Empty(t, got)
+	}
+}
+
+func TestWorktrees_EnsureNamesTheGitCallOfTheLaneThatFailed(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		fail   string
+		failIn func(lane string) string
+		want   string
+	}{
+		"the lane cannot be cut":               {fail: "clone", want: "git clone in "},
+		"the origin of the lane cannot be set": {fail: "remote", failIn: func(lane string) string { return lane }, want: "git remote in "},
+		"the branches cannot be copied":        {fail: "fetch", failIn: func(lane string) string { return lane }, want: "git fetch in "},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			trees, _, state := ensureFixture(t)
+			clone := filepath.Join(state, "repos", "p")
+			makeFolder(filepath.Join(clone, ".git"))
+
+			failing := &fakeGit{fail: c.fail}
+			if c.failIn != nil {
+				failing.failIn = c.failIn(laneOf(clone, "bb-1"))
+			}
+
+			trees.git, trees.remote = failing.runner, failing.runner
+
+			got, err := trees.Ensure(t.Context(), "p", "bb-1", "", "")
+
+			require.ErrorContains(t, err, c.want)
+			require.ErrorContains(t, err, "exited with code 128")
+			assert.Empty(t, got)
+		})
 	}
 }
 

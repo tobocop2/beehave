@@ -80,7 +80,7 @@ Print mode cannot ask for permission. Without these flags, Claude Code refuses a
 
 A file tool that writes outside the work folder still prompts, so the print run refuses it.
 
-The `edits` key of the `agent` call is `True` by default. A step with `edits = False` starts without the permission flag, so Claude Code refuses each file edit of the step. Shell commands stay allowed. The plan, review and design steps of the examples set `edits = False`.
+The `edits` key of the `agent` call is `True` by default. A step with `edits = False` starts without the permission flag, so Claude Code refuses each file edit of the step. Shell commands stay allowed. The plan, review and design steps of the examples set `edits = False`. In a project with a repository, such a step runs in a fresh checkout of the head of the item, which the sandbox denies for write and the engine discards when the step ends (see [Branches of a linked work tree](sandbox.md#branches-of-a-linked-work-tree)).
 
 `--allowedTools` stands in for `permissions.allow` in the settings JSON. It works for a step with no `forbid_commands` too, and it adds no second `--settings` flag next to the one of the hook. The prompt is on stdin, so the list of the flag takes no prompt.
 

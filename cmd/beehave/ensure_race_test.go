@@ -50,7 +50,7 @@ func (r strictGitIn) Run(_ context.Context, args []string) model.CommandResult {
 
 	switch {
 	case args[0] == "clone":
-		return g.clone(args[2])
+		return g.clone(args[len(args)-1])
 	case args[0] == "worktree" && args[1] == "add":
 		return g.add(r.dir, addedFolderPath(args))
 	case args[0] == "rev-parse":

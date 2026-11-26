@@ -36,33 +36,37 @@ func pointAt(t *testing.T, tree, decoy string) {
 func TestWorktrees_EngineCallsStartNoProgramThatTheCloneConfigNames(t *testing.T) {
 	t.Parallel()
 
-	calls := map[string]func(t *testing.T, rig pushRig) error{
-		"the refresh of an item that has a worktree": func(t *testing.T, rig pushRig) error {
+	// project says that the call reads the config of the clone of the project, and not the config of the lane of pushItem, which the worktree of the rig shares.
+	calls := map[string]struct {
+		run     func(t *testing.T, rig pushRig) error
+		project bool
+	}{
+		"the refresh of an item that has a worktree": {run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Ensure(t.Context(), "p", pushItem, "", "")
 
 			return err
-		},
-		"the worktree of a new item": func(t *testing.T, rig pushRig) error {
+		}},
+		"the worktree of a new item": {project: true, run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
 
 			return err
-		},
-		"the fetch of the project": func(t *testing.T, rig pushRig) error {
+		}},
+		"the fetch of the project": {project: true, run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			return rig.pulls.trees.Fetch(t.Context(), "p")
-		},
-		"the list of the worktrees": func(t *testing.T, rig pushRig) error {
+		}},
+		"the list of the worktrees": {run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Path(t.Context(), "p", pushItem)
 
 			return err
-		},
+		}},
 	}
 
 	for name, call := range calls {
@@ -71,14 +75,38 @@ func TestWorktrees_EngineCallsStartNoProgramThatTheCloneConfigNames(t *testing.T
 
 			rig := newPushRig(t)
 			marker, ran := newMarker(t)
+
+			if call.project {
+				rig.config = filepath.Join(rig.pulls.trees.repos, "p", ".git", "config")
+			}
+
 			rig.plant(t, "core.fsmonitor", marker)
 
-			err := call(t, rig)
+			err := call.run(t, rig)
 
 			require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow")
 			assert.NoFileExists(t, ran, "the engine call ran the program that the clone config names")
 		})
 	}
+}
+
+// An agent writes a program into the config of its own lane. The engine refuses that lane, and the other items go on: a worktree of a new item, the fetch of
+// the project and the gate fetch of a commit run no program and fail on no lane but the one that holds the setting.
+func TestWorktrees_AProgramInTheConfigOfOneLaneDoesNotStopTheOtherItemsOrRunInThem(t *testing.T) {
+	t.Parallel()
+
+	rig := newPushRig(t)
+	marker, ran := newMarker(t)
+	rig.plant(t, "core.fsmonitor", marker)
+
+	_, err := rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
+	require.NoError(t, err, "a new item gets a lane of its own, whose config holds no setting")
+
+	require.NoError(t, rig.pulls.trees.Fetch(t.Context(), "p"), "the fetch of the project skips the lane that the engine refuses")
+
+	_, err = rig.pulls.trees.Ensure(t.Context(), "p", pushItem, "", "")
+	require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow", "the item of the lane meets the refusal")
+	assert.NoFileExists(t, ran, "no engine call ran the program that the lane config names")
 }
 
 // The agent rewrites the .git file of its worktree so that it names another repository, with another HEAD and a file that is not committed. The git of

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -210,6 +211,7 @@ func TestSandboxPlan_AWorkFolderWhosePathHoldsAGlobCharacterStopsAStepThatMayEdi
 		work := filepath.Join(filepath.Dir(r.work), folder)
 		require.NoError(t, os.MkdirAll(work, 0o700))
 		runGit(t, work, "init", "-q")
+		commitIn(t, work, "start")
 		r.f.agents.trees = treeAt(work)
 
 		req := request()
@@ -335,7 +337,19 @@ func TestAgents_TheFakeAgentWritesItsOutputFileUnderTheRealSandboxSettings(t *te
 	require.NoError(t, exectest.Write(filepath.Join(bin, "claude"), settingsClaude))
 
 	r.f.agents.adapter = func(model.Agent) agent.Adapter { return claude.New(nil) }
-	r.f.agents.run = agent.Runner{}.Run
+	// The step has edits off, so it runs in a checkout that the engine discards when the step ends. The run keeps the files of the fake agent first.
+	kept := t.TempDir()
+	r.f.agents.run = func(ctx context.Context, spec agent.Spec) agent.Result {
+		result := agent.Runner{}.Run(ctx, spec)
+
+		for _, name := range []string{"settings.json", "writes.log"} {
+			data, err := os.ReadFile(filepath.Join(spec.Dir, name)) //nolint:gosec // a file of the fake agent in the folder of the test
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(kept, name), data, 0o600))
+		}
+
+		return result
+	}
 	r.f.agents.env = map[string]string{"PATH": bin + ":/bin:/usr/bin"}
 
 	outputs := filepath.Join(r.home, "state", "outputs")
@@ -352,7 +366,7 @@ func TestAgents_TheFakeAgentWritesItsOutputFileUnderTheRealSandboxSettings(t *te
 	require.NoError(t, err)
 	require.Empty(t, result.Note)
 
-	settings, err := os.ReadFile(filepath.Join(r.work, "settings.json"))
+	settings, err := os.ReadFile(filepath.Join(kept, "settings.json"))
 	require.NoError(t, err)
 	assertOnlyWriteGrant(t, decodeOutputSettings(t, string(settings)), file, sibling, outputs, r.work)
 
@@ -360,7 +374,7 @@ func TestAgents_TheFakeAgentWritesItsOutputFileUnderTheRealSandboxSettings(t *te
 	require.NoError(t, err, "the agent wrote its output file")
 	assert.JSONEq(t, `{"verdict":"approve"}`, string(written))
 
-	log, err := os.ReadFile(filepath.Join(r.work, "writes.log"))
+	log, err := os.ReadFile(filepath.Join(kept, "writes.log"))
 	require.NoError(t, err)
 	assert.Equal(t, "shell wrote "+file+"\ntool wrote "+file+"\nshell refused "+sibling+"\ntool refused "+sibling+"\n", string(log))
 	assert.NoFileExists(t, sibling)

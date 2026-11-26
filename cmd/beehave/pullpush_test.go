@@ -25,6 +25,8 @@ type pushRig struct {
 	head   string
 	opts   flow.Options
 	pulls  pulls
+	// config is the config file that plant writes. Empty means the config of the lane of the worktree.
+	config string
 }
 
 func newPushRig(t *testing.T) pushRig {
@@ -199,4 +201,30 @@ func TestPulls_PushWithNoAddressToPushToIsRefusedAndPushesNothing(t *testing.T) 
 			assert.Empty(t, gitOut(t, rig.remote, "branch", "--list", pushItem), "the remote has no branch of the item")
 		})
 	}
+}
+
+func TestPulls_CopyHeadReadsTheLaneClone(t *testing.T) {
+	t.Parallel()
+
+	rig := newPushRig(t)
+	clone := filepath.Join(rig.opts.StateDir, "repos", "p")
+
+	dir, err := rig.pulls.copyHead(t.Context(), "p", pushItem, pushItem, rig.head)
+
+	require.NoError(t, err)
+	assert.Equal(t, rig.head, gitOut(t, dir, "rev-parse", "refs/heads/"+pushItem), "the push repository holds the head")
+	assert.Equal(t, rig.head, gitOut(t, laneOf(clone, pushItem), "rev-parse", "refs/heads/"+model.ItemBranch(pushItem)), "the lane of the item holds the commit")
+	require.Error(t, exec.CommandContext(t.Context(), "git", "-C", clone, "cat-file", "-e", rig.head+"^{commit}").Run(), //nolint:gosec // a test runs git on its own temporary folder
+		"the clone of the project never held the commit, so only a read of the lane can copy it")
+}
+
+func TestPulls_PushOfAnItemWithNoLaneIsRefusedAndNamesTheItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newPushRig(t)
+
+	err := rig.pulls.Push(t.Context(), "p", "other-item", "other-item", rig.head, "")
+
+	require.ErrorIs(t, err, errNoCloneToPush)
+	require.ErrorContains(t, err, "item other-item of project p")
 }

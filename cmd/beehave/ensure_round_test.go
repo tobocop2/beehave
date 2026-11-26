@@ -149,7 +149,7 @@ func TestWorktrees_EnsureWithNoStartRefusesAKeptRoundWorktreeWithChangesAndNames
 
 			require.ErrorIs(t, err, errKeptChanges)
 			require.ErrorContains(t, err, "the worktree "+dir+" of item "+roundItem+" holds changes")
-			require.ErrorContains(t, err, "git -C "+rig.clone()+" worktree remove --force "+dir)
+			require.ErrorContains(t, err, "git -C "+laneOf(rig.clone(), roundItem)+" worktree remove --force "+dir)
 			assert.Empty(t, got)
 			assert.Equal(t, first, gitOut(t, dir, "rev-parse", "HEAD"), "the refused tree does not move")
 			assert.FileExists(t, filepath.Join(dir, "TIP"), "the refused tree keeps its files")
@@ -204,7 +204,7 @@ func TestWorktrees_EnsureWithNoStartRefusesAKeptRoundWorktreeWithCommitsOnNoRemo
 
 			require.ErrorIs(t, err, errKeptChanges)
 			require.ErrorContains(t, err, "the worktree "+dir+" of item "+roundItem+" holds commits that are on no remote branch ("+strings.Join(named, "; ")+")")
-			require.ErrorContains(t, err, "git -C "+rig.clone()+" worktree remove --force "+dir)
+			require.ErrorContains(t, err, "git -C "+laneOf(rig.clone(), roundItem)+" worktree remove --force "+dir)
 			assert.Empty(t, got)
 			assert.Equal(t, local, gitOut(t, dir, "rev-parse", "--short", "HEAD"), "the refused tree does not move")
 		})
@@ -353,8 +353,8 @@ func TestWorktrees_EnsureCallsGitInTheOrderThatCutsARoundItemFromItsBase(t *test
 	assert.Equal(t, want, got)
 	calls := []string{filepath.Join(state, "repos") + ": clone https://example.test/owner/name.git " + clone}
 	calls = append(calls, baseFetch(state, "integration/r1")...)
-	assert.Equal(t, append(calls,
-		clone+": worktree add --force --detach "+want+" origin/integration/r1",
+	assert.Equal(t, append(append(calls, laneCalls(state, roundItem)...),
+		laneOf(clone, roundItem)+": worktree add --force --detach "+want+" origin/integration/r1",
 		want+": update-ref "+placedMark+" HEAD",
 	), git.calls)
 }
@@ -410,12 +410,13 @@ func TestWorktrees_EnsureCallsGitInTheOrderThatMakesARoundItemAgainAtItsStart(t 
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
-	assert.Equal(t, []string{
+	assert.Equal(t, append(append([]string{
 		filepath.Join(state, "repos") + ": clone https://example.test/owner/name.git " + clone,
 		clone + ": cat-file -e abc123^{commit}",
-		clone + ": worktree add --force --detach " + want + " abc123",
-		want + ": update-ref " + placedMark + " HEAD",
-	}, git.calls)
+	}, laneCalls(state, roundItem)...),
+		laneOf(clone, roundItem)+": worktree add --force --detach "+want+" abc123",
+		want+": update-ref "+placedMark+" HEAD",
+	), git.calls)
 }
 
 func TestWorktrees_EnsureStopsWithAPlainErrorWhenTheCloneMadeAgainLacksTheStartCommitOfARoundItem(t *testing.T) {
@@ -535,8 +536,8 @@ func TestWorktrees_EnsureMakesARemovedRoundWorktreeAgainAndKeepsTheRecordOfARemo
 
 	require.NoError(t, err)
 	assert.Equal(t, dir, again)
-	assert.Contains(t, gitOut(t, rig.clone(), "worktree", "list", "--porcelain"), "worktree "+sibling+"\n",
-		"git keeps the record of the removed sibling worktree")
+	assert.Contains(t, gitOut(t, laneOf(rig.clone(), "bb-1"), "worktree", "list", "--porcelain"), "worktree "+sibling+"\n",
+		"git keeps the record of the removed sibling worktree in the lane of the sibling")
 }
 
 func TestWorktrees_EnsureMakesATrackerWorktreeAgainThatSomeoneRemovedOnTheBranchOfTheItem(t *testing.T) {
@@ -565,7 +566,7 @@ func TestWorktrees_EnsureStillRefusesABranchThatALiveWorktreeOnAnotherPathHolds(
 	require.NoError(t, err)
 
 	other := filepath.Join(rig.trees.root, "p", "elsewhere")
-	_, err = rig.trees.add(t.Context(), rig.clone(), other, "bb-1", "origin/main")
+	_, err = rig.trees.add(t.Context(), laneOf(rig.clone(), "bb-1"), other, "bb-1", "origin/main")
 
 	require.ErrorContains(t, err, "bb-1")
 	assert.NoDirExists(t, other, "no second worktree holds the branch")
