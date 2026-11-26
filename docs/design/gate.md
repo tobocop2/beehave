@@ -220,7 +220,7 @@ Three states, one owner: `internal/gate` sets `pass`, `fail` and `unknown`.
 
 The gate program is the set of repository paths that hold the program of the gate, such as `Makefile`, its shadow files and `scripts/`. The gate takes its program from the base commit and its code from the head. See `configuration.md` for the rules that the config checks.
 
-The config computes the list once, when it loads the project. The list is a default list joined with the owner key `gate_program`, sorted, with each name once. The owner list only adds. A project with no `source` and no `forge` has no base, so it gets no default and no list.
+The config computes the list once, when it loads the project. When the owner key `gate_program` is not empty, the list is that key joined with a default list, sorted, with each name once. The owner list only adds. An empty or unset `gate_program` gives an empty list, and the gate runs as before.
 
 The default comes from the programs of the gate. The config parses each command of `gate`, `gate_steps` and `test_command` with the shell parser, and takes the base name of the first word of each simple command, so `a && b`, `a; b` and `a | b` each name two programs. A word that is not plain text, such as `$MAKE`, names no program, and a command that does not parse names none. Each program adds the files at the root that it reads when no option names a file:
 
@@ -228,7 +228,7 @@ The default comes from the programs of the gate. The config parses each command 
 |---|---|---|
 | `make`, `gmake` | `GNUmakefile`, `makefile`, `Makefile` | the GNU make manual, "What Name to Give Your Makefile" |
 | `golangci-lint` | `.golangci.` with each of `json`, `toml`, `yaml`, `yml`, `properties`, `props`, `prop`, `hcl`, `tfvars`, `dotenv`, `env`, `ini` | golangci-lint v2.15.0 searches for the name `.golangci`, and viper v1.12.0 tries each extension of its supported list |
-| the secret scan of the engine, in every project with a base | `.gitleaks.toml`, `.gitleaksignore` | gitleaks 8.30.1 reads both from the path that it scans |
+| the secret scan of the engine, in every project with a gate program | `.gitleaks.toml`, `.gitleaksignore` | gitleaks 8.30.1 reads both from the path that it scans |
 
 The default has limits. A program that another program starts, such as `golangci-lint` inside `make check`, is not seen: list its files in `gate_program`. For beehave, that is `.golangci.yml` and `.go-test-coverage.yml`. An option that names a file, such as `make -f x` or `golangci-lint -c x`, adds no name: list the file. The default holds no file outside the root, no file above the repository or in the home folder, and no `go.work`.
 
@@ -259,7 +259,7 @@ The command refuses a pull request on the branch of an item. The engine names th
 
 The command refuses a pull request whose base is not the base branch of the project. A status stands for the commit on every pull request, so a pull request into another branch would bless the commit for the base branch. It also refuses a head that is behind the base branch, so the gate never judges code that the base has since changed. It reads the tip of the base branch once, and the paths, the diff and the ancestor check all use that tip. After the gate, it reads the head of the pull request and the tip again. When either moved, it posts nothing. A move in the short time between that read and the post is not seen; a ruleset that requires an up-to-date branch closes it.
 
-The command refuses a pull request that changes a path that the gate program does not list, and a pull request that changes a submodule. It reads the changed paths with git, against the tip of the base branch. A rename shows as a delete of the old path and an add of the new path, so a rename and a long file list cannot hide a path. A project with no base has no gate program, so the command refuses every change.
+The command refuses a pull request that changes a path that the gate program does not list, and a pull request that changes a submodule. It reads the changed paths with git, against the tip of the base branch. A rename shows as a delete of the old path and an add of the new path, so a rename and a long file list cannot hide a path. A project with no `gate_program` lists no path, so the command refuses every change.
 
 The command is not a barrier. The terminal and the diff stop a script by mistake. An agent step that is not in a sandbox can still push a branch under another name and run the command. Only the sandbox closes that.
 
