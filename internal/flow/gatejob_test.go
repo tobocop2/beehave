@@ -219,7 +219,7 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	own := &upHosts{started: true}
 	h.hosts = own
-	gated := newHostGate()
+	gated := newHeldHostGate(t)
 	deps := h.deps()
 	deps.Gate = gated
 
@@ -227,8 +227,6 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
-
-	dumpIfTheTestFails(t, engine)
 
 	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"check\")\n"))
 	ended := make(chan error, 1)
@@ -244,10 +242,12 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	require.NoError(t, client.Cancel(testItem))
 	h.tick(t)
 
-	settleCancel(t, engine, gated, ended)
+	settleCancel(t, gated, ended)
 
 	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
+
+	requireTheOldWaitFirst(t, gated)
 
 	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume read the recorded host and started none")
 
@@ -259,72 +259,38 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	}
 }
 
-// settleCancel waits for the end of the main run that a cancel stopped, then for every run of its tree to leave the queue as canceled and for the wait
-// that the cancel stopped to return, so that nothing of the old run is alive when the test resumes.
-func settleCancel(t *testing.T, engine *Engine, gated hostGate, ended <-chan error) {
+// settleCancel waits for the end of the main run that a cancel stopped, then for the wait that the cancel stopped to return, so that no wait of the old run is open when the test resumes.
+func settleCancel(t *testing.T, gated hostGate, ended <-chan error) {
 	t.Helper()
 
 	require.Error(t, receive(t, ended))
 
-	waitOn(t, waiting[struct{}]{what: "the old runs of the item to end as canceled and the old wait to return", read: func() (struct{}, bool, error) {
-		return struct{}{}, gated.oldWaitReturned() && noRunOpen(engine), nil
+	gated.askForTheReturn()
+
+	waitOn(t, waiting[struct{}]{what: "the old wait to return", read: func() (struct{}, bool, error) {
+		return struct{}{}, gated.oldWaitReturned(), nil
 	}})
 }
 
-// dumpIfTheTestFails prints the workflow state of the engine when the test has failed, on any path. Call it right after the engine starts: the cleanup then runs before the shutdown.
-func dumpIfTheTestFails(t *testing.T, engine *Engine) {
-	t.Helper()
-
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("the engine at the end of the failed test:\n%s", within(dumpBound, func() string { return workflowState(engine) }))
-		}
-	})
-}
-
-// oldWaitReturned reports whether the wait that the cancel stopped has returned. The first call tells the test that it waits for that return.
-func (g hostGate) oldWaitReturned() bool {
-	if g.returned.Load() > 0 {
-		return true
-	}
-
+// askForTheReturn tells a held wait that the test waits for its return.
+func (g hostGate) askForTheReturn() {
 	select {
 	case g.waiting <- struct{}{}:
 	default:
 	}
-
-	return false
 }
 
-// noRunOpen reports whether every workflow of the engine has ended.
-func noRunOpen(engine *Engine) bool {
-	rows, err := dbos.ListWorkflows(engine.ctx)
-	if err != nil {
-		return false
-	}
-
-	return !slices.ContainsFunc(rows, func(row dbos.WorkflowStatus) bool {
-		return row.Status != dbos.WorkflowStatusCancelled && row.Status != dbos.WorkflowStatusSuccess && row.Status != dbos.WorkflowStatusError
-	})
+// oldWaitReturned reports whether the wait that the cancel stopped has returned.
+func (g hostGate) oldWaitReturned() bool {
+	return g.returned.Load() > 0
 }
 
-// The old wait of the job stays open after the cancel, until the resumed run starts its own wait on the same job or the test begins to wait for the old wait to return.
-// The old wait must return first: a resume that starts while it runs reads a job that a stopped run still holds.
-func TestGateJob_AResumeStartsOnlyAfterTheWaitThatTheCancelStoppedHasReturned(t *testing.T) {
-	t.Parallel()
+// newHeldHostGate is a hostGate whose blocked wait stays open after the cancel, until a wait after it starts or the test asks for its return.
+func newHeldHostGate(t *testing.T) hostGate {
+	t.Helper()
 
-	h := mergeHarness(t, merge.Result{Stop: merge.Done})
-	own := &upHosts{started: true}
-	h.hosts = own
 	gated := newHostGate()
 	gated.hold = make(chan struct{})
-	deps := h.deps()
-	deps.Gate = gated
-
-	engine, err := NewEngine(t.Context(), h.opts, deps)
-	require.NoError(t, err)
-	require.NoError(t, engine.Launch())
-	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	go func() {
 		select {
@@ -336,7 +302,38 @@ func TestGateJob_AResumeStartsOnlyAfterTheWaitThatTheCancelStoppedHasReturned(t 
 		close(gated.hold)
 	}()
 
-	dumpIfTheTestFails(t, engine)
+	return gated
+}
+
+// requireTheOldWaitFirst fails the test when the wait that the cancel stopped returned after the wait of the resumed run started.
+func requireTheOldWaitFirst(t *testing.T, gated hostGate) {
+	t.Helper()
+
+	events := gated.eventsSeen()
+	returned := fmt.Sprintf("wait %d returns", gated.blockAt)
+	started := fmt.Sprintf("wait %d starts", gated.blockAt+1)
+
+	require.Contains(t, events, returned)
+	require.Contains(t, events, started)
+	assert.Less(t, slices.Index(events, returned), slices.Index(events, started), "the old wait returned before the resumed run waited on the job: %v", events)
+}
+
+// The old wait of the job stays open after the cancel, until the resumed run starts its own wait on the same job or the test begins to wait for the old wait to return.
+// The old wait must return first: a resume that starts while it runs reads a job that a stopped run still holds.
+func TestGateJob_AResumeStartsOnlyAfterTheWaitThatTheCancelStoppedHasReturned(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	own := &upHosts{started: true}
+	h.hosts = own
+	gated := newHeldHostGate(t)
+	deps := h.deps()
+	deps.Gate = gated
+
+	engine, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"check\")\n"))
 	ended := make(chan error, 1)
@@ -352,15 +349,12 @@ func TestGateJob_AResumeStartsOnlyAfterTheWaitThatTheCancelStoppedHasReturned(t 
 	require.NoError(t, client.Cancel(testItem))
 	h.tick(t)
 
-	settleCancel(t, engine, gated, ended)
+	settleCancel(t, gated, ended)
 
 	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
-	events := gated.eventsSeen()
-	require.Contains(t, events, "wait 1 returns")
-	require.Contains(t, events, "wait 2 starts")
-	assert.Less(t, slices.Index(events, "wait 1 returns"), slices.Index(events, "wait 2 starts"), "the old wait returned before the resumed run waited on the job: %v", events)
+	requireTheOldWaitFirst(t, gated)
 }
 
 // The cancel falls after the first gate has finished, so the resumed main replays host_up and the first gate from their records and runs
@@ -371,7 +365,7 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	own := &upHosts{started: true}
 	h.hosts = own
-	gated := newHostGate()
+	gated := newHeldHostGate(t)
 	gated.blockAt = 2
 	deps := h.deps()
 	deps.Gate = gated
@@ -380,8 +374,6 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
-
-	dumpIfTheTestFails(t, engine)
 
 	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"one\")\ngate(name = \"two\")\ncommand(name = \"build\", run = [\"make\", \"x\"], host = \"build\")\nhost_teardown(name = \"stop\")\n"))
 	ended := make(chan error, 1)
@@ -397,12 +389,14 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	require.NoError(t, client.Cancel(testItem))
 	h.tick(t)
 
-	settleCancel(t, engine, gated, ended)
+	settleCancel(t, gated, ended)
 
 	before := len(gated.gatedOn())
 
 	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
+
+	requireTheOldWaitFirst(t, gated)
 
 	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume started no host")
 	assert.Greater(t, len(gated.gatedOn()), before, "the second gate ran again after the resume")
