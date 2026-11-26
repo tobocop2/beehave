@@ -35,7 +35,7 @@ func TestStore_EveryCallShapeIsOneGhAccepts(t *testing.T) {
 	_, err = s.Comments(ctx, id)
 	require.NoError(t, err)
 
-	_, _ = s.Parent(ctx, id)
+	t.Log(s.Parent(ctx, id))
 
 	for _, status := range []store.Status{store.StatusHold, store.StatusOpen, store.StatusClosed, store.StatusOpen} {
 		require.NoError(t, s.SetStatus(ctx, id, status))

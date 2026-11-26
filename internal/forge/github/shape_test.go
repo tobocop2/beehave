@@ -45,6 +45,9 @@ func (g *shapeGh) Run(_ context.Context, args []string) model.CommandResult {
 
 type shapeDriver func(context.Context, *github.Forge)
 
+// sink takes the answer of a method and drops it: a driver needs the gh call of a method and not its result.
+func sink(...any) {}
+
 // shapeDrivers calls every public method of the forge with arguments that pass its own checks. A method that needs no gh call is listed in shapeNoCall.
 func shapeDrivers() map[string]shapeDriver {
 	card := model.Card{Board: 3, Number: 7, Pull: true, Status: "Todo"}
@@ -55,60 +58,60 @@ func shapeDrivers() map[string]shapeDriver {
 
 	d := map[string]shapeDriver{}
 
-	d["PlaceCard"] = func(c context.Context, f *github.Forge) { _ = f.PlaceCard(c, card) }
-	d["CardStatus"] = func(c context.Context, f *github.Forge) { _, _ = f.CardStatus(c, card) }
-	d["CommitTree"] = func(c context.Context, f *github.Forge) { _, _ = f.CommitTree(c, shapeSHA) }
-	d["Compare"] = func(c context.Context, f *github.Forge) { _, _ = f.Compare(c, shapeSHA, "main") }
-	d["TreeBlobs"] = func(c context.Context, f *github.Forge) { _, _ = f.TreeBlobs(c, shapeSHA) }
-	d["FailedLog"] = func(c context.Context, f *github.Forge) { _, _ = f.FailedLog(c, shapeJob) }
-	d["ExistingReview"] = func(c context.Context, f *github.Forge) { _, _ = f.ExistingReview(c, 7) }
-	d["Reviews"] = func(c context.Context, f *github.Forge) { _, _ = f.Reviews(c, 7) }
-	d["PRBody"] = func(c context.Context, f *github.Forge) { _, _ = f.PRBody(c, 7) }
-	d["PRView"] = func(c context.Context, f *github.Forge) { _, _ = f.PRView(c, 7, "title", "body") }
-	d["PullRead"] = func(c context.Context, f *github.Forge) { _, _ = f.PullRead(c, 7) }
-	d["OpenPulls"] = func(c context.Context, f *github.Forge) { _, _ = f.OpenPulls(c, "main") }
-	d["Item"] = func(c context.Context, f *github.Forge) { _, _ = f.Item(c, 7) }
-	d["PullCounts"] = func(c context.Context, f *github.Forge) { _, _, _ = f.PullCounts(c, 7) }
-	d["Committers"] = func(c context.Context, f *github.Forge) { _, _ = f.Committers(c, 7) }
-	d["ReadyMarks"] = func(c context.Context, f *github.Forge) { _, _ = f.ReadyMarks(c, 7) }
-	d["PRList"] = func(c context.Context, f *github.Forge) { _, _ = f.PRList(c, 5, "--state", "open", "--json", "number,title") }
-	d["PRChecks"] = func(c context.Context, f *github.Forge) { _, _ = f.PRChecks(c, 7) }
-	d["OpenChangeRequests"] = func(c context.Context, f *github.Forge) { _, _ = f.OpenChangeRequests(c, 7) }
-	d["UnresolvedThreads"] = func(c context.Context, f *github.Forge) { _, _ = f.UnresolvedThreads(c, 7) }
-	d["ClosingRefs"] = func(c context.Context, f *github.Forge) { _, _ = f.ClosingRefs(c, 7) }
-	d["StackID"] = func(c context.Context, f *github.Forge) { _, _ = f.StackID(c, 7) }
-	d["Association"] = func(c context.Context, f *github.Forge) { _, _ = f.Association(c, 7) }
-	d["Comments"] = func(c context.Context, f *github.Forge) { _, _ = f.Comments(c, 7) }
-	d["ReviewComments"] = func(c context.Context, f *github.Forge) { _, _ = f.ReviewComments(c, 7) }
-	d["Search"] = func(c context.Context, f *github.Forge) { _, _ = f.Search(c, search) }
-	d["DefaultBranch"] = func(c context.Context, f *github.Forge) { _, _ = f.DefaultBranch(c) }
-	d["BranchRef"] = func(c context.Context, f *github.Forge) { _, _, _ = f.BranchRef(c, "main") }
-	d["PostComment"] = func(c context.Context, f *github.Forge) { _ = f.PostComment(c, 7, "text") }
-	d["ClosePR"] = func(c context.Context, f *github.Forge) { _ = f.ClosePR(c, 7, "text") }
-	d["SetDraft"] = func(c context.Context, f *github.Forge) { _ = f.SetDraft(c, 7, false) }
-	d["CreatePR"] = func(c context.Context, f *github.Forge) { _, _ = f.CreatePR(c, pull) }
-	d["LinkStack"] = func(c context.Context, f *github.Forge) { _ = f.LinkStack(c, 7, 8, "main") }
-	d["Unstack"] = func(c context.Context, f *github.Forge) { _ = f.Unstack(c, 7) }
-	d["Overlap"] = func(c context.Context, f *github.Forge) { _, _ = f.Overlap(c, overlap) }
-	d["OwnPulls"] = func(c context.Context, f *github.Forge) { _, _ = f.OwnPulls(c, "me") }
-	d["Title"] = func(c context.Context, f *github.Forge) { _, _ = f.Title(c, 7) }
-	d["IssueState"] = func(c context.Context, f *github.Forge) { _, _ = f.IssueState(c, 7) }
-	d["IssueAssignees"] = func(c context.Context, f *github.Forge) { _, _ = f.IssueAssignees(c, repo, 7) }
-	d["CheckNotStarted"] = func(c context.Context, f *github.Forge) { _, _ = f.CheckNotStarted(c, shapeJob) }
-	d["PostStatus"] = func(c context.Context, f *github.Forge) { _ = f.PostStatus(c, status) }
-	d["Protection"] = func(c context.Context, f *github.Forge) { _, _ = f.Protection(c, "main") }
-	d["CommitsAhead"] = func(c context.Context, f *github.Forge) { _, _ = f.CommitsAhead(c, "main", "topic") }
-	d["MergeBranch"] = func(c context.Context, f *github.Forge) { _, _ = f.MergeBranch(c, "main", "topic") }
-	d["MergePR"] = func(c context.Context, f *github.Forge) { _ = f.MergePR(c, 7, shapeSHA) }
-	d["AutoMergePR"] = func(c context.Context, f *github.Forge) { _ = f.AutoMergePR(c, 7, shapeSHA) }
-	d["DisableAutoMergePR"] = func(c context.Context, f *github.Forge) { _ = f.DisableAutoMergePR(c, 7) }
-	d["CanWriteCI"] = func(c context.Context, f *github.Forge) { _, _ = f.CanWriteCI(c) }
-	d["Login"] = func(c context.Context, f *github.Forge) { _, _ = f.Login(c) }
-	d["CreateBranch"] = func(c context.Context, f *github.Forge) { _ = f.CreateBranch(c, "topic", shapeSHA) }
-	d["SetBase"] = func(c context.Context, f *github.Forge) { _ = f.SetBase(c, 7, "main") }
-	d["SetBody"] = func(c context.Context, f *github.Forge) { _ = f.SetBody(c, 7, "text") }
-	d["CloneURL"] = func(_ context.Context, f *github.Forge) { _ = f.CloneURL() }
-	d["ItemFields"] = func(_ context.Context, f *github.Forge) { _ = f.ItemFields() }
+	d["PlaceCard"] = func(c context.Context, f *github.Forge) { sink(f.PlaceCard(c, card)) }
+	d["CardStatus"] = func(c context.Context, f *github.Forge) { sink(f.CardStatus(c, card)) }
+	d["CommitTree"] = func(c context.Context, f *github.Forge) { sink(f.CommitTree(c, shapeSHA)) }
+	d["Compare"] = func(c context.Context, f *github.Forge) { sink(f.Compare(c, shapeSHA, "main")) }
+	d["TreeBlobs"] = func(c context.Context, f *github.Forge) { sink(f.TreeBlobs(c, shapeSHA)) }
+	d["FailedLog"] = func(c context.Context, f *github.Forge) { sink(f.FailedLog(c, shapeJob)) }
+	d["ExistingReview"] = func(c context.Context, f *github.Forge) { sink(f.ExistingReview(c, 7)) }
+	d["Reviews"] = func(c context.Context, f *github.Forge) { sink(f.Reviews(c, 7)) }
+	d["PRBody"] = func(c context.Context, f *github.Forge) { sink(f.PRBody(c, 7)) }
+	d["PRView"] = func(c context.Context, f *github.Forge) { sink(f.PRView(c, 7, "title", "body")) }
+	d["PullRead"] = func(c context.Context, f *github.Forge) { sink(f.PullRead(c, 7)) }
+	d["OpenPulls"] = func(c context.Context, f *github.Forge) { sink(f.OpenPulls(c, "main")) }
+	d["Item"] = func(c context.Context, f *github.Forge) { sink(f.Item(c, 7)) }
+	d["PullCounts"] = func(c context.Context, f *github.Forge) { sink(f.PullCounts(c, 7)) }
+	d["Committers"] = func(c context.Context, f *github.Forge) { sink(f.Committers(c, 7)) }
+	d["ReadyMarks"] = func(c context.Context, f *github.Forge) { sink(f.ReadyMarks(c, 7)) }
+	d["PRList"] = func(c context.Context, f *github.Forge) { sink(f.PRList(c, 5, "--state", "open", "--json", "number,title")) }
+	d["PRChecks"] = func(c context.Context, f *github.Forge) { sink(f.PRChecks(c, 7)) }
+	d["OpenChangeRequests"] = func(c context.Context, f *github.Forge) { sink(f.OpenChangeRequests(c, 7)) }
+	d["UnresolvedThreads"] = func(c context.Context, f *github.Forge) { sink(f.UnresolvedThreads(c, 7)) }
+	d["ClosingRefs"] = func(c context.Context, f *github.Forge) { sink(f.ClosingRefs(c, 7)) }
+	d["StackID"] = func(c context.Context, f *github.Forge) { sink(f.StackID(c, 7)) }
+	d["Association"] = func(c context.Context, f *github.Forge) { sink(f.Association(c, 7)) }
+	d["Comments"] = func(c context.Context, f *github.Forge) { sink(f.Comments(c, 7)) }
+	d["ReviewComments"] = func(c context.Context, f *github.Forge) { sink(f.ReviewComments(c, 7)) }
+	d["Search"] = func(c context.Context, f *github.Forge) { sink(f.Search(c, search)) }
+	d["DefaultBranch"] = func(c context.Context, f *github.Forge) { sink(f.DefaultBranch(c)) }
+	d["BranchRef"] = func(c context.Context, f *github.Forge) { sink(f.BranchRef(c, "main")) }
+	d["PostComment"] = func(c context.Context, f *github.Forge) { sink(f.PostComment(c, 7, "text")) }
+	d["ClosePR"] = func(c context.Context, f *github.Forge) { sink(f.ClosePR(c, 7, "text")) }
+	d["SetDraft"] = func(c context.Context, f *github.Forge) { sink(f.SetDraft(c, 7, false)) }
+	d["CreatePR"] = func(c context.Context, f *github.Forge) { sink(f.CreatePR(c, pull)) }
+	d["LinkStack"] = func(c context.Context, f *github.Forge) { sink(f.LinkStack(c, 7, 8, "main")) }
+	d["Unstack"] = func(c context.Context, f *github.Forge) { sink(f.Unstack(c, 7)) }
+	d["Overlap"] = func(c context.Context, f *github.Forge) { sink(f.Overlap(c, overlap)) }
+	d["OwnPulls"] = func(c context.Context, f *github.Forge) { sink(f.OwnPulls(c, "me")) }
+	d["Title"] = func(c context.Context, f *github.Forge) { sink(f.Title(c, 7)) }
+	d["IssueState"] = func(c context.Context, f *github.Forge) { sink(f.IssueState(c, 7)) }
+	d["IssueAssignees"] = func(c context.Context, f *github.Forge) { sink(f.IssueAssignees(c, repo, 7)) }
+	d["CheckNotStarted"] = func(c context.Context, f *github.Forge) { sink(f.CheckNotStarted(c, shapeJob)) }
+	d["PostStatus"] = func(c context.Context, f *github.Forge) { sink(f.PostStatus(c, status)) }
+	d["Protection"] = func(c context.Context, f *github.Forge) { sink(f.Protection(c, "main")) }
+	d["CommitsAhead"] = func(c context.Context, f *github.Forge) { sink(f.CommitsAhead(c, "main", "topic")) }
+	d["MergeBranch"] = func(c context.Context, f *github.Forge) { sink(f.MergeBranch(c, "main", "topic")) }
+	d["MergePR"] = func(c context.Context, f *github.Forge) { sink(f.MergePR(c, 7, shapeSHA)) }
+	d["AutoMergePR"] = func(c context.Context, f *github.Forge) { sink(f.AutoMergePR(c, 7, shapeSHA)) }
+	d["DisableAutoMergePR"] = func(c context.Context, f *github.Forge) { sink(f.DisableAutoMergePR(c, 7)) }
+	d["CanWriteCI"] = func(c context.Context, f *github.Forge) { sink(f.CanWriteCI(c)) }
+	d["Login"] = func(c context.Context, f *github.Forge) { sink(f.Login(c)) }
+	d["CreateBranch"] = func(c context.Context, f *github.Forge) { sink(f.CreateBranch(c, "topic", shapeSHA)) }
+	d["SetBase"] = func(c context.Context, f *github.Forge) { sink(f.SetBase(c, 7, "main")) }
+	d["SetBody"] = func(c context.Context, f *github.Forge) { sink(f.SetBody(c, 7, "text")) }
+	d["CloneURL"] = func(_ context.Context, f *github.Forge) { sink(f.CloneURL()) }
+	d["ItemFields"] = func(_ context.Context, f *github.Forge) { sink(f.ItemFields()) }
 
 	return d
 }
