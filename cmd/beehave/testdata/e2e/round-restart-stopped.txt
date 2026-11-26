@@ -92,7 +92,7 @@ s1
 Todo
 -- remove.sh --
 set -e
-git -C state/repos/round branch -D 432
+git -C state/repos/round.lane.432 branch -D 432
 git --git-dir="$WORK/remote.git" update-ref refs/heads/432 refs/heads/integration/r1
 -- restart.sh --
 beehaveround run 432 round --workflow flow/workflow.star > restart.out 2>&1 || true

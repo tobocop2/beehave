@@ -47,12 +47,13 @@ func TestWorktrees_ReviewCheckoutIsFreshAtThePin(t *testing.T) {
 
 	var stray bool
 
-	r.f.agents.run = func(_ context.Context, spec agent.Spec) agent.Result {
+	inner := r.f.agents.run
+	r.f.agents.run = func(ctx context.Context, spec agent.Spec) agent.Result {
 		seen, head = spec.Dir, gitOut(t, spec.Dir, "rev-parse", "HEAD")
 		_, err := os.Stat(filepath.Join(spec.Dir, "stray.txt"))
 		stray = err == nil
 
-		return agent.Result{Outcome: agent.OutcomeExited}
+		return inner(ctx, spec)
 	}
 
 	req := request()
@@ -75,11 +76,12 @@ func TestAgents_ReviewCheckoutHasTheSamePathOnARerun(t *testing.T) {
 
 	var dirs []string
 
-	r.f.agents.run = func(_ context.Context, spec agent.Spec) agent.Result {
+	inner := r.f.agents.run
+	r.f.agents.run = func(ctx context.Context, spec agent.Spec) agent.Result {
 		dirs = append(dirs, spec.Dir)
 		require.NoError(t, os.WriteFile(filepath.Join(spec.Dir, "left.txt"), []byte("a first run"), 0o600))
 
-		return agent.Result{Outcome: agent.OutcomeExited}
+		return inner(ctx, spec)
 	}
 
 	run := func(item, call string) {

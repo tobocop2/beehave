@@ -175,7 +175,7 @@ func laneCalls(state, item string) []string {
 	return []string{
 		filepath.Join(state, "repos") + ": clone -q --local --no-checkout " + clone + " " + lane,
 		lane + ": remote set-url origin https://example.test/owner/name.git",
-		lane + ": fetch -q --no-tags --no-write-fetch-head " + clone + " +refs/remotes/origin/*:refs/remotes/origin/* ^refs/remotes/origin/HEAD",
+		lane + ": fetch -q --no-tags --no-write-fetch-head " + clone + " +refs/remotes/origin/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* ^refs/remotes/origin/HEAD",
 	}
 }
 

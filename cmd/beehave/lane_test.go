@@ -132,15 +132,18 @@ func TestWorktrees_SyncLanesNamesTheFolderThatFails(t *testing.T) {
 		require.ErrorContains(t, err, "read the folder of the clones")
 	})
 
-	t.Run("a lane is no repository", func(t *testing.T) {
+	t.Run("a lane that fails does not stop the other lanes", func(t *testing.T) {
 		t.Parallel()
 
 		rig := newRoundRig(t)
-		require.NoError(t, os.MkdirAll(laneOf(rig.clone(), "broken"), 0o700))
+		require.NoError(t, os.MkdirAll(laneOf(rig.clone(), "a-broken"), 0o700))
 
-		err := rig.trees.syncLanes(t.Context(), rig.clone())
+		_, err := rig.trees.Ensure(t.Context(), "p", "bb-1", "", "")
+		require.NoError(t, err)
 
-		require.ErrorContains(t, err, "git fetch in "+laneOf(rig.clone(), "broken"))
+		tip := commitOn(t, rig.origin, "late-branch")
+		require.NoError(t, rig.trees.Fetch(t.Context(), "p"), "the lane that is no repository does not fail the fetch of the project")
+		assert.Equal(t, tip, gitOut(t, laneOf(rig.clone(), "bb-1"), "rev-parse", "refs/remotes/origin/late-branch"))
 	})
 
 	t.Run("a file and a folder of another project are no lane", func(t *testing.T) {

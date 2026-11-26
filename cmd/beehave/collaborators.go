@@ -393,14 +393,21 @@ func (w worktrees) cut(ctx context.Context, project, clone, lane string) error {
 	return gitExit("clone", w.repos, w.reach(project, w.repos, clone).Run(ctx, []string{"clone", "-q", "--local", "--no-checkout", clone, lane}))
 }
 
-// syncLane copies the remote branches of the clone of the project into the lane over the file transport. The symbolic ref origin/HEAD stays out, because it
-// names a branch that the same fetch updates.
+// syncLane copies the remote branches and the tags of the clone of the project into the lane over the file transport. The symbolic ref origin/HEAD stays out,
+// because it names a branch that the same fetch updates.
 func (w worktrees) syncLane(ctx context.Context, clone, lane string) error {
-	return w.run(ctx, lane, "fetch", "-q", "--no-tags", "--no-write-fetch-head", clone, "+"+remoteRefs+":"+remoteRefs, "^"+remoteHead)
+	return w.run(ctx, lane, "fetch", "-q", "--no-tags", "--no-write-fetch-head", clone, "+"+remoteRefs+":"+remoteRefs, "+refs/tags/*:refs/tags/*", "^"+remoteHead)
 }
 
-// syncLanes copies the remote branches of the clone of the project into each lane of the project.
+// syncLanes copies the remote branches and the tags of the clone of the project into each lane of the project.
 func (w worktrees) syncLanes(ctx context.Context, clone string) error {
+	return w.eachLane(clone, func(lane string) error { return w.syncLane(ctx, clone, lane) })
+}
+
+// eachLane runs fn for each lane of the project whose clone is clone. A lane that fn fails on stays as it is and does not stop the other lanes: an agent can
+// change the config of its own lane, the engine refuses that lane, and the refusal must not block the gates and the fetches of the other items. The item of
+// that lane meets the refusal at its next call in the lane, with the text of git.
+func (w worktrees) eachLane(clone string, fn func(lane string) error) error {
 	entries, err := os.ReadDir(filepath.Dir(clone))
 	if err != nil {
 		return fmt.Errorf("read the folder of the clones: %w", err)
@@ -408,9 +415,7 @@ func (w worktrees) syncLanes(ctx context.Context, clone string) error {
 
 	for _, entry := range entries {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), filepath.Base(clone)+laneMark) {
-			if err := w.syncLane(ctx, clone, filepath.Join(filepath.Dir(clone), entry.Name())); err != nil {
-				return err
-			}
+			_ = fn(filepath.Join(filepath.Dir(clone), entry.Name())) //nolint:errcheck // a lane that fails does not stop the others, see the comment of the function
 		}
 	}
 
@@ -576,7 +581,14 @@ func (w worktrees) FetchCommit(ctx context.Context, project, remote, sha string)
 			return fmt.Errorf("a fetch by id needs a source that serves a commit by its id (git protocol version 2); if the base moved since the read, run again: %w", err)
 		}
 
-		return w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+		if err := w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha); err != nil {
+			return err
+		}
+
+		// A gate reads the commit in the lane of its item, so each lane takes it too.
+		return w.eachLane(clone, func(lane string) error {
+			return w.run(ctx, lane, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+		})
 	})
 }
 

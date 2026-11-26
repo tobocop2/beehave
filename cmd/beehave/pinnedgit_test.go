@@ -81,6 +81,25 @@ func TestWorktrees_EngineCallsStartNoProgramThatTheCloneConfigNames(t *testing.T
 	}
 }
 
+// An agent writes a program into the config of its own lane. The engine refuses that lane, and the other items go on: a worktree of a new item, the fetch of
+// the project and the gate fetch of a commit run no program and fail on no lane but the one that holds the setting.
+func TestWorktrees_AProgramInTheConfigOfOneLaneDoesNotStopTheOtherItemsOrRunInThem(t *testing.T) {
+	t.Parallel()
+
+	rig := newPushRig(t)
+	marker, ran := newMarker(t)
+	rig.plant(t, "core.fsmonitor", marker)
+
+	_, err := rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
+	require.NoError(t, err, "a new item gets a lane of its own, whose config holds no setting")
+
+	require.NoError(t, rig.pulls.trees.Fetch(t.Context(), "p"), "the fetch of the project skips the lane that the engine refuses")
+
+	_, err = rig.pulls.trees.Ensure(t.Context(), "p", pushItem, "", "")
+	require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow", "the item of the lane meets the refusal")
+	assert.NoFileExists(t, ran, "no engine call ran the program that the lane config names")
+}
+
 // The agent rewrites the .git file of its worktree so that it names another repository, with another HEAD and a file that is not committed. The git of
 // the worktrees still reads the real tree: the HEAD and the status that the move to the tip reads are those of the worktree that the clone holds.
 func TestWorktrees_ARewrittenGitFileDoesNotMoveTheRepository(t *testing.T) {

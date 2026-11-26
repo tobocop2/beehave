@@ -136,6 +136,9 @@ func TestEngineGit_NoCallOnAnItemWorktreeRunsTheFsmonitorOfTheUserGlobalConfig(t
 			require.NoError(t, trees.moveTo(t.Context(), tree, "HEAD"))
 			require.NoError(t, trees.refuseUnpushed(t.Context(), trees.repos, tree, pushItem), "the commit that moveTo placed holds no work of the item")
 		}},
+		{"fetch the head by its id", func() {
+			require.NoError(t, trees.FetchCommit(t.Context(), "p", remote, head), "the owner gate reads the head into the clone before it adds a worktree")
+		}},
 		{"add and remove a detached worktree", func() {
 			dir, err := trees.detach(t.Context(), projects["p"], "copy", head)
 			require.NoError(t, err)
