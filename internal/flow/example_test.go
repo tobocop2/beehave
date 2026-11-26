@@ -242,11 +242,11 @@ func laneKind(request AgentRequest) string {
 }
 
 // putDeclared makes a request of the example rig that is no review answer each output it declares with a clean value: a count of none, no parked
-// finding, no red that the lane did not cause and a whole report. The outputs of a review and of the design step are written by their own rules.
+// finding, no red that the lane did not cause, no note for the owner and a whole report. The outputs of a review and of the design step are written by their own rules.
 // The file holds no value for any other name, so the engine runs the step again on the missing output while output_tries allows,
 // then fails the run, until this table knows it.
 func (rig *agentRig) putDeclared(request AgentRequest) {
-	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "resolved": "[]", "wontfix": "[]", "report": cleanLaneReport(laneKind(request))}
+	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "hold": "", "resolved": "[]", "wontfix": "[]", "report": cleanLaneReport(laneKind(request))}
 	answer := map[string]string{}
 
 	for _, name := range request.Outputs {
