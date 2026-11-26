@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,27 @@ func TestOptionalStep_OnAForgeThatLacksTheAbilityMatchesErrNoCapability(t *testi
 
 	require.ErrorContains(t, assignees, string(forge.AbilityAssignees))
 	require.ErrorContains(t, boards, string(forge.AbilityBoards))
+}
+
+// denied holds the interface of an ability, and its probe says the instance cannot do it.
+type denied struct{ plainForge }
+
+func (denied) IssueAssignees(context.Context, string, int) ([]string, error) {
+	return []string{"somebody"}, nil
+}
+
+func (denied) Probe(context.Context, forge.Ability) error {
+	return forge.NoCapability(forge.AbilityAssignees, "the instance switched it off")
+}
+
+func TestOptionalStep_AForgeWhoseProbeDeniesTheAbilityIsRefusedWithoutTheCall(t *testing.T) {
+	t.Parallel()
+
+	got, err := opened{denied{}}.IssueAssignees(t.Context(), "", 1)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, "switched it off")
+	require.Empty(t, got, "the call of the forge is not made")
 }
 
 // partial has the abilities of a sync and lacks a call that the sync makes but no ability names.
