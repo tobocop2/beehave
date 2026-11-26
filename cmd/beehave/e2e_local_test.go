@@ -37,8 +37,12 @@ const (
 
 // e2eTools are the programs that the scripts of the examples find on PATH. Nothing else is there: no bd and no gh.
 // The local example needs sh, git, sed, mkdir and make. The check and report scripts of the research example also use grep, sort, cat, dirname, curl and date. The record of the base reds of the remediation example uses tee.
+// The gate program job of every project with a base needs env, find and readlink at the start of the engine, and rm, ln, chmod and paste in its words.
 func e2eTools() []string {
-	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date", "awk", "tr", "head", "wc", "mv", "cut", "sleep", "uniq", "comm", "cmp", "mktemp", "tail", "rmdir", "basename", "cp", "tee"}
+	return []string{
+		"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date", "awk", "tr", "head", "wc", "mv", "cut", "sleep", "uniq", "comm", "cmp", "mktemp", "tail", "rmdir", "basename", "cp", "tee",
+		"env", "find", "readlink", "rm", "ln", "chmod", "paste",
+	}
 }
 
 // e2eOptionalTools are the programs that only some scripts need. A machine without one still runs the other scripts, and a script that needs one
