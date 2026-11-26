@@ -17,7 +17,7 @@ func TestNewLife_TheMergeRequestCarriesTheAlertKeyAndTheCIFilesOfTheForge(t *tes
 	project := config.Project{Project: model.Project{Name: "p", Forge: forgegithub.Name, SecurityAlerts: true}}
 	life := newLife(config.Config{Projects: map[string]config.Project{"p": project}}, newAdapters(nil, nil, nil), worktrees{})
 
-	request := life.pulls.request(project, 7, gated, flow.MergeSettings{}, nil)
+	request := life.request(project, 7, gated, flow.MergeSettings{}, nil)
 
 	assert.True(t, request.Alerts, "the key security_alerts of the project turns the check on")
 	assert.Equal(t, []string{forgegithub.WorkflowDir}, request.CIPaths)
@@ -30,7 +30,7 @@ func TestNewLife_TheMergeRequestOfAProjectWithoutTheAlertKeyChecksNoAlerts(t *te
 	project := config.Project{Project: model.Project{Name: "p", Forge: forgegithub.Name}}
 	life := newLife(config.Config{Projects: map[string]config.Project{"p": project}}, newAdapters(nil, nil, nil), worktrees{})
 
-	request := life.pulls.request(project, 7, gated, flow.MergeSettings{}, nil)
+	request := life.request(project, 7, gated, flow.MergeSettings{}, nil)
 
 	assert.False(t, request.Alerts)
 }

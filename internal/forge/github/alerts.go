@@ -50,7 +50,7 @@ func (f *Forge) scanned(ctx context.Context, pr int, sha string) error {
 	}
 
 	if len(rows) == 0 {
-		return forge.Refuse("Code scanning has not analysed %s, the head of pull request %d, so its security alerts cannot be known.\n"+
+		return forge.Refuse("Code scanning has no analysis for %s, the head of pull request %d, so its security alerts cannot be known.\n"+
 			"The project sets security_alerts = True. Wait for the code scanning run to finish, or run it.", sha, pr)
 	}
 

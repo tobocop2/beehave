@@ -75,7 +75,7 @@ func TestOpenAlerts_AHeadWithNoAnalysisIsRefusedAndNoAlertIsRead(t *testing.T) {
 	got, err := newForge(t, repo, run).OpenAlerts(context.Background(), 7, forgetest.SevenTip)
 
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, forge.ErrNoCapability, "the forge can read alerts; the head has no scan yet")
+	require.NotErrorIs(t, err, forge.ErrNoCapability, "the forge can read alerts; the head has no scan yet")
 	require.ErrorContains(t, err, "security_alerts")
 	require.ErrorContains(t, err, forgetest.SevenTip)
 	assert.Nil(t, got)
