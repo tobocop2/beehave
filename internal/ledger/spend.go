@@ -78,6 +78,17 @@ func (l *Ledger) sum(ctx context.Context, query string, arg any) (Sum, error) {
 		unknown int
 	)
 
+	if err := l.db.QueryRowContext(ctx, query, l.runningList(), arg).Scan(&sum.Dollars, &unknown); err != nil {
+		return Sum{}, fmt.Errorf("sum the spend in the ledger: %w", err)
+	}
+
+	sum.Unknown = unknown > 0
+
+	return sum, nil
+}
+
+// runningList is the JSON list of the ids of the executions that this process runs. An empty list encodes as [].
+func (l *Ledger) runningList() string {
 	l.mu.Lock()
 	running := make([]string, 0, len(l.running))
 
@@ -88,13 +99,7 @@ func (l *Ledger) sum(ctx context.Context, query string, arg any) (Sum, error) {
 
 	raw, _ := json.Marshal(running) //nolint:errcheck,errchkjson // a list of strings always encodes
 
-	if err := l.db.QueryRowContext(ctx, query, string(raw), arg).Scan(&sum.Dollars, &unknown); err != nil {
-		return Sum{}, fmt.Errorf("sum the spend in the ledger: %w", err)
-	}
-
-	sum.Unknown = unknown > 0
-
-	return sum, nil
+	return string(raw)
 }
 
 // CountCalls counts the lanes of an item: the executions whose call name starts with prefix and does not end a rerun. It leaves out the executions whose id is in skip.
