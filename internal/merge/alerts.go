@@ -14,23 +14,33 @@ func (a *attempt) alerts() *refusal {
 		return nil
 	}
 
+	found, stop := a.readAlerts()
+	if stop != nil {
+		return stop
+	}
+
+	return a.openAlerts(found)
+}
+
+// readAlerts reads the open alerts at the gated head, or returns the refusal for a forge that cannot read them or a read that failed.
+func (a *attempt) readAlerts() ([]model.Alert, *refusal) {
 	unknown := fmt.Sprintf("        The security alerts of #%d cannot be read, so an open one cannot be ruled out.", a.req.PR)
 
 	reads, ok := a.forge.(AlertReads)
 	if !ok {
-		return refuse(fmt.Sprintf("REFUSE: %s: security alerts: this forge cannot read them.", model.ErrNoCapability), unknown)
+		return nil, refuse(fmt.Sprintf("REFUSE: %s: security alerts: this forge cannot read them.", model.ErrNoCapability), unknown)
 	}
 
 	found, err := reads.OpenAlerts(a.ctx, a.req.PR, a.req.Gated)
 	if errors.Is(err, model.ErrNoCapability) {
-		return refuse("REFUSE: "+err.Error(), unknown)
+		return nil, refuse("REFUSE: "+err.Error(), unknown)
 	}
 
 	if err != nil {
-		return transient(err.Error(), fmt.Sprintf("REFUSE: the security alerts of #%d could not be read, so an open one cannot be ruled out.", a.req.PR))
+		return nil, transient(err.Error(), fmt.Sprintf("REFUSE: the security alerts of #%d could not be read, so an open one cannot be ruled out.", a.req.PR))
 	}
 
-	return a.openAlerts(found)
+	return found, nil
 }
 
 // openAlerts refuses a pull request that has an open alert, and lists each one.

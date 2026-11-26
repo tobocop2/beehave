@@ -18,8 +18,9 @@ const alertsPath = "repos/owner/name/code-scanning/alerts?state=open&per_page=10
 
 func alertRow(number int, commit, severity, security string) fields {
 	return fields{
-		"number": number, "html_url": "https://example.test/alerts/" + strconv.Itoa(number),
-		"rule":                fields{"id": "go/rule-" + strconv.Itoa(number), "severity": severity, "security_severity_level": security},
+		"number":               number,
+		"html_url":             "https://example.test/alerts/" + strconv.Itoa(number),
+		"rule":                 fields{"id": "go/rule-" + strconv.Itoa(number), "severity": severity, "security_severity_level": security},
 		"most_recent_instance": fields{"commit_sha": commit},
 	}
 }
@@ -87,7 +88,7 @@ func TestProbe_CodeScanningOffIsNoCapability(t *testing.T) {
 		err := f.Probe(context.Background(), forge.AbilityAlerts)
 
 		require.ErrorIs(t, err, forge.ErrNoCapability, stderr)
-		assert.ErrorContains(t, err, "security alerts")
+		require.ErrorContains(t, err, "security alerts")
 		assert.Equal(t, [][]string{{"api", "repos/owner/name/code-scanning/alerts?per_page=1"}}, run.Calls)
 	}
 }

@@ -69,8 +69,8 @@ func TestNeed_NamesEveryMissingAbility(t *testing.T) {
 	err := forge.Need(t.Context(), holders()[forge.AbilityLogs], forge.AbilityStatuses, forge.AbilityLogs, forge.AbilityAlerts)
 
 	require.ErrorIs(t, err, forge.ErrNoCapability)
-	assert.ErrorContains(t, err, "commit statuses")
-	assert.ErrorContains(t, err, "security alerts")
+	require.ErrorContains(t, err, "commit statuses")
+	require.ErrorContains(t, err, "security alerts")
 	assert.NotContains(t, err.Error(), "check logs")
 }
 
