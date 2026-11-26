@@ -44,7 +44,7 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, fold
 
 	return agent.SandboxPlan{
 		Work: dir, GitDirs: sharedGitDirs(a.repos, dir), Read: withData(read, request.DataFile), ReadDirs: dataFolder(request.DataFile),
-		Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed, request.DataFile), DenyWritePatterns: hookPatterns(dir), Network: request.Sandbox.Network, Identity: identity,
+		Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed, request.DataFile, request.NoEdits), DenyWritePatterns: hookPatterns(dir), Network: request.Sandbox.Network, Identity: identity,
 	}, ""
 }
 
@@ -152,8 +152,12 @@ func identityNote(identity agent.GitIdentity, dir string) string {
 // writeDenies returns the closed paths that the adapter denies for write: the closed paths, less the settings folder of
 // the agent CLI, which the CLI writes itself, and less a .git that is a file (a linked work tree), which holds only a pointer.
 // A .git that does not exist yet stays in the list, so a step that runs git init finds it closed. The folder of the data file joins the list, so it is read only.
-func writeDenies(dir string, closed []string, dataFile string) []string {
-	out := make([]string, 0, len(closed))
+// The work folder of a step with no edits joins it too, so a write by the shell fails at the write.
+func writeDenies(dir string, closed []string, dataFile string, noEdits bool) []string {
+	out := make([]string, 0, len(closed)+1)
+	if noEdits {
+		out = append(out, dir)
+	}
 
 	for _, path := range closed {
 		switch {

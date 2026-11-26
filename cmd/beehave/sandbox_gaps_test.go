@@ -66,7 +66,7 @@ func TestSandboxPlan_ASandboxedStepHasNoDenyOnTheObjectFolderOfTheClone(t *testi
 			require.NoError(t, err)
 
 			common := gitOut(t, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
-			require.Equal(t, filepath.Join(rig.clone(), ".git"), common, "the worktree is linked to the clone")
+			require.Equal(t, filepath.Join(laneOf(rig.clone(), item), ".git"), common, "the worktree is linked to the lane of its item")
 
 			r := newSandboxRig(t)
 			r.f.agents.trees = rig.trees

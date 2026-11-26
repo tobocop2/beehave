@@ -210,6 +210,7 @@ func TestSandboxPlan_AWorkFolderWhosePathHoldsAGlobCharacterStopsAStepThatMayEdi
 		work := filepath.Join(filepath.Dir(r.work), folder)
 		require.NoError(t, os.MkdirAll(work, 0o700))
 		runGit(t, work, "init", "-q")
+		commitIn(t, work, "start")
 		r.f.agents.trees = treeAt(work)
 
 		req := request()
