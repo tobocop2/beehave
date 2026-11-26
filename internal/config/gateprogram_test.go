@@ -18,7 +18,7 @@ func refusedProgram(t *testing.T, line string) string {
 	return problems[0].Error()
 }
 
-func TestLoadFolder_AValidGateProgramIsLoadedAndAnUnsetOrEmptyOneHoldsTheDefault(t *testing.T) {
+func TestLoadFolder_AValidGateProgramIsLoadedAndAnUnsetOrEmptyOneIsEmpty(t *testing.T) {
 	t.Parallel()
 
 	defaults := []string{".gitleaks.toml", ".gitleaksignore", "GNUmakefile", "Makefile", "makefile"}
@@ -29,11 +29,11 @@ func TestLoadFolder_AValidGateProgramIsLoadedAndAnUnsetOrEmptyOneHoldsTheDefault
 
 	project, problems = loadProjectText(t, call(goodProject))
 	require.Empty(t, problems)
-	require.Equal(t, defaults, project.GateProgram)
+	require.Empty(t, project.GateProgram)
 
 	project, problems = loadProjectText(t, call(goodProject+`, gate_program = []`))
 	require.Empty(t, problems)
-	require.Equal(t, defaults, project.GateProgram)
+	require.Empty(t, project.GateProgram)
 }
 
 func TestLoadFolder_AGateProgramEntryThatIsEmptyIsRefusedAndNamed(t *testing.T) {
