@@ -413,7 +413,9 @@ A linked work tree shares objects and refs with the repository that it is linked
 
 Each item has its own lane clone. The lane clone is a `git clone --local --no-checkout` of the clone of the project, kept beside it as `<state>/repos/<project>.lane.<item>`, and the work tree of the item is a linked work tree of the lane clone. Its objects are hard links, so the lane costs little disk. Its `origin` is the address of the remote, and a fetch of the project copies the remote branches into each lane. A move of a branch in one lane changes no other lane and not the clone of the project. A work tree of the old layout, linked to the clone of the project, is refused with the `git worktree remove` command that removes it.
 
-A step with `edits = False` runs in a fresh checkout of the head of the item, made like the disposable copy of a gate and discarded when the step ends. The sandbox denies the write of that folder, so a write of the shell fails at the write.
+The lane stays after the release of the item, because it holds the commits of the item that no push has sent. A later run of the item uses the same lane. A fresh lane costs about 708 KiB. After the project clone repacks, a lane costs about one git folder of the project (26644 KiB for this repository). To remove the lane of an item that is done, push or drop its commits, then delete the folder `<state>/repos/<project>.lane.<item>`.
+
+A step with `edits = False` runs in a fresh checkout of the head of the item, made like the disposable copy of a gate and discarded when the step ends. The folder of the checkout is `<temp>/beehave-review-<uid>/<project>/<item>/<step>`. A rerun of the step discards the old folder and makes the checkout at the same path, so a resumed session finds its working directory. The sandbox denies the write of that folder, so a write of the shell fails at the write. The case `make smoke-sandbox` shows this with the real CLI.
 
 ### Listed domains
 

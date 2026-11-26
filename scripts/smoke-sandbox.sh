@@ -68,7 +68,16 @@ outside="$home/outside.txt"
 cat > "$work/flow/workflow.star" <<STAR
 def main(item):
     agent(name = "stage", prompt = "prompts/stage.md", model = "sonnet", sandbox = sandbox(network = ["$allowed"]), inputs = {"item": item})
+    agent(name = "review", prompt = "prompts/review.md", model = "sonnet", edits = False, sandbox = sandbox(), inputs = {"item": item})
 STAR
+
+cat > "$work/flow/prompts/review.md" <<'PROMPT'
+This is a test of a read-only step. The action below is meant to fail.
+Do the action once. If it fails, write the word failed, do not try another way, and stop. Do not explain.
+
+Action with the Bash tool:
+1. Run: echo reviewed > control.txt
+PROMPT
 
 cat > "$work/flow/prompts/stage.md" <<'PROMPT'
 This is a test of a sandbox. Some of the actions below are meant to fail. Do each action once, in order.
@@ -228,6 +237,14 @@ if [ -n "$hookfile" ]; then
 	check "write of .githooks/pre-commit is denied" bad "the file exists"
 else
 	denied_read "write of .githooks/pre-commit is denied" Bash ".githooks/pre-commit" ""
+fi
+
+# B.smoke.review_write: the shell of a step with edits = False cannot write a tracked file of its work folder. The write fails at the write, and no tree holds the text.
+denied_read "write of a tracked file by a step with edits = False is denied" Bash "> control.txt" ""
+if grep -r -l -x 'reviewed' "$work/state/trees" "$work/repo" "$work/state/repos" --include=control.txt >/dev/null 2>&1; then
+	check "no tree holds the text of the denied review write" bad "a control.txt holds the text"
+else
+	check "no tree holds the text of the denied review write" ok ""
 fi
 
 # The page of example.com holds the words Example Domain. The denied fetch must not return them.

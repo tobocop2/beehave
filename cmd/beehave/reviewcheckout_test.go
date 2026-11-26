@@ -68,6 +68,40 @@ func TestWorktrees_ReviewCheckoutIsFreshAtThePin(t *testing.T) {
 	assert.NotContains(t, gitOut(t, r.work, "worktree", "list", "--porcelain"), seen, "git keeps no record of the checkout")
 }
 
+func TestAgents_ReviewCheckoutHasTheSamePathOnARerun(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+
+	var dirs []string
+
+	r.f.agents.run = func(_ context.Context, spec agent.Spec) agent.Result {
+		dirs = append(dirs, spec.Dir)
+		require.NoError(t, os.WriteFile(filepath.Join(spec.Dir, "left.txt"), []byte("a first run"), 0o600))
+
+		return agent.Result{Outcome: agent.OutcomeExited}
+	}
+
+	run := func(item, call string) {
+		req := request()
+		req.NoEdits, req.Item, req.Call = true, item, call
+
+		_, err := r.f.agents.Run(t.Context(), req)
+		require.NoError(t, err)
+	}
+
+	run("1", "agent:review#1")
+	run("1", "agent:review#1")
+	run("1", "agent:other#1")
+	run("2", "agent:review#1")
+
+	require.Len(t, dirs, 4)
+	assert.Equal(t, dirs[0], dirs[1], "a rerun of one step of one item works in the same folder, so a resumed session finds its working directory")
+	assert.NotEqual(t, dirs[0], dirs[2], "another step gets another folder")
+	assert.NotEqual(t, dirs[0], dirs[3], "another item gets another folder")
+	assert.NoDirExists(t, dirs[0], "the folder is discarded when the step ends")
+}
+
 func TestWorktrees_ReviewCheckoutOfAFolderWithNoCommitStopsTheStep(t *testing.T) {
 	t.Parallel()
 
@@ -100,11 +134,30 @@ func TestWorktrees_ReviewCheckoutKeepsAStepWithEditsAndAFolderWithNoRepositoryIn
 	assert.Equal(t, plain.work, plain.f.spec.Dir, "a folder with no .git has no commit to check out")
 }
 
-func TestWorktrees_ReviewCheckoutStopsTheStepWhenTheFolderOfTheCheckoutsCannotBeMade(t *testing.T) { //nolint:paralleltest // t.Setenv changes TMPDIR for the process
+func TestWorktrees_ReviewCheckoutStopsTheStepWhenAnotherUserCanWriteTheFolderOfTheCheckouts(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	open := filepath.Join(t.TempDir(), "open")
+	require.NoError(t, os.Mkdir(open, 0o700))
+	chmodTest(t, open, 0o777)
+	r.f.agents.checkouts = open
+
+	req := request()
+	req.NoEdits = true
+
+	_, err := r.f.agents.Run(t.Context(), req)
+
+	require.ErrorContains(t, err, "can be written by another user")
+}
+
+func TestWorktrees_ReviewCheckoutStopsTheStepWhenTheFolderOfTheCheckoutsCannotBeMade(t *testing.T) {
+	t.Parallel()
+
 	r := newSandboxRig(t)
 	blocker := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
-	t.Setenv("TMPDIR", blocker)
+	r.f.agents.checkouts = filepath.Join(blocker, "checkouts")
 
 	req := request()
 	req.NoEdits = true
