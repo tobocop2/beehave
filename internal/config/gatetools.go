@@ -1,15 +1,9 @@
 package config
 
-import (
-	"path"
-	"slices"
-	"strings"
-
-	shell "mvdan.cc/sh/v3/syntax"
-)
+import "slices"
 
 // effectiveGateProgram is the sorted owner gate_program joined with the files that the gate tools read. An empty owner list stays empty.
-func effectiveGateProgram(raw rawProject) []string {
+func effectiveGateProgram(raw rawProject, read ProgramReader) []string {
 	if len(raw.GateProgram) == 0 {
 		return nil
 	}
@@ -17,9 +11,7 @@ func effectiveGateProgram(raw rawProject) []string {
 	names := append(secretScanFiles(), raw.GateProgram...)
 
 	for _, command := range gateCommands(raw) {
-		for _, program := range programsOf(command) {
-			names = append(names, toolFiles(program)...)
-		}
+		names = append(names, commandFiles(read, command)...)
 	}
 
 	slices.Sort(names)
@@ -38,41 +30,84 @@ func gateCommands(raw rawProject) []string {
 	return commands
 }
 
-// programsOf is the base name of the first word of each simple command in the text. A text that does not parse names no program.
-func programsOf(command string) []string {
-	file, err := shell.NewParser().Parse(strings.NewReader(command), "")
-	if err != nil {
+// commandFiles are the files that the programs of one command read. A command that the reader cannot read, or that no reader reads, gets the files of every gate tool.
+func commandFiles(read ProgramReader, command string) []string {
+	if command == "" {
 		return nil
 	}
 
-	var programs []string
+	if read == nil {
+		return everyToolFile()
+	}
 
-	shell.Walk(file, func(node shell.Node) bool {
-		// Walk visits every node of the tree, and only a call expression names a program.
-		if call, isCall := node.(*shell.CallExpr); isCall && len(call.Args) > 0 {
-			programs = append(programs, path.Base(call.Args[0].Lit()))
-		}
+	programs, readable := read(command)
+	if !readable {
+		return everyToolFile()
+	}
 
-		return true
-	})
+	var names []string
 
-	return programs
+	for _, program := range programs {
+		names = append(names, toolTable()[program]...)
+	}
+
+	return names
 }
 
-// secretScanFiles are the files at the root that the secret scan of the engine reads: the config and the ignore file of gitleaks 8.30.1.
-func secretScanFiles() []string { return []string{".gitleaks.toml", ".gitleaksignore"} }
+// defaultNamesAgainst refuses a name that the gate tools add when an owner entry names it as a folder or a test_paths glob can match it.
+func defaultNamesAgainst(raw rawProject, program []string) error {
+	for _, name := range program {
+		if slices.Contains(raw.GateProgram, name) {
+			continue
+		}
 
-// toolFiles are the files at the root that a gate program reads when no option names one: the makefile names of GNU make, the config names of golangci-lint v2.15.0.
-func toolFiles(program string) []string {
-	switch program {
-	case "make", "gmake":
-		return []string{"GNUmakefile", "makefile", "Makefile"}
-	case "golangci-lint":
-		return []string{
-			".golangci.json", ".golangci.toml", ".golangci.yaml", ".golangci.yml", ".golangci.properties", ".golangci.props",
-			".golangci.prop", ".golangci.hcl", ".golangci.tfvars", ".golangci.dotenv", ".golangci.env", ".golangci.ini",
+		if err := defaultNameAgainst(raw, name); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// defaultNameAgainst refuses one added name that an owner entry repeats as a folder or that a test_paths glob matches.
+func defaultNameAgainst(raw rawProject, name string) error {
+	for _, entry := range raw.GateProgram {
+		if err := gateProgramPair(raw.At, entry, name); err != nil {
+			return err
+		}
+	}
+
+	for _, glob := range raw.TestPaths {
+		if gateProgramOverlaps(name, glob) {
+			return refuseAt(raw.At, "The gate tools read %q, so it joins `gate_program`, and `test_paths` entry %q matches it. A new test file would count as a change of the gate program. Narrow the glob.", name, glob)
+		}
+	}
+
+	return nil
+}
+
+// secretScanFiles are the files at the root that the secret scan of the engine reads: the ignore file of gitleaks 8.30.1, and its config.
+// Once .gitleaks.toml exists, gitleaks reads the first of `.gitleaks.<ext>` in the extension order of viper v1.19.0, and only json comes before toml.
+func secretScanFiles() []string { return []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore"} }
+
+// toolTable maps a gate program to the files at the root that it reads when no option names one: the makefile names of GNU make, the config names of golangci-lint v2.15.0.
+func toolTable() map[string][]string {
+	makefiles := []string{"GNUmakefile", "makefile", "Makefile"}
+	golangci := []string{
+		".golangci.json", ".golangci.toml", ".golangci.yaml", ".golangci.yml", ".golangci.properties", ".golangci.props",
+		".golangci.prop", ".golangci.hcl", ".golangci.tfvars", ".golangci.dotenv", ".golangci.env", ".golangci.ini",
+	}
+
+	return map[string][]string{"make": makefiles, "gmake": makefiles, "golangci-lint": golangci}
+}
+
+// everyToolFile are the files of every program of the tool table.
+func everyToolFile() []string {
+	var names []string
+
+	for _, files := range toolTable() {
+		names = append(names, files...)
+	}
+
+	return names
 }

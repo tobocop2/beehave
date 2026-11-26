@@ -178,7 +178,7 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 		return model.Project{}, err
 	}
 
-	host, source, err := checkKeys(raw, names)
+	host, source, err := checkKeys(raw, names, registry.Programs)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -191,12 +191,12 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, Blocks: blocksOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value, TestCommand: raw.TestCommand.Value,
-		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, GateProgram: effectiveGateProgram(raw), PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Credentials: maps.Clone(raw.Credentials), Vars: raw.Vars,
+		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, GateProgram: effectiveGateProgram(raw, registry.Programs), PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Credentials: maps.Clone(raw.Credentials), Vars: raw.Vars,
 	}, nil
 }
 
-// checkKeys checks the keys that the named adapters need and returns the build host and the source.
-func checkKeys(raw rawProject, names adapters) (string, string, error) {
+// checkKeys checks the keys that the named adapters need and returns the build host and the source. The reader reads the programs of the gate.
+func checkKeys(raw rawProject, names adapters, read ProgramReader) (string, string, error) {
 	if err := errors.Join(requiredKeys(raw, names), notifyCommand(raw), spawnDepth(raw)); err != nil {
 		return "", "", err
 	}
@@ -215,7 +215,7 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return host, source, noRepositoryKeys(raw)
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), testCommand(raw), testPaths(raw), pinFile(raw), gateProgram(raw), prLabel(raw))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), testCommand(raw), testPaths(raw), pinFile(raw), gateProgram(raw, read), prLabel(raw))
 }
 
 // testPaths refuses an empty glob in test_paths: git reads it as every path, so the revert run would copy the code of the head too.
@@ -391,8 +391,8 @@ func pinFile(raw rawProject) error {
 const gateProgramGlobMeta = `*?[]{}\`
 
 // gateProgram refuses a gate_program with an entry that is not a plain repository path, a duplicate, an entry inside another, or an overlap with test_paths.
-// An empty list is the default. A path that the base branch lacks is legal: it means the path must stay absent.
-func gateProgram(raw rawProject) error {
+// It refuses a name that the gate tools add by the same rules. An empty list is the default. A path that the base branch lacks is legal: it means the path must stay absent.
+func gateProgram(raw rawProject, read ProgramReader) error {
 	for _, entry := range raw.GateProgram {
 		if err := gateProgramEntry(raw.At, entry); err != nil {
 			return err
@@ -405,7 +405,7 @@ func gateProgram(raw rawProject) error {
 		}
 	}
 
-	return nil
+	return defaultNamesAgainst(raw, effectiveGateProgram(raw, read))
 }
 
 // gateProgramAgainst refuses an entry that repeats or contains one of the later entries, or that a test_paths glob can match.

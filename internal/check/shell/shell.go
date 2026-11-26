@@ -69,6 +69,7 @@ type scanner struct {
 	plain       map[string]string // variables the text sets to a plain value, for the paths of protected-path
 	blind       bool              // the current command named a path that no static read can place
 	private     bool              // the repository is private: the kind laptop-copy finds nothing
+	programs    []string          // the command word of each command judged, for Programs
 }
 
 // value returns the wrapper value of a variable, unless the scan is already reading that value or the value is unreadable.
@@ -208,6 +209,11 @@ func ScanWith(commandText string, kinds []model.FindingKind, protect Protection)
 }
 
 func scanText(commandText string, readOnly bool, protect Protection) []model.Finding {
+	return dedupe(scanned(commandText, readOnly, protect).findings)
+}
+
+// scanned returns the scanner after it read the text.
+func scanned(commandText string, readOnly bool, protect Protection) *scanner {
 	s := newScanner()
 	s.readOnly = readOnly
 	s.prot = newProtector(protect)
@@ -217,7 +223,7 @@ func scanText(commandText string, readOnly bool, protect Protection) []model.Fin
 	s.scanZsh(commandText)
 	s.scan(commandText, false)
 
-	return dedupe(s.findings)
+	return s
 }
 
 func dedupe(findings []model.Finding) []model.Finding {
@@ -379,6 +385,10 @@ func (s *scanner) scan(text string, remote bool) {
 // scanCommand judges one command. The text it reads again is read with the command's own variables held, so a variable that names itself ends the walk.
 func (s *scanner) scanCommand(cmd *command, remote bool) {
 	defer s.hold(cmd.expanded)()
+
+	if len(cmd.head) > 0 {
+		s.programs = append(s.programs, cmd.head[0])
+	}
 
 	s.judge(cmd, remote)
 }

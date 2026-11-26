@@ -12,6 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/agent/opencode"
+	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
@@ -319,6 +320,7 @@ func (a adapters) registry() config.Adapters {
 		Forges:   configEntries(a.forges, forgeAdapter.entryOf),
 		Hosts:    configEntries(a.hosts, hostAdapter.entryOf),
 		Agents:   agents,
+		Programs: shell.Programs,
 	}
 }
 

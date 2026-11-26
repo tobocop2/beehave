@@ -84,6 +84,9 @@ type Entry struct {
 	Windows []model.WindowSpec
 }
 
+// ProgramReader returns the base names of the programs that a shell command runs, and false when a command word cannot be read.
+type ProgramReader func(command string) ([]string, bool)
+
 // Adapters is the registry of every adapter of a build: the names that the config accepts, by kind, with the entry of each name.
 type Adapters struct {
 	Trackers map[model.TrackerName]*Entry
@@ -91,6 +94,8 @@ type Adapters struct {
 	Forges   map[model.ForgeName]*Entry
 	Hosts    map[model.HostProvider]*Entry
 	Agents   map[model.Agent]*Entry
+	// Programs reads the programs of the gate commands. With no reader, each command adds the files of every gate tool.
+	Programs ProgramReader
 }
 
 // The tracker and the claim store of a project that names none. The registry must hold an adapter of each name.
