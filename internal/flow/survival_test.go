@@ -31,7 +31,12 @@ type survivalGen struct {
 func newSurvivalGen(t *testing.T) *survivalGen {
 	t.Helper()
 
-	rig := libRig(t)
+	return survivalOver(t, libRig(t))
+}
+
+// survivalOver makes the generator write into the repository of the rig, from the commit that main holds now.
+func survivalOver(t *testing.T, rig *batchRig) *survivalGen {
+	t.Helper()
 
 	return &survivalGen{
 		rig: rig, base: rig.repo.must(t, "rev-parse", "main"),

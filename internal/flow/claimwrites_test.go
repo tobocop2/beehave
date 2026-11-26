@@ -611,7 +611,7 @@ func handleWrites(h *harness, writer *fakeWriter, marks *draftMarks) []handleWri
 
 	return []handleWrite{
 		{"pr_comment", func(ctx context.Context, w runWrites) error {
-			_, err := w.PRComment(ctx, testProject, testItem, "k", "x")
+			_, err := w.PRComment(ctx, testProject, testItem, 0, "k", "x")
 
 			return err
 		}, forgeCount(&h.forge.notes)},

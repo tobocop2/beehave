@@ -5,6 +5,7 @@ load("@beehave//batch.star", "batch_merge")
 load("@beehave//claims.star", "claim_stop")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//scope.star", "fix_scope", "hold_scope")
+load("@beehave//survival.star", "merge_survival")
 load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
@@ -750,7 +751,39 @@ def land(approved, project, round_settings, n, run):
         if not accepted.passed:
             fail("REFUSE: the batch landed, but the acceptance script %s failed on %s. Read its output, then fix the round branch by hand:\n%s" % (round_settings["acceptance"], base, accepted.report))
 
+    # The survival read after each batch that landed something. It is a signal on the integration pull request and never stops the round.
+    if len(out.merged) > 0:
+        report_survival(project, round_settings, n)
+
     return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(held.rejected) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
+
+def survival_rows(found):
+    """The table rows of the merges in `found` (the result of merge_survival) that lost a line or a whole file. A merge that lost nothing has no row."""
+    rows = []
+    for entry in found:
+        subject = entry.subject.replace("|", "/")
+        for lost in entry.lost:
+            rows.append("| %s | %s | %s | %d lines gone |" % (entry.merge[:12], subject, lost.file, lost.count))
+        for file in entry.deleted:
+            rows.append("| %s | %s | %s | file gone |" % (entry.merge[:12], subject, file))
+    return rows
+
+def report_survival(project, round_settings, n):
+    """Reads which lines of each merge of the round the tip of the round branch still has, and posts the losses as one comment on the integration pull request.
+    The range is the merges that the round branch has and the trunk lacks, so each landing reads every merge of the round. A round with no loss posts nothing, and a loss never fails the round."""
+    tip = base_tip(base = round_settings["base"], name = "survival-tip-%d" % n).commit
+    rows = survival_rows(merge_survival(name = "round-survival-%d" % n, base = "origin/" + project.base_branch, tip = tip))
+    if len(rows) == 0:
+        return
+
+    integration = round_integration(project, round_settings, "round-integration-survival-%d" % n)
+    pr_comment(
+        name = "round-survival-%d" % n,
+        key = "survival-%d" % n,
+        pr = integration.pr,
+        text = "After this landing, the tip of %s lacks lines that merges of the round added. Read each row. A later commit can rightly change a line, and a file that is gone may be a retirement.\n\n| Merge | Subject | File | Result |\n|---|---|---|---|\n%s" % (round_settings["base"], "\n".join(rows)),
+        forbid_text = ATTRIBUTION,
+    )
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.

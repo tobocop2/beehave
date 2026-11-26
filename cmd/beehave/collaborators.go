@@ -1237,8 +1237,17 @@ func closingIssues(ctx context.Context, built opened, number int) ([]model.Issue
 	return append(issues, refs.Elsewhere...), nil
 }
 
-// Comment adds a comment to the pull request of the item, once for each key. A project with no forge and an item with no pull request are errors.
-func (p pulls) Comment(ctx context.Context, project, item, key, text string) (int, error) {
+// Comment adds a comment to the pull request pr of the project, or to the pull request of the item when pr is 0, once for each key. A project with no forge is an error, and so is an item with no pull request.
+func (p pulls) Comment(ctx context.Context, project, item string, pr int, key, text string) (int, error) {
+	if pr > 0 {
+		built, err := p.forgeOf(project)
+		if err != nil {
+			return 0, err
+		}
+
+		return pr, forge.PostOnce(ctx, built, pr, key, text)
+	}
+
 	built, number, err := p.find(ctx, project, item)
 	if err != nil {
 		return 0, err

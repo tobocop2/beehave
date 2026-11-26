@@ -241,11 +241,13 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 ### Pull request builtins
 
-`pr_comment` and `pr_open` refuse a project with no repository. `pr_comment` fails for an item with no pull request. In a dry run they act on the dry-run pull request and write nothing.
+`pr_comment` and `pr_open` refuse a project with no repository. `pr_comment` fails for an item with no pull request, unless the call gives `pr`. In a dry run they act on the dry-run pull request and write nothing.
 
 #### `pr_comment`
 
-`pr_comment(text, key, forbid_text)` adds a comment to the pull request of the item and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+`pr_comment(text, key, pr, forbid_text)` adds a comment to the pull request `pr` of the project, or to the pull request of the item when `pr` is left out or is 0, and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+
+A `pr` below 0 is refused before any post. A round item has no pull request of its own, so a round passes the number that `round_integration` returned to comment on the integration pull request.
 
 #### `pr_read`
 
@@ -668,6 +670,7 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 - It compares each added line, exactly, with the file at the tip. `lost` lists a struct for each file with `file`, `count` and the first ten lost `lines`.
 - A file that the tip does not hold is in `deleted` and not in `lost`, because a retired file is for a person to check. A file renamed after the merge shows as `deleted`.
 - A merge whose lines all survive is listed with empty `lost` and `deleted`. A range with no merge gives an empty list.
+- `examples/remediation/workflow.star` calls it after each batch that landed something, with the trunk as `base` and the tip of the round branch as `tip`. It posts the rows as one `pr_comment` on the integration pull request, and posts nothing when no merge lost a line.
 - The result is a signal for a person to read. A later commit can rightly change a line, so the call never fails the run because of a lost line. A git command that fails ends the call with the output of git.
 
 #### `hand_off`

@@ -65,9 +65,12 @@ func (r *batchRig) runGit() {
 // batchIdentity is the word after `git -c` in each git command of the batch library: the author of its union commits.
 const batchIdentity = "user.name=beehave"
 
-// libraryGit runs a git command of the batch library in the repository of the rig, as the worktree of the round item does. It answers no other command.
+// survivalSetting is the word after `git -c` in each git command of the survival library.
+const survivalSetting = "core.quotePath=false"
+
+// libraryGit runs a git command of the batch library or of the survival library in the repository of the rig, as the worktree of the round item does. It answers no other command.
 func (r *batchRig) libraryGit(request CommandRequest) (CommandOutput, bool) {
-	if len(request.Run) < 3 || request.Run[0] != gitWord || request.Run[2] != batchIdentity {
+	if len(request.Run) < 3 || request.Run[0] != gitWord || (request.Run[2] != batchIdentity && request.Run[2] != survivalSetting) {
 		return CommandOutput{}, false
 	}
 

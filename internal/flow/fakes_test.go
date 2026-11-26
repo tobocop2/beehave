@@ -1401,9 +1401,13 @@ func (f *fakeForge) History(_ context.Context, project, item string) ([]model.Pr
 }
 
 // Comment records the call and answers with the number of the standing.
-func (f *fakeForge) Comment(_ context.Context, project, item, key, text string) (int, error) {
+func (f *fakeForge) Comment(_ context.Context, project, item string, pr int, key, text string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if pr > 0 {
+		item = fmt.Sprintf("%s#pr%d", item, pr)
+	}
 
 	f.notes = append(f.notes, project+"|"+item+"|"+key+"|"+text)
 

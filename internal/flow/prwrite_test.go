@@ -34,6 +34,35 @@ command(run = [str(posted.number)])
 	assert.Equal(t, []string{"7"}, h.commands.ran())
 }
 
+func TestPRWrite_ACommentWithAPullRequestNumberGoesToThatPullRequestAndNotToTheOneOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	h, f := prHarness(t)
+
+	_, err := walkBody(t, h, `pr_comment(text = "own", key = "own", name = "own")
+pr_comment(text = "other", key = "other", pr = 12, name = "other")
+`)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{
+		testProject + "|" + testItem + "|" + testRun + ":own|own",
+		testProject + "|" + testItem + "#pr12|" + testRun + ":other|other",
+	}, f.notes)
+}
+
+func TestPRWrite_ACommentWithAPullRequestNumberBelowZeroIsRefusedBeforeAnyPost(t *testing.T) {
+	t.Parallel()
+
+	h, f := prHarness(t)
+
+	_, err := walkBody(t, h, `pr_comment(text = "x", key = "k", pr = -3, name = "c")
+`)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pr_comment: pr is -3. Give the number of a pull request, or leave pr out")
+	assert.Empty(t, f.notes)
+}
+
 func TestPRWrite_ACrashBetweenEachWriteAndItsRecordRepeatsTheCallWithTheSameKey(t *testing.T) {
 	t.Parallel()
 
