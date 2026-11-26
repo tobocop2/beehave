@@ -53,7 +53,9 @@ const (
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
 // Version 19 runs the host job of a command call with a host and no slot class in the default class, so the call queues a child run before its command step.
 // Version 20 adds the earlier_reads step.
-const coreVersion = 20
+// Version 21 records each try of a command call with retries as the step <call>/try<n>, with a DBOS.sleep record of the wait between two tries,
+// before the step of the call. The job key of a host job is <run>:<step> with no try number, also for a call with no retries.
+const coreVersion = 21
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
