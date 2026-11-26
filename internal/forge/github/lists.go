@@ -8,7 +8,7 @@ import (
 )
 
 // The list reads that need the association of each author. gh pr list and gh issue list do not give it, so each list is one paged GraphQL query.
-// Each query aliases its one paged list as list, and orders as gh pr list does.
+// Each query aliases its one paged list as list. The two pull request lists order newest first, as gh pr list does; the search keeps the order of the forge.
 const (
 	pageOf       = "first:100,after:$endCursor"
 	pagedList    = "totalCount pageInfo{hasNextPage endCursor} nodes"
