@@ -65,7 +65,7 @@ func ownGateOf(cfg config.Config, opts flow.Options, table adapters, project str
 	}
 
 	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
-	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, &fstree.Folders{})
+	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, trees.disk, table, &fstree.Folders{})
 
 	programless := maps.Clone(cfg.Projects)
 	off := found

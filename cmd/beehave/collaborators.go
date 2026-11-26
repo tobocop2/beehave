@@ -65,6 +65,8 @@ type worktrees struct {
 	// roles gives a call that reaches the remote of a project the writer role of that project. A project with no credentials reaches it as the owner. A
 	// project with credentials and no loaded role is refused. newWorktrees is the only constructor, so every value holds the roles of its caller.
 	roles *writers
+	// disk is the disk floor that a new worktree or plain folder meets before it is made.
+	disk localDisk
 }
 
 // Ensure returns the worktree of the item. An item with no worktree gets one, cut from base on a new branch named for the item.
@@ -73,9 +75,10 @@ type worktrees struct {
 // A round item gets a detached worktree at start, or at the tip of its own base branch on the remote when start is empty.
 // With an empty start, a round worktree that exists moves to that tip when it is clean and is refused when it holds changes. Any other item ignores start.
 // A round item ignores base. A folder that git does not list as a worktree is an error. Ensure never deletes it. The lookup and the add run under the lock of the clone.
+// A new worktree or plain folder is made only when the disk holds the floor of the project (see localDisk). A resume that finds its folder reads no disk.
 func (w worktrees) Ensure(ctx context.Context, project, item, start, base string) (string, error) {
 	if w.plain(project) {
-		return w.ensurePlain(project, item)
+		return w.ensurePlain(ctx, project, item)
 	}
 
 	found, err := w.project(project)
@@ -289,9 +292,16 @@ func (w worktrees) plain(project string) bool {
 	return !repositoryOf(w.projects)(project)
 }
 
-// ensurePlain returns the plain folder of the item and makes it when it is missing. A resume finds the folder again with its files.
-func (w worktrees) ensurePlain(project, item string) (string, error) {
+// ensurePlain returns the plain folder of the item and makes it when it is missing, if the disk holds the floor. A resume finds the folder again with its files.
+func (w worktrees) ensurePlain(ctx context.Context, project, item string) (string, error) {
 	dir := filepath.Join(w.root, model.SafeName(project), model.SafeName(item))
+
+	if _, err := os.Stat(dir); err != nil {
+		if err = w.disk.check(ctx, project); err != nil {
+			return "", fmt.Errorf("make the folder of item %s: %w", item, err)
+		}
+	}
+
 	if err := os.MkdirAll(dir, folderMode); err != nil {
 		return "", fmt.Errorf("make the folder of item %s: %w", item, err)
 	}
@@ -305,6 +315,10 @@ func (w worktrees) addLocked(ctx context.Context, project config.Project, clone,
 	dir := filepath.Join(w.root, model.SafeName(project.Name), model.SafeName(item))
 	if err := absent(dir); err != nil {
 		return "", err
+	}
+
+	if err := w.disk.check(ctx, project.Name); err != nil {
+		return "", fmt.Errorf("add the worktree of item %s: %w", item, err)
 	}
 
 	revision, err := w.refresh(ctx, project, clone, item, start, base)
@@ -778,6 +792,8 @@ type programs struct {
 	declared func(project, cluster string) (string, error)
 	// sandbox runs a gate under the sandbox of its project.
 	sandbox gateSandbox
+	// disk is the disk floor that a program on this machine meets before it starts. A program on a host meets the floor of the host.
+	disk localDisk
 }
 
 // git runs git of the project with args in dir for at most timeout and returns what it printed, without the space at both ends.
@@ -799,6 +815,10 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 
 	if request.Host != "" {
 		return p.onHost(ctx, request)
+	}
+
+	if err := p.disk.check(ctx, request.Project); err != nil {
+		return flow.CommandOutput{}, fmt.Errorf("item %s does not start: %w", request.Item, err)
 	}
 
 	dir, err := p.folder(ctx, request)

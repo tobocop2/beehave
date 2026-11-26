@@ -84,6 +84,8 @@ type agents struct {
 	repos gitexec.Repositories
 	// modules names and fills the Go module cache of a project in a worktree.
 	modules moduleFill
+	// disk is the disk floor that a step meets before its agent starts.
+	disk localDisk
 }
 
 // moduleFill names the Go module cache of a project in a worktree, or "" for a worktree that needs none, and fills it.
@@ -111,6 +113,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		identity: gitIdentity,
 		repos:    repos,
 		modules:  moduleFiller(opts),
+		disk:     newLocalDisk(cfg.Projects, opts.StateDir),
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
 		traceParent: cfg.Agents.TraceParent, contextWindow: int64(cfg.Agents.ContextWindowTokens),
 		prices: agent.DefaultPrices(),
@@ -233,8 +236,12 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	return a.runIn(ctx, request, runner, dir)
 }
 
-// runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
+// runIn starts the agent of the runner in the folder of the item. The step does not start when the disk is under its floor, or when its sandbox or its skills cannot be made.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
+	if err := a.disk.check(ctx, request.Project); err != nil {
+		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: err.Error()}, nil
+	}
+
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(runner.Agent, request.Forbid, protect)
 
