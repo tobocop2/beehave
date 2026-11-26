@@ -15,12 +15,12 @@ import (
 // startSpend writes the spend row of an agent execution that starts now, with an unknown cost, and returns the id of the execution.
 // The id is random, so the run id and the step number of a rewind or of a reused run give no row its identity. A failed write stops the phase before the agent starts.
 func (e *Engine) startSpend(ctx context.Context, in PhaseInput) (string, error) {
-	number, err := stepNumber(ctx, in)
+	number, err := recordedStepID(ctx, in)
 	if err != nil {
 		return "", err
 	}
 
-	call := ledger.Call{ID: rand.Text(), Tree: in.Tree, Run: in.Run, Step: number, Item: in.Item, Name: in.callName(), At: e.deps.Clock.wall()}
+	call := ledger.Call{ID: rand.Text(), Tree: in.Tree, Run: in.Run, Step: number, Item: in.Item, Name: in.ledgerName(),At: e.deps.Clock.wall()}
 	if err = e.ledger.StartCall(ctx, call); err != nil {
 		return "", fmt.Errorf("the agent step %s of item %s does not start: %w", in.Call, in.Item, err)
 	}
@@ -28,8 +28,8 @@ func (e *Engine) startSpend(ctx context.Context, in PhaseInput) (string, error) 
 	return call.ID, nil
 }
 
-// stepNumber returns the number of the step that ctx is. A context that is no step of a run has none and reads 0.
-func stepNumber(ctx context.Context, in PhaseInput) (int, error) {
+// recordedStepID returns the number of the step that ctx is. A context that is no step of a run has none and reads 0.
+func recordedStepID(ctx context.Context, in PhaseInput) (int, error) {
 	step, isStep := ctx.(dbos.Context)
 	if !isStep {
 		return 0, nil
@@ -43,8 +43,8 @@ func stepNumber(ctx context.Context, in PhaseInput) (int, error) {
 	return id, nil
 }
 
-// callName is the name of the call in the ledger. A rerun of a call carries the mark that makes it part of the lane of the call.
-func (in PhaseInput) callName() string {
+// ledgerName is the name of the call in the ledger. A rerun of a call carries the mark that makes it part of the lane of the call.
+func (in PhaseInput) ledgerName() string {
 	if in.Rerun {
 		return in.Call + ledger.RerunMark
 	}
