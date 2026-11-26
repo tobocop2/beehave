@@ -266,6 +266,18 @@ func TestLaneLayout_TheCountOfEarlierCallsLeavesOutTheExecutionsThatTheStepsOfTh
 	assert.Zero(t, skipped, "the execution that the steps of the run recorded is left out")
 }
 
+func TestLaneLayout_ACountWhoseReadOfTheStepsOfTheRunFailsReturnsTheErrorAndNoCount(t *testing.T) {
+	t.Parallel()
+
+	engine := newAgentRig(t).h.opened(t)
+	failing := &Engine{ctx: &failingRead{Context: engine.ctx, at: 1}, ledger: engine.ledger}
+
+	count, err := failing.countEarlierOf(t.Context(), runID(testItem, 1), testItem, "fix")
+
+	require.ErrorContains(t, err, "read the steps of "+runID(testItem, 1))
+	assert.Zero(t, count)
+}
+
 // afterFlow starts a fix lane, then counts the earlier fix lanes, and starts a late agent only when the count is zero.
 const afterFlow = `def main(item):
     agent(name = "fix", prompt = "prompts/work.md", model = "m")

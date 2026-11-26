@@ -88,7 +88,28 @@ func TestTreeSpend_SumsTheCostOfOneTreeAndMarksAnUnknownCost(t *testing.T) {
 
 	got, err = held.TreeSpend(ctx, "t")
 	require.NoError(t, err)
-	assert.Equal(t, Sum{Dollars: 4, Unknown: true}, got, "a call that has not ended has an unknown cost")
+	assert.Equal(t, Sum{Dollars: 4}, got, "a call that runs in this process has no cost yet and adds 0")
+
+	require.NoError(t, held.EndCall(ctx, "c4", "s", sql.NullFloat64{}))
+
+	got, err = held.TreeSpend(ctx, "t")
+	require.NoError(t, err)
+	assert.Equal(t, Sum{Dollars: 4, Unknown: true}, got, "a call that ended with no cost is unknown")
+}
+
+func TestSpendSince_ACallOfAnEarlierProcessWithNoCostIsUnknownAndACallThatRunsAddsZero(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	earlier := openLedger(t, dir)
+	require.NoError(t, earlier.StartCall(t.Context(), aCall("crashed", "t", "12", "agent:fix#1", epoch)))
+
+	held := openLedger(t, dir)
+	require.NoError(t, held.StartCall(t.Context(), aCall("running", "u", "13", "agent:fix#1", epoch)))
+
+	got, err := held.SpendSince(t.Context(), epoch)
+	require.NoError(t, err)
+	assert.Equal(t, Sum{Unknown: true}, got, "the call that this process runs adds 0, and the one that no process runs is unknown")
 }
 
 func TestSpendSince_CountsTheCallsThatStartedAtTheStartOfTheWindowOrLater(t *testing.T) {

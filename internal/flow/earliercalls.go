@@ -37,12 +37,17 @@ func earlierOutputs(count int) map[string]any { return map[string]any{"count": c
 
 // countEarlier counts the agent calls named call that the item started and that no step of this run recorded.
 func (s *script) countEarlier(ctx context.Context, call string) (int, error) {
-	own, err := s.e.executionsOf(workflowID(s.ctx))
+	return s.e.countEarlierOf(ctx, workflowID(s.ctx), s.in.Item, call)
+}
+
+// countEarlierOf counts the agent calls named call that item started and that no step of the run recorded.
+func (e *Engine) countEarlierOf(ctx context.Context, run, item, call string) (int, error) {
+	own, err := e.executionsOf(run)
 	if err != nil {
 		return 0, err
 	}
 
-	return s.e.ledger.CountCalls(ctx, s.in.Item, "agent:"+call+"#", own)
+	return e.ledger.CountCalls(ctx, item, "agent:"+call+"#", own)
 }
 
 // executionsOf lists the ids of the agent executions that the steps of the run recorded. A caller outside a run has an empty run id and gets none.

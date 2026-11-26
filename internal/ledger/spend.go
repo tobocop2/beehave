@@ -38,11 +38,20 @@ func (l *Ledger) StartCall(ctx context.Context, call Call) error {
 		return fmt.Errorf("record the agent call %s in the ledger: %w", call.ID, err)
 	}
 
+	l.mu.Lock()
+	l.running[call.ID] = struct{}{}
+	l.mu.Unlock()
+
 	return nil
 }
 
 // EndCall sets the session and the cost of the execution id. A cost that is not valid leaves the cost unknown.
+// The execution is no longer running, whether or not the write works: a row that keeps no cost is unknown.
 func (l *Ledger) EndCall(ctx context.Context, id, session string, cost sql.NullFloat64) error {
+	l.mu.Lock()
+	delete(l.running, id)
+	l.mu.Unlock()
+
 	_, err := l.db.ExecContext(ctx, `UPDATE spend SET session = ?, cost = ? WHERE call = ?`, session, cost, id)
 	if err != nil {
 		return fmt.Errorf("set the cost of the agent call %s in the ledger: %w", id, err)
@@ -52,22 +61,34 @@ func (l *Ledger) EndCall(ctx context.Context, id, session string, cost sql.NullF
 }
 
 // TreeSpend sums the cost of every execution of one item tree. The tree is the id of its root run.
+// An execution that runs in this process adds 0 until it ends. A row of another process with no cost is unknown.
 func (l *Ledger) TreeSpend(ctx context.Context, tree string) (Sum, error) {
-	return l.sum(ctx, `SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(cost IS NULL), 0) FROM spend WHERE tree = ?`, tree)
+	return l.sum(ctx, `SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(cost IS NULL AND call NOT IN (SELECT value FROM json_each(?))), 0) FROM spend WHERE tree = ?`, tree)
 }
 
-// SpendSince sums the cost of every execution that started at since or later.
+// SpendSince sums the cost of every execution that started at since or later. An execution that runs in this process adds 0 until it ends.
 func (l *Ledger) SpendSince(ctx context.Context, since time.Time) (Sum, error) {
-	return l.sum(ctx, `SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(cost IS NULL), 0) FROM spend WHERE at >= ?`, since.UnixMilli())
+	return l.sum(ctx, `SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(cost IS NULL AND call NOT IN (SELECT value FROM json_each(?))), 0) FROM spend WHERE at >= ?`, since.UnixMilli())
 }
 
+// sum runs a query whose first parameter is the JSON list of the running executions and whose second is arg.
 func (l *Ledger) sum(ctx context.Context, query string, arg any) (Sum, error) {
 	var (
 		sum     Sum
 		unknown int
 	)
 
-	if err := l.db.QueryRowContext(ctx, query, arg).Scan(&sum.Dollars, &unknown); err != nil {
+	l.mu.Lock()
+	running := make([]string, 0, len(l.running))
+
+	for id := range l.running {
+		running = append(running, id)
+	}
+	l.mu.Unlock()
+
+	raw, _ := json.Marshal(running) //nolint:errcheck,errchkjson // a list of strings always encodes
+
+	if err := l.db.QueryRowContext(ctx, query, string(raw), arg).Scan(&sum.Dollars, &unknown); err != nil {
 		return Sum{}, fmt.Errorf("sum the spend in the ledger: %w", err)
 	}
 

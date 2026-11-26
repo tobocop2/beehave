@@ -244,6 +244,21 @@ func TestStartSpend_AnAgentThatHasNotExitedLeavesARowWithAnUnknownCost(t *testin
 	assert.False(t, rows[0].Cost.Valid, "a crash before the exit of the agent leaves the cost unknown")
 }
 
+func TestTreeCap_AnAgentOfASiblingThatRunsNowAddsNothingAndDoesNotFailTheCheck(t *testing.T) {
+	t.Parallel()
+
+	engine := newAgentRig(t).h.opened(t)
+	engine.maxTreeBudget = 5
+
+	_, err := engine.startSpend(t.Context(), PhaseInput{Run: runID("1", 1), Tree: runID("1", 1), Item: "1", Call: "agent:x#1"})
+	require.NoError(t, err)
+
+	got, err := engine.checkCaps("q", runID("1", 1))
+
+	require.NoError(t, err, "the cost of a running agent is still to come, so it is not an unknown cost")
+	assert.Nil(t, got.Stop)
+}
+
 func TestStartSpend_AContextOfTheEngineThatIsNoStepStopsThePhaseBeforeTheAgentStarts(t *testing.T) {
 	t.Parallel()
 

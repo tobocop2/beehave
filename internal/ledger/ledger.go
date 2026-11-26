@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	"github.com/tobocop2/beehave/internal/store"
 )
@@ -61,6 +62,10 @@ PRAGMA user_version = 1;
 // Ledger is the open ledger.db of one state folder.
 type Ledger struct {
 	db *sql.DB
+
+	// running holds the ids of the executions that this process started and has not ended. Their cost is not unknown yet: it is still to come.
+	mu      sync.Mutex
+	running map[string]struct{}
 }
 
 // Open opens ledger.db in the state folder and creates the file and the tables when they are missing. The folder must exist.
@@ -77,7 +82,7 @@ func Open(ctx context.Context, stateDir string) (*Ledger, error) {
 		return nil, fmt.Errorf("the ledger: %w", err)
 	}
 
-	return &Ledger{db: db}, nil
+	return &Ledger{db: db, running: map[string]struct{}{}}, nil
 }
 
 // DB returns the database handle.
