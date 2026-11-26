@@ -266,6 +266,28 @@ func TestLaneLayout_TheCountOfEarlierCallsLeavesOutTheExecutionsThatTheStepsOfTh
 	assert.Zero(t, skipped, "the execution that the steps of the run recorded is left out")
 }
 
+// afterFlow starts a fix lane, then counts the earlier fix lanes, and starts a late agent only when the count is zero.
+const afterFlow = `def main(item):
+    agent(name = "fix", prompt = "prompts/work.md", model = "m")
+    n = earlier_calls(call = "fix", name = "spent").count
+    if n == 0:
+        agent(name = "late", prompt = "prompts/work.md", model = "late-model")
+`
+
+func TestLaneLayout_AnEarlierCallsAfterTheFixLaneOfTheSameRunDoesNotCountThatLane(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, afterFlow)
+	engine := h.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	assert.True(t, slices.ContainsFunc(h.agents.seen(), func(r AgentRequest) bool { return r.Model == "late-model" }),
+		"the fix lane of this run is not an earlier call, so the count is zero and the late agent starts")
+}
+
 // A cap that the first run did not use up is what the second run gets: a first run that ended early after one candidate leaves one candidate fewer.
 func TestLaneLayout_ASecondRunOfTheItemGetsTheCandidatesTheFirstRunLeft(t *testing.T) {
 	t.Parallel()
