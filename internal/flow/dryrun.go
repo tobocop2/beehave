@@ -373,12 +373,14 @@ type dryAgents struct {
 // outputVerdict is the output of a review call that holds its verdict. verdictChanges is the verdict of a head that needs a commit.
 // outputOpen is the output that holds the open findings of a review as text, empty when none is open.
 // outputUncaused is the output that holds the reds a lane did not cause, as a JSON list.
+// outputHold is the output that holds the note of a lane that needs the owner, empty when the lane needs none.
 // outputFindings, outputResolved and outputWontfix are the outputs of the review ledger, each a JSON list.
 const (
 	outputVerdict  = "verdict"
 	verdictChanges = "changes"
 	outputOpen     = "open"
 	outputUncaused = "uncaused"
+	outputHold     = "hold"
 	outputFindings = "findings"
 	outputResolved = "resolved"
 	outputWontfix  = "wontfix"
@@ -417,13 +419,13 @@ func (dryAgents) outputs(declared []string, set map[string]string) []byte {
 	return []byte("{" + strings.Join(fields, ",") + "}")
 }
 
-// dryOutput is the fixed value of a declared output in a dry run: a review approves with no open finding, the reds a lane did not cause and the outputs of the review ledger are an empty list, and any other output holds the text 0.
+// dryOutput is the fixed value of a declared output in a dry run: a review approves with no open finding, a lane asks the owner nothing (an empty hold note), the reds a lane did not cause and the outputs of the review ledger are an empty list, and any other output holds the text 0.
 // The text 0 reads as a count of none, so a workflow that reads a count from an output walks the path of an approved item.
 func dryOutput(name string) string {
 	switch name {
 	case outputVerdict:
 		return "approve"
-	case outputOpen:
+	case outputOpen, outputHold:
 		return ""
 	case outputUncaused, outputFindings, outputResolved, outputWontfix:
 		return "[]"
