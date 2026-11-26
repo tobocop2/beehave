@@ -297,3 +297,36 @@ func TestNewLocalDisk_MeasuresTheTreesFolderAndTheStateFolderWithDf(t *testing.T
 	assert.NotNil(t, disk.free)
 	assert.Equal(t, defaultDiskPoll, disk.poll)
 }
+
+func TestLaneStart_AGateUnderTheSandboxDoesNotStartUnderTheFloor(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeEnforcer{}
+	box := sandboxFor(t, fake, nil)
+	gate := projectGate{projects: box.projects, programs: programs{sandbox: box, disk: lowDisk(t)}}
+
+	out, code := gate.shellFor("p")(t.Context(), t.TempDir(), "make check")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "free-space floor")
+	assert.Empty(t, fake.argv, "the enforcer ran no command")
+
+	out, code = gate.programShellFor("p")(t.Context(), t.TempDir(), t.TempDir(), "make check")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "free-space floor")
+	assert.Empty(t, fake.argv, "the enforcer ran no job")
+}
+
+func TestLaneStart_AGateUnderTheSandboxRunsAboveTheFloor(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeEnforcer{}
+	box := sandboxFor(t, fake, nil)
+	gate := projectGate{projects: box.projects, programs: programs{sandbox: box, disk: roomyDisk(t)}}
+
+	_, code := gate.shellFor("p")(t.Context(), t.TempDir(), "make check")
+
+	assert.Zero(t, code)
+	assert.Equal(t, []string{"sh", "-c", "make check"}, fake.argv)
+}
