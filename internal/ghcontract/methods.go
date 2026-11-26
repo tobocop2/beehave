@@ -13,22 +13,9 @@ import (
 
 // PublicMethods lists the exported methods of the type in the production files of a folder, sorted. A test uses it to require a driver for each method of an adapter, so a new method cannot skip the contract.
 func PublicMethods(dir, typeName string) ([]string, error) {
-	paths, err := goFiles(dir, false)
+	methods, err := scanFiles(dir, false, func(_ *token.FileSet, file *ast.File) []string { return methodsOf(file, typeName) })
 	if err != nil {
 		return nil, err
-	}
-
-	fset := token.NewFileSet()
-
-	var methods []string
-
-	for _, path := range paths {
-		file, parseErr := parseSource(fset, path)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-
-		methods = append(methods, methodsOf(file, typeName)...)
 	}
 
 	slices.Sort(methods)
@@ -36,10 +23,9 @@ func PublicMethods(dir, typeName string) ([]string, error) {
 	return methods, nil
 }
 
-// UnwrappedCalls lists the calls pkg.ctor(...) in the test files of a folder whose second argument is not a call of the function wrapper, as file:line:function. A test uses it to require
-// that every adapter of a test is built over a runner that the wrapper makes strict, so no test can reach gh through a fake that skips the table.
-func UnwrappedCalls(dir, pkg, ctor, wrapper string) ([]string, error) {
-	paths, err := goFiles(dir, true)
+// scanFiles parses the production files of a folder, or its test files when tests is true, and joins what read returns for each file.
+func scanFiles(dir string, tests bool, read func(*token.FileSet, *ast.File) []string) ([]string, error) {
+	paths, err := goFiles(dir, tests)
 	if err != nil {
 		return nil, err
 	}
@@ -54,10 +40,16 @@ func UnwrappedCalls(dir, pkg, ctor, wrapper string) ([]string, error) {
 			return nil, parseErr
 		}
 
-		found = append(found, unwrappedIn(fset, file, pkg, ctor, wrapper)...)
+		found = append(found, read(fset, file)...)
 	}
 
 	return found, nil
+}
+
+// UnwrappedCalls lists the calls pkg.ctor(...) in the test files of a folder whose second argument is not a call of the function wrapper, as file:line:function. A test uses it to require
+// that every adapter of a test is built over a runner that the wrapper makes strict, so no test can reach gh through a fake that skips the table.
+func UnwrappedCalls(dir, pkg, ctor, wrapper string) ([]string, error) {
+	return scanFiles(dir, true, func(fset *token.FileSet, file *ast.File) []string { return unwrappedIn(fset, file, pkg, ctor, wrapper) })
 }
 
 // unwrappedIn lists the calls pkg.ctor(...) of one file whose second argument is not a call of the wrapper.
@@ -85,9 +77,11 @@ func unwrappedIn(fset *token.FileSet, file *ast.File, pkg, ctor, wrapper string)
 
 // argCall returns the argument when it is a call, and nil otherwise.
 func argCall(arg ast.Expr) *ast.CallExpr {
-	call, _ := arg.(*ast.CallExpr)
+	if call, ok := arg.(*ast.CallExpr); ok {
+		return call
+	}
 
-	return call
+	return nil
 }
 
 // isCallOf says whether the call is pkg.name(...) with two arguments at least, or name(...) with one argument at least when pkg is empty. A nil call is no call.

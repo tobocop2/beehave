@@ -37,17 +37,19 @@ type Caller interface {
 	Run(ctx context.Context, args []string) model.CommandResult
 }
 
-type checked struct {
+// CheckedRunner is a runner over another runner that refuses what a check refuses.
+type CheckedRunner struct {
 	inner Caller
 	check func(args []string) (stderr string, ok bool)
 }
 
 // Checked returns a runner that refuses every call that the check refuses, with exit code 1 and the refusal on stderr, and passes any other call to inner.
-func Checked(inner Caller, check func(args []string) (stderr string, ok bool)) Caller {
-	return checked{inner: inner, check: check}
+func Checked(inner Caller, check func(args []string) (stderr string, ok bool)) CheckedRunner {
+	return CheckedRunner{inner: inner, check: check}
 }
 
-func (c checked) Run(ctx context.Context, args []string) model.CommandResult {
+// Run refuses the call when the check refuses it, and otherwise runs it on the runner inside.
+func (c CheckedRunner) Run(ctx context.Context, args []string) model.CommandResult {
 	if stderr, ok := c.check(args); !ok {
 		return model.CommandResult{ExitCode: 1, Stderr: stderr}
 	}
