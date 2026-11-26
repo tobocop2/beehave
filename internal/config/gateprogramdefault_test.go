@@ -26,7 +26,9 @@ func loadedProgram(t *testing.T, args string) []string {
 	return project.GateProgram
 }
 
-func secretScanNames() []string { return []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore"} }
+func secretScanNames() []string {
+	return []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore"}
+}
 
 func makeNames() []string { return []string{"GNUmakefile", "makefile", "Makefile"} }
 

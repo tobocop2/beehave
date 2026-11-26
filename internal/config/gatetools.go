@@ -88,7 +88,9 @@ func defaultNameAgainst(raw rawProject, name string) error {
 
 // secretScanFiles are the files at the root that the secret scan of the engine reads: the ignore file of gitleaks 8.30.1, and its config.
 // Once .gitleaks.toml exists, gitleaks reads the first of `.gitleaks.<ext>` in the extension order of viper v1.19.0, and only json comes before toml.
-func secretScanFiles() []string { return []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore"} }
+func secretScanFiles() []string {
+	return []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore"}
+}
 
 // toolTable maps a gate program to the files at the root that it reads when no option names one: the makefile names of GNU make, the config names of golangci-lint v2.15.0.
 func toolTable() map[string][]string {
