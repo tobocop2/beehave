@@ -16,27 +16,15 @@ import (
 const (
 	cmdIssueView = "gh issue view"
 	cmdAnnotate  = "gh api check-runs"
-	cmdSearchAPI = "gh api graphql search"
 	notStarted   = "was not started"
 	ownBase      = "cannot read our open pull requests"
 
-	ownLimit = 1000
-
-	ownQuery = "query($q:String!,$endCursor:String){search(query:$q,type:ISSUE,first:100,after:$endCursor){issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest{" +
+	ownQuery = "query($q:String!,$endCursor:String){" + searchedList + "{... on PullRequest{" +
 		"number isDraft baseRefName title commits(last:1){nodes{commit{committedDate}}} " +
 		"reviews(first:100){totalCount nodes{author{login} submittedAt}} " +
 		"latestOpinionatedReviews(first:100,writersOnly:false){totalCount nodes{author{login} state commit{oid}}} " +
 		"reviewThreads(first:100){totalCount nodes{isResolved}}}}}}"
 )
-
-type ownAnswer struct {
-	Data *struct {
-		Search *struct {
-			IssueCount int       `json:"issueCount"`
-			Nodes      []ownNode `json:"nodes"`
-		} `json:"search"`
-	} `json:"data"`
-}
 
 type ownNode struct {
 	Number      int    `json:"number"`
@@ -86,50 +74,10 @@ func (f *Forge) OwnPulls(ctx context.Context, author string) ([]model.OwnPull, e
 	return pulls, nil
 }
 
-// searchOwn runs the batched query with gh api graphql --paginate --slurp, which follows the cursor, and returns every pull request node.
-// A count of the first page above ownLimit is a refusal, and so is a node count that differs from the count the forge reports.
+// searchOwn runs the batched search as one paged list read and returns every pull request node.
+// A node count that differs from the count the forge reports is a refusal. The search gives at most 1000 rows, so a count above 1000 is a cut list.
 func (f *Forge) searchOwn(ctx context.Context, author string) ([]ownNode, error) {
-	done := f.run.Run(ctx, []string{argAPI, "graphql", argPaginate, "--slurp", flagRaw, "q=repo:" + f.repo + " is:pr is:open author:" + author, flagRaw, "query=" + ownQuery})
-	if done.ExitCode != 0 {
-		return nil, forge.Refuse("%s", ownBase)
-	}
-
-	answers, err := model.Decode[[]ownAnswer](cmdSearchAPI, done.Stdout)
-	if err != nil {
-		return nil, forge.Refusal(ownBase, err)
-	}
-
-	return countedNodes(answers)
-}
-
-// countedNodes joins the nodes of the pages. The count of the first page is the count of all rows.
-func countedNodes(answers []ownAnswer) ([]ownNode, error) {
-	var nodes []ownNode
-
-	for _, answer := range answers {
-		if answer.Data == nil || answer.Data.Search == nil {
-			return nil, forge.Refuse("%s: the answer holds none", ownBase)
-		}
-
-		nodes = append(nodes, answer.Data.Search.Nodes...)
-	}
-
-	if len(answers) == 0 {
-		return nil, forge.Refuse("%s: the answer holds none", ownBase)
-	}
-
-	return nodes, checkCount(answers[0].Data.Search.IssueCount, len(nodes))
-}
-
-func checkCount(count, read int) error {
-	switch {
-	case count > ownLimit:
-		return forge.Refuse("%s: %d pull requests, more than %d", ownBase, count, ownLimit)
-	case read != count:
-		return forge.Refuse("%s: %d pull requests counted, %d read", ownBase, count, read)
-	}
-
-	return nil
+	return readList[ownNode](ctx, f, ownBase, ownQuery, []string{"q=repo:" + f.repo + " is:pr is:open author:" + author})
 }
 
 // ownPull builds the state of one pull request. A list longer than one page is read again with the per-pull-request reads.

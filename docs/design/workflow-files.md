@@ -395,7 +395,7 @@ The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_s
 
 #### `pr_history`
 
-`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at` and `closing_comment`.
+`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at`, `closing_comment` and `foreign`. `foreign` is true when another account than the owner wrote the pull request. The `title` and the `branch` of a foreign pull request are empty, and so is a `closing_comment` that another account wrote, unless the run may hold foreign text (see [trust](trust.md)).
 
 - The forge lists the pull requests on the branch of the item. For an item that is an issue number, it also lists the pull requests whose title or body names `#N`, and keeps those that name it as a whole word. The two lists join by number.
 - `closing_comment` is the body of the last comment made at or before the close of a closed or merged pull request. A comment after the close does not count. It is empty for an open one and for one with no comment until its close.
@@ -550,7 +550,7 @@ The three builtins match text. They run no command, record no step and need no r
 
 #### `item_list`
 
-`item_list(label, name)` reads the open items of the tracker and returns `items`. Each item has `id`, `severity`, `hold`, `parent`, `assignee`, `title` and `labels`. `labels` is an empty list when the item has none.
+`item_list(label, name)` reads the open items of the tracker and returns `items`. Each item has `id`, `severity`, `hold`, `parent`, `assignee`, `title`, `labels` and `foreign`. `labels` is an empty list when the item has none. `foreign` is true when another account than the owner wrote the item. The `title` of a foreign item is empty unless the run may hold foreign text (see [trust](trust.md)).
 
 - A `label` keeps the items that carry that tracker label. The tracker applies the label. An empty `label` keeps every open item.
 - The read is a recorded step. A replay returns the first answer.
@@ -558,7 +558,7 @@ The three builtins match text. They run no command, record no step and need no r
 
 #### `pr_list`
 
-`pr_list(base, name)` reads the open pull requests of the forge and returns `pulls`. Each pull request has `number`, `branch`, `base`, `author`, `draft`, `title`, `labels` and `review_decision`.
+`pr_list(base, name)` reads the open pull requests of the forge and returns `pulls`. Each pull request has `number`, `branch`, `base`, `author`, `draft`, `title`, `labels`, `review_decision` and `foreign`. `foreign` is true when another account than the owner wrote the pull request. The `title` of a foreign pull request is empty unless the run may hold foreign text (see [trust](trust.md)).
 
 - A `base` keeps the pull requests on that base. The forge applies the base. An empty `base` keeps every open pull request.
 - A project with no forge has no pull requests.
@@ -595,7 +595,7 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
 - A foreign record matches its keys whatever their case: `Reason`, `PR` and `Findings` read as `reason`, `pr` and `findings`.
 - `pr`, `author` and `changes_requested` of a row, and the hold of a pull request, come from every open pull request, whatever its base.
-- `pulls` lists every open pull request that `pr_list` returned, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
+- `pulls` lists every open pull request that `pr_list` returned, each with `number`, `branch`, `base`, `author`, `draft`, `title`, `foreign` and `item`. `item` is the open item that the head branch names, or empty. The `branch` of a foreign pull request is empty unless it is the id of an open item. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
 - The old `queue` builtin is removed. A file that calls `queue` with no load fails `beehave check workflow` with `undefined: queue` and the load line.
 
 A run that `spawn` started reads the hold of its item in the tracker again before its first step. If the item is on hold, the run stops with the stop `queue` and the code of a held pull request, and `gather` reports it as `stopped`.

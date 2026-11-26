@@ -77,7 +77,7 @@ type threadPage struct {
 
 // graphql runs one query for a pull request. The owner and the name go as strings; the number goes typed.
 func (f *Forge) graphql(ctx context.Context, pr int, query string) model.CommandResult {
-	return f.run.Run(ctx, []string{argAPI, "graphql", flagRaw, "o=" + f.owner, flagRaw, "n=" + f.name, flagTyped, "p=" + strconv.Itoa(pr), flagRaw, "query=" + query})
+	return f.run.Run(ctx, []string{argAPI, argGraphQL, flagRaw, "o=" + f.owner, flagRaw, "n=" + f.name, flagTyped, "p=" + strconv.Itoa(pr), flagRaw, "query=" + query})
 }
 
 // readPull runs a query and decodes the pull request part of the answer. A nil result means the answer holds none.

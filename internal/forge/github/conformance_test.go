@@ -64,13 +64,13 @@ func conformanceServing(t *testing.T) forge.Forge {
 	whole(forgetest.NoLabelsPull, "labels")
 	whole(forgetest.NoAssigneesPull, "assignees")
 	run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
-	seven := fields{"number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "baseRefName": forgetest.SevenBase, "author": fields{"login": forgetest.SevenReviewer}, "isDraft": false, "title": forgetest.SevenTitle, "labels": []fields{{"name": forgetest.SevenLabel}}, "reviewDecision": "APPROVED"}
-	other := fields{"number": forgetest.OtherPull, "headRefName": "other", "baseRefName": forgetest.OtherBase, "author": fields{"login": forgetest.SevenAssignee}, "isDraft": true, "title": "Other work", "labels": []fields{}, "reviewDecision": ""}
-	run.Plan(toJSON(t, []fields{seven, other}), "--state", "open", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title")
-	run.Plan(toJSON(t, []fields{seven}), "--base", forgetest.SevenBase)
-	run.Plan(toJSON(t, []fields{other}), "--base", forgetest.OtherBase)
-	run.Plan(toJSON(t, []fields{}), "--base", forgetest.EmptyBase)
-	run.Plan(toJSON(t, []fields{{"number": forgetest.OtherPull, "baseRefName": forgetest.HoleBase}}), "--base", forgetest.HoleBase)
+	seven := fields{"number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "baseRefName": forgetest.SevenBase, "author": fields{"login": forgetest.SevenReviewer}, "isDraft": false, "title": forgetest.SevenTitle, "labels": labelNodes(forgetest.SevenLabel), "reviewDecision": "APPROVED", "authorAssociation": "OWNER"}
+	other := fields{"number": forgetest.OtherPull, "headRefName": "other", "baseRefName": forgetest.OtherBase, "author": fields{"login": forgetest.SevenAssignee}, "isDraft": true, "title": "Other work", "labels": labelNodes(), "reviewDecision": "", "authorAssociation": "OWNER"}
+	run.PlanContaining(listPages(t, []fields{seven}, []fields{other}), "list:pullRequests(states:OPEN")
+	run.Plan(listPages(t, []fields{seven}), "-f", "b="+forgetest.SevenBase)
+	run.Plan(listPages(t, []fields{other}), "-f", "b="+forgetest.OtherBase)
+	run.Plan(listPages(t, []fields{}), "-f", "b="+forgetest.EmptyBase)
+	run.Plan(listPages(t, []fields{{"number": forgetest.OtherPull, "baseRefName": forgetest.HoleBase}}), "-f", "b="+forgetest.HoleBase)
 	run.Plan(toJSON(t, fields{"commits": forgetest.SevenCommits, "changed_files": forgetest.SevenFiles}), "api", "repos/owner/name/pulls/7")
 	run.Plan(toJSON(t, []any{[]fields{{"commit": fields{"committer": fields{"email": "a@x"}}}, {"committer": fields{"login": "b"}}}}), "api", "--paginate", "--slurp", "repos/owner/name/pulls/7/commits")
 	run.Plan(toJSON(t, []fields{{"name": forgetest.SevenCheck, "bucket": "pass"}}), "pr", "checks")

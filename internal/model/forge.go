@@ -101,31 +101,33 @@ type ClosingRefs struct {
 	Elsewhere []IssueRef
 }
 
-// PullRequest holds the fields of gh pr list and gh pr view that beehave reads.
+// PullRequest holds the fields of gh pr list, gh pr view and the GraphQL list reads that beehave reads.
 // A pointer field is one a gate decides on: nil means gh sent null or the call did not ask for it, so a gate must not read nil as false or empty.
 type PullRequest struct {
-	Number         int             `json:"number"`
-	Title          string          `json:"title"`
-	Body           string          `json:"body"`
-	State          *string         `json:"state"`
-	Mergeable      *string         `json:"mergeable"`
-	IsDraft        *bool           `json:"isDraft"`
-	BaseRefName    *string         `json:"baseRefName"`
-	HeadRefName    *string         `json:"headRefName"`
-	HeadRefOid     *string         `json:"headRefOid"`
-	ReviewDecision *string         `json:"reviewDecision"`
-	MergedAt       *string         `json:"mergedAt"`
-	ClosedAt       *string         `json:"closedAt"`
-	UpdatedAt      string          `json:"updatedAt"`
-	HeadRepository *repository     `json:"headRepository"`
-	Author         Account         `json:"author"`
-	Assignees      []Account       `json:"assignees"`
-	Labels         []label         `json:"labels"`
-	Files          []changedFile   `json:"files"`
-	Commits        []commit        `json:"commits"`
-	Comments       []pullComment   `json:"comments"`
-	Reviews        []pullReview    `json:"reviews"`
-	ReviewRequests []reviewRequest `json:"reviewRequests"`
+	Number         int         `json:"number"`
+	Title          string      `json:"title"`
+	Body           string      `json:"body"`
+	State          *string     `json:"state"`
+	Mergeable      *string     `json:"mergeable"`
+	IsDraft        *bool       `json:"isDraft"`
+	BaseRefName    *string     `json:"baseRefName"`
+	HeadRefName    *string     `json:"headRefName"`
+	HeadRefOid     *string     `json:"headRefOid"`
+	ReviewDecision *string     `json:"reviewDecision"`
+	MergedAt       *string     `json:"mergedAt"`
+	ClosedAt       *string     `json:"closedAt"`
+	UpdatedAt      string      `json:"updatedAt"`
+	HeadRepository *repository `json:"headRepository"`
+	Author         Account     `json:"author"`
+	// AuthorAssociation is how the author stands to the repository. Only a GraphQL read gives it: gh pr list and gh pr view have no such field.
+	AuthorAssociation Association     `json:"authorAssociation"`
+	Assignees         []Account       `json:"assignees"`
+	Labels            []label         `json:"labels"`
+	Files             []changedFile   `json:"files"`
+	Commits           []commit        `json:"commits"`
+	Comments          []pullComment   `json:"comments"`
+	Reviews           []pullReview    `json:"reviews"`
+	ReviewRequests    []reviewRequest `json:"reviewRequests"`
 }
 
 // PullFacts is the typed read of one pull request: its number, state, head commit, base branch, author login and assignee logins,
@@ -321,13 +323,15 @@ type OpenPull struct {
 	Title          string
 	Labels         []string
 	ReviewDecision string
+	// Association is how the author of the pull request stands to the repository. A list that does not give it leaves it empty, which counts as foreign.
+	Association Association
 }
 
 // Open is the typed read of a pull request of a list: a field the list lacks is empty.
 func (p PullRequest) Open() OpenPull {
 	open := OpenPull{
 		Number: p.Number, Branch: Deref(p.HeadRefName), Base: Deref(p.BaseRefName), Author: p.Author.Login,
-		Draft: p.IsDraft != nil && *p.IsDraft, Title: p.Title, ReviewDecision: Deref(p.ReviewDecision),
+		Draft: p.IsDraft != nil && *p.IsDraft, Title: p.Title, ReviewDecision: Deref(p.ReviewDecision), Association: p.AuthorAssociation,
 	}
 
 	for _, one := range p.Labels {
@@ -361,6 +365,7 @@ func (p OpenPull) Check() error {
 }
 
 // PriorPull is one pull request of an item in any state. MergedAt is empty when it never merged; ClosingComment is the body of its last comment made at or before its close, empty for an open one.
+// Foreign is true when another account than the owner wrote the pull request. ClosingForeign is true when another account wrote the closing comment.
 type PriorPull struct {
 	Number         int    `json:"number"`
 	Title          string `json:"title"`
@@ -369,6 +374,8 @@ type PriorPull struct {
 	Base           string `json:"base"`
 	MergedAt       string `json:"merged_at"`
 	ClosingComment string `json:"closing_comment"`
+	Foreign        bool   `json:"foreign"`
+	ClosingForeign bool   `json:"-"`
 }
 
 // Committer is the committer of one commit of a pull request. A Login or an Email that the forge does not send is empty.
@@ -407,6 +414,8 @@ type Comment struct {
 	OriginalLine *int    `json:"original_line"`
 	CreatedAt    string  `json:"created_at"`
 	Body         string  `json:"body"`
+	// AuthorAssociation is how the commenter stands to the repository. A comment with none counts as foreign.
+	AuthorAssociation Association `json:"author_association"`
 }
 
 // ThreadComment is the first comment of a review thread.

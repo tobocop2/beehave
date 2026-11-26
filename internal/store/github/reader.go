@@ -52,7 +52,7 @@ func (s *Store) Parent(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 
-	done := s.run.Run(ctx, []string{"api", "repos/" + s.repo + "/issues/" + id + "/parent"})
+	done := s.run.Run(ctx, []string{argAPI, "repos/" + s.repo + "/issues/" + id + "/parent"})
 	if done.ExitCode != 0 {
 		return "", s.noParent(ctx, id, done.Stderr)
 	}

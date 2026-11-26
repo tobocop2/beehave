@@ -256,8 +256,8 @@ func TestItemList_ListsTheOpenItemsOfTheProject(t *testing.T) {
 	got, err = alpha.ItemList(t.Context(), "")
 	require.NoError(t, err)
 	require.Equal(t, []model.Item{
-		{ID: "b", Severity: model.SeverityUnknown, Title: "Second filed first"},
-		{ID: "a", Severity: model.SeverityUnknown, Title: "First filed second"},
+		{ID: "b", Severity: model.SeverityUnknown, Title: "Second filed first", Association: model.AssociationOwner},
+		{ID: "a", Severity: model.SeverityUnknown, Title: "First filed second", Association: model.AssociationOwner},
 	}, got)
 
 	_, err = beta.Item(t.Context(), "a")

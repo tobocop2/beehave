@@ -295,7 +295,7 @@ func (s *Store) comments(ctx context.Context, id string) ([]ghComment, error) {
 		return nil, err
 	}
 
-	done := s.run.Run(ctx, []string{"api", "--paginate", "--slurp", "repos/" + s.repo + "/issues/" + id + "/comments"})
+	done := s.run.Run(ctx, []string{argAPI, argPaginate, argSlurp, "repos/" + s.repo + "/issues/" + id + "/comments"})
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("REFUSE: cannot read the comments of item %s in %s", id, s.repo)
 	}

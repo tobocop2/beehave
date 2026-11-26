@@ -161,7 +161,7 @@ func (r bdRow) item(held map[string]bool, parents map[string]string) (model.Item
 
 	return model.Item{
 		ID: id, Severity: beadsSeverity(r.Priority), Hold: held[id],
-		Parent: parents[id], Assignee: r.Assignee, Title: title, Labels: r.Labels,
+		Parent: parents[id], Assignee: r.Assignee, Title: title, Labels: r.Labels, Association: model.AssociationOwner,
 	}, err
 }
 

@@ -33,8 +33,11 @@ The item.
 The source repository.
 -- fake/gh --
 #!/bin/sh
-# The item has no pull request in any state.
-echo '[]'
+# The item has no pull request in any state. A paged GraphQL list read gets one empty page, as gh --paginate --slurp prints.
+case "$*" in
+  "api graphql"*) echo '[{"data":{"list":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}]' ;;
+  *) echo '[]' ;;
+esac
 -- fake/claude --
 #!/bin/sh
 cat > /dev/null

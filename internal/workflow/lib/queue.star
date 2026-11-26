@@ -90,7 +90,17 @@ def queue(name, hold = "", label = "", base = ""):
             value = settled.value,
         ))
     ids = [i["id"] for i in named]
-    listed = [struct(number = p["number"], branch = p["branch"], base = p["base"], author = p["author"], draft = p["draft"], title = p["title"], item = p["branch"] if p["branch"] in ids else "") for p in listed_pulls]
+    # The branch name of a foreign pull request is text that another account chose. It stays only when it is the id of an open item.
+    listed = [struct(
+        number = p["number"],
+        branch = p["branch"] if not p["foreign"] or p["branch"] in ids else "",
+        base = p["base"],
+        author = p["author"],
+        draft = p["draft"],
+        title = p["title"],
+        foreign = p["foreign"],
+        item = p["branch"] if p["branch"] in ids else "",
+    ) for p in listed_pulls]
     return struct(rows = sorted(rows, key = lambda r: (r.severity, r.item)), free = read.free, pulls = listed)
 
 def _severity(row):

@@ -12,13 +12,6 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// historyFields are the fields of each pull request that the history of an item reads.
-const historyFields = "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"
-
-// historyListLimit is the limit of each list of the history. The lists hold closed and merged pull requests too, and the search of the forge also matches a longer number,
-// so the limit is the one of the open pull requests and not the one of the open search. A list at the limit is refused, and the run stops.
-const historyListLimit = forge.OpenPullLimit
-
 // History lists the pull requests of the item in every state: those on its branch and, for an item that is a forge number, those that name it.
 // Each closed or merged one gets the body of its last comment made at or before its close as its closing comment. A project with no forge has none.
 func (p pulls) History(ctx context.Context, project, item string) ([]model.PriorPull, error) {
@@ -41,7 +34,7 @@ func (p pulls) History(ctx context.Context, project, item string) ([]model.Prior
 
 // historyRows lists the pull requests on the branch of the item and adds, by number, those whose title or body names the item as a whole run.
 func historyRows(ctx context.Context, built forge.Forge, item string) ([]model.PullRequest, error) {
-	rows, err := built.PRList(ctx, historyListLimit, "--state", "all", "--head", model.ItemBranch(item), "--json", historyFields)
+	rows, err := built.BranchPulls(ctx, model.ItemBranch(item))
 	if err != nil {
 		return nil, fmt.Errorf("list the pull requests on the branch of item %s: %w", item, err)
 	}
@@ -65,7 +58,7 @@ func historyRows(ctx context.Context, built forge.Forge, item string) ([]model.P
 func namingRows(ctx context.Context, built forge.Forge, item string) ([]model.PullRequest, error) {
 	term := mention(item)
 
-	found, err := built.PRList(ctx, historyListLimit, "--state", "all", "--search", term+" in:title,body", "--json", historyFields)
+	found, err := built.SearchPulls(ctx, term+" in:title,body")
 	if err != nil {
 		return nil, fmt.Errorf("search the pull requests that name item %s: %w", item, err)
 	}
@@ -81,6 +74,7 @@ func priorPulls(ctx context.Context, built forge.Forge, rows []model.PullRequest
 		pull := model.PriorPull{
 			Number: row.Number, Title: row.Title, State: model.Deref(row.State), Branch: model.Deref(row.HeadRefName),
 			Base: model.Deref(row.BaseRefName), MergedAt: model.Deref(row.MergedAt),
+			Foreign: model.Authored{Number: row.Number, Association: row.AuthorAssociation}.Foreign(),
 		}
 
 		closing, err := closingComment(ctx, built, row)
@@ -88,47 +82,48 @@ func priorPulls(ctx context.Context, built forge.Forge, rows []model.PullRequest
 			return nil, err
 		}
 
-		pull.ClosingComment = closing
+		pull.ClosingComment = closing.Body
+		pull.ClosingForeign = closing.Body != "" && closing.AuthorAssociation.Foreign()
 		prior = append(prior, pull)
 	}
 
 	return prior, nil
 }
 
-// closingComment is the body of the last comment made at or before the close of a pull request that is not open.
+// closingComment is the last comment made at or before the close of a pull request that is not open.
 // It is empty for an open one and for one with no comment until its close. A comment after the close is a later remark, so it does not count.
-func closingComment(ctx context.Context, built forge.Forge, row model.PullRequest) (string, error) {
+func closingComment(ctx context.Context, built forge.Forge, row model.PullRequest) (model.Comment, error) {
 	if model.Deref(row.State) == stateOpen {
-		return "", nil
+		return model.Comment{}, nil
 	}
 
 	closed, err := time.Parse(time.RFC3339, model.Deref(row.ClosedAt))
 	if err != nil {
-		return "", fmt.Errorf("pull request %d is %s but the forge gave no valid close time: %w", row.Number, model.Deref(row.State), err)
+		return model.Comment{}, fmt.Errorf("pull request %d is %s but the forge gave no valid close time: %w", row.Number, model.Deref(row.State), err)
 	}
 
 	comments, err := built.Comments(ctx, row.Number)
 	if err != nil {
-		return "", fmt.Errorf("read the closing comment of pull request %d: %w", row.Number, err)
+		return model.Comment{}, fmt.Errorf("read the closing comment of pull request %d: %w", row.Number, err)
 	}
 
 	return lastCommentBy(comments, closed, row.Number)
 }
 
-// lastCommentBy is the body of the last comment made at or before the time. The forge lists the comments oldest first, so the last match wins.
-func lastCommentBy(comments []model.Comment, by time.Time, number int) (string, error) {
-	body := ""
+// lastCommentBy is the last comment made at or before the time. The forge lists the comments oldest first, so the last match wins.
+func lastCommentBy(comments []model.Comment, by time.Time, number int) (model.Comment, error) {
+	var last model.Comment
 
 	for _, comment := range comments {
 		at, err := time.Parse(time.RFC3339, comment.CreatedAt)
 		if err != nil {
-			return "", fmt.Errorf("a comment of pull request %d has no valid time: %w", number, err)
+			return model.Comment{}, fmt.Errorf("a comment of pull request %d has no valid time: %w", number, err)
 		}
 
 		if !at.After(by) {
-			body = comment.Body
+			last = comment
 		}
 	}
 
-	return body, nil
+	return last, nil
 }

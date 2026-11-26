@@ -59,13 +59,13 @@ func TestBeadsItemList_CarrySeverityHoldParentAndAssignee(t *testing.T) {
 	items, err := bd.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{
-		{ID: "p-1", Severity: model.SeverityP2, Parent: "p-9", Title: "child task"},
-		{ID: "p-2", Severity: model.SeverityP0, Parent: "p-8", Assignee: "ann", Title: "blocker"},
-		{ID: "p-3", Severity: model.SeverityP3, Hold: true, Title: "held work"},
-		{ID: "p-4", Severity: model.SeverityUnknown, Title: "no priority"},
-		{ID: "p-5", Severity: model.SeverityUnknown, Title: "bad priority"},
-		{ID: "p-6", Severity: model.SeverityP1, Title: "p1"},
-		{ID: "p-7", Severity: model.SeverityP3, Title: "p3"},
+		{ID: "p-1", Severity: model.SeverityP2, Parent: "p-9", Title: "child task", Association: model.AssociationOwner},
+		{ID: "p-2", Severity: model.SeverityP0, Parent: "p-8", Assignee: "ann", Title: "blocker", Association: model.AssociationOwner},
+		{ID: "p-3", Severity: model.SeverityP3, Hold: true, Title: "held work", Association: model.AssociationOwner},
+		{ID: "p-4", Severity: model.SeverityUnknown, Title: "no priority", Association: model.AssociationOwner},
+		{ID: "p-5", Severity: model.SeverityUnknown, Title: "bad priority", Association: model.AssociationOwner},
+		{ID: "p-6", Severity: model.SeverityP1, Title: "p1", Association: model.AssociationOwner},
+		{ID: "p-7", Severity: model.SeverityP3, Title: "p3", Association: model.AssociationOwner},
 	}, items)
 }
 

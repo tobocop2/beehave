@@ -2,11 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"slices"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// priorForge lists pull requests by the kind of the search: onBranch for --head, named for --search. comments holds the comments of each number.
+// priorForge lists pull requests by the kind of the read: onBranch for the branch, named for the search. comments holds the comments of each number.
 // The methods it does not define panic, so a test shows every call the code makes.
 type priorForge struct {
 	forge.Forge
@@ -26,81 +21,20 @@ type priorForge struct {
 	branchErr, namedErr error
 	comments            map[int][]model.Comment
 	commentErr          error
-	asked               [][]string
-	limits              []int
+	branches, searches  []string
 	commentsAsked       []int
 }
 
-// PRList answers as gh does: each row holds only the fields that --json names, and a name that a pull request does not have is refused.
-func (f *priorForge) PRList(_ context.Context, limit int, args ...string) ([]model.PullRequest, error) {
-	f.asked = append(f.asked, args)
-	f.limits = append(f.limits, limit)
+func (f *priorForge) BranchPulls(_ context.Context, branch string) ([]model.PullRequest, error) {
+	f.branches = append(f.branches, branch)
 
-	rows, err := f.onBranch, f.branchErr
-	if slices.Contains(args, "--search") {
-		rows, err = f.named, f.namedErr
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return onlyFields(rows, args)
+	return f.onBranch, f.branchErr
 }
 
-// onlyFields keeps of each row the fields that the --json argument names, as the JSON output of gh holds them.
-func onlyFields(rows []model.PullRequest, args []string) ([]model.PullRequest, error) {
-	at := slices.Index(args, "--json")
-	if at < 0 || at+1 >= len(args) {
-		return nil, errors.New("the list asks for no fields")
-	}
+func (f *priorForge) SearchPulls(_ context.Context, words string) ([]model.PullRequest, error) {
+	f.searches = append(f.searches, words)
 
-	names := strings.Split(args[at+1], ",")
-	kept := make([]model.PullRequest, 0, len(rows))
-
-	for _, row := range rows {
-		out, err := rowWithFields(row, names)
-		if err != nil {
-			return nil, err
-		}
-
-		kept = append(kept, out)
-	}
-
-	return kept, nil
-}
-
-// rowWithFields is the row with only the named JSON fields set. A name that a pull request does not have is refused, as gh refuses it.
-func rowWithFields(row model.PullRequest, names []string) (model.PullRequest, error) {
-	var out model.PullRequest
-
-	raw, err := json.Marshal(row)
-	if err != nil {
-		return out, err
-	}
-
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &all); err != nil {
-		return out, err
-	}
-
-	some := map[string]json.RawMessage{}
-
-	for _, name := range names {
-		value, ok := all[name]
-		if !ok {
-			return out, fmt.Errorf("unknown JSON field: %q", name)
-		}
-
-		some[name] = value
-	}
-
-	raw, err = json.Marshal(some)
-	if err != nil {
-		return out, err
-	}
-
-	return out, json.Unmarshal(raw, &out)
+	return f.named, f.namedErr
 }
 
 func (f *priorForge) Comments(_ context.Context, number int) ([]model.Comment, error) {
@@ -119,7 +53,7 @@ const closeTime = "2026-11-10T12:00:00Z"
 // priorRow is a listed pull request with the fields that History reads. A row that is not open closed at closeTime.
 func priorRow(number int, title, body, state, branch, mergedAt string) model.PullRequest {
 	base := "main"
-	row := model.PullRequest{Number: number, Title: title, Body: body, State: &state, HeadRefName: &branch, BaseRefName: &base}
+	row := model.PullRequest{Number: number, Title: title, Body: body, State: &state, HeadRefName: &branch, BaseRefName: &base, AuthorAssociation: model.AssociationOwner}
 
 	if mergedAt != "" {
 		row.MergedAt = &mergedAt
@@ -135,7 +69,7 @@ func priorRow(number int, title, body, state, branch, mergedAt string) model.Pul
 
 // said is a comment with its time.
 func said(body, at string) model.Comment {
-	return model.Comment{Body: body, CreatedAt: at}
+	return model.Comment{Body: body, CreatedAt: at, AuthorAssociation: model.AssociationOwner}
 }
 
 func TestPulls_HistoryListsThePullRequestsOfTheBranchAndOfTheIssueWithTheirClosingComment(t *testing.T) {
@@ -165,11 +99,8 @@ func TestPulls_HistoryListsThePullRequestsOfTheBranchAndOfTheIssueWithTheirClosi
 		{Number: 8, Title: "retry of #41", State: "CLOSED", Branch: "z", Base: "main"},
 		{Number: 9, Title: "retry", State: "OPEN", Branch: "41", Base: "main"},
 	}, got, "the branch and the issue join by number; a title alone that names the item keeps a pull request; a longer number in the body or the title is dropped")
-	assert.Equal(t, [][]string{
-		{"--state", "all", "--head", "41", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
-		{"--state", "all", "--search", "#41 in:title,body", "--json", "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt"},
-	}, f.asked, "each list names the fields that the history reads, the close time among them")
-	assert.Equal(t, []int{forge.OpenPullLimit, forge.OpenPullLimit}, f.limits, "the lists of every state get the limit of the open pull requests, not the one of the open search")
+	assert.Equal(t, []string{"41"}, f.branches, "the history lists the branch of the item")
+	assert.Equal(t, []string{"#41 in:title,body"}, f.searches, "the history searches the title and the body for the issue")
 	assert.Equal(t, []int{4, 6, 8}, f.commentsAsked, "an open pull request has no closing comment to read")
 }
 
@@ -212,7 +143,7 @@ func TestPulls_HistoryOfAnItemThatIsNoIssueNumberReadsOnlyItsBranch(t *testing.T
 
 	require.NoError(t, err)
 	assert.Equal(t, []model.PriorPull{{Number: 3, Title: "t", State: "CLOSED", Branch: "bb-1", Base: "main"}}, got, "a closed pull request with no comment has an empty closing comment")
-	assert.Len(t, f.asked, 1, "no search for an item that no pull request can name by number")
+	assert.Empty(t, f.searches, "no search for an item that no pull request can name by number")
 }
 
 func TestPulls_HistoryOfAProjectWithNoForgeIsEmpty(t *testing.T) {
@@ -253,4 +184,30 @@ func TestPulls_AHistoryReadThatFailsIsAnError(t *testing.T) {
 	badTime := &priorForge{onBranch: []model.PullRequest{priorRow(4, "t", "", "CLOSED", "41", "")}, comments: map[int][]model.Comment{4: {said("x", "yesterday")}}}
 	_, err = historyOver(badTime).History(t.Context(), "p", "41")
 	require.ErrorContains(t, err, "a comment of pull request 4 has no valid time")
+}
+
+func TestHistory_ReadsTheAuthorAssociation(t *testing.T) {
+	t.Parallel()
+
+	foreign := priorRow(5, "from a contributor", "", "CLOSED", "41", "")
+	foreign.AuthorAssociation = model.AssociationContributor
+	nobody := priorRow(6, "no association", "", "OPEN", "41", "")
+	nobody.AuthorAssociation = ""
+	ownByStranger := priorRow(7, "own pull request", "", "CLOSED", "41", "")
+
+	f := &priorForge{
+		onBranch: []model.PullRequest{priorRow(4, "own", "", "OPEN", "41", ""), foreign, nobody, ownByStranger},
+		comments: map[int][]model.Comment{
+			5: {said("owner answer", "2026-11-10T11:00:00Z")},
+			7: {{Body: "stranger answer", CreatedAt: "2026-11-10T11:00:00Z", AuthorAssociation: model.AssociationNone}},
+		},
+	}
+
+	got, err := historyOver(f).History(t.Context(), "p", "bb-1")
+
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	assert.Equal(t, []bool{false, true, true, false}, []bool{got[0].Foreign, got[1].Foreign, got[2].Foreign, got[3].Foreign}, "a pull request of another account, or with no association, is foreign")
+	assert.Equal(t, []bool{false, false, false, true}, []bool{got[0].ClosingForeign, got[1].ClosingForeign, got[2].ClosingForeign, got[3].ClosingForeign}, "the closing comment is judged by its own author, and a pull request with no comment has no foreign comment")
+	assert.Equal(t, "owner answer", got[1].ClosingComment, "the adapter keeps the text: the step module withholds it")
 }

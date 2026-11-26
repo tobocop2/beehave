@@ -234,9 +234,19 @@ func (f swarmForgeAt) PRList(ctx context.Context, _ int, args ...string) ([]mode
 	return found, nil
 }
 
+// BranchPulls lists the pull requests of the branch in every state as PRList does.
+func (f swarmForgeAt) BranchPulls(ctx context.Context, branch string) ([]model.PullRequest, error) {
+	return f.PRList(ctx, 0, "--state", "all", "--head", branch)
+}
+
+// SearchPulls lists the pull requests of the search as PRList does.
+func (f swarmForgeAt) SearchPulls(ctx context.Context, words string) ([]model.PullRequest, error) {
+	return f.PRList(ctx, 0, "--state", "all", "--search", words)
+}
+
 // OpenPulls lists the open pull requests as the real forge does: the pull requests of PRList for the state open, and an error for each pull request that lacks a field.
 func (f swarmForgeAt) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error) {
-	rows, err := f.PRList(ctx, forge.OpenPullLimit, "--state", "open")
+	rows, err := f.PRList(ctx, 0, "--state", "open")
 	if err != nil {
 		return nil, err
 	}

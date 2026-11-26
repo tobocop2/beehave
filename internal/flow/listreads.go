@@ -62,6 +62,7 @@ type listedItem struct {
 	Assignee string   `json:"assignee"`
 	Title    string   `json:"title"`
 	Labels   []string `json:"labels"`
+	Foreign  bool     `json:"foreign"`
 }
 
 // listedPull is one open pull request of the result of pr_list. Labels is an empty list, never null.
@@ -74,6 +75,7 @@ type listedPull struct {
 	Title          string   `json:"title"`
 	Labels         []string `json:"labels"`
 	ReviewDecision string   `json:"review_decision"`
+	Foreign        bool     `json:"foreign"`
 }
 
 // listedRun is the last run of one item in the result of run_read. Value is the JSON value of a done run, and null for any other.
@@ -85,32 +87,43 @@ type listedRun struct {
 	StopReason string          `json:"stop_reason"`
 }
 
-// itemListOutputs are the fields of item_list: the open items, in the order of the tracker.
-func itemListOutputs(items []model.Item) map[string]any {
+// itemListOutputs are the fields of item_list: the open items, in the order of the tracker. A foreign item has no title when withhold is true.
+func itemListOutputs(items []model.Item, withhold bool) map[string]any {
 	listed := make([]listedItem, len(items))
 
 	for i, item := range items {
+		foreign := item.Association.Foreign()
 		listed[i] = listedItem{
-			ID: item.ID, Severity: string(item.Severity), Hold: item.Hold, Parent: item.Parent, Assignee: item.Assignee, Title: item.Title,
-			Labels: append([]string{}, item.Labels...),
+			ID: item.ID, Severity: string(item.Severity), Hold: item.Hold, Parent: item.Parent, Assignee: item.Assignee, Title: unlessWithheld(item.Title, foreign && withhold),
+			Labels: append([]string{}, item.Labels...), Foreign: foreign,
 		}
 	}
 
 	return map[string]any{workflow.ItemsKeyword: listed}
 }
 
-// prListOutputs are the fields of pr_list: the open pull requests, in the order of the forge.
-func prListOutputs(pulls []model.OpenPull) map[string]any {
+// prListOutputs are the fields of pr_list: the open pull requests, in the order of the forge. A foreign pull request has no title when withhold is true.
+func prListOutputs(pulls []model.OpenPull, withhold bool) map[string]any {
 	listed := make([]listedPull, len(pulls))
 
 	for i, pull := range pulls {
+		foreign := pull.Association.Foreign()
 		listed[i] = listedPull{
-			Number: pull.Number, Branch: pull.Branch, Base: pull.Base, Author: pull.Author, Draft: pull.Draft, Title: pull.Title,
-			Labels: append([]string{}, pull.Labels...), ReviewDecision: pull.ReviewDecision,
+			Number: pull.Number, Branch: pull.Branch, Base: pull.Base, Author: pull.Author, Draft: pull.Draft, Title: unlessWithheld(pull.Title, foreign && withhold),
+			Labels: append([]string{}, pull.Labels...), ReviewDecision: pull.ReviewDecision, Foreign: foreign,
 		}
 	}
 
 	return map[string]any{pullsField: listed}
+}
+
+// unlessWithheld is the text, or the empty string when the text is withheld.
+func unlessWithheld(text string, withheld bool) string {
+	if withheld {
+		return ""
+	}
+
+	return text
 }
 
 // runReadOutputs are the fields of run_read: the last run of each item, in the order asked, and the free slots of the items queue.
@@ -139,8 +152,9 @@ func (s *script) itemList(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 
 	return s.durable(itemListKind, name, func(ctx context.Context, _ string) (stepResult, error) {
 		items, err := s.e.itemsOf(ctx, s.in.Project, label)
+		foreign := slices.ContainsFunc(items, func(i model.Item) bool { return i.Association.Foreign() })
 
-		return stepResult{Outputs: itemListOutputs(items)}, err
+		return stepResult{Outputs: itemListOutputs(items, s.e.withholdForeign(ctx, s.in, foreign))}, err
 	})
 }
 
@@ -158,8 +172,9 @@ func (s *script) prList(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 
 	return s.durable(prListKind, name, func(ctx context.Context, _ string) (stepResult, error) {
 		pulls, err := s.e.pullsOf(ctx, s.in.Project, base)
+		foreign := slices.ContainsFunc(pulls, func(p model.OpenPull) bool { return p.Association.Foreign() })
 
-		return stepResult{Outputs: prListOutputs(pulls)}, err
+		return stepResult{Outputs: prListOutputs(pulls, s.e.withholdForeign(ctx, s.in, foreign))}, err
 	})
 }
 

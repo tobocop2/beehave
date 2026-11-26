@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,13 +36,31 @@ func codeOf(t *testing.T, err error) int {
 	return failure.Code
 }
 
+// issue is one open issue as the GraphQL list gives it.
 func issue(number int, title string, labels ...string) map[string]any {
 	names := make([]map[string]string, len(labels))
 	for i, label := range labels {
 		names[i] = map[string]string{"name": label}
 	}
 
-	return map[string]any{"number": number, "title": title, "labels": names, "assignees": []any{}}
+	return map[string]any{"number": number, "title": title, "labels": map[string]any{"nodes": names}, "assignees": map[string]any{"nodes": []any{}}, "authorAssociation": "OWNER"}
+}
+
+// issuePages is the answer of gh api graphql --paginate --slurp: one page for each slice of rows, each with the total of all rows.
+func issuePages(t *testing.T, pages ...[]map[string]any) string {
+	t.Helper()
+
+	total := 0
+	for _, page := range pages {
+		total += len(page)
+	}
+
+	answer := make([]any, len(pages))
+	for i, page := range pages {
+		answer[i] = map[string]any{"data": map[string]any{"repository": map[string]any{"list": map[string]any{"totalCount": total, "nodes": page}}}}
+	}
+
+	return toJSON(t, answer)
 }
 
 func TestNew_NeedsOwnerAndName(t *testing.T) {
@@ -69,22 +88,49 @@ func TestGithubItemList_SkipsEpicsAndReadsLabels(t *testing.T) {
 
 	gh, run := newGithub(t)
 	crowded := issue(3, "has two", "P2", "P1", "hold")
-	crowded["assignees"] = []map[string]string{{"login": "ann"}, {"login": "bob"}}
-	run.Plan(toJSON(t, []any{
-		issue(1, "plain"), issue(2, "epic: big", "P0"), crowded,
+	crowded["assignees"] = map[string]any{"nodes": []map[string]string{{"login": "ann"}, {"login": "bob"}}}
+	run.Plan(issuePages(t, []map[string]any{issue(1, "plain"), issue(2, "epic: big", "P0"), crowded}, []map[string]any{
 		issue(4, "holding", "holder", "P3"), issue(5, "not an epic: x", "P1"), issue(6, "no hold", "Hold", "P4"),
-	}), "issue", "list")
+	}), "api", "graphql")
 
 	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []model.Item{
-		{ID: "1", Severity: model.SeverityUnknown, Title: "plain"},
-		{ID: "3", Severity: model.SeverityP2, Hold: true, Assignee: "ann,bob", Title: "has two", Labels: []string{"P2", "P1", "hold"}},
-		{ID: "4", Severity: model.SeverityP3, Title: "holding", Labels: []string{"holder", "P3"}},
-		{ID: "5", Severity: model.SeverityP1, Title: "not an epic: x", Labels: []string{"P1"}},
-		{ID: "6", Severity: model.SeverityUnknown, Title: "no hold", Labels: []string{"Hold", "P4"}},
-	}, items)
-	assert.Equal(t, []string{"issue", "list", "--repo", ghRepo, "--state", "open", "--limit", "1000", "--json", "number,title,labels,assignees"}, run.Calls[0])
+		{ID: "1", Severity: model.SeverityUnknown, Title: "plain", Association: model.AssociationOwner},
+		{ID: "3", Severity: model.SeverityP2, Hold: true, Assignee: "ann,bob", Title: "has two", Labels: []string{"P2", "P1", "hold"}, Association: model.AssociationOwner},
+		{ID: "4", Severity: model.SeverityP3, Title: "holding", Labels: []string{"holder", "P3"}, Association: model.AssociationOwner},
+		{ID: "5", Severity: model.SeverityP1, Title: "not an epic: x", Labels: []string{"P1"}, Association: model.AssociationOwner},
+		{ID: "6", Severity: model.SeverityUnknown, Title: "no hold", Labels: []string{"Hold", "P4"}, Association: model.AssociationOwner},
+	}, items, "the rows of every page join, in the order of the forge")
+	require.Len(t, run.Calls, 1, "one call reads every page")
+	assert.Equal(t, []string{"api", "graphql", "--paginate", "--slurp", "-f", "o=owner", "-f", "n=name"}, run.Calls[0][:8])
+	assert.NotContains(t, strings.Join(run.Calls[0], " "), "l[]=", "no label filters nothing")
+
+	query := strings.TrimPrefix(run.Calls[0][len(run.Calls[0])-1], "query=")
+	for _, part := range []string{"list:issues(states:OPEN,labels:$l,", "authorAssociation", "after:$endCursor", "pageInfo{hasNextPage endCursor}", "assignees(first:100){nodes{login}}"} {
+		assert.Contains(t, query, part)
+	}
+}
+
+func TestItemList_ReadsTheAuthorAssociation(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+	foreign := issue(2, "from a contributor")
+	foreign["authorAssociation"] = "CONTRIBUTOR"
+	missing := issue(3, "no association")
+	delete(missing, "authorAssociation")
+	run.Plan(issuePages(t, []map[string]any{issue(1, "own"), foreign, missing}), "api", "graphql")
+
+	items, err := gh.ItemList(context.Background(), "")
+	require.NoError(t, err)
+
+	got := make([]model.Association, len(items))
+	for i, item := range items {
+		got[i] = item.Association
+	}
+
+	assert.Equal(t, []model.Association{model.AssociationOwner, model.AssociationContributor, ""}, got, "the list keeps what the forge says, and a row with none has none")
 }
 
 func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {
@@ -97,14 +143,15 @@ func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 		want   string
 	}{
 		{name: "failed_list", fail: true, want: "cannot list the open issues"},
-		{name: "full_page", stdout: toJSON(t, fill(1000, nil)), want: "1000 rows, the list may be cut off"},
-		{name: "not_a_list", stdout: `{"number":1}`, want: "cannot read the answer of `gh issue list`"},
+		{name: "cut_list", stdout: `[{"data":{"repository":{"list":{"totalCount":3,"nodes":[{"number":1,"title":"t"}]}}}}]`, want: "1 of 3 rows, so the rest are unknown"},
+		{name: "not_a_list_of_pages", stdout: `{"number":1}`, want: "cannot read the answer of `gh api graphql`"},
+		{name: "page_with_no_list", stdout: `[{"data":{"repository":null}}]`, want: "a page holds no list"},
 		{name: "null_answer", stdout: "null", want: "the answer is null"},
 		{name: "text_after_the_answer", stdout: "[] []", want: "after top-level value"},
-		{name: "element_that_is_not_an_object", stdout: `[3]`, want: "cannot read the answer"},
-		{name: "no_title", stdout: `[{"number":1}]`, want: "no readable title"},
-		{name: "no_number", stdout: `[{"title":"t"}]`, want: "no readable number"},
-		{name: "number_as_text", stdout: `[{"number":"1","title":"t"}]`, want: "cannot read the answer"},
+		{name: "row_that_is_not_an_object", stdout: `[{"data":{"repository":{"list":{"totalCount":1,"nodes":[3]}}}}]`, want: "cannot read the answer"},
+		{name: "no_title", stdout: `[{"data":{"repository":{"list":{"totalCount":1,"nodes":[{"number":1}]}}}}]`, want: "no readable title"},
+		{name: "no_number", stdout: `[{"data":{"repository":{"list":{"totalCount":1,"nodes":[{"title":"t"}]}}}}]`, want: "no readable number"},
+		{name: "number_as_text", stdout: `[{"data":{"repository":{"list":{"totalCount":1,"nodes":[{"number":"1","title":"t"}]}}}}]`, want: "cannot read the answer"},
 	}
 
 	for _, tt := range tests {
@@ -113,9 +160,9 @@ func TestGithubReads_RefuseWhatTheyCannotTrust(t *testing.T) {
 
 			gh, run := newGithub(t)
 			if tt.fail {
-				run.PlanFail("boom", "issue", "list")
+				run.PlanFail("boom", "api", "graphql")
 			} else {
-				run.Plan(tt.stdout, "issue", "list")
+				run.Plan(tt.stdout, "api", "graphql")
 			}
 
 			_, err := gh.ItemList(context.Background(), "")
@@ -130,53 +177,83 @@ func TestGithubItemList_WithALabelAsksGithubForThatLabel(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
-	run.Plan(toJSON(t, []any{issue(1, "tagged", "bug")}), "issue", "list")
+	run.Plan(issuePages(t, []map[string]any{issue(1, "tagged", "bug")}), "api", "graphql")
 
 	items, err := gh.ItemList(context.Background(), "bug")
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
-	assert.True(t, run.Called("--label", "bug"))
+	assert.True(t, run.Called("-f", "l[]=bug"), "the label is a list variable of the query")
 }
 
-func TestGithubItemList_ListsAPageOneUnderFull(t *testing.T) {
+// TestGithubItemList_TheQueryAsksForTheAuthorAssociationOfEveryIssue reads the query text. The fake answer carries the association whatever
+// the query asks, so only the query shows that a real forge would send it. An issue without it counts as foreign.
+func TestGithubItemList_TheQueryAsksForTheAuthorAssociationOfEveryIssue(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
-	run.Plan(toJSON(t, fill(999, nil)), "issue", "list")
+	run.Plan(issuePages(t, []map[string]any{}), "api", "graphql")
+
+	_, err := gh.ItemList(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, run.Calls, 1)
+
+	var query string
+
+	for _, arg := range run.Calls[0] {
+		if text, found := strings.CutPrefix(arg, "query="); found {
+			query = text
+		}
+	}
+
+	assert.Contains(t, query, "list:issues(")
+	assert.Contains(t, query, "authorAssociation", "the rows of the list carry the association")
+}
+
+func TestGithubItemList_ListsMoreThanAThousandIssues(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+	run.Plan(issuePages(t, fill(1000, nil), fill(1, nil)), "api", "graphql")
 
 	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
-	assert.Len(t, items, 999)
+	assert.Len(t, items, 1001, "every page is read, so no limit cuts the list")
 }
 
 func TestGithubItemList_NullLabelsAndAssigneesAreEmpty(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
-	run.Plan(`[{"number":7,"title":"t","labels":null,"assignees":null}]`, "issue", "list")
+	run.Plan(`[{"data":{"repository":{"list":{"totalCount":2,"nodes":[{"number":7,"title":"t","labels":null,"assignees":null},{"number":8,"title":"u","labels":{"nodes":null},"assignees":{"nodes":null}}]}}}}]`, "api", "graphql")
 
 	items, err := gh.ItemList(context.Background(), "")
 	require.NoError(t, err)
-	assert.Equal(t, []model.Item{{ID: "7", Severity: model.SeverityUnknown, Title: "t"}}, items)
+	assert.Equal(t, []model.Item{{ID: "7", Severity: model.SeverityUnknown, Title: "t"}, {ID: "8", Severity: model.SeverityUnknown, Title: "u"}}, items)
 }
 
 func TestDecodeRefusals_KeepTheirCause(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
-	run.Plan("null", "issue", "list")
+	run.Plan("null", "api", "graphql")
 
 	_, err := gh.ItemList(context.Background(), "")
 	require.ErrorIs(t, err, model.ErrNullAnswer)
 
+	gh, run = newGithub(t)
+	run.Plan(`[{"data":{"repository":{"list":{"totalCount":2,"nodes":[]}}}}]`, "api", "graphql")
+
+	_, err = gh.ItemList(context.Background(), "")
+	require.ErrorIs(t, err, model.ErrMorePages)
+
 	for _, answer := range []string{"nope", "[] []"} {
 		gh, run = newGithub(t)
-		run.Plan(answer, "issue", "list")
+		run.Plan(answer, "api", "graphql")
 
 		_, err = gh.ItemList(context.Background(), "")
 
 		var syntax *json.SyntaxError
 		require.ErrorAs(t, err, &syntax, answer)
-		require.ErrorContains(t, err, "gh issue list", answer)
+		require.ErrorContains(t, err, "gh api graphql", answer)
 	}
 }

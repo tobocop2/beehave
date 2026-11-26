@@ -46,6 +46,41 @@ func TestScripted_AnswersByWordsAndTheLatestPlanWins(t *testing.T) {
 	}
 }
 
+func TestScripted_RefusesAJSONFieldThatGHDoesNotAccept(t *testing.T) {
+	t.Parallel()
+
+	refused := func(field string) model.CommandResult {
+		return model.CommandResult{ExitCode: 1, Stderr: `Unknown JSON field: "` + field + `"`}
+	}
+	planned := model.CommandResult{Stdout: "ok"}
+
+	tests := []struct {
+		name string
+		args []string
+		want model.CommandResult
+	}{
+		{"pr_list_author_association", []string{"pr", "list", "--repo", "o/n", "--json", "number,authorAssociation"}, refused("authorAssociation")},
+		{"issue_list_author_association", []string{"issue", "list", "--json", "number,title,authorAssociation"}, refused("authorAssociation")},
+		{"pr_view_issue_only_field", []string{"pr", "view", "7", "--json", "number,stateReason"}, refused("stateReason")},
+		{"issue_view_pull_only_field", []string{"issue", "view", "7", "--json", "headRefName"}, refused("headRefName")},
+		{"pr_list_known_fields", []string{"pr", "list", "--json", "number,headRefName,baseRefName,labels,reviewDecision,author,isDraft,title"}, planned},
+		{"issue_list_known_fields", []string{"issue", "list", "--json", "number,title,labels,assignees"}, planned},
+		{"pr_checks_has_other_fields", []string{"pr", "checks", "7", "--json", "name,bucket"}, planned},
+		{"no_field_list", []string{"pr", "list", "--json"}, planned},
+		{"not_gh", []string{"bd", "list", "--json", "authorAssociation"}, planned},
+		{"no_arguments", []string{}, planned},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			run := proctest.Always(planned)
+			assert.Equal(t, tc.want, run.Run(t.Context(), tc.args))
+		})
+	}
+}
+
 func TestScripted_RecordsWhatWasCalled(t *testing.T) {
 	t.Parallel()
 

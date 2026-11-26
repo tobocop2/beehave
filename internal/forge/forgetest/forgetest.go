@@ -90,12 +90,12 @@ func NoClosingRefs() model.ClosingRefs {
 
 // SevenOpen is pull request 7 as the typed list read gives it.
 func SevenOpen() model.OpenPull {
-	return model.OpenPull{Number: Seven, Branch: SevenBranch, Base: SevenBase, Author: SevenReviewer, Title: SevenTitle, Labels: []string{SevenLabel}, ReviewDecision: "APPROVED"}
+	return model.OpenPull{Number: Seven, Branch: SevenBranch, Base: SevenBase, Author: SevenReviewer, Title: SevenTitle, Labels: []string{SevenLabel}, ReviewDecision: "APPROVED", Association: model.AssociationOwner}
 }
 
 // OtherOpen is the draft pull request on OtherBase as the typed list read gives it.
 func OtherOpen() model.OpenPull {
-	return model.OpenPull{Number: OtherPull, Branch: "other", Base: OtherBase, Author: SevenAssignee, Draft: true, Title: "Other work"}
+	return model.OpenPull{Number: OtherPull, Branch: "other", Base: OtherBase, Author: SevenAssignee, Draft: true, Title: "Other work", Association: model.AssociationOwner}
 }
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
@@ -540,6 +540,8 @@ func readCalls(target forge.Forge) []call {
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
 		{"PullRead", func(ctx context.Context) error { _, err := target.PullRead(ctx, Seven); return err }},
 		{"OpenPulls", func(ctx context.Context) error { _, err := target.OpenPulls(ctx, SevenBase); return err }},
+		{"BranchPulls", func(ctx context.Context) error { _, err := target.BranchPulls(ctx, SevenBranch); return err }},
+		{"SearchPulls", func(ctx context.Context) error { _, err := target.SearchPulls(ctx, "#7"); return err }},
 		{"PRList", func(ctx context.Context) error {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err

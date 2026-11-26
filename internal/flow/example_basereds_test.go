@@ -121,7 +121,7 @@ func TestExample_ThePlanAndTheImplementerGetThePullRequestsOfTheItemInTheDataFil
 	_, err := runPipeline(rig.h.engine(t), file)
 	require.NoError(t, err)
 
-	pulls := `"pulls":[{"base":"integration","branch":"item-1","closing_comment":"refuted: slower","merged_at":"","number":4,"state":"CLOSED","title":"first try"}]`
+	pulls := `"pulls":[{"base":"integration","branch":"item-1","closing_comment":"refuted: slower","foreign":false,"merged_at":"","number":4,"state":"CLOSED","title":"first try"}]`
 
 	require.GreaterOrEqual(t, len(seen.texts), 2)
 	assert.Equal(t, []string{"plan", "implement"}, seen.kinds[:2])
