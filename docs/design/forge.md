@@ -34,6 +34,8 @@ A project with `security_alerts = True` makes each merge read the open alerts of
 
 On GitHub the read is code scanning: `GET repos/{repo}/code-scanning/alerts?state=open&pr={n}`, filtered to the alerts of the gated head. A 403 or 404 means code scanning is off or the token lacks the scope, and the start refuses the project.
 
+An empty answer means no open alert at the head. It does not tell a clean scan from a head that has no analysis yet. To tell them apart, the read must list `GET repos/{repo}/code-scanning/analyses?sha={sha}`, which is one more call.
+
 ## Mapping
 
 | Ability | GitHub | GitLab | Forgejo and Gitea |

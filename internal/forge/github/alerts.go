@@ -9,6 +9,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// forbidden is the text that gh prints when the token may not read code scanning.
 const forbidden = "HTTP 403"
 
 // alertAnswer is one code scanning alert, as the alerts endpoint lists it.

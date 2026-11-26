@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/roundintegration"
 	"github.com/tobocop2/beehave/internal/roundsync"
 )
 
@@ -98,4 +99,49 @@ func TestSideOf_AForgeWithTheAbilitiesAndNotTheCallNamesTheFirstAbility(t *testi
 
 	require.ErrorIs(t, err, forge.ErrNoCapability)
 	require.ErrorContains(t, err, string(forge.AbilitySyncer))
+}
+
+// openOnly holds the Opener ability and no other: it hides the board calls of the roundForge that it wraps.
+type openOnly struct {
+	forge.Forge
+
+	inner *roundForge
+}
+
+func (o openOnly) PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error) {
+	return o.inner.PRView(ctx, pr, fields...)
+}
+
+func (o openOnly) PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error) {
+	return o.inner.PRList(ctx, limit, args...)
+}
+
+func (o openOnly) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
+	return o.inner.CreatePR(ctx, req)
+}
+
+func (o openOnly) SetBody(ctx context.Context, pr int, body string) error {
+	return o.inner.SetBody(ctx, pr, body)
+}
+
+// boardsOnly holds the Boards ability and no other.
+type boardsOnly struct {
+	plainForge
+	forge.Boarder
+}
+
+func TestRoundWrites_IntegrateNeedsTheOpenerAndNoOtherAbility(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	req := roundintegration.Request{Base: "round-i", Into: "main"}
+
+	_, err := roundWrites{pulls: roundPulls(openOnly{inner: &roundForge{}}, "")}.Integrate(ctx, "p", req)
+
+	require.NoError(t, err, "a forge with the Opener alone is enough")
+
+	_, err = roundWrites{pulls: roundPulls(boardsOnly{}, "")}.Integrate(ctx, "p", req)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, string(forge.AbilityOpener))
 }
