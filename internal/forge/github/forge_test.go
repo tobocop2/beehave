@@ -755,12 +755,12 @@ func TestNew_RefusesARepositoryThatIsNotOwnerSlashName(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{"", "owner", "owner/", "/name", "a/b/c", "o wner/name", "owner/na;me", "owner/na me"} {
-		f, err := github.New(name, &proctest.Scripted{})
+		f, err := github.New(name, strict(&proctest.Scripted{}))
 		require.Nil(t, f, name)
 		require.EqualError(t, err, "The repository must be written owner/name.", name)
 	}
 
-	f, err := github.New("my-org_1/repo.name", &proctest.Scripted{})
+	f, err := github.New("my-org_1/repo.name", strict(&proctest.Scripted{}))
 	require.NoError(t, err)
 	assert.NotNil(t, f)
 

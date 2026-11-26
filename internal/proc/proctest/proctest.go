@@ -32,6 +32,29 @@ func (s *Scripted) Strict(check func(args []string) (stderr string, ok bool)) *S
 	return s
 }
 
+// Caller is the part of proc.Runner that Checked needs, so a package that holds its own fake of a runner can wrap it.
+type Caller interface {
+	Run(ctx context.Context, args []string) model.CommandResult
+}
+
+type checked struct {
+	inner Caller
+	check func(args []string) (stderr string, ok bool)
+}
+
+// Checked returns a runner that refuses every call that the check refuses, with exit code 1 and the refusal on stderr, and passes any other call to inner.
+func Checked(inner Caller, check func(args []string) (stderr string, ok bool)) Caller {
+	return checked{inner: inner, check: check}
+}
+
+func (c checked) Run(ctx context.Context, args []string) model.CommandResult {
+	if stderr, ok := c.check(args); !ok {
+		return model.CommandResult{ExitCode: 1, Stderr: stderr}
+	}
+
+	return c.inner.Run(ctx, args)
+}
+
 // Always returns a Scripted whose every call gets the same result.
 func Always(result model.CommandResult) *Scripted {
 	return &Scripted{answers: []answer{{result: result}}}

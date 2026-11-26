@@ -55,15 +55,21 @@ func commandResult(stdout string, exit int) model.CommandResult {
 	return model.CommandResult{ExitCode: exit, Stdout: stdout}
 }
 
-// newForge builds a forge over the runner. A scripted runner is made strict, so it refuses a field or a flag that the pinned gh refuses.
+// strict makes any runner refuse a field or a flag that the pinned gh refuses. A scripted runner refuses in place and keeps its record of calls; another runner is wrapped.
+// Every test builds the forge over strict(run): TestForge_IsBuiltOverAStrictRunnerInEveryTest fails for a call of github.New that does not.
+func strict(run proc.Runner) proc.Runner {
+	if scripted, ok := run.(*proctest.Scripted); ok {
+		return scripted.Strict(ghcontract.Check)
+	}
+
+	return proctest.Checked(run, ghcontract.Check)
+}
+
+// newForge builds a forge over the runner, made strict.
 func newForge(t *testing.T, name string, run proc.Runner) *github.Forge {
 	t.Helper()
 
-	if scripted, ok := run.(*proctest.Scripted); ok {
-		scripted.Strict(ghcontract.Check)
-	}
-
-	f, err := github.New(name, run)
+	f, err := github.New(name, strict(run))
 	require.NoError(t, err)
 
 	return f

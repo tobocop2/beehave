@@ -63,6 +63,24 @@ func TestStrict_RefusesWhatTheContractRefuses(t *testing.T) {
 	assert.Equal(t, 1, run.Run(t.Context(), []string{"gist", "list"}).ExitCode)
 }
 
+func TestChecked_RefusesWhatTheCheckRefusesOverAnyRunner(t *testing.T) {
+	t.Parallel()
+
+	inner := proctest.Always(model.CommandResult{Stdout: "[]"})
+	run := proctest.Checked(inner, ghcontract.Check)
+
+	refused := run.Run(t.Context(), []string{"pr", "list", "--json", "number,authorAssociation"})
+
+	assert.Equal(t, 1, refused.ExitCode)
+	assert.True(t, strings.HasPrefix(refused.Stderr, `Unknown JSON field: "authorAssociation"`), refused.Stderr)
+	assert.Empty(t, inner.Calls, "a refused call never reaches the runner inside")
+
+	accepted := run.Run(t.Context(), []string{"pr", "list", "--json", "number"})
+
+	assert.Equal(t, model.CommandResult{Stdout: "[]"}, accepted)
+	assert.True(t, inner.Called("pr", "list"))
+}
+
 func TestStrict_PassesACallTheContractAccepts(t *testing.T) {
 	t.Parallel()
 

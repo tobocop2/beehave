@@ -12,13 +12,14 @@ import (
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
-// strict makes a scripted runner refuse a field or a flag that the pinned gh refuses. Any other runner is returned as it is.
+// strict makes any runner refuse a field or a flag that the pinned gh refuses. A scripted runner refuses in place and keeps its record of calls; another runner is wrapped.
+// Every test builds the store over strict(run): TestStore_IsBuiltOverAStrictRunnerInEveryTest fails for a call of github.New that does not.
 func strict(run proc.Runner) proc.Runner {
 	if scripted, ok := run.(*proctest.Scripted); ok {
-		scripted.Strict(ghcontract.Check)
+		return scripted.Strict(ghcontract.Check)
 	}
 
-	return run
+	return proctest.Checked(run, ghcontract.Check)
 }
 
 func toJSON(t *testing.T, value any) string {

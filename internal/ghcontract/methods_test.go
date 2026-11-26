@@ -61,6 +61,54 @@ func TestPublicMethods_ListsTheExportedMethodsOfOneTypeSorted(t *testing.T) {
 	assert.Equal(t, []string{"Alpha", "Middle", "Zeta"}, got, "a pointer receiver and a value receiver count; a hidden method, a test file, another type and a generic receiver do not")
 }
 
+const constructionsSource = `package sample_test
+
+func a() {
+	github.New("r", strict(run))
+	github.New("r", run)
+	github.New("r", other(run))
+	github.New("r", x.strict(run))
+	github.New("r", strict())
+	github.NewExec("r", run)
+	other.New("r", run)
+	github.New("r")
+	github.New()
+	plain("r", run)
+	a.b.New("r", run)
+}
+
+var unused = 1
+
+func external()
+`
+
+func TestUnwrappedCalls_ListsTheConstructionsOverARunnerThatIsNotWrapped(t *testing.T) {
+	t.Parallel()
+
+	dir := writeSample(t, map[string]string{"a_test.go": constructionsSource, "b.go": "package sample\n\nfunc b() { github.New(\"r\", run) }\n"})
+
+	got, err := ghcontract.UnwrappedCalls(dir, "github", "New", "strict")
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"a_test.go:5:a", "a_test.go:6:a", "a_test.go:7:a", "a_test.go:8:a"}, got, "a bare runner, another call, a method and a call with no argument are listed with their function; the wrapped call, another constructor, another package, short calls and a production file are not")
+}
+
+func TestUnwrappedCalls_RefusesAFolderThatDoesNotExist(t *testing.T) {
+	t.Parallel()
+
+	_, err := ghcontract.UnwrappedCalls(filepath.Join(t.TempDir(), "missing"), "github", "New", "strict")
+
+	assert.ErrorContains(t, err, "read ")
+}
+
+func TestUnwrappedCalls_RefusesATestFileThatDoesNotParse(t *testing.T) {
+	t.Parallel()
+
+	_, err := ghcontract.UnwrappedCalls(writeSample(t, map[string]string{"broken_test.go": "package"}), "github", "New", "strict")
+
+	assert.ErrorContains(t, err, "parse broken_test.go")
+}
+
 func TestPublicMethods_RefusesAFolderThatDoesNotExist(t *testing.T) {
 	t.Parallel()
 

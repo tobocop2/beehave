@@ -13,15 +13,17 @@ import (
 
 // PublicMethods lists the exported methods of the type in the production files of a folder, sorted. A test uses it to require a driver for each method of an adapter, so a new method cannot skip the contract.
 func PublicMethods(dir, typeName string) ([]string, error) {
-	paths, err := sourceFiles(dir)
+	paths, err := goFiles(dir, false)
 	if err != nil {
 		return nil, err
 	}
 
+	fset := token.NewFileSet()
+
 	var methods []string
 
 	for _, path := range paths {
-		file, parseErr := parseSource(path)
+		file, parseErr := parseSource(fset, path)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -34,8 +36,84 @@ func PublicMethods(dir, typeName string) ([]string, error) {
 	return methods, nil
 }
 
-// sourceFiles lists the paths of the Go files of a folder that are not test files.
-func sourceFiles(dir string) ([]string, error) {
+// UnwrappedCalls lists the calls pkg.ctor(...) in the test files of a folder whose second argument is not a call of the function wrapper, as file:line:function. A test uses it to require
+// that every adapter of a test is built over a runner that the wrapper makes strict, so no test can reach gh through a fake that skips the table.
+func UnwrappedCalls(dir, pkg, ctor, wrapper string) ([]string, error) {
+	paths, err := goFiles(dir, true)
+	if err != nil {
+		return nil, err
+	}
+
+	fset := token.NewFileSet()
+
+	var found []string
+
+	for _, path := range paths {
+		file, parseErr := parseSource(fset, path)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+
+		found = append(found, unwrappedIn(fset, file, pkg, ctor, wrapper)...)
+	}
+
+	return found, nil
+}
+
+// unwrappedIn lists the calls pkg.ctor(...) of one file whose second argument is not a call of the wrapper.
+func unwrappedIn(fset *token.FileSet, file *ast.File, pkg, ctor, wrapper string) []string {
+	var found []string
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if call, isCall := n.(*ast.CallExpr); isCall && isCallOf(call, pkg, ctor) && !isCallOf(argCall(call.Args[1]), "", wrapper) {
+				position := fset.Position(call.Pos())
+				found = append(found, fmt.Sprintf("%s:%d:%s", filepath.Base(position.Filename), position.Line, fn.Name.Name))
+			}
+
+			return true
+		})
+	}
+
+	return found
+}
+
+// argCall returns the argument when it is a call, and nil otherwise.
+func argCall(arg ast.Expr) *ast.CallExpr {
+	call, _ := arg.(*ast.CallExpr)
+
+	return call
+}
+
+// isCallOf says whether the call is pkg.name(...) with two arguments at least, or name(...) with one argument at least when pkg is empty. A nil call is no call.
+func isCallOf(call *ast.CallExpr, pkg, name string) bool {
+	if call == nil || len(call.Args) < 1 {
+		return false
+	}
+
+	if pkg == "" {
+		id, ok := call.Fun.(*ast.Ident)
+
+		return ok && id.Name == name
+	}
+
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	id, named := sel.X.(*ast.Ident)
+
+	return named && id.Name == pkg && sel.Sel.Name == name && len(call.Args) >= 2
+}
+
+// goFiles lists the paths of the Go files of a folder: the test files when tests is true, and the others when it is false.
+func goFiles(dir string, tests bool) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", dir, err)
@@ -45,7 +123,7 @@ func sourceFiles(dir string) ([]string, error) {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !entry.IsDir() && strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") {
+		if !entry.IsDir() && strings.HasSuffix(name, ".go") && strings.HasSuffix(name, "_test.go") == tests {
 			paths = append(paths, filepath.Join(dir, name))
 		}
 	}
@@ -54,8 +132,8 @@ func sourceFiles(dir string) ([]string, error) {
 }
 
 // parseSource parses one Go file without resolving objects.
-func parseSource(path string) (*ast.File, error) {
-	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+func parseSource(fset *token.FileSet, path string) (*ast.File, error) {
+	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
