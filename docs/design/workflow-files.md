@@ -395,7 +395,7 @@ The scope check is a library: `load("@beehave//scope.star", "fix_scope", "hold_s
 
 #### `pr_history`
 
-`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at`, `closing_comment` and `foreign`. `foreign` is true when another account than the owner wrote the pull request. The `title` of a foreign pull request is empty, and so is a `closing_comment` that another account wrote, unless the run may hold foreign text (see [trust](trust.md)).
+`pr_history(name, item)` reads the pull requests of the item of the run, or of the item that `item` names, in every state and returns `pulls`. Each has `number`, `title`, `state`, `branch`, `base`, `merged_at`, `closing_comment` and `foreign`. `foreign` is true when another account than the owner wrote the pull request. The `title` and the `branch` of a foreign pull request are empty, and so is a `closing_comment` that another account wrote, unless the run may hold foreign text (see [trust](trust.md)).
 
 - The forge lists the pull requests on the branch of the item. For an item that is an issue number, it also lists the pull requests whose title or body names `#N`, and keeps those that name it as a whole word. The two lists join by number.
 - `closing_comment` is the body of the last comment made at or before the close of a closed or merged pull request. A comment after the close does not count. It is empty for an open one and for one with no comment until its close.

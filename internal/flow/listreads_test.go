@@ -1,8 +1,10 @@
 package flow
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -287,13 +289,38 @@ func TestListReads_AForeignRowOfASandboxOffRunIsWithheld(t *testing.T) {
 func TestListReads_ARunWithOnlyOwnRowsAsksNoHostCheck(t *testing.T) {
 	t.Parallel()
 
+	checks := &atomic.Int32{}
 	h, _ := queueHarness(t, nil, openPullBy(t, 7, "21", "own", "OWNER"))
-	h.hosts = checkedHosts{check: errUndeclared}
+	h.hosts = countedHosts{checks: checks}
 
 	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, seenPullsFlow), RunSandbox(model.SandboxOn))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"7|own|21|False"}, seenBy(t, h))
+	assert.Zero(t, checks.Load(), "a list with no foreign row never checks the build host")
+
+	foreignChecks := &atomic.Int32{}
+	control, _ := queueHarness(t, nil, openPullBy(t, 7, "21", "own", "OWNER"), openPullBy(t, 8, "b", "theirs", "CONTRIBUTOR"))
+	control.hosts = countedHosts{checks: foreignChecks}
+
+	_, err = control.engine(t).RunFile(testItem, testProject, writeFlow(t, seenPullsFlow), RunSandbox(model.SandboxOn))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"7|own|21|False", "8||b|True"}, seenBy(t, control))
+	assert.Equal(t, int32(1), foreignChecks.Load(), "control: a list with a foreign row checks the build host once")
+}
+
+// countedHosts counts the host checks and fails each one.
+type countedHosts struct {
+	failingHosts
+
+	checks *atomic.Int32
+}
+
+func (c countedHosts) CheckCredentials(context.Context, string) error {
+	c.checks.Add(1)
+
+	return errUndeclared
 }
 
 func TestListReads_AReplayReturnsTheWithheldRow(t *testing.T) {

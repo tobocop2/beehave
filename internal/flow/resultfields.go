@@ -131,12 +131,13 @@ func pushOutputs(branch, head string) map[string]any {
 }
 
 // prHistoryOutputs are the fields of pr_history: the pull requests of the item, an empty list and never null for an item with none.
-// When withhold is true, a foreign pull request has no title and a closing comment that another account wrote is empty.
+// When withhold is true, a foreign pull request has no title and no branch, and a closing comment that another account wrote is empty.
 func prHistoryOutputs(pulls []model.PriorPull, withhold bool) map[string]any {
 	listed := append([]model.PriorPull{}, pulls...)
 
 	for i := range listed {
 		listed[i].Title = unlessWithheld(listed[i].Title, listed[i].Foreign && withhold)
+		listed[i].Branch = unlessWithheld(listed[i].Branch, listed[i].Foreign && withhold)
 		listed[i].ClosingComment = unlessWithheld(listed[i].ClosingComment, listed[i].ClosingForeign && withhold)
 	}
 

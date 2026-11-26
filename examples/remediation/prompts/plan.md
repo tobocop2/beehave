@@ -33,7 +33,7 @@ state are the list `pulls` in the data file {{ .data_file }}, which the engine r
 shell (`cat` or `jq`). If the data file is missing or cannot be read, stop and refuse: say so, and do not guess the pull requests.
 **Repeat-offender check:** `git log -S` in your folder, and the earlier pull requests of this item in {{ .data_file }}, reading
 the CLOSING comment (`closing_comment`) rather than the commits. A closed pull request is not a record of work that landed.
-A pull request with `foreign` true comes from another account: its title is withheld, and so is any closing comment that another account wrote. An empty text then means withheld, not absent.
+A pull request with `foreign` true comes from another account: its title and its branch are withheld, and so is any closing comment that another account wrote. An empty text then means withheld, not absent.
 **Re-derive every cited site at the tip you branch from.** Line numbers move.
 **Build-versus-buy search.** Before you write a new mechanism, search the project, its dependencies and the standard
 library for one that already does the job. Name what you found, or write that you found none.
