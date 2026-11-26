@@ -72,8 +72,8 @@ func defaultNamesAgainst(raw rawProject, program []string) error {
 // defaultNameAgainst refuses one added name that an owner entry repeats as a folder or that a test_paths glob matches.
 func defaultNameAgainst(raw rawProject, name string) error {
 	for _, entry := range raw.GateProgram {
-		if err := gateProgramPair(raw.At, entry, name); err != nil {
-			return err
+		if gateProgramPair(raw.At, entry, name) != nil {
+			return refuseAt(raw.At, "The gate tools read the file %q, so it joins `gate_program`, and `gate_program` entry %q names it as a directory or a path inside it. Remove the entry or fix its path.", name, entry)
 		}
 	}
 

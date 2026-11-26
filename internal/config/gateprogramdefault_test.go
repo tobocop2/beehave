@@ -127,7 +127,8 @@ func TestGateProgramDefault_AnOwnerFolderThatNamesADefaultFileIsRefused(t *testi
 	_, problems := loadProjectText(t, call(forgeBase+`, gate = "make check", gate_program = ["Makefile/"]`))
 
 	require.Len(t, problems, 1)
-	require.Contains(t, problems[0].Error(), `"Makefile"`)
+	require.Contains(t, problems[0].Error(), `the file "Makefile"`)
+	require.Contains(t, problems[0].Error(), `entry "Makefile/" names it as a directory`)
 }
 
 func TestGateProgramDefault_EmptyOwnerListGivesNoDefault(t *testing.T) {
