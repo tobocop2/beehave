@@ -659,6 +659,17 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 - A tracker with no issue numbers gives no findings and the note "issue states: the tracker of the project has no issue numbers, so no read ran." The first issue read tells it. If no landed id is a plain number, `facts()` tells it, and the ids are no findings. A batch that landed nothing reads no issue and gives the note "issue states: no member landed, so no read ran."
 - The audit never closes or reopens an issue. A finding does not fail the call, because the batch has landed. The workflow reads `findings` and decides what to tell the owner.
 
+#### The survival library
+
+`load("@beehave//survival.star", "merge_survival")` loads the survival read from the library `lib/survival.star`. `merge_survival(name, base, tip)` runs git in the folder of the item with `command` and returns one struct for each merge of `base..tip`, oldest first: `merge`, `subject`, `lost` and `deleted`.
+
+- It reads every merge, not only the merge of a pull request, because a read of the pull request merges alone gives a confident zero.
+- For a merge, it takes the lines that the merge added against its first parent, with `git diff -U0`. A blank line is not counted.
+- It compares each added line, exactly, with the file at the tip. `lost` lists a struct for each file with `file`, `count` and the first ten lost `lines`.
+- A file that the tip does not hold is in `deleted` and not in `lost`, because a retired file is for a person to check. A file renamed after the merge shows as `deleted`.
+- A merge whose lines all survive is listed with empty `lost` and `deleted`. A range with no merge gives an empty list.
+- The result is a signal for a person to read. A later commit can rightly change a line, so the call never fails the run because of a lost line. A git command that fails ends the call with the output of git.
+
 #### `hand_off`
 
 `hand_off(prs, base, repo, name)` hands the landing to the owner. The call lands nothing, runs no gate and takes no `hold`, `own`, `forbid_text`, `gate_run` or `integration`. `merge` takes no `hand_off` keyword.
