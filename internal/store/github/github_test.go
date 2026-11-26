@@ -185,6 +185,30 @@ func TestGithubItemList_WithALabelAsksGithubForThatLabel(t *testing.T) {
 	assert.True(t, run.Called("-f", "l[]=bug"), "the label is a list variable of the query")
 }
 
+// TestGithubItemList_TheQueryAsksForTheAuthorAssociationOfEveryIssue reads the query text. The fake answer carries the association whatever
+// the query asks, so only the query shows that a real forge would send it. An issue without it counts as foreign.
+func TestGithubItemList_TheQueryAsksForTheAuthorAssociationOfEveryIssue(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+	run.Plan(issuePages(t, []map[string]any{}), "api", "graphql")
+
+	_, err := gh.ItemList(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, run.Calls, 1)
+
+	var query string
+
+	for _, arg := range run.Calls[0] {
+		if text, found := strings.CutPrefix(arg, "query="); found {
+			query = text
+		}
+	}
+
+	assert.Contains(t, query, "list:issues(")
+	assert.Contains(t, query, "authorAssociation", "the rows of the list carry the association")
+}
+
 func TestGithubItemList_ListsMoreThanAThousandIssues(t *testing.T) {
 	t.Parallel()
 

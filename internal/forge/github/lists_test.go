@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -96,6 +97,50 @@ func TestHistoryReads_ListTheBranchAndTheSearchInEveryState(t *testing.T) {
 	searchQuery := queryOf(t, run.Calls[0])
 	for _, part := range []string{"list:search(query:$q,type:ISSUE,", "totalCount:issueCount", "... on PullRequest{", "authorAssociation", "closedAt"} {
 		assert.Contains(t, searchQuery, part)
+	}
+
+	assert.NotContains(t, searchQuery, "ISSUE_ADVANCED", "the history search uses the search type that every GitHub host has, as the search of our open pull requests does")
+}
+
+// TestListReads_EachQueryAsksForTheAuthorAssociationOfEveryRow reads the query of each list read. The fake answers carry the association
+// whatever the query asks, so only the query text shows that a real forge would send it. A row without it counts as foreign.
+func TestListReads_EachQueryAsksForTheAuthorAssociationOfEveryRow(t *testing.T) {
+	t.Parallel()
+
+	repositoryList := listPages(t, []fields{})
+	searchList := `[{"data":{"list":{"totalCount":0,"nodes":[]}}}]`
+
+	reads := []struct {
+		name   string
+		answer string
+		read   func(context.Context, *github.Forge) error
+	}{
+		{
+			name:   "open pull requests",
+			answer: repositoryList,
+			read:   func(ctx context.Context, f *github.Forge) error { _, err := f.OpenPulls(ctx, ""); return err },
+		},
+		{
+			name:   "branch pull requests",
+			answer: repositoryList,
+			read:   func(ctx context.Context, f *github.Forge) error { _, err := f.BranchPulls(ctx, "41"); return err },
+		},
+		{
+			name:   "search pull requests",
+			answer: searchList,
+			read:   func(ctx context.Context, f *github.Forge) error { _, err := f.SearchPulls(ctx, "#41"); return err },
+		},
+	}
+
+	for _, one := range reads {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, run := fixed(t, one.answer)
+			require.NoError(t, one.read(context.Background(), f))
+			require.Len(t, run.Calls, 1)
+			assert.Contains(t, queryOf(t, run.Calls[0]), "authorAssociation", "the rows of the list carry the association")
+		})
 	}
 }
 
