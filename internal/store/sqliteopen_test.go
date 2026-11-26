@@ -179,6 +179,16 @@ func TestOpenSQLite_RefusesAFileOfAnotherSchemaVersionAndNamesTheFix(t *testing.
 	require.ErrorContains(t, err, "move test.db away")
 }
 
+func TestOpenSQLite_RefusesAFileOfANewerVersionThatHoldsEveryOwnedTable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	rawExec(t, filepath.Join(dir, testFile), `CREATE TABLE t (x INTEGER); PRAGMA user_version = 99`)
+
+	_, err := store.OpenSQLite(t.Context(), dir, testSpec())
+	require.ErrorContains(t, err, "schema version 99, and this build knows version 1")
+}
+
 func TestOpenSQLite_RefusesANewFileThatHoldsATableOfAnotherOwnerAndNamesTheFix(t *testing.T) {
 	t.Parallel()
 
@@ -474,13 +484,44 @@ func TestOpenSQLite_RefusesAFileWhoseWalNameTheSystemCannotRead(t *testing.T) {
 	require.ErrorIs(t, err, syscall.ENAMETOOLONG)
 }
 
-func TestOpenSQLite_RefusesACancelledContext(t *testing.T) {
+func TestOpenSQLite_RefusesACancelledContextAndLeavesNoFile(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := store.OpenSQLite(ctx, t.TempDir(), testSpec())
+	dir := t.TempDir()
+
+	_, err := store.OpenSQLite(ctx, dir, testSpec())
 	require.ErrorIs(t, err, context.Canceled)
-	require.ErrorContains(t, err, "test.db")
+	require.ErrorContains(t, err, "cannot create test.db")
+	assert.Empty(t, namesIn(t, dir), "a new file whose schema did not run is never put at its name")
+}
+
+func TestOpenSQLite_ASchemaThatFailsOnANewFileLeavesNoFileAndNamesTheCause(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	spec := testSpec()
+	spec.Schema = `CREATE TABLE t (x INTEGER); SELECT y FROM missing; PRAGMA user_version = 1;`
+
+	_, err := store.OpenSQLite(t.Context(), dir, spec)
+	require.ErrorContains(t, err, "cannot create test.db")
+	require.ErrorContains(t, err, "no such table: missing")
+	assert.Empty(t, namesIn(t, dir), "a new file whose schema failed is never put at its name")
+}
+
+// namesIn returns the names of the entries of dir.
+func namesIn(t *testing.T, dir string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+
+	return names
 }
