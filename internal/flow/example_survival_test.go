@@ -124,10 +124,8 @@ func TestExampleRound_AHandOffRoundThatTheOwnerMergedReadsNoSurvival(t *testing.
 func TestExampleRound_ALossThatTheFirstLandingPostedIsNotPostedAgainAtTheNextLanding(t *testing.T) {
 	t.Parallel()
 
+	// The default end order of the rig ends item 1 in pass 1 and item 3 in pass 2, so the round lands them as two batches.
 	rig := newRoundRig(t, "1 3")
-	rig.h.opts.MaxConcurrent = 2
-	rig.endTogether("3")
-
 	g := survivalOver(t, rig.batchRig)
 	g.merge(t, "land-lost", "p.txt", "p1", "p2")
 	g.drop(t, "p.txt", "p1")
