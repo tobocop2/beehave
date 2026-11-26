@@ -511,13 +511,13 @@ fi
 if [ "$step" = settle ]; then
   printf '{"parked":"[]"}\n' > "$(field write)"
 fi
-# A lane answers the two outputs the example declares for it: its report and the reds it did not cause. The report check of the scripts is answered by e2eCommands.
+# A lane answers the three outputs the example declares for it: its report, the reds it did not cause and its note for the owner (empty: it asks nothing). The report check of the scripts is answered by e2eCommands.
 # A fix also answers the two outputs of the review ledger: it resolved no id and declares no finding wontfix.
 if [ "$step" = implement ]; then
-  printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
+  printf '{"report":"# Report\\n","uncaused":"[]","hold":""}\n' > "$(field write)"
 fi
 if [ "$step" = fix ]; then
-  printf '{"report":"# Report\\n","uncaused":"[]","resolved":"[]","wontfix":"[]"}\n' > "$(field write)"
+  printf '{"report":"# Report\\n","uncaused":"[]","hold":"","resolved":"[]","wontfix":"[]"}\n' > "$(field write)"
 fi
 # The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
 if [ "$step" = sweep ]; then

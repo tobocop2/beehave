@@ -3,6 +3,7 @@
 
 load("@beehave//batch.star", "batch_merge")
 load("@beehave//claims.star", "claim_stop")
+load("@beehave//hold.star", "hold_item")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//scope.star", "fix_scope", "hold_scope")
 load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
@@ -467,6 +468,10 @@ def check_mutation(words, base):
         return "The mutation command exited with code %d and printed no finding. A run that fails is a finding. Read its log, then fix the cause." % run.rc
 
     return "The mutation run failed. Each line is one finding:\n" + "\n".join(["- " + line for line in lines])
+
+def lane_hold(lane):
+    """The note for the owner that a fix lane wrote in its output `hold`. An empty text means the lane asks nothing."""
+    return lane.hold
 
 def lane_report(lane):
     """Checks the report that a lane wrote, as the command step candidate-lane-report, and returns the findings as text. An empty text means the report is whole.
@@ -1336,7 +1341,7 @@ def _lane(item, project, round_settings):
         model = _model(round_settings, "implement"),
         runner = _runner(round_settings, "implement"),
         label = "implement",
-        outputs = ["report", "uncaused"],
+        outputs = ["report", "uncaused", "hold"],
         forbid_commands = FORBID,
         protect_paths = protected(round_settings),
         sandbox = lane_box,
@@ -1348,6 +1353,12 @@ def _lane(item, project, round_settings):
     # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
     capped(implement, "implement", item)
     kept_history(implement, "implement", item)
+
+    # A lane that needs the owner writes the output `hold`: the question, the options and a recommendation. The item goes on hold with that note, and the queue goes on with other items.
+    # The item stops before the sweep, the push and the draft. A note with no recommendation or fewer than two options is refused, and the run fails with the field named.
+    if implement.hold != "":
+        hold_item(name = "hold-implement", id = item.id, raw = implement.hold, forbid_text = ATTRIBUTION)
+        return item_value(item, implement.head_sha, False, "needs-user", 0)
 
     # The review sweep is a step of its own that the engine starts: the agent CLI loads the review skill before the first turn of the model, so no choice of the model is left to check.
     # It resumes the session of the implement step on the same runner, in the same sandbox and with the same limits. It may edit, and it commits each fix.
@@ -1413,10 +1424,15 @@ def _lane(item, project, round_settings):
 
     # The loop starts from the sweep as the lane of the implementer. The violations of the implement step go with it, so its first fix still answers them.
     starting = struct(session = sweep_step.session, head_sha = sweep_step.head_sha, report = sweep_step.report, rewrote = sweep_step.rewrote, violations = "\n".join([text for text in [implement.violations, sweep_step.violations] if text]))
-    loop = review_fix(item, starting, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused"], lane_check = lane_report, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id)
+    loop = review_fix(item, starting, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused", "hold"], lane_check = lane_report, lane_asks = lane_hold, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id)
 
     if loop.stopped:
         return item_value(item, "", False, "stopped", loop.host_losses)
+
+    # A fix lane wrote a note for the owner. The item goes on hold with it, and no more agent starts.
+    if loop.asked != "":
+        hold_item(name = "hold-fix", id = item.id, raw = loop.asked, forbid_text = ATTRIBUTION)
+        return item_value(item, loop.head, False, "needs-user", loop.host_losses)
 
     # The limit of host losses stopped the loop. The host is at fault and not the item, so the item gets no comment and no hold status, and a later run starts it again.
     if loop.host_lost:
