@@ -61,7 +61,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"item_status":     keysOf(statusOutputs("", "")),
 		"host_teardown":   keysOf(teardownOutputs(true, "")),
 		"host_up":         keysOf(upOutputs(true, "")),
-		"pr_comment":      keysOf(prCommentOutputs(0)),
+		"pr_comment":      keysOf(prCommentOutputs(0, "")),
 		"pr_open":         keysOf(openOutputs(OpenResult{})),
 		"pr_state":        keysOf(prStateOutputs("")),
 		"pr_history":      keysOf(prHistoryOutputs(nil)),

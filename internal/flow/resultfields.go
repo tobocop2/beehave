@@ -98,8 +98,10 @@ func statusOutputs(id, status string) map[string]any {
 
 func commentOutputs(id string) map[string]any { return map[string]any{"id": id} }
 
-// prCommentOutputs are the fields of pr_comment: the number of the pull request.
-func prCommentOutputs(number int) map[string]any { return map[string]any{numberField: number} }
+// prCommentOutputs are the fields of pr_comment: the number of the pull request, and the cause of a post that failed with failure "return".
+func prCommentOutputs(number int, failure string) map[string]any {
+	return map[string]any{numberField: number, errorField: failure}
+}
 
 // openOutputs are the fields of pr_open: the number of the pull request, whether this call opened it, and the id of its native stack (empty for a pull request in none).
 func openOutputs(r OpenResult) map[string]any {

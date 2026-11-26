@@ -93,7 +93,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `command` | `-` | unchanged | 21: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 19 more |
 | `command` | `backoff` | #594: new, the wait before the first retry, which doubles before each later retry | 1: `examples/research-desk/workflow.star` |
 | `command` | `env` | unchanged | 4: `examples/research-desk/workflow.star`, `examples/research/workflow.star` and 2 more |
-| `command` | `failure` | #753: new, `"return"` gives an error of the step as the field `error` of the result, with `rc` -1 | 1: `examples/remediation/workflow.star` |
+| `command` | `failure` | #753: new, `"return"` gives an error of the step as the field `error` of the result, with `rc` -1 | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/survival.star` |
 | `command` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `max_new_processes` | unchanged | 1: `examples/maintenance/bump.star` |
 | `command` | `name` | unchanged | 21: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 19 more |
@@ -220,6 +220,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_closing` | `name` | #500: new | 2: `internal/workflow/lib/batch.star`, `internal/workflow/lib/scope.star` |
 | `pr_closing` | `pr` | #503: new, reads the pull request with this number in place of the pull request of an item | 1: `internal/workflow/lib/batch.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_comment` | `failure` | #32: new, `"return"` gives a post that fails as the field `error` of the result, with `number` 0 | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `key` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `name` | unchanged | 1: `examples/remediation/workflow.star` |

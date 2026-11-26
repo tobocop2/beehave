@@ -53,13 +53,70 @@ pr_comment(text = "other", key = "other", pr = 12, name = "other")
 func TestPRWrite_ACommentWithAPullRequestNumberBelowZeroIsRefusedBeforeAnyPost(t *testing.T) {
 	t.Parallel()
 
+	for _, pr := range []string{"-1", "-3"} {
+		h, f := prHarness(t)
+
+		_, err := walkBody(t, h, `pr_comment(text = "x", key = "k", pr = `+pr+`, name = "c")
+`)
+
+		require.Error(t, err, pr)
+		assert.Contains(t, err.Error(), "pr_comment: pr is "+pr+". Give the number of a pull request, or leave pr out")
+		assert.Empty(t, f.notes)
+	}
+}
+
+func TestPRWrite_ACommentThatFailsWithFailureReturnGivesTheErrorAndTheRunGoesOn(t *testing.T) {
+	t.Parallel()
+
+	h, f := prHarness(t)
+	f.writeErr = errFake
+
+	_, err := walkBody(t, h, `posted = pr_comment(text = "x", key = "k", failure = "return", name = "c")
+command(run = ["after", str(posted.number), posted.error])
+`)
+
+	require.NoError(t, err, "the post failed and the run goes on")
+	require.Len(t, h.commands.ran(), 1)
+	assert.Contains(t, h.commands.ran()[0], "after 0 ")
+	assert.Contains(t, h.commands.ran()[0], errFake.Error())
+}
+
+func TestPRWrite_ACommentThatPostsWithFailureReturnGivesNoError(t *testing.T) {
+	t.Parallel()
+
+	h, _ := prHarness(t)
+
+	_, err := walkBody(t, h, `posted = pr_comment(text = "x", key = "k", failure = "return", name = "c")
+command(run = ["after", str(posted.number), "[" + posted.error + "]"])
+`)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after 7 []"}, h.commands.ran())
+}
+
+func TestPRWrite_ACommentThatFailsWithTheDefaultFailureEndsTheRun(t *testing.T) {
+	t.Parallel()
+
+	h, f := prHarness(t)
+	f.writeErr = errFake
+
+	_, err := walkBody(t, h, `pr_comment(text = "x", key = "k", name = "c")
+`)
+
+	require.ErrorIs(t, err, errFake)
+}
+
+func TestPRWrite_ACommentWithAnUnknownFailureModeIsRefusedBeforeAnyPost(t *testing.T) {
+	t.Parallel()
+
 	h, f := prHarness(t)
 
-	_, err := walkBody(t, h, `pr_comment(text = "x", key = "k", pr = -3, name = "c")
+	_, err := walkBody(t, h, `pr_comment(text = "x", key = "k", failure = "ignore", name = "c")
 `)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "pr_comment: pr is -3. Give the number of a pull request, or leave pr out")
+	assert.Contains(t, err.Error(), "failure")
+	assert.Contains(t, err.Error(), "ignore")
 	assert.Empty(t, f.notes)
 }
 

@@ -211,6 +211,14 @@ func TestPulls_CommentWithAPullRequestNumberPostsThereWithNoLookupOfTheItem(t *t
 
 	_, err = pullsOver(f).Comment(t.Context(), "unknown", "round/main", 12, "run:survival", "lost")
 	require.ErrorIs(t, err, errUnknownProject)
+
+	lowest := &pullForge{}
+
+	number, err = pullsOver(lowest).Comment(t.Context(), "p", "round/main", 1, "run:survival", "lost")
+
+	require.NoError(t, err, "pull request 1 is a number, as 12 is")
+	assert.Equal(t, 1, number)
+	assert.Len(t, lowest.posted, 1)
 }
 
 func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIsNotFound(t *testing.T) {

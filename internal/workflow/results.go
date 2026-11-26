@@ -138,7 +138,7 @@ func trackerResultFields() map[string][]string {
 		itemReadName:       {foundField, "id", "fields", "comments", "parent"},
 		itemStatusName:     {"id", statusField},
 		prClosingName:      {foundField, "issues", "forge", errorField},
-		prCommentName:      {numberField},
+		prCommentName:      {numberField, errorField},
 		prOpenName:         {numberField, "created", "stack"},
 		prStateName:        {stateField},
 		pushName:           {headField},

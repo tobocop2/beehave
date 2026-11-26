@@ -161,7 +161,8 @@ func (g *survivalGen) survey(t *testing.T, base, tip string) string {
 	text := `load("@beehave//survival.star", "merge_survival")
 
 def main(item):
-    out = merge_survival(name = "s", base = "` + base + `", tip = "` + tip + `")
+    found = merge_survival(name = "s", base = "` + base + `", tip = "` + tip + `")
+    out = found.merges
     command(name = "report", run = ["report", str(len(out))] + [e.subject + "=" + ",".join([l.file + ":" + str(l.count) + ":" + ";".join(l.lines) for l in e.lost]) + "/" + ",".join(e.deleted) for e in out])
 `
 	require.NoError(t, g.rig.libWalk(t, text))
@@ -321,17 +322,135 @@ def main(item):
 	}
 }
 
-func TestSurvival_ABaseThatGitDoesNotKnowEndsTheCallWithTheOutputOfGit(t *testing.T) {
+func TestSurvival_ABaseThatGitDoesNotKnowGivesTheOutputOfGitAsTheErrorAndNoMerges(t *testing.T) {
 	t.Parallel()
 
 	g := newSurvivalGen(t)
-	err := g.rig.libWalk(t, `load("@beehave//survival.star", "merge_survival")
+	g.merge(t, "land-one", "a.txt", "a1")
+
+	require.NoError(t, g.rig.libWalk(t, `load("@beehave//survival.star", "merge_survival")
 
 def main(item):
-    merge_survival(name = "s", base = "no-such-ref", tip = "main")
-`)
+    found = merge_survival(name = "s", base = "no-such-ref", tip = "main")
+    command(name = "report", run = ["report", str(len(found.merges)), found.error])
+`), "a failed git call is a result and never ends the run")
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "survival s: git rev-list failed with exit code")
-	assert.Contains(t, err.Error(), "no-such-ref")
+	got := g.rig.libReport(t)
+
+	assert.Contains(t, got, "report 0 survival s: git rev-list failed with exit code")
+	assert.Contains(t, got, "no-such-ref")
+}
+
+func TestSurvival_AGitCallThatFailsAfterTheListGivesTheErrorAndNoMerges(t *testing.T) {
+	t.Parallel()
+
+	for _, subcommand := range []string{"merge-base", "log", "diff", "cat-file"} {
+		g := newSurvivalGen(t)
+		g.merge(t, "land-one", "a.txt", "a1")
+		g.merge(t, "land-two", "b.txt", "b1")
+
+		orig := g.rig.h.commands.reply
+		g.rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+			if slices.Contains(request.Run, subcommand) {
+				return CommandOutput{Stderr: "boom\n", RC: 2}, nil
+			}
+
+			return orig(request)
+		}
+
+		require.NoError(t, g.rig.libWalk(t, `load("@beehave//survival.star", "merge_survival")
+
+def main(item):
+    found = merge_survival(name = "s", base = "`+g.base+`", tip = "main")
+    command(name = "report", run = ["report", str(len(found.merges)), found.error])
+`), subcommand+": a failed git call is a result and never ends the run")
+
+		assert.Equal(t, "report 0 survival s: git "+subcommand+" failed with exit code 2: boom", g.rig.libReport(t), subcommand)
+	}
+}
+
+func TestSurvival_ASyncMergeOfTheBaseIsNotReadAndAMergeOfTheRoundIs(t *testing.T) {
+	t.Parallel()
+
+	g := newSurvivalGen(t)
+	repo := g.rig.repo
+	repo.must(t, "branch", "trunk")
+	repo.must(t, "switch", "-q", "trunk")
+	g.write(t, "t.txt", []string{"t1", "t2"})
+	repo.must(t, "commit", "-q", "-m", "trunk one")
+	repo.must(t, "switch", "-q", "main")
+	repo.must(t, "merge", "-q", "--no-ff", "-m", "sync one", "trunk")
+	repo.must(t, "switch", "-q", "trunk")
+	g.write(t, "t.txt", []string{"t1 rewritten", "t2"})
+	repo.must(t, "commit", "-q", "-m", "trunk two")
+	repo.must(t, "switch", "-q", "main")
+	repo.must(t, "merge", "-q", "--no-ff", "-m", "sync two", "trunk")
+	g.merge(t, "land-one", "p.txt", "p1", "p2")
+	g.drop(t, "p.txt", "p1")
+
+	got := g.survey(t, "trunk", g.tip(t))
+
+	assert.Equal(t, g.expected(), got)
+	assert.Equal(t, "report 1 land-one=p.txt:1:p1/", got, "the trunk rewrote t1 after the first sync merge, which is no loss of the round, and the merge of the round is read")
+}
+
+func TestSurvival_AMergeThatAddsNoLineIsListedWithEmptyLists(t *testing.T) {
+	t.Parallel()
+
+	g := newSurvivalGen(t)
+	g.merge(t, "land-one", "a.txt", "a1", "a2")
+	repo := g.rig.repo
+	repo.must(t, "switch", "-q", "-c", "del")
+	g.write(t, "a.txt", []string{"a1"})
+	repo.must(t, "commit", "-q", "-m", "delete a2")
+	repo.must(t, "switch", "-q", "main")
+	repo.must(t, "merge", "-q", "--no-ff", "-m", "land-delete", "del")
+	g.lost["land-one"] = map[string][]string{"a.txt": {"a2"}}
+	g.order = append(g.order, "land-delete")
+
+	assert.Equal(t, g.expected(), g.survey(t, g.base, g.tip(t)))
+	assert.Equal(t, "report 2 land-one=a.txt:1:a2/ land-delete=/", g.expected())
+}
+
+func TestSurvival_ALostLineThatAnEqualLineHidesIsNotListed(t *testing.T) {
+	t.Parallel()
+
+	// The check is a membership test, as scripts/audit/present.sh is: the limit that the library documents.
+	g := newSurvivalGen(t)
+	g.merge(t, "land-one", "a.txt", "dup", "a1")
+	g.merge(t, "land-two", "a.txt", "dup")
+	g.write(t, "a.txt", []string{"a1", "dup"})
+	g.rig.repo.must(t, "commit", "-q", "-m", "drop the first dup")
+
+	assert.Equal(t, "report 2 land-one=/ land-two=/", g.survey(t, g.base, g.tip(t)))
+}
+
+func TestSurvival_AFileNameWithASpaceIsReadWithItsWholeName(t *testing.T) {
+	t.Parallel()
+
+	g := newSurvivalGen(t)
+	g.merge(t, "land-space", "sp ace.txt", "s1", "s2")
+	g.drop(t, "sp ace.txt", "s2")
+
+	assert.Equal(t, "report 1 land-space=sp ace.txt:1:s2/", g.survey(t, g.base, g.tip(t)), "git ends the name of a file with a space in the header with a tab, and the tab is not part of the name")
+}
+
+func TestSurvival_AFileThatAMergeRenamedIsReadUnderItsNewName(t *testing.T) {
+	t.Parallel()
+
+	g := newSurvivalGen(t)
+	g.write(t, "old.txt", []string{"r1", "r2"})
+	g.rig.repo.must(t, "commit", "-q", "-m", "add old")
+	g.base = g.tip(t)
+
+	repo := g.rig.repo
+	repo.must(t, "switch", "-q", "-c", "mv")
+	repo.must(t, "mv", "old.txt", "new.txt")
+	repo.must(t, "commit", "-q", "-m", "rename")
+	repo.must(t, "switch", "-q", "main")
+	repo.must(t, "merge", "-q", "--no-ff", "-m", "land-rename", "mv")
+	g.write(t, "new.txt", []string{"r1"})
+	repo.must(t, "commit", "-q", "-m", "drop r2")
+
+	assert.Equal(t, "report 1 land-rename=new.txt:1:r2/", g.survey(t, g.base, g.tip(t)), "the merge is read without rename detection, so each line of the new name counts as added")
 }

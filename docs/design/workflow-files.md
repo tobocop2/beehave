@@ -245,9 +245,11 @@ A status is `open`, `closed` or `hold`. On GitHub, `hold` is the label `hold`. T
 
 #### `pr_comment`
 
-`pr_comment(text, key, pr, forbid_text)` adds a comment to the pull request `pr` of the project, or to the pull request of the item when `pr` is left out or is 0, and returns `number`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
+`pr_comment(text, key, pr, failure, forbid_text)` adds a comment to the pull request `pr` of the project, or to the pull request of the item when `pr` is left out or is 0, and returns `number` and `error`. The forge reads the comments first, and posts only when none holds the line `beehave-key: <run id>:<key>`. A replay after a crash therefore posts once.
 
 A `pr` below 0 is refused before any post. A round item has no pull request of its own, so a round passes the number that `round_integration` returned to comment on the integration pull request.
+
+`failure` is `"raise"` (the default) or `"return"`, as for `command`. With `"return"`, a post that fails gives the text of the failure as `error`, with `number` 0, and the run goes on. A post that works gives an empty `error`. Any other value is refused before the post.
 
 #### `pr_read`
 
@@ -663,15 +665,19 @@ It returns `merged`, `rejected`, `deferred`, `tip`, `tree`, `gates`, `findings`,
 
 #### The survival library
 
-`load("@beehave//survival.star", "merge_survival")` loads the survival read from the library `lib/survival.star`. `merge_survival(name, base, tip)` runs git in the folder of the item with `command` and returns one struct for each merge of `base..tip`, oldest first: `merge`, `subject`, `lost` and `deleted`.
+`load("@beehave//survival.star", "merge_survival")` loads the survival read from the library `lib/survival.star`. `merge_survival(name, base, tip)` runs git in the folder of the item with `command` and returns a struct with `merges` and `error`. `merges` has one struct for each merge commit of `base..tip`, oldest first: `merge`, `subject`, `lost` and `deleted`.
 
-- It reads every merge, not only the merge of a pull request, because a read of the pull request merges alone gives a confident zero.
-- For a merge, it takes the lines that the merge added against its first parent, with `git diff -U0`. A blank line is not counted.
+- It reads every merge commit, not only the merge of a pull request, because a read of the pull request merges alone gives a confident zero. A commit that is no merge is not read, so a change that landed as a squash or a rebase has no entry.
+- A merge that brings the base into the branch (each parent after the first is on the base) is not read. The base rewrites its own lines, and a loss of the base is no loss of the round.
+- For a merge, it takes the lines that the merge added against its first parent, with `git diff -U0`.
 - It compares each added line, exactly, with the file at the tip. `lost` lists a struct for each file with `file`, `count` and the first ten lost `lines`.
+- The comparison is a membership test. A line that the tip holds anywhere in the file counts as kept, even when only a copy of it is left. A lost line that an equal line hides is not listed. A blank line counts as kept when the file ends with a newline.
 - A file that the tip does not hold is in `deleted` and not in `lost`, because a retired file is for a person to check. A file renamed after the merge shows as `deleted`.
-- A merge whose lines all survive is listed with empty `lost` and `deleted`. A range with no merge gives an empty list.
-- `examples/remediation/workflow.star` calls it after each batch that landed something, with the trunk as `base` and the tip of the round branch as `tip`. It posts the rows as one `pr_comment` on the integration pull request, and posts nothing when no merge lost a line.
-- The result is a signal for a person to read. A later commit can rightly change a line, so the call never fails the run because of a lost line. A git command that fails ends the call with the output of git.
+- A merge whose lines all survive is listed with empty `lost` and `deleted`. A range with no merge commit gives an empty list.
+- A git command that fails gives the output of git as `error` and an empty `merges`. The call does not end the run. An empty `error` means that the read ran.
+- `examples/remediation/workflow.star` calls it after each landing of the round itself, with the trunk as `base` and the tip of the round branch as `tip`. A hand-off round lands nothing, so it reads nothing, even after the owner merged.
+- The example posts the rows that no earlier landing of the run posted as one `pr_comment` on the integration pull request, and posts nothing when there is no new row. A comment shows 40 rows at most and says how many more there are. A failed git command or a failed post is a line of the run record, and the round goes on.
+- The result is a signal for a person to read. A later commit can rightly change a line, so the call never fails the run because of a lost line.
 
 #### `hand_off`
 
