@@ -2,9 +2,12 @@ package flow
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -86,13 +89,27 @@ func TestCommandRetries_ARetryOfAFailedHostJobStartsANewJobUnderANewKey(t *testi
 	assert.Equal(t, "log 0 2", logged(h), "the second job passed")
 }
 
-func TestAttemptKey_TheTriesOfOneStepHaveOneKeyEachAndAContextWithNoKeyHasNone(t *testing.T) {
+func TestCommandRetries_TheJobKeyOfEachTryIsTheRunAndTheIDOfTheStepOfThatTry(t *testing.T) {
 	t.Parallel()
 
-	keyed := host.WithJobKey(context.Background(), "run:3")
+	h := newHarness(t)
+	jobs := hostJobs(h)
+	engine := h.engine(t)
 
-	assert.Equal(t, "run:3:1", host.JobKey(attemptKey(keyed, 1)))
-	assert.Equal(t, "run:3:2", host.JobKey(attemptKey(keyed, 2)))
-	assert.Equal(t, "run:3:1", host.JobKey(attemptKey(keyed, 1)), "a step that runs again after a crash counts from 1 and gets the key of the first try")
-	assert.Empty(t, host.JobKey(attemptKey(context.Background(), 1)), "a call outside a run keeps no key, which starts a new job")
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 1, backoff = \"1ms\", name = \"fetch\")\n")), modeOff())
+	require.NoError(t, err)
+
+	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
+	require.NoError(t, err)
+
+	var tryKeys []string
+
+	for _, step := range steps {
+		if strings.HasPrefix(step.StepName, "command:fetch#1/try") {
+			tryKeys = append(tryKeys, testRun+":"+strconv.Itoa(step.StepID))
+		}
+	}
+
+	require.Len(t, tryKeys, 2, "one recorded step for each try")
+	assert.Equal(t, tryKeys, jobs.order, "each try submits its job under the key of its own step")
 }

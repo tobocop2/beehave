@@ -101,12 +101,9 @@ func stepKey(ctx context.Context) string {
 	return run + ":" + strconv.Itoa(id)
 }
 
-// withJobKey returns ctx with the job key. A step context stays a step context, so the readers of the run in the step body still find it.
+// withJobKey returns the context of a step with the job key. It stays a step context, so the readers of the run in the step body still find it.
 func withJobKey(ctx context.Context, key string) context.Context {
-	step, isStep := ctx.(dbos.Context) // the context of a step is a DBOS context; any other context is outside a run
-	if !isStep {
-		return host.WithJobKey(ctx, key)
-	}
+	step, _ := ctx.(dbos.Context) //nolint:errcheck // the workflow library runs every step body with a DBOS context
 
 	return dbos.From(step, host.WithJobKey(step, key))
 }

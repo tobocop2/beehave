@@ -956,7 +956,8 @@ The returned struct also holds `stderr`, the second output stream of the program
 - A try that exits with a code that is not zero, and not in `stop_on_rc`, starts again until the retries are spent. A code in `stop_on_rc` is never retried.
 - An error of the step, such as a program that cannot start, also starts again. A cancel and a lost host are never retried.
 - The result has the field `attempts`, the number of tries. After the last try, `rc` is the code of that try.
-- The step is one record. A replay reads it and does not retry again. A crash during the retries starts the count again: the resume runs the step from the first try.
+- Each try of a call with `retries` is a recorded step `<call>/try<n>`, and the wait before the next try is a durable sleep. The step of the call records the result after the last try. A replay reads the records and runs no try again. A crash during try n resumes at try n, after the rest of its wait, and never runs an earlier try. A call with no `retries` is one step.
+- After the last try fails with an error, the error of that try is the error of the call.
 - With `failure = "return"`, an error of the step that is left after the retries becomes the field `error` of the result, with `rc` -1 and empty `stdout` and `stderr`, and the run goes on. The default ends the run with the error. A cancel of the run always ends it.
 - A step with `slots` takes no `retries`, because it runs as a queued host job.
 - `agent` takes no `retries`.

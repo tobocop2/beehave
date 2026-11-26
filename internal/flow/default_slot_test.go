@@ -70,7 +70,7 @@ func TestDefaultSlot_ABuildWithNoSlotClassesLeavesAHostJobWithNoClassUnlimited(t
 	assert.Empty(t, h.commands.requests[0].SlotClass)
 }
 
-func TestDefaultSlot_AHostJobWithRetriesStaysAStepWithNoClass(t *testing.T) {
+func TestDefaultSlot_AHostJobWithRetriesTakesNoClass(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -80,7 +80,7 @@ func TestDefaultSlot_AHostJobWithRetriesStaysAStepWithNoClass(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, h.commands.requests, 1)
-	assert.Empty(t, h.commands.requests[0].SlotClass, "a call with retries runs as one step, which cannot wait on a queue")
+	assert.Empty(t, h.commands.requests[0].SlotClass, "a call with retries runs its tries as steps and takes no slot")
 }
 
 func TestDefaultSlot_ACallWithNoHostTakesNoSlot(t *testing.T) {
