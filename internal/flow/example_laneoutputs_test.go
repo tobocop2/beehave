@@ -229,7 +229,7 @@ func uncausedRig(t *testing.T, base *agentRig, byLane map[string]string) (*commi
 
 		kind := laneKind(request)
 		if list, set := byLane[kind]; set && slices.Contains(request.Outputs, "uncaused") {
-			rig.putOutputs(request.OutputFile, map[string]string{"report": cleanLaneReport(kind), "uncaused": list, "resolved": "[]", "wontfix": "[]"})
+			rig.putOutputs(request.OutputFile, map[string]string{"report": cleanLaneReport(kind), "uncaused": list, "hold": "", "resolved": "[]", "wontfix": "[]"})
 		}
 
 		return done

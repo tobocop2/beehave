@@ -43,7 +43,7 @@ func acceptanceRules() []rule {
 		{"acceptance_rules", "the change has no output: say in the report how you know", workLanes()},
 		{"acceptance_rules", "its `## Expected behavior` table is the acceptance", workLanes()},
 		{"acceptance_rules", "take the one that changes fewer cells", workLanes()},
-		{"acceptance_rules", "stop and report it: a wider rule is the owner's decision", workLanes()},
+		{"acceptance_rules", "a wider rule is the owner's decision", workLanes()},
 		{"before_write_rules", "Check for an existing pull request, at the start and again before", []string{implement, fix, plan}},
 		{"before_write_rules", "Repeat-offender check", []string{implement, fix, plan}},
 		{"before_write_rules", "Re-derive every cited site at the tip you branch from", []string{implement, fix, plan}},
@@ -392,6 +392,30 @@ func TestPrompts_HoldTheQueueScopeRule(t *testing.T) {
 func TestPrompts_HoldTheOvertakenJudgment(t *testing.T) {
 	t.Parallel()
 	holdGroup(t, overtakenRules())
+}
+
+func TestPrompts_HoldTheNeedsUserRule(t *testing.T) {
+	t.Parallel()
+
+	texts := loadPrompts(t, workLanes()...)
+	group := []rule{
+		{"needs_user_rules", "Write the output `hold` when the item needs the owner", workLanes()},
+		{"needs_user_rules", "the keys `question`, `options` and `recommendation`", workLanes()},
+		{"needs_user_rules", "A note with no recommendation, or with fewer than two options, fails the run", workLanes()},
+		{"needs_user_rules", `"uncaused":"[]","hold":""`, workLanes()},
+		{"needs_user_rules", "write the output `hold` and stop: a wider rule is the owner's decision", workLanes()},
+	}
+
+	assert.Positive(t, checkRules(t, texts, group))
+
+	for _, name := range workLanes() {
+		for _, old := range []string{"stop and report it: a wider rule", "or the script is wrong: stop and report it"} {
+			// A plain check: a failed assert.NotContains would print the whole prompt.
+			if strings.Contains(texts[name], old) {
+				t.Errorf("prompts/%s.md still says %q, a stop that no step reads", name, old)
+			}
+		}
+	}
 }
 
 func TestPrompts_HoldTheStackedBranchRule(t *testing.T) {
