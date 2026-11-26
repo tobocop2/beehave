@@ -63,6 +63,27 @@ func TestOptionalStep_AForgeWhoseProbeDeniesTheAbilityIsRefusedWithoutTheCall(t 
 	require.Empty(t, got, "the call of the forge is not made")
 }
 
+// alerting reads one open alert.
+type alerting struct{ plainForge }
+
+func (alerting) OpenAlerts(_ context.Context, pr int, sha string) ([]model.Alert, error) {
+	return []model.Alert{{Number: pr, Rule: sha}}, nil
+}
+
+func TestOpened_OpenAlertsReadsThroughAForgeThatHasTheAbilityAndRefusesOneThatLacksIt(t *testing.T) {
+	t.Parallel()
+
+	got, err := opened{alerting{}}.OpenAlerts(t.Context(), 7, "abc")
+
+	require.NoError(t, err)
+	require.Equal(t, []model.Alert{{Number: 7, Rule: "abc"}}, got)
+
+	_, err = opened{plainForge{}}.OpenAlerts(t.Context(), 7, "abc")
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, string(forge.AbilityAlerts))
+}
+
 // partial has the abilities of a sync and lacks a call that the sync makes but no ability names.
 type partial struct {
 	plainForge
