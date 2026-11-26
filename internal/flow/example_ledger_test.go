@@ -65,7 +65,7 @@ func wontfixOnTheFirstFix(rig *agentRig, wontfix string) {
 		result := inner(request)
 
 		if strings.Contains(request.Prompt, fixMarker) && fixes.Add(1) == 1 {
-			rig.putOutputs(request.OutputFile, map[string]string{"report": cleanLaneReport("fix"), "uncaused": "[]", "resolved": "[]", "wontfix": wontfix})
+			rig.putOutputs(request.OutputFile, map[string]string{"report": cleanLaneReport("fix"), "uncaused": "[]", "hold": "", "resolved": "[]", "wontfix": wontfix})
 		}
 
 		return result
