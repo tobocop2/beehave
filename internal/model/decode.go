@@ -68,6 +68,62 @@ func DecodePages[T any](command, text string) ([]T, error) {
 	return items, nil
 }
 
+var errNoGraphList = errors.New("a page holds no list")
+
+// graphPage is one page of a paged GraphQL list, aliased list, under the repository or at the top of the answer.
+type graphPage[T any] struct {
+	Data *struct {
+		Repository *struct {
+			List *graphList[T] `json:"list"`
+		} `json:"repository"`
+		List *graphList[T] `json:"list"`
+	} `json:"data"`
+}
+
+// graphList is the total of a GraphQL list and the rows of one page.
+type graphList[T any] struct {
+	TotalCount int `json:"totalCount"`
+	Nodes      []T `json:"nodes"`
+}
+
+// list is the list of the page, or nil when the page holds none.
+func (p graphPage[T]) list() *graphList[T] {
+	switch {
+	case p.Data == nil:
+		return nil
+	case p.Data.Repository != nil:
+		return p.Data.Repository.List
+	}
+
+	return p.Data.List
+}
+
+// DecodeGraphPages reads the output of `gh api graphql --paginate --slurp` for a query whose one paged list is aliased list, as one list.
+// A page with no list is an answer of the wrong shape. Fewer rows than the total of the last page is a cut list, a *DecodeError that wraps ErrMorePages.
+func DecodeGraphPages[T any](command, text string) ([]T, error) {
+	pages, err := Decode[[]graphPage[T]](command, text)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, total := []T{}, 0
+
+	for _, page := range pages {
+		list := page.list()
+		if list == nil {
+			return nil, &DecodeError{Command: command, Cause: errNoGraphList}
+		}
+
+		rows, total = append(rows, list.Nodes...), list.TotalCount
+	}
+
+	if len(rows) < total {
+		return nil, &DecodeError{Command: command, Cause: fmt.Errorf("%d of %d rows, so the rest are unknown: %w", len(rows), total, ErrMorePages)}
+	}
+
+	return rows, nil
+}
+
 // Deref returns the text, or empty for nil.
 func Deref(text *string) string {
 	if text == nil {

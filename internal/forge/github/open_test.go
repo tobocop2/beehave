@@ -168,22 +168,3 @@ func TestClosePR_ClosesWithTheCommentAsOneArgument(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot close pull request 690")
 }
-
-func TestOpenPulls_ReadsTheAuthorAssociation(t *testing.T) {
-	t.Parallel()
-
-	row := func(number int, association string) map[string]any {
-		return map[string]any{"number": number, "headRefName": "b", "baseRefName": "main", "authorAssociation": association}
-	}
-
-	f, run := fixed(t, toJSON(t, []any{row(1, "OWNER"), row(2, "CONTRIBUTOR"), map[string]any{"number": 3, "headRefName": "b", "baseRefName": "main"}}))
-
-	pulls, err := f.OpenPulls(context.Background(), "")
-	require.NoError(t, err)
-	require.Len(t, pulls, 3)
-
-	assert.Equal(t, model.AssociationOwner, pulls[0].Association)
-	assert.Equal(t, model.AssociationContributor, pulls[1].Association)
-	assert.Empty(t, pulls[2].Association, "a row with no association has none, and counts as foreign")
-	assert.Contains(t, run.Calls[0], "number,headRefName,baseRefName,labels,reviewDecision,author,authorAssociation,isDraft,title", "the list asks for the association")
-}

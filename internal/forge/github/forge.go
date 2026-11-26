@@ -137,18 +137,15 @@ func (f *Forge) PullRead(ctx context.Context, pr int) (model.PullFacts, error) {
 	return facts, nil
 }
 
-// openPullFields are the fields of gh pr list that the typed list read decodes.
-const openPullFields = "number,headRefName,baseRefName,labels,reviewDecision,author,authorAssociation,isDraft,title"
-
-// OpenPulls lists the open pull requests of the base branch, or every open pull request when base is empty. A pull request with no number, head branch or base branch is a hole.
+// OpenPulls lists the open pull requests of the base branch, or every open pull request when base is empty, newest first. A pull request with no number, head branch or base branch is a hole.
 // The list holds every pull request, holes included, and the error joins one *model.IncompletePull for each hole, so a caller can use the pull requests it can trust.
 func (f *Forge) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error) {
-	args := []string{"--state", "open", "--json", openPullFields}
+	vars := f.ofRepository()
 	if base != "" {
-		args = append(args, "--base", base)
+		vars = append(vars, "b="+base)
 	}
 
-	rows, err := f.PRList(ctx, forge.OpenPullLimit, args...)
+	rows, err := readList[openNode](ctx, f, "cannot list the open pull requests", openPullsQuery, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +155,7 @@ func (f *Forge) OpenPulls(ctx context.Context, base string) ([]model.OpenPull, e
 	var holes []error
 
 	for i, row := range rows {
-		pulls[i] = row.Open()
+		pulls[i] = row.open()
 		holes = append(holes, pulls[i].Check())
 	}
 

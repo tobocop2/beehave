@@ -252,6 +252,14 @@ func (m memForge) PRList(context.Context, int, ...string) ([]model.PullRequest, 
 	return []model.PullRequest{{Number: forgetest.Seven}}, m.fail()
 }
 
+func (m memForge) BranchPulls(context.Context, string) ([]model.PullRequest, error) {
+	return []model.PullRequest{{Number: forgetest.Seven}}, m.fail()
+}
+
+func (m memForge) SearchPulls(context.Context, string) ([]model.PullRequest, error) {
+	return []model.PullRequest{{Number: forgetest.Seven}}, m.fail()
+}
+
 func (m memForge) PullCounts(context.Context, int) (commits, files int, err error) {
 	return forgetest.SevenCommits, forgetest.SevenFiles, m.fail()
 }

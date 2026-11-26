@@ -13,6 +13,7 @@ type Forge interface {
 	PullReads
 	PullFactsRead
 	OpenPullsRead
+	HistoryReads
 	Activity
 	Lookup
 	Standing
@@ -98,15 +99,19 @@ type PullFactsRead interface {
 	PullRead(ctx context.Context, pr int) (model.PullFacts, error)
 }
 
-// OpenPullLimit is the limit of the search for the open pull requests. A list at the limit is refused, so a caller never reads a cut list.
-const OpenPullLimit = 500
-
 // OpenPullsRead is the typed list read of the open pull requests.
 // OpenPulls returns the open pull requests of the base branch, in the order of the forge, or every open pull request when base is empty. A base with none gives an empty list.
 // A pull request that lacks the number, the head branch or the base branch is a hole. The list still holds it, and the error joins one *model.IncompletePull for each hole.
-// A failed read returns no list. A list at the limit of the forge is a failed read.
+// Each pull request carries the association of its author. A failed read returns no list, and a list that the forge cuts short is a failed read.
 type OpenPullsRead interface {
 	OpenPulls(ctx context.Context, base string) ([]model.OpenPull, error)
+}
+
+// HistoryReads list the pull requests of an item in every state, each with its number, title, body, state, head and base branch, merge and close time, and the association of its author.
+// BranchPulls lists those whose head is the branch. SearchPulls lists those that the search words of the forge find. A failed read, or a list that the forge cuts short, is an error.
+type HistoryReads interface {
+	BranchPulls(ctx context.Context, branch string) ([]model.PullRequest, error)
+	SearchPulls(ctx context.Context, words string) ([]model.PullRequest, error)
 }
 
 // PullReads are the reads of one pull request: its reviews, body, fields, checks, threads and overlap.

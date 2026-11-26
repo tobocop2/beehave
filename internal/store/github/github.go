@@ -18,19 +18,30 @@ const (
 	argList     = "list"
 	argState    = "--state"
 	argLimit    = "--limit"
-	ghPage      = 1000
 	epicPrefix  = "epic:"
 	holdLabel   = "hold"
 	listCommand = "gh issue list"
 	viewCommand = "gh issue view"
+	openCommand = "gh api graphql"
+
+	// openIssuesQuery lists the open issues, newest first as gh issue list does, with the association of each author, which gh issue list does not give.
+	openIssuesQuery = "query($o:String!,$n:String!,$l:[String!],$endCursor:String){repository(owner:$o,name:$n){list:issues(states:OPEN,labels:$l," +
+		"orderBy:{field:CREATED_AT,direction:DESC},first:100,after:$endCursor){totalCount pageInfo{hasNextPage endCursor} " +
+		"nodes{number title labels(first:100){nodes{name}} assignees(first:100){nodes{login}} authorAssociation}}}}"
 )
 
+// ghIssue is one open issue of the GraphQL list.
 type ghIssue struct {
 	Number            int               `json:"number"`
 	Title             *string           `json:"title"`
-	Labels            []ghLabel         `json:"labels"`
-	Assignees         []ghUser          `json:"assignees"`
+	Labels            ghNodes[ghLabel]  `json:"labels"`
+	Assignees         ghNodes[ghUser]   `json:"assignees"`
 	AuthorAssociation model.Association `json:"authorAssociation"`
+}
+
+// ghNodes is a GraphQL list of one page.
+type ghNodes[T any] struct {
+	Nodes []T `json:"nodes"`
 }
 
 type ghLabel struct {
@@ -62,10 +73,10 @@ func New(repo string, run proc.Runner) (*Store, error) {
 	return &Store{repo: repo, run: run}, nil
 }
 
-// ItemList lists the open issues that are not epics, and with a label only those that carry it: gh issue list filters them (--label).
+// ItemList lists the open issues that are not epics, and with a label only those that carry it: the query of the forge filters them.
 // An issue with no P0 to P3 label has severity P?.
 func (s *Store) ItemList(ctx context.Context, label string) ([]model.Item, error) {
-	rows, err := s.openPage(ctx, label)
+	rows, err := s.openIssues(ctx, label)
 	if err != nil {
 		return nil, err
 	}
@@ -99,19 +110,19 @@ func (i ghIssue) identity() (string, string, error) {
 }
 
 func (i ghIssue) item(number, title string) model.Item {
-	severity, hold := severityOf(i.Labels), false
+	severity, hold := severityOf(i.Labels.Nodes), false
 
-	for _, label := range i.Labels {
+	for _, label := range i.Labels.Nodes {
 		hold = hold || label.Name == holdLabel
 	}
 
 	var labels []string
-	for _, label := range i.Labels {
+	for _, label := range i.Labels.Nodes {
 		labels = append(labels, label.Name)
 	}
 
-	logins := make([]string, len(i.Assignees))
-	for index, user := range i.Assignees {
+	logins := make([]string, len(i.Assignees.Nodes))
+	for index, user := range i.Assignees.Nodes {
 		logins[index] = user.Login
 	}
 
@@ -154,20 +165,21 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 	return map[string]string{"id": number, "title": title, "body": model.Deref(issue.Body), "severity": string(severityOf(issue.Labels))}, nil
 }
 
-// openPage reads one page of open issues. A full page may be cut off, so it is a refusal, in every read.
-func (s *Store) openPage(ctx context.Context, label string) ([]ghIssue, error) {
-	args := []string{
-		argIssue, argList, argRepo, s.repo, argState, "open",
-		argLimit, strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees,authorAssociation",
-	}
+// openIssues reads every page of the open issues in one call, with a label only those that carry it. A list cut short is unreadable.
+func (s *Store) openIssues(ctx context.Context, label string) ([]ghIssue, error) {
+	owner, name, _ := model.SplitRepo(s.repo)
+
+	args := []string{"api", "graphql", "--paginate", "--slurp", "-f", "o=" + owner, "-f", "n=" + name}
 	if label != "" {
-		args = append(args, "--label", label)
+		args = append(args, "-f", "l[]="+label)
 	}
 
-	done := s.run.Run(ctx, args)
+	done := s.run.Run(ctx, append(args, "-f", "query="+openIssuesQuery))
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("store: cannot list the open issues; refusing")
 	}
 
-	return store.DecodeRows[ghIssue](listCommand, done.Stdout, ghPage, "the open issues")
+	rows, err := model.DecodeGraphPages[ghIssue](openCommand, done.Stdout)
+
+	return rows, store.Unreadable(err)
 }

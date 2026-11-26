@@ -12,13 +12,6 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// historyFields are the fields of each pull request that the history of an item reads.
-const historyFields = "number,title,body,state,headRefName,baseRefName,mergedAt,closedAt,authorAssociation"
-
-// historyListLimit is the limit of each list of the history. The lists hold closed and merged pull requests too, and the search of the forge also matches a longer number,
-// so the limit is the one of the open pull requests and not the one of the open search. A list at the limit is refused, and the run stops.
-const historyListLimit = forge.OpenPullLimit
-
 // History lists the pull requests of the item in every state: those on its branch and, for an item that is a forge number, those that name it.
 // Each closed or merged one gets the body of its last comment made at or before its close as its closing comment. A project with no forge has none.
 func (p pulls) History(ctx context.Context, project, item string) ([]model.PriorPull, error) {
@@ -41,7 +34,7 @@ func (p pulls) History(ctx context.Context, project, item string) ([]model.Prior
 
 // historyRows lists the pull requests on the branch of the item and adds, by number, those whose title or body names the item as a whole run.
 func historyRows(ctx context.Context, built forge.Forge, item string) ([]model.PullRequest, error) {
-	rows, err := built.PRList(ctx, historyListLimit, "--state", "all", "--head", model.ItemBranch(item), "--json", historyFields)
+	rows, err := built.BranchPulls(ctx, model.ItemBranch(item))
 	if err != nil {
 		return nil, fmt.Errorf("list the pull requests on the branch of item %s: %w", item, err)
 	}
@@ -65,7 +58,7 @@ func historyRows(ctx context.Context, built forge.Forge, item string) ([]model.P
 func namingRows(ctx context.Context, built forge.Forge, item string) ([]model.PullRequest, error) {
 	term := mention(item)
 
-	found, err := built.PRList(ctx, historyListLimit, "--state", "all", "--search", term+" in:title,body", "--json", historyFields)
+	found, err := built.SearchPulls(ctx, term+" in:title,body")
 	if err != nil {
 		return nil, fmt.Errorf("search the pull requests that name item %s: %w", item, err)
 	}

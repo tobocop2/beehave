@@ -50,6 +50,33 @@ func graph(t *testing.T, pull fields) string {
 	return toJSON(t, fields{"data": fields{"repository": fields{"pullRequest": pull}}})
 }
 
+// listPages is the answer of gh api graphql --paginate --slurp for a list of the repository: one page for each slice of rows, each with the total of all rows.
+func listPages(t *testing.T, pages ...[]fields) string {
+	t.Helper()
+
+	total := 0
+	for _, page := range pages {
+		total += len(page)
+	}
+
+	answer := make([]fields, len(pages))
+	for i, page := range pages {
+		answer[i] = fields{"data": fields{"repository": fields{"list": fields{"totalCount": total, "nodes": page}}}}
+	}
+
+	return toJSON(t, answer)
+}
+
+// labelNodes are the labels of a GraphQL pull request.
+func labelNodes(names ...string) fields {
+	nodes := make([]fields, len(names))
+	for i, name := range names {
+		nodes[i] = fields{"name": name}
+	}
+
+	return fields{"nodes": nodes}
+}
+
 func commandResult(stdout string, exit int) model.CommandResult {
 	return model.CommandResult{ExitCode: exit, Stdout: stdout}
 }

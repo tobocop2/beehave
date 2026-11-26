@@ -101,7 +101,7 @@ type ClosingRefs struct {
 	Elsewhere []IssueRef
 }
 
-// PullRequest holds the fields of gh pr list and gh pr view that beehave reads.
+// PullRequest holds the fields of gh pr list, gh pr view and the GraphQL list reads that beehave reads.
 // A pointer field is one a gate decides on: nil means gh sent null or the call did not ask for it, so a gate must not read nil as false or empty.
 type PullRequest struct {
 	Number         int         `json:"number"`
@@ -119,7 +119,7 @@ type PullRequest struct {
 	UpdatedAt      string      `json:"updatedAt"`
 	HeadRepository *repository `json:"headRepository"`
 	Author         Account     `json:"author"`
-	// AuthorAssociation is how the author stands to the repository, when the list asked for it.
+	// AuthorAssociation is how the author stands to the repository. Only a GraphQL read gives it: gh pr list and gh pr view have no such field.
 	AuthorAssociation Association     `json:"authorAssociation"`
 	Assignees         []Account       `json:"assignees"`
 	Labels            []label         `json:"labels"`

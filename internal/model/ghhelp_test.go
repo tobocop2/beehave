@@ -30,6 +30,36 @@ func TestDecodePages_JoinsThePagesAndRefusesANullPageOrItem(t *testing.T) {
 	require.ErrorIs(t, err, model.ErrNullAnswer)
 }
 
+func TestDecodeGraphPages_JoinsTheListsOfThePagesAndRefusesACutOrMissingList(t *testing.T) {
+	t.Parallel()
+
+	repository := `[{"data":{"repository":{"list":{"totalCount":3,"nodes":[1,2]}}}},{"data":{"repository":{"list":{"totalCount":3,"nodes":[3]}}}}]`
+	got, err := model.DecodeGraphPages[int]("gh api graphql", repository)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3}, got, "the pages of a list under the repository join in order")
+
+	top, err := model.DecodeGraphPages[int]("gh api graphql", `[{"data":{"list":{"totalCount":1,"nodes":[7]}}}]`)
+	require.NoError(t, err)
+	require.Equal(t, []int{7}, top, "a list at the top of the answer, such as a search, reads the same")
+
+	empty, err := model.DecodeGraphPages[int]("gh api graphql", `[{"data":{"repository":{"list":{"totalCount":0,"nodes":[]}}}}]`)
+	require.NoError(t, err)
+	require.NotNil(t, empty)
+	require.Empty(t, empty)
+
+	_, err = model.DecodeGraphPages[int]("gh api graphql", `[{"data":{"repository":{"list":{"totalCount":5,"nodes":[1,2]}}}}]`)
+	require.ErrorIs(t, err, model.ErrMorePages, "fewer rows than the total is a cut list")
+	require.ErrorContains(t, err, "2 of 5 rows, so the rest are unknown")
+
+	for _, shape := range []string{`[{"data":null}]`, `[{"data":{"repository":{}}}]`, `[{"data":{}}]`, `[{}]`} {
+		_, err = model.DecodeGraphPages[int]("gh api graphql", shape)
+		require.ErrorContains(t, err, "a page holds no list", shape)
+	}
+
+	_, err = model.DecodeGraphPages[int]("gh api graphql", "null")
+	require.ErrorIs(t, err, model.ErrNullAnswer)
+}
+
 func TestURLNumber_ReadsTheNumberAfterTheKind(t *testing.T) {
 	t.Parallel()
 
