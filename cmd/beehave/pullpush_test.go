@@ -25,6 +25,8 @@ type pushRig struct {
 	head   string
 	opts   flow.Options
 	pulls  pulls
+	// config is the config file that plant writes. Empty means the config of the lane of the worktree.
+	config string
 }
 
 func newPushRig(t *testing.T) pushRig {

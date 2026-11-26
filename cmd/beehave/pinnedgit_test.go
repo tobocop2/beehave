@@ -36,33 +36,37 @@ func pointAt(t *testing.T, tree, decoy string) {
 func TestWorktrees_EngineCallsStartNoProgramThatTheCloneConfigNames(t *testing.T) {
 	t.Parallel()
 
-	calls := map[string]func(t *testing.T, rig pushRig) error{
-		"the refresh of an item that has a worktree": func(t *testing.T, rig pushRig) error {
+	// project says that the call reads the config of the clone of the project, and not the config of the lane of pushItem, which the worktree of the rig shares.
+	calls := map[string]struct {
+		run     func(t *testing.T, rig pushRig) error
+		project bool
+	}{
+		"the refresh of an item that has a worktree": {run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Ensure(t.Context(), "p", pushItem, "", "")
 
 			return err
-		},
-		"the worktree of a new item": func(t *testing.T, rig pushRig) error {
+		}},
+		"the worktree of a new item": {project: true, run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
 
 			return err
-		},
-		"the fetch of the project": func(t *testing.T, rig pushRig) error {
+		}},
+		"the fetch of the project": {project: true, run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			return rig.pulls.trees.Fetch(t.Context(), "p")
-		},
-		"the list of the worktrees": func(t *testing.T, rig pushRig) error {
+		}},
+		"the list of the worktrees": {run: func(t *testing.T, rig pushRig) error {
 			t.Helper()
 
 			_, err := rig.pulls.trees.Path(t.Context(), "p", pushItem)
 
 			return err
-		},
+		}},
 	}
 
 	for name, call := range calls {
@@ -71,9 +75,14 @@ func TestWorktrees_EngineCallsStartNoProgramThatTheCloneConfigNames(t *testing.T
 
 			rig := newPushRig(t)
 			marker, ran := newMarker(t)
+
+			if call.project {
+				rig.config = filepath.Join(rig.pulls.trees.repos, "p", ".git", "config")
+			}
+
 			rig.plant(t, "core.fsmonitor", marker)
 
-			err := call(t, rig)
+			err := call.run(t, rig)
 
 			require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow")
 			assert.NoFileExists(t, ran, "the engine call ran the program that the clone config names")

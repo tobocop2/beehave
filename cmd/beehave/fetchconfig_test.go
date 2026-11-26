@@ -26,6 +26,8 @@ type fetchRig struct {
 
 	tip   string
 	decoy string
+	// control is the repository where the control fetch runs: the worktree of the rig by default.
+	control string
 }
 
 func newFetchRig(t *testing.T) fetchRig {
@@ -42,7 +44,7 @@ func newFetchRig(t *testing.T) fetchRig {
 	decoy := filepath.Join(t.TempDir(), "decoy.git")
 	runGit(t, decoyWork, "clone", "-q", "--bare", ".", decoy)
 
-	return fetchRig{pushRig: rig, tip: tip, decoy: decoy}
+	return fetchRig{pushRig: rig, tip: tip, decoy: decoy, control: rig.tree}
 }
 
 // fetchHostile is one setting that an agent could write into the git config of the shared clone, to steer a fetch from the remote.
@@ -118,22 +120,51 @@ var fetchHostiles = map[string]fetchHostile{
 }
 
 // fetchCalls are the engine calls that fetch from the remote into the clone with the credential of the owner. Each returns the worktree it made.
-var fetchCalls = map[string]func(t *testing.T, rig fetchRig) (string, error){
-	"the refresh of an item": func(t *testing.T, rig fetchRig) (string, error) {
-		t.Helper()
+// The refresh of a new item copies into the clone of the project, so the setting goes into that config. The refresh of a round item that has a worktree
+// copies into the lane of the item, so the setting goes into the config of that lane, which the worktree shares.
+var fetchCalls = map[string]struct {
+	// prepare makes the worktree that the setting goes with, and points the rig at it. It is nil for the call that goes by the clone of the project.
+	prepare func(t *testing.T, rig *fetchRig)
+	run     func(t *testing.T, rig fetchRig) (string, error)
+}{
+	"the refresh of an item": {
+		prepare: func(t *testing.T, rig *fetchRig) {
+			t.Helper()
 
-		return rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
+			clone := filepath.Join(rig.pulls.trees.repos, "p")
+			rig.config = filepath.Join(clone, ".git", "config")
+			rig.control = clone
+		},
+		run: func(t *testing.T, rig fetchRig) (string, error) {
+			t.Helper()
+
+			return rig.pulls.trees.Ensure(t.Context(), "p", "other", "", "")
+		},
 	},
-	"the refresh of a round item": func(t *testing.T, rig fetchRig) (string, error) {
-		t.Helper()
+	"the refresh of a round item": {
+		prepare: func(t *testing.T, rig *fetchRig) {
+			t.Helper()
 
-		return rig.pulls.trees.Ensure(t.Context(), "p", "round/main", "", "")
+			tree, err := rig.pulls.trees.Ensure(t.Context(), "p", "round/main", "", "")
+			require.NoError(t, err)
+
+			work := filepath.Join(t.TempDir(), "work")
+			runGit(t, tree, "clone", "-q", rig.remote, work)
+			rig.tip = commitIn(t, work, "later on the remote")
+			runGit(t, work, "push", "-q", rig.remote, "HEAD:refs/heads/main")
+			rig.tree, rig.control = tree, tree
+		},
+		run: func(t *testing.T, rig fetchRig) (string, error) {
+			t.Helper()
+
+			return rig.pulls.trees.Ensure(t.Context(), "p", "round/main", "", "")
+		},
 	},
 }
 
-// Each setting goes into the config of the clone, where an agent whose worktree shares the clone could write it. Each engine fetch from the remote reads
-// the remote that the engine read, and the setting does not take effect. The control is a plain git fetch in the worktree, in which the same setting
-// takes effect.
+// Each setting goes into a config that an engine fetch reads: the clone of the project, or the lane of a round item that has a worktree. Each engine fetch
+// from the remote reads the remote that the engine read, and the setting does not take effect. The control is a plain git fetch in that repository,
+// in which the same setting takes effect.
 func TestWorktrees_FetchRunsNoSettingThatTheCloneConfigHolds(t *testing.T) {
 	t.Parallel()
 
@@ -151,9 +182,11 @@ func TestWorktrees_FetchRunsNoSettingThatTheCloneConfigHolds(t *testing.T) {
 				require.NoError(t, exectest.Write(marker, "#!/bin/sh\ntouch "+ran+"\nexit 1\n"))
 				decoyTip := gitOut(t, rig.decoy, "rev-parse", "refs/heads/main")
 
+				fetch.prepare(t, &rig)
+
 				hostile.plant(t, rig, marker)
 
-				tree, err := fetch(t, rig)
+				tree, err := fetch.run(t, rig)
 				assert.NoFileExists(t, ran, "the setting in the clone config runs no program in the engine fetch")
 
 				if hostile.allowed {
@@ -164,14 +197,14 @@ func TestWorktrees_FetchRunsNoSettingThatTheCloneConfigHolds(t *testing.T) {
 				}
 
 				control := exec.CommandContext(t.Context(), "git", "fetch", "-q", "origin", "main:refs/control/main")
-				control.Dir = rig.tree
+				control.Dir = rig.control
 				control.Env = []string{"PATH=" + filepath.Dir(gitPath) + ":/usr/bin:/bin", "HOME=" + t.TempDir(), "GIT_TERMINAL_PROMPT=0"}
 				out, _ := control.CombinedOutput() //nolint:errcheck // the control shows the effect of the setting, whether or not git then fails
 
 				if hostile.steers {
-					assert.Equal(t, decoyTip, gitOut(t, rig.tree, "rev-parse", "FETCH_HEAD"), "control: a plain fetch in the worktree reads the decoy: %s", out)
+					assert.Equal(t, decoyTip, gitOut(t, rig.control, "rev-parse", "FETCH_HEAD"), "control: a plain fetch in the repository reads the decoy: %s", out)
 				} else {
-					assert.FileExists(t, ran, "control: a plain fetch in the worktree runs the setting: %s", out)
+					assert.FileExists(t, ran, "control: a plain fetch in the repository runs the setting: %s", out)
 				}
 			})
 		}
@@ -226,6 +259,8 @@ func TestBatchHost_TipFetchesNoSettingThatTheCloneConfigHolds(t *testing.T) {
 			t.Parallel()
 
 			rig := newFetchRig(t)
+			clone := filepath.Join(rig.pulls.trees.repos, "p")
+			rig.config = filepath.Join(clone, ".git", "config")
 			marker, ran := newMarker(t)
 			decoyTip := gitOut(t, rig.decoy, "rev-parse", "refs/heads/main")
 
@@ -247,12 +282,12 @@ func TestBatchHost_TipFetchesNoSettingThatTheCloneConfigHolds(t *testing.T) {
 				require.ErrorContains(t, err, "which beehave does not allow", "the tip refuses a clone whose config holds a key outside the allow list")
 			}
 
-			out := plainGit(t, rig.tree, "fetch", "-q", "origin", "main:refs/control/main")
+			out := plainGit(t, clone, "fetch", "-q", "origin", "main:refs/control/main")
 
 			if hostile.steers {
-				assert.Equal(t, decoyTip, gitOut(t, rig.tree, "rev-parse", "FETCH_HEAD"), "control: a plain fetch in the worktree reads the decoy: %s", out)
+				assert.Equal(t, decoyTip, gitOut(t, clone, "rev-parse", "FETCH_HEAD"), "control: a plain fetch in the clone reads the decoy: %s", out)
 			} else {
-				assert.FileExists(t, ran, "control: a plain fetch in the worktree runs the setting: %s", out)
+				assert.FileExists(t, ran, "control: a plain fetch in the clone runs the setting: %s", out)
 			}
 		})
 	}
@@ -290,6 +325,8 @@ func TestWorktrees_TheCopyIntoTheCloneTakesTheFileTransportOnly(t *testing.T) {
 	t.Parallel()
 
 	rig := newFetchRig(t)
+	clone := filepath.Join(rig.opts.StateDir, "repos", "p")
+	rig.config = filepath.Join(clone, ".git", "config")
 	marker, ran := newMarker(t)
 	push := filepath.Join(rig.opts.StateDir, "push", "p.git")
 	rig.plant(t, "url.ssh://example.invalid/push.git.insteadOf", push)
@@ -300,8 +337,8 @@ func TestWorktrees_TheCopyIntoTheCloneTakesTheFileTransportOnly(t *testing.T) {
 	require.ErrorContains(t, err, "git fetch in "+filepath.Join(rig.opts.StateDir, "repos", "p"), "the copy into the clone refuses the ssh address")
 	assert.NoFileExists(t, ran, "the ssh command of the clone config never runs")
 
-	out := plainGit(t, rig.tree, "fetch", "-q", push, "refs/heads/main")
-	assert.FileExists(t, ran, "control: a plain fetch of the push repository in the worktree runs the ssh command: %s", out)
+	out := plainGit(t, clone, "fetch", "-q", push, "refs/heads/main")
+	assert.FileExists(t, ran, "control: a plain fetch of the push repository in the clone runs the ssh command: %s", out)
 }
 
 // The clone has no config before the first clone, so the first clone runs with every transport of git. The control is the server, which sees the

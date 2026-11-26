@@ -63,6 +63,7 @@ func TestWorktrees_AFailedCopyIntoTheCloneCarriesNoHintAboutTheSource(t *testing
 
 	rig := newFetchRig(t)
 	trees := rig.pulls.trees
+	rig.config = filepath.Join(trees.repos, "p", ".git", "config")
 	rig.plant(t, "url."+rig.decoy+".insteadOf", rig.remote)
 
 	err := trees.FetchCommit(t.Context(), "p", rig.remote, rig.tip)
@@ -121,6 +122,7 @@ func TestWorktrees_FetchCommitFailsForACommitTheSourceLacksAndForAClonePastTheAl
 	err := trees.FetchCommit(t.Context(), "p", rig.remote, gitOut(t, rig.decoy, "rev-parse", "refs/heads/main"))
 	require.ErrorContains(t, err, "git fetch in", "the source does not hold the commit of the decoy")
 
+	rig.config = filepath.Join(trees.repos, "p", ".git", "config")
 	rig.plant(t, "url."+rig.decoy+".insteadOf", rig.remote)
 
 	err = trees.FetchCommit(t.Context(), "p", rig.remote, rig.tip)

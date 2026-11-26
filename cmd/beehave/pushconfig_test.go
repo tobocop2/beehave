@@ -22,9 +22,14 @@ type hostileConfig struct {
 	took func(t *testing.T, ran, decoy string) bool
 }
 
-// cloneConfig is the config file of the clone that the worktree of the rig shares.
+// cloneConfig is the config file that a plant writes: the config of the lane that the worktree of the rig is linked to, or the config of the clone of the
+// project when the rig names it.
 func (r pushRig) cloneConfig(t *testing.T) string {
 	t.Helper()
+
+	if r.config != "" {
+		return r.config
+	}
 
 	return filepath.Join(gitOut(t, r.tree, "rev-parse", "--path-format=absolute", "--git-common-dir"), "config")
 }
