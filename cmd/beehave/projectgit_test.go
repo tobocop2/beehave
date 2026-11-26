@@ -174,7 +174,7 @@ func TestProjectGate_TheGateOfAPlainProjectReadsTheHeadOfItsGitFolder(t *testing
 	t.Parallel()
 
 	dir := repoWithCommit(t)
-	gate := projectGate{programs: newPrograms(config.Config{Projects: plainProject()}, nil, cloneLock{repos: filepath.Join(t.TempDir(), "repos")}, adapters{}, nil)}
+	gate := projectGate{programs: newPrograms(config.Config{Projects: plainProject()}, nil, cloneLock{repos: filepath.Join(t.TempDir(), "repos")}, localDisk{}, adapters{}, nil)}
 
 	state, err := gate.treeOf("p")(t.Context(), dir)
 

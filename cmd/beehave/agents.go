@@ -84,6 +84,8 @@ type agents struct {
 	repos gitexec.Repositories
 	// modules names and fills the Go module cache of a project in a worktree.
 	modules moduleFill
+	// disk is the disk floor that a step meets before its agent starts.
+	disk localDisk
 }
 
 // moduleFill names the Go module cache of a project in a worktree, or "" for a worktree that needs none, and fills it.
@@ -103,17 +105,23 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		projects: cfg.Projects,
 		adapter:  table.agent,
 		env:      opts.Env,
-		run: func(ctx context.Context, spec agent.Spec) agent.Result {
-			return agent.Runner{Folders: folders}.Run(ctx, spec)
-		},
+		run:      runnerIn(folders),
 		guard:    guardCommand(os.Executable),
 		home:     os.UserHomeDir,
 		identity: gitIdentity,
 		repos:    repos,
 		modules:  moduleFiller(opts),
+		disk:     newLocalDisk(cfg.Projects, opts.StateDir),
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
 		traceParent: cfg.Agents.TraceParent, contextWindow: int64(cfg.Agents.ContextWindowTokens),
 		prices: agent.DefaultPrices(),
+	}
+}
+
+// runnerIn returns the function that runs an agent process with the folders of the engine.
+func runnerIn(folders *fstree.Folders) func(context.Context, agent.Spec) agent.Result {
+	return func(ctx context.Context, spec agent.Spec) agent.Result {
+		return agent.Runner{Folders: folders}.Run(ctx, spec)
 	}
 }
 
@@ -233,7 +241,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	return a.runIn(ctx, request, runner, dir)
 }
 
-// runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
+// runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made, or when the disk is under its floor.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(runner.Agent, request.Forbid, protect)
@@ -253,6 +261,15 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
 	return result, err
+}
+
+// diskNote returns the reason why the disk is under the floor of the project, or "" when a step can start.
+func (a agents) diskNote(ctx context.Context, project string) string {
+	if err := a.disk.check(ctx, project); err != nil {
+		return err.Error()
+	}
+
+	return ""
 }
 
 // fillOf returns the function that fills the Go module cache of a sandboxed step, or nil for a step with no cache. The runner calls it after every
@@ -279,6 +296,10 @@ type stepReady struct {
 // readyOf returns what the step needs before it starts, or the reason why it cannot start: its config folder, its sandbox or its skills cannot be made.
 // The sandbox plan of a step that can start names the Go module cache of its project.
 func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (stepReady, string) {
+	if note := a.diskNote(ctx, request.Project); note != "" {
+		return stepReady{}, note
+	}
+
 	folder, unknown := a.configFolder(runner, adapter)
 	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
 	skills, missing := a.skillsOf(request, folder)

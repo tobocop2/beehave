@@ -205,14 +205,23 @@ func (g projectGate) programShellFor(project string) gate.ProgramShell {
 			return g.shell(ctx, project, root, command)
 		}
 
+		if err := g.programs.disk.check(ctx, project); err != nil {
+			return err.Error() + "\n", 1
+		}
+
 		return g.programs.sandbox.runJob(ctx, project, from, root, []string{"sh", "-c", command}, cmp.Or(g.timeout, gateTimeout))
 	}
 }
 
 // shellFor returns the function that runs the gate command of the project: under the sandbox when the project has it on and builds here, else as before.
+// A sandboxed gate starts only when the disk holds the floor of the project (see localDisk), before the sandbox copies the tree.
 func (g projectGate) shellFor(project string) func(context.Context, string, string) (string, int) {
 	return func(ctx context.Context, dir, command string) (string, int) {
 		if g.programs.sandbox.applies(project, false) {
+			if err := g.programs.disk.check(ctx, project); err != nil {
+				return err.Error() + "\n", 1
+			}
+
 			return g.programs.sandbox.runGate(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
 		}
 

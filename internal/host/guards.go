@@ -194,18 +194,24 @@ func (f floored) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, e
 
 // waitForSpace runs DiskFloor and, while the host is under the floor, runs it again after each poll until the wait ends.
 func (f floored) waitForSpace(ctx context.Context) error {
-	deadline := time.Now().Add(f.wait)
+	return waitUntil(ctx, f.wait, f.poll, func(ctx context.Context) error { return DiskFloor(ctx, f.Host, f.floorGB) })
+}
+
+// waitUntil runs check and, while it answers ErrDiskLow, runs it again after each poll until the wait ends, and then returns that ErrDiskLow.
+// Any other answer ends the wait at once, because waiting does not fix it. A wait of zero or less runs check once.
+func waitUntil(ctx context.Context, wait, poll time.Duration, check func(context.Context) error) error {
+	deadline := time.Now().Add(wait)
 
 	for {
-		err := DiskFloor(ctx, f.Host, f.floorGB)
-		if err == nil || !errors.Is(err, ErrDiskLow) || f.wait <= 0 || !time.Now().Before(deadline) {
+		err := check(ctx)
+		if err == nil || !errors.Is(err, ErrDiskLow) || wait <= 0 || !time.Now().Before(deadline) {
 			return err
 		}
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err() //nolint:wrapcheck // the cancel of the caller is the error
-		case <-time.After(min(f.poll, time.Until(deadline))):
+		case <-time.After(min(poll, time.Until(deadline))):
 		}
 	}
 }

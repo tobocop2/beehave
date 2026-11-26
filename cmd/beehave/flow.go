@@ -203,7 +203,7 @@ func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) 
 	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 	folders := &fstree.Folders{}
-	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
+	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, trees.disk, table, folders)
 
 	return flow.Deps{
 		Agents: newAgents(cfg, opts, trees, table, folders), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge, tip: trees.BaseTip, fetch: trees.FetchCommit}.withTools(config.ProcessEnv()["PATH"]), Logins: picks, Lifecycle: life, Forge: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
@@ -314,7 +314,7 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 	found := gitexec.NewRepositories(repos)
 
 	return worktrees{
-		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles,
+		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles, disk: newLocalDisk(projects, opts.StateDir),
 		git: func(dir string) proc.Runner { return found.Runner(dir, proc.DefaultTimeout) },
 	}
 }
@@ -340,10 +340,11 @@ func localRunner(projects map[string]config.Project, found gitexec.Repositories)
 }
 
 // newPrograms runs command steps in the worktree of the item, or on the host of the project.
-// The sandbox of a gate holds the lock of the clone, clones, while it adds or removes the worktree of its copy.
-func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, table adapters, folders *fstree.Folders) programs {
+// The sandbox of a gate holds the lock of the clone, clones, while it adds or removes the worktree of its copy. disk is the floor that a program on this machine meets before it starts.
+func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, disk localDisk, table adapters, folders *fstree.Folders) programs {
 	return programs{
 		trees:    trees,
+		disk:     disk,
 		sandbox:  newGateSandbox(cfg.Projects, clones, folders),
 		local:    localRunner(cfg.Projects, gitexec.NewRepositories(clones.repos)),
 		exec:     func(spec proc.ExecRunner) proc.Runner { return spec },
