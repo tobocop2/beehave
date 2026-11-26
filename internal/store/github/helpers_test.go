@@ -6,7 +6,20 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/ghcontract"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
+
+// strict makes a scripted runner refuse a field or a flag that the pinned gh refuses. Any other runner is returned as it is.
+func strict(run proc.Runner) proc.Runner {
+	if scripted, ok := run.(*proctest.Scripted); ok {
+		scripted.Strict(ghcontract.Check)
+	}
+
+	return run
+}
 
 func toJSON(t *testing.T, value any) string {
 	t.Helper()

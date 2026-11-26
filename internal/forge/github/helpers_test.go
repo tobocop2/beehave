@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/ghcontract"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
@@ -54,8 +55,13 @@ func commandResult(stdout string, exit int) model.CommandResult {
 	return model.CommandResult{ExitCode: exit, Stdout: stdout}
 }
 
+// newForge builds a forge over the runner. A scripted runner is made strict, so it refuses a field or a flag that the pinned gh refuses.
 func newForge(t *testing.T, name string, run proc.Runner) *github.Forge {
 	t.Helper()
+
+	if scripted, ok := run.(*proctest.Scripted); ok {
+		scripted.Strict(ghcontract.Check)
+	}
 
 	f, err := github.New(name, run)
 	require.NoError(t, err)

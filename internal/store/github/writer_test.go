@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/ghcontract"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 	"github.com/tobocop2/beehave/internal/store"
@@ -93,6 +94,10 @@ func (f *fakeGh) refuseUnknown(names ...string) model.CommandResult {
 
 func (f *fakeGh) Run(_ context.Context, args []string) model.CommandResult {
 	f.calls = append(f.calls, slices.Clone(args))
+
+	if stderr, ok := ghcontract.Check(args); !ok {
+		return model.CommandResult{ExitCode: 1, Stderr: stderr}
+	}
 
 	switch {
 	case f.broken || len(args) < 2:
@@ -302,7 +307,7 @@ func mustMarshal(v any) string {
 func writerOver(t *testing.T, run *fakeGh) *github.Store {
 	t.Helper()
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	return gh
@@ -410,7 +415,7 @@ func TestCreate_RefusesAFailedOrUnreadableSecondLookup(t *testing.T) {
 			run.Plan("[]", "issue", "list")
 			plan(run)
 
-			gh, err := github.New(ghRepo, run)
+			gh, err := github.New(ghRepo, strict(run))
 			require.NoError(t, err)
 
 			_, _, err = gh.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -441,7 +446,7 @@ func TestCreate_RefusesAnAnswerWithNoIssueNumber(t *testing.T) {
 	run.Plan("[]", "issue", "list")
 	run.Plan("created it\n", "issue", "create")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	_, _, err = gh.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -456,7 +461,7 @@ func TestCreate_AFailedCreateIsARefusal(t *testing.T) {
 	run.Plan("[]", "issue", "list")
 	run.PlanFail("boom", "issue", "create")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	_, _, err = gh.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -470,7 +475,7 @@ func TestCreate_RefusesAnUnreadableList(t *testing.T) {
 	run := &proctest.Scripted{}
 	run.Plan("not json", "issue", "list")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	_, _, err = gh.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -484,7 +489,7 @@ func TestCreate_RefusesAFullPageOfMatches(t *testing.T) {
 	run := &proctest.Scripted{}
 	run.Plan(toJSON(t, fill(1000, map[string]any{"body": "x"})), "issue", "list")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	_, _, err = gh.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -557,7 +562,7 @@ func TestSetStatus_RefusesAnUnreadableView(t *testing.T) {
 	run := &proctest.Scripted{}
 	run.Plan("not json", "issue", "view")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 	require.Error(t, gh.SetStatus(t.Context(), "1", store.StatusClosed))
 }
@@ -583,7 +588,7 @@ func TestSetStatus_ReportsEachFailedStep(t *testing.T) {
 
 		run.PlanFail("boom", "issue", failing)
 
-		gh, err := github.New(ghRepo, run)
+		gh, err := github.New(ghRepo, strict(run))
 		require.NoError(t, err)
 		require.Error(t, gh.SetStatus(t.Context(), "1", status), failing)
 	}
@@ -617,7 +622,7 @@ func TestSetStatus_AHoldThatCannotReadOrCreateTheLabelRefusesAndDoesNotEdit(t *t
 		run.Plan("", "issue", "edit")
 		plan(run)
 
-		gh, err := github.New(ghRepo, run)
+		gh, err := github.New(ghRepo, strict(run))
 		require.NoError(t, err)
 
 		err = gh.SetStatus(t.Context(), "1", store.StatusHold)
@@ -641,7 +646,7 @@ func TestSetStatus_AHoldThatCannotReadTheLabelsDoesNotCreateTheLabel(t *testing.
 		run.Plan("", "issue", "edit")
 		list(run)
 
-		gh, err := github.New(ghRepo, run)
+		gh, err := github.New(ghRepo, strict(run))
 		require.NoError(t, err)
 
 		require.Error(t, gh.SetStatus(t.Context(), "1", store.StatusHold), name)
@@ -672,7 +677,7 @@ func TestSetStatus_AHoldWhoseEditFailsNamesTheItem(t *testing.T) {
 	run.Plan(`[{"name":"Hold"}]`, "label", "list")
 	run.PlanFail("boom", "issue", "edit")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	err = gh.SetStatus(t.Context(), "1", store.StatusHold)
@@ -706,7 +711,7 @@ func TestCreate_RefusesAndFilesNothingWhenALabelCannotBeCreated(t *testing.T) {
 	run.Plan("[]", "label", "list")
 	run.PlanFail("denied", "label", "create")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	_, _, err = gh.Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P1"})
@@ -746,7 +751,7 @@ func TestComment_RefusesAnUnreadableViewAndAnIdThatIsNotANumber(t *testing.T) {
 	run := &proctest.Scripted{}
 	run.Plan("not json", "api")
 
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 	require.Error(t, gh.Comment(t.Context(), "1", "k", "t"))
 	require.Error(t, gh.Comment(t.Context(), "x", "k", "t"))
