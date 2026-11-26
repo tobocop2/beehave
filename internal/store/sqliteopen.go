@@ -179,8 +179,7 @@ func secure(root *os.Root, name string) error {
 	return nil
 }
 
-// prepareSQLite creates the tables of a new file and refuses a file that is not of this schema. A file that is up to date is only read.
-// Otherwise the read of the version and the schema share one transaction.
+// prepareSQLite only reads a file that is up to date; otherwise it reads the version and runs the schema in one transaction, and refuses a file of another schema.
 func prepareSQLite(ctx context.Context, db *sql.DB, file SQLiteFile) error {
 	current, err := upToDate(ctx, db, file)
 	if err != nil || current {
