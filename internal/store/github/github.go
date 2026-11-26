@@ -13,6 +13,10 @@ import (
 
 const (
 	argAPI      = "api"
+	argGraphQL  = "graphql"
+	argPaginate = "--paginate"
+	argSlurp    = "--slurp"
+	flagRaw     = "-f"
 	argIssue    = "issue"
 	argRepo     = "--repo"
 	argJSON     = "--json"
@@ -170,12 +174,12 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 func (s *Store) openIssues(ctx context.Context, label string) ([]ghIssue, error) {
 	owner, name, _ := model.SplitRepo(s.repo)
 
-	args := []string{argAPI, "graphql", "--paginate", "--slurp", "-f", "o=" + owner, "-f", "n=" + name}
+	args := []string{argAPI, argGraphQL, argPaginate, argSlurp, flagRaw, "o=" + owner, flagRaw, "n=" + name}
 	if label != "" {
-		args = append(args, "-f", "l[]="+label)
+		args = append(args, flagRaw, "l[]="+label)
 	}
 
-	done := s.run.Run(ctx, append(args, "-f", "query="+openIssuesQuery))
+	done := s.run.Run(ctx, append(args, flagRaw, "query="+openIssuesQuery))
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("store: cannot list the open issues; refusing")
 	}
