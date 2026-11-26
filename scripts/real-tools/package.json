@@ -1,0 +1,9 @@
+{
+  "name": "beehave-real-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The pinned claude of the real-tools suite. npm ci installs it from the lock file, which holds the integrity hash.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.285"
+  }
+}
