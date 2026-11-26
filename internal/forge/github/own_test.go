@@ -43,7 +43,7 @@ func batchedNode() fields {
 
 // searchPage is one page of the search: the count of all rows and the nodes on the page.
 func searchPage(count int, nodes ...fields) fields {
-	return fields{"data": fields{"search": fields{"issueCount": count, "nodes": nodes}}}
+	return fields{"data": fields{"list": fields{"totalCount": count, "nodes": nodes}}}
 }
 
 // searchAnswer is what `gh api graphql --paginate --slurp` prints for a search that fits on one page.
@@ -216,10 +216,11 @@ func TestOwnPulls_RefuseAFailedMalformedEmptyOrLongAnswer(t *testing.T) {
 	_, err = bad.OwnPulls(context.Background(), "me")
 	require.ErrorContains(t, err, "cannot read our open pull requests")
 
-	for _, body := range []string{`[{"data":null}]`, `[{"data":{"search":null}}]`, `[]`} {
+	for _, body := range []string{`[{"data":null}]`, `[{"data":{"list":null}}]`, `[]`} {
 		none, _ := fixed(t, body)
 		_, err = none.OwnPulls(context.Background(), "me")
-		require.ErrorContains(t, err, "the answer holds none")
+		require.ErrorContains(t, err, "cannot read our open pull requests")
+		require.ErrorContains(t, err, "a page holds no list")
 	}
 }
 
@@ -228,7 +229,7 @@ func TestOwnPulls_ACountOneAboveTheNodesRefusesTheAnswer(t *testing.T) {
 
 	one, _ := fixed(t, searchAnswer(t, 2, batchedNode()))
 	_, err := one.OwnPulls(context.Background(), "me")
-	require.ErrorContains(t, err, "2 pull requests")
+	require.ErrorContains(t, err, "1 of 2 rows")
 }
 
 // numbered is one page of the search with a node for each number.
@@ -277,22 +278,23 @@ func TestOwnPulls_ReadsUpToAThousandRowsAndRefusesMore(t *testing.T) {
 
 	over, _ := fixed(t, toJSON(t, []fields{numbered(1001, 1)}))
 	_, err = over.OwnPulls(context.Background(), "me")
-	require.ErrorContains(t, err, "1001 pull requests, more than 1000")
+	require.ErrorIs(t, err, model.ErrMorePages, "the search gives at most 1000 rows, so a count above 1000 is a cut list")
+	require.ErrorContains(t, err, "1 of 1001 rows")
 }
 
 func TestOwnPulls_RefuseAPageListThatDoesNotMatchTheCount(t *testing.T) {
 	t.Parallel()
 
-	for name, body := range map[string]string{
-		"more rows than counted":  toJSON(t, []fields{numbered(1, 1), numbered(1, 2)}),
-		"fewer rows than counted": toJSON(t, []fields{numbered(3, 1), numbered(3, 2)}),
+	for name, one := range map[string]struct{ body, want string }{
+		"more rows than counted":  {toJSON(t, []fields{numbered(1, 1), numbered(1, 2)}), "2 rows, more than the total of 1"},
+		"fewer rows than counted": {toJSON(t, []fields{numbered(3, 1), numbered(3, 2)}), "2 of 3 rows"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			f, _ := fixed(t, body)
+			f, _ := fixed(t, one.body)
 			_, err := f.OwnPulls(context.Background(), "me")
-			require.ErrorContains(t, err, "pull requests counted")
+			require.ErrorContains(t, err, one.want)
 		})
 	}
 }

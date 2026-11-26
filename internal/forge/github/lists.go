@@ -20,8 +20,11 @@ const (
 		pagedList + "{number headRefName baseRefName labels(first:100){nodes{name}} reviewDecision author{login} authorAssociation isDraft title}}}}"
 	branchPullsQuery = "query($o:String!,$n:String!,$h:String!,$endCursor:String){" + repositoryOf + "{list:pullRequests(headRefName:$h," + newestFirst + "," + pageOf + "){" +
 		pagedList + historyNode + "}}}"
-	searchPullsQuery = "query($q:String!,$endCursor:String){list:search(query:$q,type:ISSUE," + pageOf + "){" +
-		"totalCount:issueCount pageInfo{hasNextPage endCursor} nodes{... on PullRequest" + historyNode + "}}}"
+	searchPullsQuery = "query($q:String!,$endCursor:String){" + searchedList + "{... on PullRequest" + historyNode + "}}}"
+
+	// searchedList is the paged search of the forge, with the count of the search as the total. It uses the search type ISSUE, which every GitHub host has.
+	// gh 2.101.0 sends ISSUE_ADVANCED where the schema offers it; this read does not, as the read of our open pull requests did not before it.
+	searchedList = "list:search(query:$q,type:ISSUE," + pageOf + "){totalCount:issueCount pageInfo{hasNextPage endCursor} nodes"
 )
 
 // openNode is one pull request of the open list. GraphQL gives the labels as a page of nodes.

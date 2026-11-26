@@ -99,7 +99,8 @@ func (p graphPage[T]) list() *graphList[T] {
 }
 
 // DecodeGraphPages reads the output of `gh api graphql --paginate --slurp` for a query whose one paged list is aliased list, as one list.
-// A page with no list is an answer of the wrong shape. Fewer rows than the total of the last page is a cut list, a *DecodeError that wraps ErrMorePages.
+// No page, or a page with no list, is an answer of the wrong shape. The total of the first page is the total of the list. Fewer rows than the total is a cut list,
+// a *DecodeError that wraps ErrMorePages, and more rows than the total is an answer that does not add up.
 func DecodeGraphPages[T any](command, text string) ([]T, error) {
 	pages, err := Decode[[]graphPage[T]](command, text)
 	if err != nil {
@@ -111,16 +112,32 @@ func DecodeGraphPages[T any](command, text string) ([]T, error) {
 		return nil, &DecodeError{Command: command, Cause: errNoGraphList}
 	}
 
-	if len(rows) < total {
-		return nil, &DecodeError{Command: command, Cause: fmt.Errorf("%d of %d rows, so the rest are unknown: %w", len(rows), total, ErrMorePages)}
+	if cause := countCause(len(rows), total); cause != nil {
+		return nil, &DecodeError{Command: command, Cause: cause}
 	}
 
 	return rows, nil
 }
 
-// joinPages joins the rows of the pages and returns the total of the last page. It is false when a page holds no list.
+// countCause is why the row count does not match the total, or nil when it does.
+func countCause(read, total int) error {
+	switch {
+	case read < total:
+		return fmt.Errorf("%d of %d rows, so the rest are unknown: %w", read, total, ErrMorePages)
+	case read > total:
+		return fmt.Errorf("%d rows, more than the total of %d", read, total)
+	}
+
+	return nil
+}
+
+// joinPages joins the rows of the pages and returns the total of the first page. It is false when there is no page or a page holds no list.
 func joinPages[T any](pages []graphPage[T]) ([]T, int, bool) {
-	rows, total := []T{}, 0
+	if len(pages) == 0 {
+		return nil, 0, false
+	}
+
+	rows := []T{}
 
 	for _, page := range pages {
 		list := page.list()
@@ -128,10 +145,10 @@ func joinPages[T any](pages []graphPage[T]) ([]T, int, bool) {
 			return nil, 0, false
 		}
 
-		rows, total = append(rows, list.Nodes...), list.TotalCount
+		rows = append(rows, list.Nodes...)
 	}
 
-	return rows, total, true
+	return rows, pages[0].list().TotalCount, true
 }
 
 // Deref returns the text, or empty for nil.

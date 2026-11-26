@@ -51,7 +51,15 @@ func TestDecodeGraphPages_JoinsTheListsOfThePagesAndRefusesACutOrMissingList(t *
 	require.ErrorIs(t, err, model.ErrMorePages, "fewer rows than the total is a cut list")
 	require.ErrorContains(t, err, "2 of 5 rows, so the rest are unknown")
 
-	for _, shape := range []string{`[{"data":null}]`, `[{"data":{"repository":{}}}]`, `[{"data":{}}]`, `[{}]`} {
+	_, err = model.DecodeGraphPages[int]("gh api graphql", `[{"data":{"list":{"totalCount":1,"nodes":[1]}}},{"data":{"list":{"totalCount":1,"nodes":[2]}}}]`)
+	require.ErrorContains(t, err, "2 rows, more than the total of 1", "more rows than the total is an answer that does not add up")
+	require.NotErrorIs(t, err, model.ErrMorePages)
+
+	later, err := model.DecodeGraphPages[int]("gh api graphql", `[{"data":{"list":{"totalCount":2,"nodes":[1]}}},{"data":{"list":{"totalCount":9,"nodes":[2]}}}]`)
+	require.NoError(t, err, "the total of the first page is the total of the list")
+	require.Equal(t, []int{1, 2}, later)
+
+	for _, shape := range []string{`[]`, `[{"data":null}]`, `[{"data":{"repository":{}}}]`, `[{"data":{}}]`, `[{}]`} {
 		_, err = model.DecodeGraphPages[int]("gh api graphql", shape)
 		require.ErrorContains(t, err, "a page holds no list", shape)
 	}
