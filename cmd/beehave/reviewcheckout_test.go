@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -151,6 +152,25 @@ func TestWorktrees_ReviewCheckoutStopsTheStepWhenAnotherUserCanWriteTheFolderOfT
 	_, err := r.f.agents.Run(t.Context(), req)
 
 	require.ErrorContains(t, err, "can be written by another user")
+}
+
+// The test sets the umask of the process, so it does not run in parallel with other tests.
+func TestWorktrees_ReviewCheckoutMakesTheFolderOfTheCheckoutsForTheOwnerAloneWhateverTheUmask(t *testing.T) {
+	for _, mask := range []int{0o000, 0o002} {
+		old := syscall.Umask(mask)
+		t.Cleanup(func() { syscall.Umask(old) })
+
+		r := newSandboxRig(t)
+		req := request()
+		req.NoEdits = true
+
+		_, err := r.f.agents.Run(t.Context(), req)
+		require.NoError(t, err, "umask %03o", mask)
+
+		info, err := os.Stat(r.f.agents.checkouts)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(ownerOnly), info.Mode().Perm(), "umask %03o", mask)
+	}
 }
 
 func TestWorktrees_ReviewCheckoutStopsTheStepWhenTheFolderOfTheCheckoutsCannotBeMade(t *testing.T) {
