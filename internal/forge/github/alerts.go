@@ -36,10 +36,35 @@ func (a alertAnswer) alert() model.Alert {
 	return model.Alert{Number: a.Number, Rule: a.Rule.ID, Severity: severity, URL: a.URL}
 }
 
+// analysisAnswer is one code scanning analysis, as the analyses endpoint lists it.
+type analysisAnswer struct {
+	ID int `json:"id"`
+}
+
+// scanned refuses a head that has no code scanning analysis: no alert at an unscanned head does not mean that the head is clean.
+// https://docs.github.com/en/rest/code-scanning/code-scanning#list-code-scanning-analyses-for-a-repository
+func (f *Forge) scanned(ctx context.Context, pr int, sha string) error {
+	rows, err := readPages[analysisAnswer](ctx, f, "code-scanning/analyses?per_page=100&sha="+sha)
+	if err != nil {
+		return forge.Refusal("cannot read the code scanning analyses of pull request "+strconv.Itoa(pr), err)
+	}
+
+	if len(rows) == 0 {
+		return forge.Refuse("Code scanning has not analysed %s, the head of pull request %d, so its security alerts cannot be known.\n"+
+			"The project sets security_alerts = True. Wait for the code scanning run to finish, or run it.", sha, pr)
+	}
+
+	return nil
+}
+
 // OpenAlerts returns the open code scanning alerts of the pull request whose most recent instance is at sha. An alert that was last seen at another commit is left out.
-// A failed read is an error, never an empty list.
+// A head with no analysis is an error, and so is a failed read: neither is an empty list.
 // https://docs.github.com/en/rest/code-scanning/code-scanning#list-code-scanning-alerts-for-a-repository
 func (f *Forge) OpenAlerts(ctx context.Context, pr int, sha string) ([]model.Alert, error) {
+	if err := f.scanned(ctx, pr, sha); err != nil {
+		return nil, err
+	}
+
 	rows, err := readPages[alertAnswer](ctx, f, "code-scanning/alerts?state=open&per_page=100&pr="+strconv.Itoa(pr))
 	if err != nil {
 		return nil, forge.Refusal("cannot read the security alerts of pull request "+strconv.Itoa(pr), err)

@@ -34,7 +34,7 @@ A project with `security_alerts = True` makes each merge read the open alerts of
 
 On GitHub the read is code scanning: `GET repos/{repo}/code-scanning/alerts?state=open&pr={n}`, filtered to the alerts of the gated head. A 403 or 404 means code scanning is off or the token lacks the scope, and the start refuses the project.
 
-An empty answer means no open alert at the head. It does not tell a clean scan from a head that has no analysis yet. To tell them apart, the read must list `GET repos/{repo}/code-scanning/analyses?sha={sha}`, which is one more call.
+An empty alert list does not tell a clean scan from a head that has no scan yet. So the read first lists `GET repos/{repo}/code-scanning/analyses?sha={sha}`. A head with no analysis refuses the merge, and the error names `security_alerts`. A head with an analysis and no alert lets the merge go on. The merge retries a refusal later, so a scan that is still running does not block the pull request for good.
 
 ## Mapping
 

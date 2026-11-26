@@ -14,7 +14,17 @@ import (
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
-const alertsPath = "repos/owner/name/code-scanning/alerts?state=open&per_page=100&pr=7"
+const (
+	alertsPath   = "repos/owner/name/code-scanning/alerts?state=open&per_page=100&pr=7"
+	analysesPath = "repos/owner/name/code-scanning/analyses?per_page=100&sha=" + forgetest.SevenTip
+)
+
+// planAnalysis answers the analyses of the head with one analysis, so that the alert read has a scan to trust.
+func planAnalysis(t *testing.T, run *proctest.Scripted) {
+	t.Helper()
+
+	run.Plan(toJSON(t, []any{[]fields{{"id": 11, "commit_sha": forgetest.SevenTip}}}), "api", "--paginate", "--slurp", analysesPath)
+}
 
 func alertRow(number int, commit, severity, security string) fields {
 	return fields{
@@ -30,6 +40,7 @@ func TestOpenAlerts_ReturnsTheOpenAlertsOfTheHead(t *testing.T) {
 
 	other := "ffffffffffffffffffffffffffffffffffffffff"
 	run := &proctest.Scripted{}
+	planAnalysis(t, run)
 	run.Plan(toJSON(t, []any{[]fields{alertRow(1, forgetest.SevenTip, "warning", "high"), alertRow(2, other, "error", ""), alertRow(3, forgetest.SevenTip, "note", "")}}),
 		"api", "--paginate", "--slurp", alertsPath)
 
@@ -46,6 +57,7 @@ func TestOpenAlerts_AnAnswerWithNoAlertAtTheHeadIsAnEmptyListAndNoError(t *testi
 	t.Parallel()
 
 	run := &proctest.Scripted{}
+	planAnalysis(t, run)
 	run.Plan(toJSON(t, []any{[]fields{}}), "api", "--paginate", "--slurp", alertsPath)
 
 	got, err := newForge(t, repo, run).OpenAlerts(context.Background(), 7, forgetest.SevenTip)
@@ -54,10 +66,40 @@ func TestOpenAlerts_AnAnswerWithNoAlertAtTheHeadIsAnEmptyListAndNoError(t *testi
 	assert.Empty(t, got)
 }
 
+func TestOpenAlerts_AHeadWithNoAnalysisIsRefusedAndNoAlertIsRead(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.Plan(toJSON(t, []any{[]fields{}}), "api", "--paginate", "--slurp", analysesPath)
+
+	got, err := newForge(t, repo, run).OpenAlerts(context.Background(), 7, forgetest.SevenTip)
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, forge.ErrNoCapability, "the forge can read alerts; the head has no scan yet")
+	require.ErrorContains(t, err, "security_alerts")
+	require.ErrorContains(t, err, forgetest.SevenTip)
+	assert.Nil(t, got)
+	assert.False(t, run.Called("--slurp", alertsPath), "no alert is read when no scan can have produced one")
+}
+
+func TestOpenAlerts_AFailedAnalysisReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.PlanFail("gh: HTTP 500", "api", "--paginate", "--slurp", analysesPath)
+
+	got, err := newForge(t, repo, run).OpenAlerts(context.Background(), 7, forgetest.SevenTip)
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.False(t, run.Called("--slurp", alertsPath))
+}
+
 func TestOpenAlerts_ReadsTheAlertStateNotTheComments(t *testing.T) {
 	t.Parallel()
 
 	run := &proctest.Scripted{}
+	planAnalysis(t, run)
 	run.Plan(toJSON(t, []any{[]fields{alertRow(1, forgetest.SevenTip, "error", "critical")}}), "api", "--paginate", "--slurp", alertsPath)
 
 	got, err := newForge(t, repo, run).OpenAlerts(context.Background(), 7, forgetest.SevenTip)
@@ -65,7 +107,7 @@ func TestOpenAlerts_ReadsTheAlertStateNotTheComments(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1, "a bot comment that says no alerts does not clear an open alert")
 	assert.Equal(t, 1, got[0].Number)
-	assert.Equal(t, [][]string{{"api", "--paginate", "--slurp", alertsPath}}, run.Calls, "no comment is read")
+	assert.Equal(t, [][]string{{"api", "--paginate", "--slurp", analysesPath}, {"api", "--paginate", "--slurp", alertsPath}}, run.Calls, "no comment is read")
 }
 
 func TestOpenAlerts_AFailedReadIsAnError(t *testing.T) {
