@@ -7,7 +7,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// Forge is a code host: pull requests, reviews, threads and checks. GitHub implements it.
+// Forge is a code host: pull requests, reviews, threads and checks. Each backend is a child package.
 // A failed command is an error. Only BranchRef tells a missing branch (found false, no error) from a failure.
 type Forge interface {
 	PullReads
@@ -20,15 +20,25 @@ type Forge interface {
 	Remote
 }
 
-// Opener is the optional write side of a forge that opens pull requests and links them into native stacks. A forge that lacks it cannot be used by pr_open.
+// Opener is the optional write side of a forge that opens pull requests. A forge that lacks it cannot be used by pr_open.
 // CreatePR opens a draft pull request and returns its number. The caller finds an open pull request on the branch first, so a repeat opens no second one.
+type Opener interface {
+	CreatePR(ctx context.Context, req model.NewPull) (int, error)
+}
+
+// Stacker is the optional side of a forge with native stacks of pull requests. A forge that lacks it opens each pull request on the branch of its parent.
 // LinkStack puts child on top of parent in a native stack, and starts the stack when parent is in none. Linking pull requests that are already linked changes nothing.
 // A non-empty base is the branch that the bottom of the stack targets. An empty base leaves the choice to the forge, which can move the bottom to the default branch.
 // Unstack removes the whole stack that the pull request is in.
-type Opener interface {
-	CreatePR(ctx context.Context, req model.NewPull) (int, error)
+type Stacker interface {
 	LinkStack(ctx context.Context, parent, child int, base string) error
 	Unstack(ctx context.Context, pr int) error
+}
+
+// AlertReads is the optional side of a forge that reads the security alerts of a pull request. A forge that lacks it cannot serve a project that sets security_alerts.
+// OpenAlerts returns the open alerts of the pull request whose most recent instance is at sha, a full 40-character commit id. A failed read is an error, never an empty list.
+type AlertReads interface {
+	OpenAlerts(ctx context.Context, pr int, sha string) ([]model.Alert, error)
 }
 
 // Syncer is the optional side of a forge that brings one branch into another with no checkout. A forge that lacks it cannot sync a branch.

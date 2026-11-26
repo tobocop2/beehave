@@ -15,6 +15,17 @@ func TestForge_ConformsToForge(t *testing.T) {
 	forgetest.TestForge(t, conformanceForge)
 }
 
+func TestForge_DeclaresItsAbilities(t *testing.T) {
+	t.Parallel()
+
+	declared := []forge.Ability{
+		forge.AbilityStatuses, forge.AbilityOpener, forge.AbilityStacks, forge.AbilitySyncer, forge.AbilityAssignees, forge.AbilityAssociation, forge.AbilityReadyMarks,
+		forge.AbilityBoards, forge.AbilityQueue, forge.AbilityAncestry, forge.AbilityTrees, forge.AbilityLogs, forge.AbilityAlerts,
+	}
+
+	forgetest.TestForgeAbilities(t, conformanceForge(t, false), declared)
+}
+
 func TestPRClosing_ReturnsTheIssuesAPullRequestCloses(t *testing.T) {
 	t.Parallel()
 

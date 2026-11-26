@@ -169,7 +169,7 @@ The merge request carries no `Approved` flag. The forge refuses a merge without 
 
 ### The forge capability methods
 
-Each adapter maps these methods to its forge. A forge that cannot do one returns `forge.ErrNoCapability` with the reason, and the engine refuses.
+Each adapter maps these methods to its forge. A forge that cannot do one returns `forge.ErrNoCapability` with the reason, and the engine refuses. [forge.md](forge.md) lists every ability and what happens when a forge lacks it.
 
 | Method | GitHub | GitLab | Forgejo |
 |---|---|---|---|

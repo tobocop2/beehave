@@ -387,6 +387,7 @@ func request() merge.Request {
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
 		Repo: "owner/name", Base: "main", OwnLogins: []string{me}, OwnEmails: []string{meMail},
 		ForbidText: compiled(attributionPatterns()),
+		CIPaths:    []string{".github/workflows/"}, CIFix: "gh auth refresh -h github.com -s workflow",
 	}
 }
 

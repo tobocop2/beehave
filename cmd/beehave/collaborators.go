@@ -1026,6 +1026,8 @@ const namedListLimit = 50
 type pulls struct {
 	projects map[string]config.Project
 	forge    func(model.Project) (forge.Forge, error)
+	// ci gives the CI files that the adapter of a forge guards, for the merge request. Nil gives none.
+	ci func(model.ForgeName) ciPolicy
 	// issues is the GitHub access of the tracker of a project, for the read of who wrote an issue. It needs no forge key.
 	issues  func(model.Project) (forge.Forge, error)
 	runners []string
@@ -1039,13 +1041,28 @@ type pulls struct {
 // an embedded interface hides every method that it does not list, so the merge would not see them without these methods.
 type opened struct{ forge.Forge }
 
-var errNoOptionalRead = errors.New("this forge cannot read it")
+// sideOf returns the forge as the interface T that a step calls, or the error of forge.Need when the forge lacks one of the abilities or its probe denies one.
+// T can need a call that no ability names. A forge that has the abilities and lacks such a call is an error that names the first ability. Give at least one ability.
+// The side is valid only when the error is nil.
+func sideOf[T any](ctx context.Context, f forge.Forge, needs ...forge.Ability) (T, error) { //nolint:ireturn // the optional sides of the forge are interfaces
+	side, held := f.(T)
+
+	if err := forge.Need(ctx, f, needs...); err != nil {
+		return side, err
+	}
+
+	if !held {
+		return side, forge.NoCapability(needs[0], "the forge lacks a call that this step makes")
+	}
+
+	return side, nil
+}
 
 // IssueAssignees reads who holds an issue, when the forge can. A forge that cannot is an error, so preflight never reads it as an issue nobody holds.
 func (o opened) IssueAssignees(ctx context.Context, repo string, number int) ([]string, error) {
-	reads, ok := o.Forge.(forge.AssigneeReads)
-	if !ok {
-		return nil, fmt.Errorf("%w: the assignees of an issue", errNoOptionalRead)
+	reads, err := sideOf[forge.AssigneeReads](ctx, o.Forge, forge.AbilityAssignees)
+	if err != nil {
+		return nil, err
 	}
 
 	return reads.IssueAssignees(ctx, repo, number)
@@ -1053,9 +1070,9 @@ func (o opened) IssueAssignees(ctx context.Context, repo string, number int) ([]
 
 // ReadyMarks reads who marked a pull request ready for review, when the forge can. A forge that cannot is an error, so the poll never reads it as a pull request that nobody marked.
 func (o opened) ReadyMarks(ctx context.Context, pr int) ([]string, error) {
-	reads, ok := o.Forge.(forge.ReadyReads)
-	if !ok {
-		return nil, fmt.Errorf("%w: the ready marks of a pull request", errNoOptionalRead)
+	reads, err := sideOf[forge.ReadyReads](ctx, o.Forge, forge.AbilityReadyMarks)
+	if err != nil {
+		return nil, err
 	}
 
 	return reads.ReadyMarks(ctx, pr)
@@ -1063,19 +1080,19 @@ func (o opened) ReadyMarks(ctx context.Context, pr int) ([]string, error) {
 
 // AutoMergePR queues the merge of a pull request on the forge, when the forge can. A forge that cannot is an error.
 func (o opened) AutoMergePR(ctx context.Context, pr int, sha string) error {
-	queue, ok := o.Forge.(merge.Queuer)
-	if !ok {
-		return fmt.Errorf("%w: a queued merge", errNoOptionalRead)
+	queue, err := sideOf[forge.Queuer](ctx, o.Forge, forge.AbilityQueue)
+	if err != nil {
+		return err
 	}
 
 	return queue.AutoMergePR(ctx, pr, sha)
 }
 
-// Protection reads what the forge requires of a branch, when the forge can. A forge that cannot returns merge.ErrNoProtectionRead.
+// Protection reads what the forge requires of a branch, when the forge can. A forge that cannot returns an error with the cause forge.ErrNoCapability.
 func (o opened) Protection(ctx context.Context, branch string) (model.Protection, error) {
-	reads, ok := o.Forge.(forge.Statuses)
-	if !ok {
-		return model.Protection{}, merge.ErrNoProtectionRead
+	reads, err := sideOf[forge.Statuses](ctx, o.Forge, forge.AbilityStatuses)
+	if err != nil {
+		return model.Protection{}, err
 	}
 
 	return reads.Protection(ctx, branch)
@@ -1083,9 +1100,9 @@ func (o opened) Protection(ctx context.Context, branch string) (model.Protection
 
 // DisableAutoMergePR turns off the queued merge of a pull request, when the forge can queue one. A forge that cannot is an error.
 func (o opened) DisableAutoMergePR(ctx context.Context, pr int) error {
-	queue, ok := o.Forge.(merge.Queuer)
-	if !ok {
-		return fmt.Errorf("%w: a queued merge", errNoOptionalRead)
+	queue, err := sideOf[forge.Queuer](ctx, o.Forge, forge.AbilityQueue)
+	if err != nil {
+		return err
 	}
 
 	return queue.DisableAutoMergePR(ctx, pr)
@@ -1093,9 +1110,9 @@ func (o opened) DisableAutoMergePR(ctx context.Context, pr int) error {
 
 // CommitTree returns the tree id of a commit, when the forge reads trees.
 func (o opened) CommitTree(ctx context.Context, commit string) (string, error) {
-	trees, ok := o.Forge.(merge.Trees)
-	if !ok {
-		return "", fmt.Errorf("%w: trees", errNoOptionalRead)
+	trees, err := sideOf[forge.Trees](ctx, o.Forge, forge.AbilityTrees)
+	if err != nil {
+		return "", err
 	}
 
 	return trees.CommitTree(ctx, commit)
@@ -1103,9 +1120,9 @@ func (o opened) CommitTree(ctx context.Context, commit string) (string, error) {
 
 // TreeBlobs returns the files of a tree, when the forge reads trees.
 func (o opened) TreeBlobs(ctx context.Context, tree string) (map[string]string, error) {
-	trees, ok := o.Forge.(merge.Trees)
-	if !ok {
-		return nil, fmt.Errorf("%w: trees", errNoOptionalRead)
+	trees, err := sideOf[forge.Trees](ctx, o.Forge, forge.AbilityTrees)
+	if err != nil {
+		return nil, err
 	}
 
 	return trees.TreeBlobs(ctx, tree)
@@ -1113,9 +1130,9 @@ func (o opened) TreeBlobs(ctx context.Context, tree string) (map[string]string, 
 
 // Compare reads how the forge compares a commit with the base: the status and both counts. It needs a forge that compares commits.
 func (o opened) Compare(ctx context.Context, commit, base string) (model.Comparison, error) {
-	history, ok := o.Forge.(merge.Ancestry)
-	if !ok {
-		return model.Comparison{}, fmt.Errorf("%w: ancestry", errNoOptionalRead)
+	history, err := sideOf[forge.Ancestry](ctx, o.Forge, forge.AbilityAncestry)
+	if err != nil {
+		return model.Comparison{}, err
 	}
 
 	return history.Compare(ctx, commit, base)
@@ -1123,12 +1140,22 @@ func (o opened) Compare(ctx context.Context, commit, base string) (model.Compari
 
 // FailedLog returns the log of a failed check, when the forge reads logs.
 func (o opened) FailedLog(ctx context.Context, link string) (string, error) {
-	logs, ok := o.Forge.(merge.Logs)
-	if !ok {
-		return "", fmt.Errorf("%w: logs", errNoOptionalRead)
+	logs, err := sideOf[forge.Logs](ctx, o.Forge, forge.AbilityLogs)
+	if err != nil {
+		return "", err
 	}
 
 	return logs.FailedLog(ctx, link)
+}
+
+// OpenAlerts reads the open security alerts of a pull request at a commit, when the forge can. A forge that cannot, or whose code scanning is off, is an error.
+func (o opened) OpenAlerts(ctx context.Context, pr int, sha string) ([]model.Alert, error) {
+	reads, err := sideOf[forge.AlertReads](ctx, o.Forge, forge.AbilityAlerts)
+	if err != nil {
+		return nil, err
+	}
+
+	return reads.OpenAlerts(ctx, pr, sha)
 }
 
 // forgeOf builds the forge of the named project.
@@ -1471,8 +1498,18 @@ func (p pulls) request(project config.Project, number int, head string, settings
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
-		Queue: true, Credentialed: project.HasWriter(), ForgeName: string(project.Forge),
+		Queue: true, Credentialed: project.HasWriter(), ForgeName: string(project.Forge), Alerts: project.SecurityAlerts,
+		CIPaths: p.ciOf(project.Forge).paths, CIFix: p.ciOf(project.Forge).fix,
 	}
+}
+
+// ciOf returns the CI files that the adapter of the forge guards. A pull request with no CI table gets none.
+func (p pulls) ciOf(name model.ForgeName) ciPolicy {
+	if p.ci == nil {
+		return ciPolicy{}
+	}
+
+	return p.ci(name)
 }
 
 // prepared returns the known project and the compiled forbid_text patterns of a merge step.

@@ -9,7 +9,7 @@ import (
 )
 
 // closing refuses a pull request whose closing references are not the issues that the request names. An extra issue would be closed by mistake,
-// and a missing one stays open. The forge lists the issues that the pull request closes: GitHub's own list for a pull request into the default branch,
+// and a missing one stays open. The forge lists the issues that the pull request closes: its own list for a pull request into the default branch,
 // and the keywords of the body and the commit messages for a pull request into any other base. The guard reads the commit messages too (see commitKeywords).
 func (a *attempt) closing() *refusal {
 	refs, err := a.forge.ClosingRefs(a.ctx, a.req.PR)

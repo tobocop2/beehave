@@ -114,7 +114,7 @@ func TestLoadFolder_EveryArgumentNamesItsConstructor(t *testing.T) {
 
 	// The table comes from the constructor definitions, so no second copy exists.
 	owners := config.ArgumentOwners()
-	require.Len(t, owners, 78)
+	require.Len(t, owners, 79)
 	require.Equal(t, "credential", owners["ci_locked"])
 	require.Equal(t, "host", owners["setup_command"])
 	require.Equal(t, "agents", owners["trace_parent"])

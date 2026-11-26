@@ -10,6 +10,28 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// Ancestry is what the merge reads to prove a landing. A forge that also implements Ancestry lets the merge check, after the merge call,
+// that the merged head is an ancestor of the base. Compare reads the status and both counts of the comparison of commit with the base,
+// and Comparison.Contains is true when commit is the base tip or lies in its history.
+type Ancestry interface {
+	Compare(ctx context.Context, commit, base string) (model.Comparison, error)
+}
+
+// Queuer is what the merge needs to merge a pull request in a native stack. A forge that also implements Queuer lets the merge queue the merge
+// on the forge and read it with Poll. AutoMergePR returns when the forge has accepted the queued merge, not when it has merged.
+// The forge checks the pin (the expected head) when it enables the queued merge, not when it merges, and a push by a user with write access keeps it armed.
+// DisableAutoMergePR turns the queued merge off, and it succeeds when none is armed.
+type Queuer interface {
+	AutoMergePR(ctx context.Context, pr int, sha string) error
+	DisableAutoMergePR(ctx context.Context, pr int) error
+}
+
+// AlertReads is what the merge reads to find the open security alerts of a pull request at a head. A forge that lacks it is refused by a project that sets security_alerts.
+// OpenAlerts returns the open alerts at the commit sha. A failed read is an error, never an empty list.
+type AlertReads interface {
+	OpenAlerts(ctx context.Context, pr int, sha string) ([]model.Alert, error)
+}
+
 // stateOpen is the state of a pull request that is open.
 const stateOpen = "OPEN"
 
@@ -77,22 +99,6 @@ type Approvals interface {
 	Reviews(ctx context.Context, pr int) ([]model.Review, error)
 }
 
-// Ancestry is what the merge reads to prove a landing. A forge that also implements Ancestry lets the merge check, after the merge call,
-// that the merged head is an ancestor of the base. Compare reads the status and both counts of the comparison of commit with the base,
-// and Comparison.Contains is true when commit is the base tip or lies in its history.
-type Ancestry interface {
-	Compare(ctx context.Context, commit, base string) (model.Comparison, error)
-}
-
-// Queuer is what the merge needs to merge a pull request in a native stack. A forge that also implements Queuer lets the merge queue the merge
-// on the forge and read it with Poll. AutoMergePR returns when the forge has accepted the queued merge, not when it has merged.
-// The forge checks the pin (the expected head) when it enables the queued merge, not when it merges, and a push by a user with write access keeps it armed.
-// DisableAutoMergePR turns the queued merge off, and it succeeds when none is armed.
-type Queuer interface {
-	AutoMergePR(ctx context.Context, pr int, sha string) error
-	DisableAutoMergePR(ctx context.Context, pr int) error
-}
-
 // Writes is what the merge changes on the forge. MergePR merges only if the head is still the pin.
 type Writes interface {
 	SetDraft(ctx context.Context, pr int, draft bool) error
@@ -157,6 +163,12 @@ type Request struct {
 	// ForgeName names the forge in the refusal for a forge that cannot read the protection.
 	Credentialed bool
 	ForgeName    string
+	// Alerts is true when the project sets security_alerts: a pull request with an open security alert at the gated head is refused before any write.
+	Alerts bool
+	// CIPaths are the paths of the CI files of the forge. A folder ends in a slash. A change to one of them needs a token that can change CI. Empty means the forge has none to guard.
+	// CIFix is the command that gives the token the right to change CI. Empty means the forge has none, and the refusal shows no command.
+	CIPaths []string
+	CIFix   string
 	// Post posts the commit statuses of the pull request after every guard passed and right before the merge call. Nil posts nothing.
 	Post Poster
 }
@@ -240,7 +252,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).protected, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).protected, (*attempt).alerts, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).reviewed, (*attempt).provable, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }

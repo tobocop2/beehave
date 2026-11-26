@@ -21,7 +21,7 @@ var (
 // into the native stack of its parent. The find comes first, so a resume after a lost step record opens no second pull request.
 // A pull request that is open is not written. A parent whose pull request is open sets the base to the branch of the parent; a parent that merged leaves the base as given and links nothing.
 func (p pulls) Open(ctx context.Context, project, item string, req flow.OpenRequest) (flow.OpenResult, error) {
-	built, opener, err := p.openerOf(project)
+	built, opener, stacker, err := p.openerOf(ctx, project)
 	if err != nil {
 		return flow.OpenResult{}, err
 	}
@@ -37,24 +37,29 @@ func (p pulls) Open(ctx context.Context, project, item string, req flow.OpenRequ
 		return flow.OpenResult{}, err
 	}
 
-	stack, err := stackOf(ctx, built, opener, parent, number, req.Base)
+	stack, err := stackOf(ctx, built, stacker, parent, number, req.Base)
 
 	return flow.OpenResult{Number: number, Created: created, Stack: stack}, err
 }
 
-// openerOf returns the forge of the project and its write side for opening pull requests. A forge that has none is an error.
-func (p pulls) openerOf(project string) (opened, forge.Opener, error) { //nolint:ireturn // the optional write side of the forge is an interface by design
+// openerOf returns the forge of the project, its write side for opening pull requests, and its native stacks. A forge that cannot open pull requests is an error.
+// A forge with no native stacks gives a nil Stacker: the pull request of a child is based on the branch of its parent and no stack is made.
+func (p pulls) openerOf(ctx context.Context, project string) (opened, forge.Opener, forge.Stacker, error) { //nolint:ireturn // the optional write sides of the forge are interfaces by design
 	built, err := p.forgeOf(project)
 	if err != nil {
-		return opened{}, nil, err
+		return opened{}, nil, nil, err
 	}
 
-	opener, ok := built.Forge.(forge.Opener)
-	if !ok {
-		return opened{}, nil, fmt.Errorf("%w: opening a pull request", errNoOptionalRead)
+	opener, err := sideOf[forge.Opener](ctx, built.Forge, forge.AbilityOpener)
+	if err != nil {
+		return opened{}, nil, nil, err
 	}
 
-	return built, opener, nil
+	if stacker, held := built.Forge.(forge.Stacker); held {
+		return built, opener, stacker, nil
+	}
+
+	return built, opener, nil, nil
 }
 
 // wantedPull returns the number of the open pull request of the parent (0 for none) and the pull request to create for the item.
@@ -111,12 +116,12 @@ func openedPull(ctx context.Context, built forge.Forge, opener forge.Opener, ite
 
 // stackOf links the pull request on top of the parent when they are not yet in one stack, then reads both ids and requires one non-empty id.
 // The first link of a stack carries the base branch of the round. No parent means no stack and an empty id.
-func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) (string, error) {
-	if parent == 0 {
+func stackOf(ctx context.Context, built forge.Forge, stacker forge.Stacker, parent, number int, base string) (string, error) {
+	if parent == 0 || stacker == nil {
 		return "", nil
 	}
 
-	if err := linkIfApart(ctx, built, opener, parent, number, base); err != nil {
+	if err := linkIfApart(ctx, built, stacker, parent, number, base); err != nil {
 		return "", err
 	}
 
@@ -135,7 +140,7 @@ func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent
 // linkIfApart links the pull request on top of the parent unless both already show one stack id.
 // A parent in no stack is the bottom of a new one, and that link passes the base branch of the round.
 // Every link reads the base of the parent before and after, because a link can move it.
-func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) error {
+func linkIfApart(ctx context.Context, built forge.Forge, stacker forge.Stacker, parent, number int, base string) error {
 	same, top, err := sharedStack(ctx, built, parent, number)
 	if err != nil || same {
 		return err
@@ -146,27 +151,27 @@ func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, pa
 		base = ""
 	}
 
-	return linkChecked(ctx, built, opener, parent, number, base, first)
+	return linkChecked(ctx, built, stacker, parent, number, base, first)
 }
 
 // linkChecked reads the base of the parent, links, and reads it again. A new stack whose bottom moved is repaired.
-func linkChecked(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string, first bool) error {
+func linkChecked(ctx context.Context, built forge.Forge, stacker forge.Stacker, parent, number int, base string, first bool) error {
 	before, err := baseOf(ctx, built, parent)
 	if err != nil {
 		return err
 	}
 
-	err = linkKeeping(ctx, built, opener, parent, number, base, before)
+	err = linkKeeping(ctx, built, stacker, parent, number, base, before)
 	if !errors.Is(err, errBaseMoved) || !first {
 		return err
 	}
 
-	return relinkBottom(ctx, built, opener, parent, number, before)
+	return relinkBottom(ctx, built, stacker, parent, number, before)
 }
 
 // linkKeeping links with the base and returns an errBaseMoved error when the parent no longer targets the branch it targeted before.
-func linkKeeping(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base, before string) error {
-	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+func linkKeeping(ctx context.Context, built forge.Forge, stacker forge.Stacker, parent, number int, base, before string) error {
+	if err := stacker.LinkStack(ctx, parent, number, base); err != nil {
 		return err
 	}
 
@@ -175,8 +180,8 @@ func linkKeeping(ctx context.Context, built forge.Forge, opener forge.Opener, pa
 
 // relinkBottom takes the new stack apart, sets the base of its bottom back and links once more with that base.
 // A stack that stays after the unstack, or a second move of the base, is an error.
-func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, before string) error {
-	if err := unstack(ctx, built, opener, parent); err != nil {
+func relinkBottom(ctx context.Context, built forge.Forge, stacker forge.Stacker, parent, number int, before string) error {
+	if err := unstack(ctx, built, stacker, parent); err != nil {
 		return err
 	}
 
@@ -184,12 +189,12 @@ func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, p
 		return err
 	}
 
-	return linkKeeping(ctx, built, opener, parent, number, before, before)
+	return linkKeeping(ctx, built, stacker, parent, number, before, before)
 }
 
 // unstack removes the stack of the pull request and reads it again, because gh leaves a pull request that is queued for merge in its stack.
-func unstack(ctx context.Context, built forge.Forge, opener forge.Opener, pr int) error {
-	if err := opener.Unstack(ctx, pr); err != nil {
+func unstack(ctx context.Context, built forge.Forge, stacker forge.Stacker, pr int) error {
+	if err := stacker.Unstack(ctx, pr); err != nil {
 		return err
 	}
 

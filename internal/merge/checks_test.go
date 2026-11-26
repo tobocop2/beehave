@@ -97,7 +97,7 @@ func TestScope_AWorkflowChangeNeedsTheWorkflowScope(t *testing.T) {
 
 		if one.want == merge.NoWorkflowScope {
 			assert.Equal(t, 3, result.Stop.Code())
-			assert.Equal(t, "REFUSE: #5 touches .github/workflows and the token has no workflow scope.", result.Lines[len(result.Lines)-2])
+			assert.Equal(t, "REFUSE: #5 touches .github/workflows/ and the token has no workflow scope.", result.Lines[len(result.Lines)-2])
 			assert.Contains(t, last(result), "gh auth refresh")
 			assert.Empty(t, w.writes)
 		}

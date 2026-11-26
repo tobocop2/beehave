@@ -153,7 +153,7 @@ func TestIssueAuthor_AFailedReadIsAnError(t *testing.T) {
 	}{
 		"an unknown project":                  {over: (&authorForge{}).on(storegithub.Tracker), project: "zzz", want: errUnknownProject},
 		"the read of the issue":               {over: (&authorForge{failing: 7}).on(storegithub.Tracker), project: "p", want: errFake},
-		"a forge that cannot read it":         {over: pulls{projects: github, issues: func(model.Project) (forge.Forge, error) { return &pullForge{}, nil }}, project: "p", want: errNoOptionalRead},
+		"a forge that cannot read it":         {over: pulls{projects: github, issues: func(model.Project) (forge.Forge, error) { return &pullForge{}, nil }}, project: "p", want: forge.ErrNoCapability},
 		"a build with no access to the issue": {over: pulls{projects: github}, project: "p", want: errNoIssueReads},
 		"an access that cannot be built":      {over: pulls{projects: github, issues: func(model.Project) (forge.Forge, error) { return nil, errFake }}, project: "p", want: errFake},
 	} {

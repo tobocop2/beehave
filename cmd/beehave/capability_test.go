@@ -1,0 +1,147 @@
+package main
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/roundintegration"
+	"github.com/tobocop2/beehave/internal/roundsync"
+)
+
+// The merge owns its own copy of each optional interface, because it may not import the forge. A forge ability must give the merge everything that it reads.
+var (
+	_ merge.Ancestry   = forge.Ancestry(nil)
+	_ merge.Queuer     = forge.Queuer(nil)
+	_ merge.Trees      = forge.Trees(nil)
+	_ merge.Logs       = forge.Logs(nil)
+	_ merge.AlertReads = forge.AlertReads(nil)
+)
+
+func TestOptionalStep_OnAForgeThatLacksTheAbilityMatchesErrNoCapability(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	bare := opened{plainForge{}}
+
+	_, assignees := bare.IssueAssignees(ctx, "", 1)
+	_, marks := bare.ReadyMarks(ctx, 1)
+	_, association := bare.Association(ctx, 1)
+	_, opening := openOver(plainForge{}).Open(ctx, "p", "bb-5", flow.OpenRequest{Title: "t", Base: "main"})
+	_, boards := roundWrites{pulls: roundPulls(plainForge{}, "")}.Place(ctx, "p", model.Card{})
+
+	for name, err := range map[string]error{"assignees": assignees, "ready marks": marks, "association": association, "opener": opening, "boards": boards} {
+		require.ErrorIs(t, err, forge.ErrNoCapability, name)
+	}
+
+	require.ErrorContains(t, assignees, string(forge.AbilityAssignees))
+	require.ErrorContains(t, boards, string(forge.AbilityBoards))
+}
+
+// denied holds the interface of an ability, and its probe says the instance cannot do it.
+type denied struct{ plainForge }
+
+func (denied) IssueAssignees(context.Context, string, int) ([]string, error) {
+	return []string{"somebody"}, nil
+}
+
+func (denied) Probe(context.Context, forge.Ability) error {
+	return forge.NoCapability(forge.AbilityAssignees, "the instance switched it off")
+}
+
+func TestOptionalStep_AForgeWhoseProbeDeniesTheAbilityIsRefusedWithoutTheCall(t *testing.T) {
+	t.Parallel()
+
+	got, err := opened{denied{}}.IssueAssignees(t.Context(), "", 1)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, "switched it off")
+	require.Empty(t, got, "the call of the forge is not made")
+}
+
+// alerting reads one open alert.
+type alerting struct{ plainForge }
+
+func (alerting) OpenAlerts(_ context.Context, pr int, sha string) ([]model.Alert, error) {
+	return []model.Alert{{Number: pr, Rule: sha}}, nil
+}
+
+func TestOpened_OpenAlertsReadsThroughAForgeThatHasTheAbilityAndRefusesOneThatLacksIt(t *testing.T) {
+	t.Parallel()
+
+	got, err := opened{alerting{}}.OpenAlerts(t.Context(), 7, "abc")
+
+	require.NoError(t, err)
+	require.Equal(t, []model.Alert{{Number: 7, Rule: "abc"}}, got)
+
+	_, err = opened{plainForge{}}.OpenAlerts(t.Context(), 7, "abc")
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, string(forge.AbilityAlerts))
+}
+
+// partial has the abilities of a sync and lacks a call that the sync makes but no ability names.
+type partial struct {
+	plainForge
+	forge.Syncer
+	forge.Opener
+}
+
+func TestSideOf_AForgeWithTheAbilitiesAndNotTheCallNamesTheFirstAbility(t *testing.T) {
+	t.Parallel()
+
+	_, err := sideOf[roundsync.Forge](t.Context(), partial{}, forge.AbilitySyncer, forge.AbilityOpener)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, string(forge.AbilitySyncer))
+}
+
+// openOnly holds the Opener ability and no other: it hides the board calls of the roundForge that it wraps.
+type openOnly struct {
+	forge.Forge
+
+	inner *roundForge
+}
+
+func (o openOnly) PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error) {
+	return o.inner.PRView(ctx, pr, fields...)
+}
+
+func (o openOnly) PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error) {
+	return o.inner.PRList(ctx, limit, args...)
+}
+
+func (o openOnly) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
+	return o.inner.CreatePR(ctx, req)
+}
+
+func (o openOnly) SetBody(ctx context.Context, pr int, body string) error {
+	return o.inner.SetBody(ctx, pr, body)
+}
+
+// boardsOnly holds the Boards ability and no other.
+type boardsOnly struct {
+	plainForge
+	forge.Boarder
+}
+
+func TestRoundWrites_IntegrateNeedsTheOpenerAndNoOtherAbility(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	req := roundintegration.Request{Base: "round-i", Into: "main"}
+
+	_, err := roundWrites{pulls: roundPulls(openOnly{inner: &roundForge{}}, "")}.Integrate(ctx, "p", req)
+
+	require.NoError(t, err, "a forge with the Opener alone is enough")
+
+	_, err = roundWrites{pulls: roundPulls(boardsOnly{}, "")}.Integrate(ctx, "p", req)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, string(forge.AbilityOpener))
+}

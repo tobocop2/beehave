@@ -2,6 +2,7 @@ package merge_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -143,7 +144,7 @@ func TestRun_AFailedReadOfTheProtectionDefersAProjectWithCredentials(t *testing.
 type noRead struct{ *world }
 
 func (noRead) Protection(context.Context, string) (model.Protection, error) {
-	return model.Protection{}, merge.ErrNoProtectionRead
+	return model.Protection{}, fmt.Errorf("%w: the forge cannot read the protection of a branch", model.ErrNoCapability)
 }
 
 func TestRun_AForgeThatCannotReadTheProtectionRefusesAProjectWithCredentialsAndNamesTheForge(t *testing.T) {

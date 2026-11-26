@@ -164,5 +164,5 @@ func TestIssueAssignees_ReadsALinkedIssueOnItsRepository(t *testing.T) {
 	require.ErrorIs(t, err, errUnknownProject)
 
 	_, err = (&preflightForge{}).over().IssueAssignees(t.Context(), "p", "", 7)
-	require.ErrorIs(t, err, errNoOptionalRead, "a forge that cannot read assignees is an error and never an issue that nobody holds")
+	require.ErrorIs(t, err, forge.ErrNoCapability, "a forge that cannot read assignees is an error and never an issue that nobody holds")
 }

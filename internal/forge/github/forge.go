@@ -48,6 +48,12 @@ const Name model.ForgeName = "github"
 // Tool is the program that the GitHub forge needs on the path.
 const Tool = "gh"
 
+// WorkflowDir is the folder of the workflow files. A change there needs a token that can change CI.
+const WorkflowDir = ".github/workflows/"
+
+// WorkflowFix is the command that gives the token of gh the right to change workflow files.
+const WorkflowFix = "gh auth refresh -h github.com -s workflow"
+
 // New returns the forge of repo, written owner/name. Any other spelling is refused.
 func New(repo string, run proc.Runner) (*Forge, error) {
 	owner, name, ok := model.SplitRepo(repo)

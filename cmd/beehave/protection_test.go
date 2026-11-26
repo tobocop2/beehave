@@ -113,7 +113,7 @@ func TestOpened_AForgeWithoutStatusesGivesTheNoProtectionReadError(t *testing.T)
 
 	_, err := opened{noTreeForge{}}.Protection(t.Context(), "main")
 
-	require.ErrorIs(t, err, merge.ErrNoProtectionRead)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 }
 
 func TestOpened_AForgeWithStatusesPassesTheProtectionThrough(t *testing.T) {

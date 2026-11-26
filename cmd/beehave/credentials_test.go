@@ -385,6 +385,89 @@ type ciForge struct {
 
 func (f ciForge) CanWriteCI(context.Context) (model.CIWrite, error) { return f.answer, f.err }
 
+func (ciForge) PostStatus(context.Context, model.CommitStatus) error { return nil }
+
+func (ciForge) Protection(context.Context, string) (model.Protection, error) {
+	return model.Protection{}, nil
+}
+
+// alertForge is a ciForge that also reads security alerts.
+type alertForge struct{ ciForge }
+
+func (alertForge) OpenAlerts(context.Context, int, string) ([]model.Alert, error) { return nil, nil }
+
+// bareForge is a forge with none of the optional abilities. It leaves CI writes unknown.
+type bareForge struct{ forge.Forge }
+
+func (bareForge) CanWriteCI(context.Context) (model.CIWrite, error) {
+	return model.CIWriteUnknown, nil
+}
+
+func TestStart_RefusesACredentialedProjectWhoseForgeLacksStatuses(t *testing.T) {
+	t.Parallel()
+
+	roles, cfg, opts := withForge(t, true, bareForge{}, nil)
+
+	err := roles.start(t.Context(), cfg, opts)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, "project p: ")
+	require.ErrorContains(t, err, "commit statuses")
+}
+
+func TestStart_RefusesSecurityAlertsOnAForgeWithoutAlerts(t *testing.T) {
+	t.Parallel()
+
+	roles, cfg, opts := withForge(t, true, ciForge{answer: model.CIWriteNo}, nil)
+	project := cfg.Projects["p"]
+	project.SecurityAlerts = true
+	cfg.Projects["p"] = project
+
+	err := roles.start(t.Context(), cfg, opts)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, "security alerts")
+	assert.NotContains(t, err.Error(), "commit statuses")
+
+	roles, cfg, opts = withForge(t, true, alertForge{ciForge{answer: model.CIWriteNo}}, nil)
+	project = cfg.Projects["p"]
+	project.SecurityAlerts = true
+	cfg.Projects["p"] = project
+
+	require.NoError(t, roles.start(t.Context(), cfg, opts), "a forge that reads alerts starts")
+}
+
+func TestStart_ChecksAProjectWithNoWriterToo(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := writerHome(t)
+	project := cfg.Projects["p"]
+	project.Forge = forgegithub.Name
+	project.Credentials = nil
+	project.SecurityAlerts = true
+	cfg.Projects["p"] = project
+	roles := &writers{forges: func(model.Project) (forge.Forge, error) { return bareForge{}, nil }}
+
+	err := roles.start(t.Context(), cfg, opts)
+
+	require.ErrorIs(t, err, forge.ErrNoCapability)
+	require.ErrorContains(t, err, "security alerts")
+}
+
+func TestStart_AForgeThatFailsToBuildStopsTheAbilityCheck(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := writerHome(t)
+	project := cfg.Projects["p"]
+	project.Forge = forgegithub.Name
+	project.Credentials = nil
+	project.SecurityAlerts = true
+	cfg.Projects["p"] = project
+	roles := &writers{forges: func(model.Project) (forge.Forge, error) { return nil, reach.ErrNotLoaded }}
+
+	require.ErrorIs(t, roles.start(t.Context(), cfg, opts), reach.ErrNotLoaded)
+}
+
 // withForge gives the project of the writer home the forge github and the statement locked, and returns writers whose forge table builds the forge.
 func withForge(t *testing.T, locked bool, built forge.Forge, buildErr error) (*writers, config.Config, flow.Options) {
 	t.Helper()

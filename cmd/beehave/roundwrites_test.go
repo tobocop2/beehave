@@ -147,16 +147,16 @@ func TestRoundWrites_AForgeWithoutAWriteSideRefusesTheWriteThatNeedsIt(t *testin
 	ctx := t.Context()
 
 	_, err := writes.Sync(ctx, "p", roundsync.Request{})
-	require.ErrorIs(t, err, errNoOptionalWrite)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 
 	_, err = writes.Land(ctx, "p", roundsync.LandRequest{})
-	require.ErrorIs(t, err, errNoOptionalWrite)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 
 	_, err = writes.Integrate(ctx, "p", roundintegration.Request{})
-	require.ErrorIs(t, err, errNoOptionalWrite)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 
 	_, err = writes.Place(ctx, "p", model.Card{})
-	require.ErrorIs(t, err, errNoOptionalWrite)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 }
 
 func TestRoundWrites_AProjectThatTheConfigLacksIsRefusedByEachWrite(t *testing.T) {

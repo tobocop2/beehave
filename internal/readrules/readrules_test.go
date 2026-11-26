@@ -41,6 +41,9 @@ const (
 	associationHeld = "the github adapter test TestAssociation_RefusesAnAnswerThatNamesNoKnownAuthor goes red when the read maps a failed command or an unknown value to an author; this package cannot drive the adapter"
 	readyHeld       = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
 	cardHeld        = "the github adapter test TestBoarder_ConformsToTheFailedCommandRules goes red when the read maps a failed command to an empty status; this package cannot drive the adapter"
+	ancestryHeld    = "the merge test TestRun_AnAncestryThatCannotBeReadFailsTheItem goes red when a failed compare is read as a landing; this package cannot drive the merge"
+	treesHeld       = "the merge tests TestTree_ATipWhoseTreeCannotBeReadStops and TestTree_ADifferentTreeStillStopsWhenThePathsCannotBeListed go red when a failed tree read passes; this package cannot drive the merge"
+	alertsHeld      = "the github adapter test TestOpenAlerts_AFailedReadIsAnError goes red when the read maps a failed command to an empty list, and TestMerge_AlertsOnAndTheReadFailsRefuses covers the merge; this package cannot drive either"
 	noEngine        = "a read for display or for a command line, which this test does not prove"
 	doesWork        = "the method starts, creates or records something; its error is the result of the action"
 
@@ -65,6 +68,7 @@ var rules = map[string]rule{
 	"internal/merge.Approvals.Reviews":        {Proof: mergeProof, Needle: "Reviews"},
 	"internal/merge.Protections.Protection":   {Proof: "TestRun_AFailedReadOfTheProtectionDefersAProjectWithCredentials", Needle: "err"},
 	"internal/merge.Ancestry.Compare":         {Proof: "TestRun_AnAncestryThatCannotBeReadFailsTheItem", Needle: "ancestryErr"},
+	"internal/forge.Ancestry.Compare":         {NotHeld: ancestryHeld},
 	"internal/landing.ProofReads.Compare":     {Proof: batchProof, Needle: "compareErr"},
 	"internal/landing.ProofReads.CommitTree":  {Proof: batchProof, Needle: "treeErr"},
 	"internal/landing.ProofReads.TreeBlobs":   {Proof: batchProof, Needle: "blobsErr"},
@@ -74,6 +78,11 @@ var rules = map[string]rule{
 	"internal/merge.Trees.CommitTree":         {Proof: "TestTree_ATipWhoseTreeCannotBeReadStops", Needle: "CommitTree"},
 	"internal/merge.Trees.TreeBlobs":          {Proof: "TestTree_ADifferentTreeStillStopsWhenThePathsCannotBeListed", Needle: "listFail"},
 	"internal/merge.Logs.FailedLog":           {Exempt: "the log of a failed check helps the reader; a log that cannot be read leaves the row without text and the check stays red"},
+	"internal/merge.AlertReads.OpenAlerts":    {Proof: "TestMerge_AlertsOnAndTheReadFailsRefuses", Needle: "err"},
+	"internal/forge.Trees.CommitTree":         {NotHeld: treesHeld},
+	"internal/forge.Trees.TreeBlobs":          {NotHeld: treesHeld},
+	"internal/forge.Logs.FailedLog":           {Exempt: "the log of a failed check helps the reader; a log that cannot be read leaves the row without text and the check stays red"},
+	"internal/forge.AlertReads.OpenAlerts":    {NotHeld: alertsHeld},
 
 	"internal/preflight.Reader.PRView":            {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "viewErr"},
 	"internal/preflight.Reader.BranchRef":         {Proof: "TestCheck_AFailedReadIsARefusalThatKeepsItsCause", Needle: "branchErr"},

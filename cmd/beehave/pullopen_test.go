@@ -457,11 +457,32 @@ func (plainForge) PRList(context.Context, int, ...string) ([]model.PullRequest, 
 	return nil, nil
 }
 
+// stackless is the openForge with its stack calls hidden: it opens pull requests and has no native stacks.
+type stackless struct {
+	forge.Forge
+	forge.Opener
+}
+
+func TestPullsOpen_ForgeWithoutStacksOpensOnTheParentBranch(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	f.open["bb-4"] = 20
+
+	got, err := openOver(stackless{Forge: f, Opener: f}).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "bb-4", f.created[0].Base, "the child is based on the branch of its parent")
+	assert.Empty(t, got.Stack, "a forge with no native stacks makes no stack")
+	assert.Empty(t, f.linked)
+	assert.Empty(t, f.unstacked)
+}
+
 func TestPullsOpen_AForgeThatCannotOpenIsAnError(t *testing.T) {
 	t.Parallel()
 
 	_, err := openOver(plainForge{}).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "main"})
-	require.ErrorIs(t, err, errNoOptionalRead)
+	require.ErrorIs(t, err, forge.ErrNoCapability)
 }
 
 func labeledOver(f forge.Forge, label string) pulls {
