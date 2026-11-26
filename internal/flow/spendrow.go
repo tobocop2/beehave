@@ -15,28 +15,41 @@ import (
 // startSpend writes the spend row of an agent execution that starts now, with an unknown cost, and returns the id of the execution.
 // The id is random, so the run id and the step number of a rewind or of a reused run give no row its identity. A failed write stops the phase before the agent starts.
 func (e *Engine) startSpend(ctx context.Context, in PhaseInput) (string, error) {
-	number := 0
-
-	if step, isStep := ctx.(dbos.Context); isStep {
-		id, err := dbos.GetStepID(step)
-		if err != nil {
-			return "", fmt.Errorf("read the step number of the agent step %s of item %s: %w", in.Call, in.Item, err)
-		}
-
-		number = id
+	number, err := stepNumber(ctx, in)
+	if err != nil {
+		return "", err
 	}
 
-	name := in.Call
-	if in.Rerun {
-		name += ledger.RerunMark
-	}
-
-	call := ledger.Call{ID: rand.Text(), Tree: in.Tree, Run: in.Run, Step: number, Item: in.Item, Name: name, At: e.deps.Clock.wall()}
-	if err := e.ledger.StartCall(ctx, call); err != nil {
+	call := ledger.Call{ID: rand.Text(), Tree: in.Tree, Run: in.Run, Step: number, Item: in.Item, Name: in.callName(), At: e.deps.Clock.wall()}
+	if err = e.ledger.StartCall(ctx, call); err != nil {
 		return "", fmt.Errorf("the agent step %s of item %s does not start: %w", in.Call, in.Item, err)
 	}
 
 	return call.ID, nil
+}
+
+// stepNumber returns the number of the step that ctx is. A context that is no step of a run has none and reads 0.
+func stepNumber(ctx context.Context, in PhaseInput) (int, error) {
+	step, isStep := ctx.(dbos.Context)
+	if !isStep {
+		return 0, nil
+	}
+
+	id, err := dbos.GetStepID(step)
+	if err != nil {
+		return 0, fmt.Errorf("read the step number of the agent step %s of item %s: %w", in.Call, in.Item, err)
+	}
+
+	return id, nil
+}
+
+// callName is the name of the call in the ledger. A rerun of a call carries the mark that makes it part of the lane of the call.
+func (in PhaseInput) callName() string {
+	if in.Rerun {
+		return in.Call + ledger.RerunMark
+	}
+
+	return in.Call
 }
 
 // endSpend sets the cost and the session of the execution when the agent exits. A cost that is unknown stays NULL. A failed write is logged and the row keeps its unknown cost,

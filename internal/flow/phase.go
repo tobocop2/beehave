@@ -153,12 +153,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 	defer context.AfterFunc(ctx, func() { cancel(context.Cause(ctx)) })()
 	defer e.endGroups(holder)
 
-	data, err := e.callFiles(in)
-	if err != nil {
-		return PhaseOutput{}, err
-	}
-
-	execution, err := e.startSpend(ctx, in)
+	data, execution, err := e.prepareAgent(ctx, in)
 	if err != nil {
 		return PhaseOutput{}, err
 	}
@@ -169,6 +164,18 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, named, said))
 
 	return e.finishAgent(ctx, in, execution, lost, result, err)
+}
+
+// prepareAgent writes the files of the call and the spend row of the execution that follows. It returns the data file and the id of the execution.
+func (e *Engine) prepareAgent(ctx context.Context, in PhaseInput) (string, string, error) {
+	data, err := e.callFiles(in)
+	if err != nil {
+		return "", "", err
+	}
+
+	execution, err := e.startSpend(ctx, in)
+
+	return data, execution, err
 }
 
 // finishAgent judges the end of the phase, names the execution and the run that it resumes in the output, and sets the cost of the execution in the ledger.
