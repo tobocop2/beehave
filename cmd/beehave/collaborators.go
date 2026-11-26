@@ -817,10 +817,6 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return p.onHost(ctx, request)
 	}
 
-	if err := p.disk.check(ctx, request.Project); err != nil {
-		return flow.CommandOutput{}, fmt.Errorf("item %s does not start: %w", request.Item, err)
-	}
-
 	dir, err := p.folder(ctx, request)
 	if err != nil {
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
@@ -834,8 +830,12 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 }
 
 // folder returns the worktree of the item of the request. A request with a tree start is of a round item, whose worktree someone may have removed:
-// it is made again at that commit. Any other item may have no worktree.
+// it is made again at that commit. Any other item may have no worktree. The folder is found only when the disk of this machine holds the floor of the project.
 func (p programs) folder(ctx context.Context, request flow.CommandRequest) (string, error) {
+	if err := p.disk.check(ctx, request.Project); err != nil {
+		return "", err
+	}
+
 	if request.TreeStart != "" {
 		return p.trees.Ensure(ctx, request.Project, request.Item, request.TreeStart, "")
 	}
