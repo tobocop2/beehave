@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -32,10 +33,37 @@ type hostGate struct {
 	blockAt int
 	// plan is the plan that every Submit gives its job.
 	plan gatepkg.Plan
+	// hold, when set, keeps the blocked wait from returning after its run is canceled, until the test closes it.
+	hold chan struct{}
+	// later gets one value when a wait after the blocked one starts. waiting gets one value when the test begins to wait for the blocked wait to return.
+	later, waiting chan struct{}
+	// returned counts the blocked waits that have returned.
+	returned *atomic.Int32
+	// events lists, in order, the starts and the returns of the waits.
+	events *[]string
 }
 
 func newHostGate() hostGate {
-	return hostGate{submits: &atomic.Int32{}, started: make(chan struct{}, 1), mu: &sync.Mutex{}, jobs: &[]GateJob{}, hosts: &[]string{}, blockAt: 1}
+	return hostGate{
+		submits: &atomic.Int32{}, started: make(chan struct{}, 1), mu: &sync.Mutex{}, jobs: &[]GateJob{}, hosts: &[]string{}, blockAt: 1,
+		later: make(chan struct{}, 1), waiting: make(chan struct{}, 1), returned: &atomic.Int32{}, events: &[]string{},
+	}
+}
+
+// record adds an event of the waits to the list.
+func (g hostGate) record(event string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	*g.events = append(*g.events, event)
+}
+
+// eventsSeen is the list of the starts and the returns of the waits, in order.
+func (g hostGate) eventsSeen() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	return append([]string(nil), *g.events...)
 }
 
 func (g hostGate) gatedOn() []string {
@@ -61,14 +89,30 @@ func (g hostGate) Run(ctx context.Context, _, _, host string, job GateJob) (Gate
 	g.mu.Lock()
 	*g.hosts = append(*g.hosts, host)
 	*g.jobs = append(*g.jobs, job)
-	first := len(*g.jobs) == g.blockAt
+	n := len(*g.jobs)
+	first := n == g.blockAt
+	*g.events = append(*g.events, fmt.Sprintf("wait %d starts", n))
 	g.mu.Unlock()
 
 	if first {
 		g.started <- struct{}{}
 		hang(ctx.Done())
 
+		if g.hold != nil {
+			hang(g.hold)
+		}
+
+		g.record(fmt.Sprintf("wait %d returns", n))
+		g.returned.Add(1)
+
 		return GateResult{}, ctx.Err()
+	}
+
+	if n > g.blockAt {
+		select {
+		case g.later <- struct{}{}:
+		default:
+		}
 	}
 
 	return GateResult{Passed: true, Head: gatedHead, Steps: commandStep(true)}, nil
@@ -175,7 +219,7 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	own := &upHosts{started: true}
 	h.hosts = own
-	gated := newHostGate()
+	gated := newHeldHostGate(t)
 	deps := h.deps()
 	deps.Gate = gated
 
@@ -198,10 +242,12 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	require.NoError(t, client.Cancel(testItem))
 	h.tick(t)
 
-	require.Error(t, receive(t, ended))
+	settleCancel(t, gated, ended)
 
 	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
+
+	requireTheOldWaitFirst(t, gated)
 
 	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume read the recorded host and started none")
 
@@ -213,6 +259,104 @@ func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *
 	}
 }
 
+// settleCancel waits for the end of the main run that a cancel stopped, then for the wait that the cancel stopped to return, so that no wait of the old run is open when the test resumes.
+func settleCancel(t *testing.T, gated hostGate, ended <-chan error) {
+	t.Helper()
+
+	require.Error(t, receive(t, ended))
+
+	gated.askForTheReturn()
+
+	waitOn(t, waiting[struct{}]{what: "the old wait to return", read: func() (struct{}, bool, error) {
+		return struct{}{}, gated.oldWaitReturned(), nil
+	}})
+}
+
+// askForTheReturn tells a held wait that the test waits for its return.
+func (g hostGate) askForTheReturn() {
+	select {
+	case g.waiting <- struct{}{}:
+	default:
+	}
+}
+
+// oldWaitReturned reports whether the wait that the cancel stopped has returned.
+func (g hostGate) oldWaitReturned() bool {
+	return g.returned.Load() > 0
+}
+
+// newHeldHostGate is a hostGate whose blocked wait stays open after the cancel, until a wait after it starts or the test asks for its return.
+func newHeldHostGate(t *testing.T) hostGate {
+	t.Helper()
+
+	gated := newHostGate()
+	gated.hold = make(chan struct{})
+
+	go func() {
+		select {
+		case <-gated.later:
+		case <-gated.waiting:
+		case <-t.Context().Done():
+		}
+
+		close(gated.hold)
+	}()
+
+	return gated
+}
+
+// requireTheOldWaitFirst fails the test when the wait that the cancel stopped returned after the wait of the resumed run started.
+func requireTheOldWaitFirst(t *testing.T, gated hostGate) {
+	t.Helper()
+
+	events := gated.eventsSeen()
+	returned := fmt.Sprintf("wait %d returns", gated.blockAt)
+	started := fmt.Sprintf("wait %d starts", gated.blockAt+1)
+
+	require.Contains(t, events, returned)
+	require.Contains(t, events, started)
+	assert.Less(t, slices.Index(events, returned), slices.Index(events, started), "the old wait returned before the resumed run waited on the job: %v", events)
+}
+
+// The old wait of the job stays open after the cancel, until the resumed run starts its own wait on the same job or the test begins to wait for the old wait to return.
+// The old wait must return first: a resume that starts while it runs reads a job that a stopped run still holds.
+func TestGateJob_AResumeStartsOnlyAfterTheWaitThatTheCancelStoppedHasReturned(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	own := &upHosts{started: true}
+	h.hosts = own
+	gated := newHeldHostGate(t)
+	deps := h.deps()
+	deps.Gate = gated
+
+	engine, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"check\")\n"))
+	ended := make(chan error, 1)
+
+	go func() {
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
+		ended <- runErr
+	}()
+
+	receive(t, gated.started)
+
+	client := h.client(t, testVersion)
+	require.NoError(t, client.Cancel(testItem))
+	h.tick(t)
+
+	settleCancel(t, gated, ended)
+
+	_, err = resumeAndJoin(t, engine, client)
+	require.NoError(t, err)
+
+	requireTheOldWaitFirst(t, gated)
+}
+
 // The cancel falls after the first gate has finished, so the resumed main replays host_up and the first gate from their records and runs
 // every later use of the host itself: a second gate, a command and host_teardown. Each one takes the host from the replayed record of host_up.
 func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterStep(t *testing.T) {
@@ -221,7 +365,7 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	own := &upHosts{started: true}
 	h.hosts = own
-	gated := newHostGate()
+	gated := newHeldHostGate(t)
 	gated.blockAt = 2
 	deps := h.deps()
 	deps.Gate = gated
@@ -245,12 +389,14 @@ func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterS
 	require.NoError(t, client.Cancel(testItem))
 	h.tick(t)
 
-	require.Error(t, receive(t, ended))
+	settleCancel(t, gated, ended)
 
 	before := len(gated.gatedOn())
 
 	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
+
+	requireTheOldWaitFirst(t, gated)
 
 	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume started no host")
 	assert.Greater(t, len(gated.gatedOn()), before, "the second gate ran again after the resume")
