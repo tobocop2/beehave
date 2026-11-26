@@ -21,7 +21,7 @@ func refusedProgram(t *testing.T, line string) string {
 func TestLoadFolder_AValidGateProgramIsLoadedAndAnUnsetOrEmptyOneIsEmpty(t *testing.T) {
 	t.Parallel()
 
-	defaults := []string{".gitleaks.toml", ".gitleaksignore", "GNUmakefile", "Makefile", "makefile"}
+	defaults := []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore", "GNUmakefile", "Makefile", "makefile"}
 
 	project, problems := loadProjectText(t, call(goodProject+`, gate_program = ["Makefile", "GNUmakefile", "scripts/", "tools/gate.cfg"]`))
 	require.Empty(t, problems)
