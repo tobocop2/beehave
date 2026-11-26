@@ -14,6 +14,7 @@ import (
 // TestRealBd_StoreScenarios runs the contract tests of the beads store against the real bd 1.3.2 and its private dolt server: the claim lease and the item round trip.
 // The scenarios live beside the fake bd in internal/store/beads, which keeps one copy of each. This test runs them with the pinned bd and fails when one is skipped.
 func TestRealBd_StoreScenarios(t *testing.T) {
+	t.Parallel()
 	requireSuite(t)
 
 	if config.ProcessEnv()[beadstest.BinaryVariable] == "" {

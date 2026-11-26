@@ -1,7 +1,6 @@
 package github_test
 
 import (
-	"reflect"
 	"slices"
 	"sort"
 	"testing"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/tobocop2/beehave/internal/ghcontract"
 	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/github"
 )
 
 func TestStore_EveryCallShapeIsOneGhAccepts(t *testing.T) {
@@ -46,12 +44,8 @@ func TestStore_EveryCallShapeIsOneGhAccepts(t *testing.T) {
 	driven = append(driven, "Create", "Item", "ItemList", "Comments", "Parent", "SetStatus", "Comment", "ItemFields")
 	assert.NotEmpty(t, s.ItemFields())
 
-	var methods []string
-
-	kind := reflect.TypeFor[*github.Store]()
-	for i := range kind.NumMethod() {
-		methods = append(methods, kind.Method(i).Name)
-	}
+	methods, err := ghcontract.PublicMethods(".", "Store")
+	require.NoError(t, err)
 
 	sort.Strings(driven)
 	assert.Equal(t, methods, driven, "every public method of the store needs a call here, so a new method cannot skip the contract")

@@ -10,6 +10,9 @@ import (
 	"strings"
 )
 
+// commandWords is how many words name a gh command in a refusal: the group and the verb.
+const commandWords = 2
+
 //go:embed gh-2.101.0.txt
 var table string
 
@@ -67,7 +70,7 @@ func Check(args []string) (string, bool) {
 		}
 	}
 
-	return fmt.Sprintf("gh %s is not in the contract table of the pinned gh: add its fields and flags to gh-2.101.0.txt", strings.Join(args[:min(len(args), 2)], " ")), false
+	return fmt.Sprintf("gh %s is not in the contract table of the pinned gh: add its fields and flags to gh-2.101.0.txt", strings.Join(args[:min(len(args), commandWords)], " ")), false
 }
 
 // check walks the arguments after the command words.

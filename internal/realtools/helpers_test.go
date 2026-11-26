@@ -1,7 +1,6 @@
 package realtools_test
 
 import (
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -9,8 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/proc"
 )
+
+// env reads one variable of the process environment through internal/config, the only package that reads it.
+func env(name string) string { return config.ProcessEnv()[name] }
 
 // pinnedGh is the version of gh that the table of the contract is read from.
 const pinnedGh = "2.101.0"
@@ -22,7 +25,7 @@ const sandboxRepo = "tobocop2/beehave-real-tools"
 func requireSuite(t *testing.T) {
 	t.Helper()
 
-	if os.Getenv("BEEHAVE_REAL_TOOLS") != "1" {
+	if env("BEEHAVE_REAL_TOOLS") != "1" {
 		t.Skip("BEEHAVE_REAL_TOOLS is not 1: run make test-real-tools")
 	}
 }
@@ -32,14 +35,14 @@ func requireToken(t *testing.T) {
 	t.Helper()
 	requireSuite(t)
 
-	if os.Getenv("GH_TOKEN") == "" {
+	if env("GH_TOKEN") == "" {
 		t.Skip("GH_TOKEN is not set: this row reads or writes the sandbox repository and needs a token")
 	}
 }
 
 // sandbox returns the repository of the token rows.
 func sandbox() string {
-	if repo := os.Getenv("BEEHAVE_REAL_TOOLS_REPO"); repo != "" {
+	if repo := env("BEEHAVE_REAL_TOOLS_REPO"); repo != "" {
 		return repo
 	}
 

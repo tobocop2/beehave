@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"reflect"
 	"slices"
 	"sort"
 	"sync"
@@ -74,7 +73,9 @@ func shapeDrivers() map[string]shapeDriver {
 	d["PullCounts"] = func(c context.Context, f *github.Forge) { sink(f.PullCounts(c, 7)) }
 	d["Committers"] = func(c context.Context, f *github.Forge) { sink(f.Committers(c, 7)) }
 	d["ReadyMarks"] = func(c context.Context, f *github.Forge) { sink(f.ReadyMarks(c, 7)) }
-	d["PRList"] = func(c context.Context, f *github.Forge) { sink(f.PRList(c, 5, "--state", "open", "--json", "number,title")) }
+	d["PRList"] = func(c context.Context, f *github.Forge) {
+		sink(f.PRList(c, 5, "--state", "open", "--json", "number,title"))
+	}
 	d["PRChecks"] = func(c context.Context, f *github.Forge) { sink(f.PRChecks(c, 7)) }
 	d["OpenChangeRequests"] = func(c context.Context, f *github.Forge) { sink(f.OpenChangeRequests(c, 7)) }
 	d["UnresolvedThreads"] = func(c context.Context, f *github.Forge) { sink(f.UnresolvedThreads(c, 7)) }
@@ -124,12 +125,10 @@ func TestForge_EveryCallShapeIsOneGhAccepts(t *testing.T) {
 
 	drivers := shapeDrivers()
 
-	var methods, driven []string
+	var driven []string
 
-	kind := reflect.TypeFor[*github.Forge]()
-	for i := range kind.NumMethod() {
-		methods = append(methods, kind.Method(i).Name)
-	}
+	methods, err := ghcontract.PublicMethods(".", "Forge")
+	require.NoError(t, err)
 
 	for name := range drivers {
 		driven = append(driven, name)

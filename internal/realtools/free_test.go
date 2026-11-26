@@ -17,6 +17,7 @@ import (
 // The rows of this file need no token and no network: they read the help of the pinned tools.
 
 func TestRealGh_FieldListsEqualTheTable(t *testing.T) {
+	t.Parallel()
 	requireSuite(t)
 
 	run := ghOffline(t)
@@ -27,20 +28,25 @@ func TestRealGh_FieldListsEqualTheTable(t *testing.T) {
 
 	for _, shape := range ghcontract.Shapes() {
 		t.Run(strings.Join(shape.Words, "_"), func(t *testing.T) {
+			t.Parallel()
+
 			got := helpOf(t, run, shape.Words)
 
-			assert.ElementsMatch(t, shape.Fields, got.fields,"the --json fields of gh %s differ from gh-%s.txt: refresh the table with the pin", strings.Join(shape.Words, " "), pinnedGh)
+			assert.ElementsMatch(t, shape.Fields, got.fields, "the --json fields of gh %s differ from gh-%s.txt: refresh the table with the pin", strings.Join(shape.Words, " "), pinnedGh)
 		})
 	}
 }
 
 func TestRealGh_FlagsOfEveryShapeExist(t *testing.T) {
+	t.Parallel()
 	requireSuite(t)
 
 	run := ghOffline(t)
 
 	for _, shape := range ghcontract.Shapes() {
 		t.Run(strings.Join(shape.Words, "_"), func(t *testing.T) {
+			t.Parallel()
+
 			got := helpOf(t, run, shape.Words)
 
 			for flag, takes := range shape.Flags {
@@ -69,6 +75,7 @@ func launchFlags() []string {
 }
 
 func TestRealClaude_FlagsOfEveryLaunchExist(t *testing.T) {
+	t.Parallel()
 	requireSuite(t)
 
 	run := proc.NewExecRunner("claude", "")
