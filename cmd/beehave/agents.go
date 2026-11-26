@@ -239,7 +239,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 // runIn starts the agent of the runner in the folder of the item. The step does not start when the disk is under its floor, or when its sandbox or its skills cannot be made.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	if err := a.disk.check(ctx, request.Project); err != nil {
-		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: err.Error()}, nil
+		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: err.Error()}, nil //nolint:nilerr // a refusal to start is the result of the step, as for a sandbox that cannot be made
 	}
 
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
