@@ -27,7 +27,7 @@ func twoGhWriters(t *testing.T) (*fakeGh, [2]store.Writer) {
 	var writers [2]store.Writer
 
 	for i := range writers {
-		writer, err := github.New(ghRepo, gate)
+		writer, err := github.New(ghRepo, strict(gate))
 		require.NoError(t, err)
 
 		writers[i] = writer

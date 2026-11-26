@@ -25,7 +25,7 @@ func TestStore_ConformsToTracker(t *testing.T) {
 			run.Plan(`[]`, "--label", "no-item-carries-this-label")
 		}
 
-		gh, err := github.New(ghRepo, run)
+		gh, err := github.New(ghRepo, strict(run))
 		require.NoError(t, err)
 
 		return gh

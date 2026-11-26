@@ -1,10 +1,12 @@
 package proctest_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/tobocop2/beehave/internal/ghcontract"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
@@ -44,6 +46,52 @@ func TestScripted_AnswersByWordsAndTheLatestPlanWins(t *testing.T) {
 			assert.Equal(t, [][]string{tc.args}, local.Calls)
 		})
 	}
+}
+
+func TestStrict_RefusesWhatTheContractRefuses(t *testing.T) {
+	t.Parallel()
+
+	run := proctest.Always(model.CommandResult{Stdout: "[]"}).Strict(ghcontract.Check)
+	done := run.Run(t.Context(), []string{"pr", "list", "--json", "number,authorAssociation"})
+
+	assert.Equal(t, 1, done.ExitCode)
+	assert.Empty(t, done.Stdout)
+	assert.True(t, strings.HasPrefix(done.Stderr, `Unknown JSON field: "authorAssociation"`), done.Stderr)
+	assert.True(t, run.Called("pr", "list"), "a refused call is recorded")
+
+	assert.Equal(t, 1, run.Run(t.Context(), []string{"pr", "list", "--nope"}).ExitCode)
+	assert.Equal(t, 1, run.Run(t.Context(), []string{"gist", "list"}).ExitCode)
+}
+
+func TestChecked_RefusesWhatTheCheckRefusesOverAnyRunner(t *testing.T) {
+	t.Parallel()
+
+	inner := proctest.Always(model.CommandResult{Stdout: "[]"})
+	run := proctest.Checked(inner, ghcontract.Check)
+
+	refused := run.Run(t.Context(), []string{"pr", "list", "--json", "number,authorAssociation"})
+
+	assert.Equal(t, 1, refused.ExitCode)
+	assert.True(t, strings.HasPrefix(refused.Stderr, `Unknown JSON field: "authorAssociation"`), refused.Stderr)
+	assert.Empty(t, inner.Calls, "a refused call never reaches the runner inside")
+
+	accepted := run.Run(t.Context(), []string{"pr", "list", "--json", "number"})
+
+	assert.Equal(t, model.CommandResult{Stdout: "[]"}, accepted)
+	assert.True(t, inner.Called("pr", "list"))
+}
+
+func TestStrict_PassesACallTheContractAccepts(t *testing.T) {
+	t.Parallel()
+
+	run := proctest.Always(model.CommandResult{Stdout: "[]"})
+	run.Plan(`[{"number":7}]`, "pr", "list")
+
+	assert.Same(t, run, run.Strict(ghcontract.Check))
+
+	done := run.Run(t.Context(), []string{"pr", "list", "--state", "open", "--json", "number"})
+
+	assert.Equal(t, model.CommandResult{Stdout: `[{"number":7}]`}, done)
 }
 
 func TestScripted_RecordsWhatWasCalled(t *testing.T) {

@@ -21,7 +21,40 @@ type answer struct {
 // Scripted is a proc.Runner that answers by the words in the arguments. The latest plan that fits wins.
 type Scripted struct {
 	answers []answer
+	check   func(args []string) (stderr string, ok bool)
 	Calls   [][]string
+}
+
+// Strict makes Run refuse every call that the check refuses: exit code 1 and the refusal on stderr, before any plan is read. The call is still recorded. It returns s.
+func (s *Scripted) Strict(check func(args []string) (stderr string, ok bool)) *Scripted {
+	s.check = check
+
+	return s
+}
+
+// Caller is the part of proc.Runner that Checked needs, so a package that holds its own fake of a runner can wrap it.
+type Caller interface {
+	Run(ctx context.Context, args []string) model.CommandResult
+}
+
+// CheckedRunner is a runner over another runner that refuses what a check refuses.
+type CheckedRunner struct {
+	inner Caller
+	check func(args []string) (stderr string, ok bool)
+}
+
+// Checked returns a runner that refuses every call that the check refuses, with exit code 1 and the refusal on stderr, and passes any other call to inner.
+func Checked(inner Caller, check func(args []string) (stderr string, ok bool)) CheckedRunner {
+	return CheckedRunner{inner: inner, check: check}
+}
+
+// Run refuses the call when the check refuses it, and otherwise runs it on the runner inside.
+func (c CheckedRunner) Run(ctx context.Context, args []string) model.CommandResult {
+	if stderr, ok := c.check(args); !ok {
+		return model.CommandResult{ExitCode: 1, Stderr: stderr}
+	}
+
+	return c.inner.Run(ctx, args)
 }
 
 // Always returns a Scripted whose every call gets the same result.
@@ -29,9 +62,15 @@ func Always(result model.CommandResult) *Scripted {
 	return &Scripted{answers: []answer{{result: result}}}
 }
 
-// Run records the call and returns the latest plan that fits it, or exit code 99 when no plan fits.
+// Run records the call and returns the latest plan that fits it, or exit code 99 when no plan fits. A strict runner returns exit code 1 for a call its check refuses.
 func (s *Scripted) Run(_ context.Context, args []string) model.CommandResult {
 	s.Calls = append(s.Calls, slices.Clone(args))
+
+	if s.check != nil {
+		if stderr, ok := s.check(args); !ok {
+			return model.CommandResult{ExitCode: 1, Stderr: stderr}
+		}
+	}
 
 	for i := len(s.answers) - 1; i >= 0; i-- {
 		if s.answers[i].fits(args) {

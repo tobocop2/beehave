@@ -20,7 +20,7 @@ func newGithub(t *testing.T) (*github.Store, *proctest.Scripted) {
 	t.Helper()
 
 	run := &proctest.Scripted{}
-	gh, err := github.New(ghRepo, run)
+	gh, err := github.New(ghRepo, strict(run))
 	require.NoError(t, err)
 
 	return gh, run
@@ -48,7 +48,7 @@ func TestNew_NeedsOwnerAndName(t *testing.T) {
 	t.Parallel()
 
 	for _, repo := range []string{"", "name", "/name", "owner/", "a/b/c", `o/"x`, "o/n m", `o/n\m`, "o/n;m", "o/é", "o w/n"} {
-		_, err := github.New(repo, &proctest.Scripted{})
+		_, err := github.New(repo, strict(&proctest.Scripted{}))
 		require.Error(t, err, repo)
 		assert.Equal(t, store.CodeRefused, codeOf(t, err))
 		assert.Contains(t, err.Error(), "the repository must be written owner/name")
@@ -59,7 +59,7 @@ func TestNew_TakesLettersDigitsDotsUnderscoresAndHyphens(t *testing.T) {
 	t.Parallel()
 
 	for _, repo := range []string{"tobocop2/beehave", "A.b_c-1/Z.y_x-0"} {
-		_, err := github.New(repo, &proctest.Scripted{})
+		_, err := github.New(repo, strict(&proctest.Scripted{}))
 		require.NoError(t, err, repo)
 	}
 }
