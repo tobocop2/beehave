@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,7 +49,7 @@ func survivalOver(t *testing.T, rig *batchRig) *survivalGen {
 func (g *survivalGen) read(t *testing.T, file string) []string {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join(g.rig.repo.dir, file))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(g.rig.repo.dir, file)))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -137,7 +138,7 @@ func (g *survivalGen) remove(t *testing.T, file string) {
 
 // expected is the report line that the ledger gives: one entry for each merge in the order of the merges, as subject=file:count:lines/deleted.
 func (g *survivalGen) expected() string {
-	entries := []string{fmt.Sprint(len(g.order))}
+	entries := []string{strconv.Itoa(len(g.order))}
 
 	for _, subject := range g.order {
 		var lost []string
@@ -169,7 +170,11 @@ def main(item):
 }
 
 // tip is the head of main.
-func (g *survivalGen) tip(t *testing.T) string { return g.rig.repo.must(t, "rev-parse", "main") }
+func (g *survivalGen) tip(t *testing.T) string {
+	t.Helper()
+
+	return g.rig.repo.must(t, "rev-parse", "main")
+}
 
 func TestSurvival_ALineThatALaterCommitRemovedIsListedWithItsFileAndMerge(t *testing.T) {
 	t.Parallel()
