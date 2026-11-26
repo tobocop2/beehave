@@ -47,13 +47,13 @@ func TestMakeWalFile_RefusesAFileWhoseFolderIsGone(t *testing.T) {
 	file := internalSpec()
 	file.Name = "missing/file.db"
 
-	require.ErrorIs(t, makeWalFile(openTestRoot(t, t.TempDir()), file), fs.ErrNotExist)
+	require.ErrorIs(t, makeWalFile(t.Context(), openTestRoot(t, t.TempDir()), file), fs.ErrNotExist)
 }
 
-func TestSetWal_KeepsAnErrorOfTheDriver(t *testing.T) {
+func TestPreparePrivate_KeepsAnErrorOfTheDriver(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, setWal(filepath.Join(t.TempDir(), "missing", "test.db"), 1000))
+	require.ErrorContains(t, preparePrivate(t.Context(), filepath.Join(t.TempDir(), "missing", "test.db"), internalSpec()), "unable to open")
 }
 
 func TestLinkOnce_KeepsAnErrorThatIsNotAnExistingName(t *testing.T) {
@@ -76,7 +76,7 @@ func TestOpenSQLite_ALinkThatLostTheRaceKeepsTheFileOfTheWinner(t *testing.T) {
 	require.NoError(t, winner.Close())
 
 	// The loser found no file, and the winner linked its file before the loser could.
-	require.NoError(t, makeWalFile(openTestRoot(t, dir), file))
+	require.NoError(t, makeWalFile(t.Context(), openTestRoot(t, dir), file))
 
 	db, err := OpenSQLite(t.Context(), dir, file)
 	require.NoError(t, err)

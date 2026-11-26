@@ -281,8 +281,8 @@ func holdWriteLock(t *testing.T, dir string) {
 	require.NoError(t, err)
 }
 
-// journalModeWhenItAppears waits for the file at path and returns the journal mode that a plain connection reads first.
-func journalModeWhenItAppears(path string) string {
+// firstReadWhenItAppears waits for the file at path and returns the text that a plain connection reads first with query.
+func firstReadWhenItAppears(path, query string) string {
 	deadline := time.Now().Add(10 * time.Second)
 
 	for time.Now().Before(deadline) {
@@ -295,9 +295,9 @@ func journalModeWhenItAppears(path string) string {
 			return err.Error()
 		}
 
-		var mode string
+		var read string
 
-		err = db.QueryRowContext(context.Background(), `PRAGMA journal_mode`).Scan(&mode)
+		err = db.QueryRowContext(context.Background(), query).Scan(&read)
 		if closeErr := db.Close(); err == nil {
 			err = closeErr
 		}
@@ -306,7 +306,7 @@ func journalModeWhenItAppears(path string) string {
 			return err.Error()
 		}
 
-		return mode
+		return read
 	}
 
 	return "the file did not appear"
@@ -357,10 +357,29 @@ func TestOpenSQLite_ANewFileIsInWalModeWhenItAppears(t *testing.T) {
 		dir := t.TempDir()
 		seen := make(chan string, 1)
 
-		go func() { seen <- journalModeWhenItAppears(filepath.Join(dir, testFile)) }()
+		go func() { seen <- firstReadWhenItAppears(filepath.Join(dir, testFile), `PRAGMA journal_mode`) }()
 
 		openTest(t, dir)
 		assert.Equal(t, "wal", <-seen, "the journal mode that another opener reads when the file first appears")
+	}
+}
+
+func TestOpenSQLite_ANewFileIsUpToDateWhenItAppears(t *testing.T) {
+	t.Parallel()
+
+	const (
+		files = 20
+		query = `SELECT (SELECT user_version FROM pragma_user_version) || ' ' || (SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 't')`
+	)
+
+	for range files {
+		dir := t.TempDir()
+		seen := make(chan string, 1)
+
+		go func() { seen <- firstReadWhenItAppears(filepath.Join(dir, testFile), query) }()
+
+		openTest(t, dir)
+		assert.Equal(t, "1 1", <-seen, "the version and the count of tables that another opener reads when the file first appears, so it takes no write lock")
 	}
 }
 
@@ -462,5 +481,6 @@ func TestOpenSQLite_RefusesACancelledContext(t *testing.T) {
 	cancel()
 
 	_, err := store.OpenSQLite(ctx, t.TempDir(), testSpec())
-	require.ErrorContains(t, err, "cannot open test.db")
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "test.db")
 }

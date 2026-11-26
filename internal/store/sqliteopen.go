@@ -41,10 +41,10 @@ type SQLiteFile struct {
 // OpenSQLite opens a SQLite file in dir and makes its tables when they are missing. The folder must exist.
 // The file has mode 0600, and so have its -wal and -shm files, also when they exist already with a wider mode.
 // It refuses a symbolic link at the path of the file, a file of another schema version, and a file of version 0 that holds tables of another owner.
-// A new file is in WAL mode when it first appears. A file at the version of the build with every owned table opens with no write lock.
+// A new file is in WAL mode and holds its tables when it first appears. A file at the version of the build with every owned table opens with no write lock.
 // Otherwise the version is read and the schema runs in one transaction, so two openers never run the schema between them.
 func OpenSQLite(ctx context.Context, dir string, file SQLiteFile) (*sql.DB, error) {
-	if err := secureFiles(dir, file); err != nil {
+	if err := secureFiles(ctx, dir, file); err != nil {
 		return nil, err
 	}
 
@@ -83,10 +83,10 @@ func walDSN(path string, busyMs int) string {
 }
 
 // secureFiles makes the file when it is missing, and sets mode 0600 on it and on its -wal and -shm files. The folder is the root of every path, so no name leaves it.
-func secureFiles(dir string, file SQLiteFile) error {
+func secureFiles(ctx context.Context, dir string, file SQLiteFile) error {
 	root, err := os.OpenRoot(dir)
 	if err == nil {
-		err = errors.Join(placeFile(root, file), root.Close())
+		err = errors.Join(placeFile(ctx, root, file), root.Close())
 	}
 
 	if err != nil {
@@ -97,12 +97,12 @@ func secureFiles(dir string, file SQLiteFile) error {
 }
 
 // placeFile makes the file when it is missing, refuses a folder at its path, and sets the modes.
-func placeFile(root *os.Root, file SQLiteFile) error {
+func placeFile(ctx context.Context, root *os.Root, file SQLiteFile) error {
 	info, err := root.Lstat(file.Name)
 
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		err = makeWalFile(root, file)
+		err = makeWalFile(ctx, root, file)
 	case err == nil && info.IsDir():
 		err = fmt.Errorf("%s is a folder. Move it away, and beehave makes a new file", file.Name)
 	}
@@ -114,8 +114,8 @@ func placeFile(root *os.Root, file SQLiteFile) error {
 	return secureEach(root, file.Name)
 }
 
-// makeWalFile makes the file in WAL mode under a private name and links it to its name. A file that another opener linked first is kept.
-func makeWalFile(root *os.Root, file SQLiteFile) error {
+// makeWalFile makes the file in WAL mode with its tables under a private name, and links it to its name. A file that another opener linked first is kept.
+func makeWalFile(ctx context.Context, root *os.Root, file SQLiteFile) error {
 	private := file.Name + privateInfix + rand.Text()
 
 	made, err := root.OpenFile(private, os.O_CREATE|os.O_EXCL|os.O_WRONLY, sqliteFileMode)
@@ -123,7 +123,7 @@ func makeWalFile(root *os.Root, file SQLiteFile) error {
 		return err
 	}
 
-	err = errors.Join(made.Close(), setWal(filepath.Join(root.Name(), private), file.BusyMs))
+	err = errors.Join(made.Close(), preparePrivate(ctx, filepath.Join(root.Name(), private), file))
 	if err == nil {
 		err = linkOnce(root, private, file.Name)
 	}
@@ -131,14 +131,14 @@ func makeWalFile(root *os.Root, file SQLiteFile) error {
 	return errors.Join(err, root.Remove(private))
 }
 
-// setWal opens the file once with the driver, which sets WAL mode on it.
-func setWal(path string, busyMs int) error {
-	conn, err := (&sqlite.Driver{}).Open(walDSN(path, busyMs))
-	if err != nil {
-		return err
+// preparePrivate sets WAL mode on a file that no other opener can see and makes its tables. The close writes them into the file itself.
+func preparePrivate(ctx context.Context, path string, file SQLiteFile) error {
+	db, err := sql.Open("sqlite", walDSN(path, file.BusyMs))
+	if err == nil {
+		err = errors.Join(prepareSQLite(ctx, db, file), db.Close())
 	}
 
-	return conn.Close()
+	return err
 }
 
 // linkOnce links private to name. A name that exists keeps its file.
