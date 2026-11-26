@@ -158,12 +158,12 @@ The Change column says how the pair differs from the contract that the five piec
 | `issue_state` | `-` | #503: new, reads the state of an issue, OPEN or CLOSED | 1: `internal/workflow/lib/batch.star` |
 | `issue_state` | `name` | #503: new | 1: `internal/workflow/lib/batch.star` |
 | `issue_state` | `number` | #503: new | 1: `internal/workflow/lib/batch.star` |
-| `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
-| `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
-| `item_comment` | `key` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
-| `item_comment` | `name` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
-| `item_comment` | `text` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `-` | unchanged | 15: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 13 more |
+| `item_comment` | `forbid_text` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/hold.star` |
+| `item_comment` | `id` | unchanged | 15: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 13 more |
+| `item_comment` | `key` | unchanged | 15: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 13 more |
+| `item_comment` | `name` | unchanged | 15: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 13 more |
+| `item_comment` | `text` | unchanged | 15: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 13 more |
 | `item_create` | `-` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `assignee` | unchanged | 1: `examples/ticket-pipeline/backfill.star` |
 | `item_create` | `body` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
@@ -181,17 +181,17 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_read` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `of` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_status` | `-` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_status` | `id` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_status` | `name` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_status` | `status` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
+| `item_status` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_status` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_status` | `name` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_status` | `status` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_stop` | `-` | #499: new, records a stop of the item in the result of the run | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `code` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `id` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `name` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `reason` | #499: new | 1: `internal/workflow/lib/claims.star` |
 | `item_stop` | `step` | #499: new | 1: `internal/workflow/lib/claims.star` |
-| `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `json` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `keep_issues` | `-` | #500: new, reads the issues of an owner line in the form `keep #N[, owner/repo#N ...]`, the form that the merge reads to trust `kept` | 1: `internal/workflow/lib/scope.star` |
 | `keep_issues` | `text` | #500: new | 1: `internal/workflow/lib/scope.star` |
 | `landing_proof` | `-` | #503: new, lists each landed member that the forge cannot show on the base, merged or on the vehicle commit | 1: `internal/workflow/lib/batch.star` |
