@@ -105,6 +105,29 @@ func TestCommandRetries_EachTryIsARecordOfItsOwnAndTheCallEndsInOneRecord(t *tes
 		"a replay reads each try and the record of the call")
 }
 
+func TestCommandRetries_TheWaitBetweenTwoTriesIsARecordOfItsOwn(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.commands.reply = codes(7, 0)
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 1, backoff = \"1ms\", name = \"fetch\")\n")), modeOff())
+
+	require.NoError(t, err)
+
+	var names []string
+
+	for _, name := range stepNamesOf(t, engine, testRun) {
+		if strings.HasPrefix(name, "command:") || name == "DBOS.sleep" {
+			names = append(names, name)
+		}
+	}
+
+	assert.Equal(t, []string{"command:fetch#1/try1", "DBOS.sleep", "command:fetch#1/try2", "command:fetch#1"}, names,
+		"the wait records its deadline, so a resume after a crash in the wait waits only the rest")
+}
+
 func TestCommandRetries_ACallWithNoRetriesIsOneRecord(t *testing.T) {
 	t.Parallel()
 
@@ -320,6 +343,7 @@ func TestCommandRetries_ACrashDuringTheWaitResumesTheWaitAndRunsTheNextTryOnce(t
 	assert.Equal(t, "log 0 2", logged(h))
 	require.Len(t, starts, 2)
 	assert.GreaterOrEqual(t, starts[1].Sub(starts[0]), 4*time.Second, "the resume waits the rest of the wait before try 2")
+	assert.Less(t, starts[1].Sub(starts[0]), 5*time.Second, "the crash comes 1 s into the wait, and a resume that waited the whole wait again would start try 2 after 5 s")
 }
 
 func TestCommandFailure_ReturnGivesTheErrorAndRCMinusOneAndTheRunGoesOn(t *testing.T) {

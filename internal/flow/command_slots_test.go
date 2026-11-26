@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -185,6 +186,27 @@ func TestCommand_ASlotJobThatCannotRunIsTheResultWithFailureReturn(t *testing.T)
 	require.Len(t, h.commands.ran(), 2, "the run goes on after the slot job")
 	assert.Equal(t, []string{"log", "-1", "1"}, h.commands.requests[1].Run[:3])
 	assert.Contains(t, h.commands.requests[1].Run[3], "the box is gone")
+}
+
+func TestCommand_AnErrorThatARetryMayCureIsTheResultOfASlotJobWithFailureReturn(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.SlotClass == "mutation" {
+			return CommandOutput{}, errors.New("the box said no")
+		}
+
+		return CommandOutput{}, nil
+	}
+	h.slots = func(_, _, _ string) (SlotGrant, error) { return SlotGrant{Host: "box", Count: 1}, nil }
+
+	_, err := walkBody(t, h, "r = command(name = \"mutate\", run = [\"x\"], host = \"build\", slots = \"mutation\", failure = \"return\")\ncommand(name = \"log\", run = [\"log\", str(r.rc), str(r.attempts), r.error])\n")
+
+	require.NoError(t, err, "a call with slots has no retries, so its one try is the last and its error is the result")
+	require.Len(t, h.commands.ran(), 2, "the run goes on after the slot job")
+	assert.Equal(t, []string{"log", "-1", "1"}, h.commands.requests[1].Run[:3])
+	assert.Contains(t, h.commands.requests[1].Run[3], "the box said no")
 }
 
 func TestCommand_ASlotClassTheBuildCannotGrantIsRefusedAtTheCall(t *testing.T) {
