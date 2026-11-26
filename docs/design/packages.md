@@ -61,6 +61,7 @@ flowchart TD
         closing["closing<br/>reads the closing keywords of a text"]
         exectest["exectest<br/>writes the programs that tests start"]
         ifacetest["ifacetest<br/>lists the methods of an interface from its source"]
+        ghcontract["ghcontract<br/>the fields and flags of the pinned gh, and the refusal text of gh"]
     end
 
     main --> cli

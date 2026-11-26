@@ -148,7 +148,7 @@ func (f *fakeGh) list(flags map[string]string) model.CommandResult {
 
 	for number := 1; number <= len(f.issues); number++ {
 		if !searching || strings.Contains(f.issues[number].body, strings.Split(search, `"`)[1]) {
-			rows = append(rows, map[string]any{"number": number, "body": f.issues[number].body})
+			rows = append(rows, map[string]any{"number": number, "body": f.issues[number].body, "title": f.issues[number].title})
 		}
 	}
 
@@ -226,7 +226,7 @@ func (f *fakeGh) view(number int) model.CommandResult {
 		assignees = append(assignees, map[string]string{"login": login})
 	}
 
-	return model.CommandResult{Stdout: mustMarshal(map[string]any{"state": state, "labels": labels, "comments": comments, "assignees": assignees, "number": number})}
+	return model.CommandResult{Stdout: mustMarshal(map[string]any{"state": state, "labels": labels, "comments": comments, "assignees": assignees, "number": number, "title": issue.title})}
 }
 
 func (f *fakeGh) change(command string, number int, flags map[string]string) model.CommandResult {

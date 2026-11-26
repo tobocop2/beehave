@@ -129,22 +129,36 @@ func (r *resolver) strs(e ast.Expr) []string {
 
 	switch e := e.(type) {
 	case *ast.BasicLit:
-		if text, err := strconv.Unquote(e.Value); err == nil && e.Kind == token.STRING {
-			return []string{text}
-		}
+		return literal(e)
 	case *ast.ParenExpr:
 		return r.strs(e.X)
 	case *ast.BinaryExpr:
-		left, right := r.strs(e.X), r.strs(e.Y)
-		if e.Op == token.ADD && len(left) == 1 && len(right) == 1 && left[0] != unresolved && right[0] != unresolved {
-			return []string{left[0] + right[0]}
-		}
+		return r.sum(e)
 	case *ast.CompositeLit:
 		return r.exprs(e.Elts)
 	case *ast.Ident:
 		return r.ident(e.Name)
 	case *ast.CallExpr:
 		return r.call(e)
+	}
+
+	return []string{unresolved}
+}
+
+// literal reads a string literal.
+func literal(e *ast.BasicLit) []string {
+	if text, err := strconv.Unquote(e.Value); err == nil && e.Kind == token.STRING {
+		return []string{text}
+	}
+
+	return []string{unresolved}
+}
+
+// sum reads the concatenation of two strings that the scan can read.
+func (r *resolver) sum(e *ast.BinaryExpr) []string {
+	left, right := r.strs(e.X), r.strs(e.Y)
+	if e.Op == token.ADD && len(left) == 1 && len(right) == 1 && left[0] != unresolved && right[0] != unresolved {
+		return []string{left[0] + right[0]}
 	}
 
 	return []string{unresolved}

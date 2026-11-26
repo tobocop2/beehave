@@ -42,13 +42,17 @@ install -m 0755 "$work/gh_${gh_version}_linux_amd64/bin/gh" "$folder/gh"
 sh "$here/install-contract-tools.sh" "$folder"
 
 # npm ci reads the integrity hash of claude from the lock file, so the install cannot drift from the pin.
-npm ci --prefix "$here/real-tools" --ignore-scripts --no-audit --no-fund
-ln -sf "$here/real-tools/node_modules/.bin/claude" "$folder/claude"
+if command -v npm >/dev/null 2>&1; then
+	npm ci --prefix "$here/real-tools" --ignore-scripts --no-audit --no-fund
+	ln -sf "$here/real-tools/node_modules/.bin/claude" "$folder/claude"
+else
+	echo "install-real-tools.sh: npm is not on PATH, so claude is not installed and the claude rows skip" >&2
+fi
 
 if [ -n "${GH_TOKEN:-}" ]; then
 	PATH="$folder:$PATH" gh extension install github/gh-stack --pin "$stack_version" || echo "install-real-tools.sh: gh-stack $stack_version did not install: the stack rows skip" >&2
 fi
 
 "$folder/gh" --version
-"$folder/claude" --version
+if [ -x "$folder/claude" ]; then "$folder/claude" --version; fi
 echo "claude $claude_version pinned in scripts/real-tools/package-lock.json"

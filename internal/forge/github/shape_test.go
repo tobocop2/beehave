@@ -50,7 +50,7 @@ func shapeDrivers() map[string]shapeDriver {
 	card := model.Card{Board: 3, Number: 7, Pull: true, Status: "Todo"}
 	search := model.SearchRequest{Kind: model.SearchPulls, Involves: "me", Since: "2026-01-01", Limit: 5}
 	pull := model.NewPull{Head: "topic", Base: "main", Title: "title", Body: "body", Label: "label"}
-	overlap := model.OverlapRequest{PR: "7", Files: "a.go", Since: "2026-01-01", Base: "main", Integration: "integration", Now: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}
+	overlap := model.OverlapRequest{PR: "7", Files: "a.go", Since: "2026-01-01", Base: "main", Integration: "main", Now: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}
 	status := model.CommitStatus{SHA: shapeSHA, Context: "ci", State: model.StatusSuccess, Description: "done"}
 
 	d := map[string]shapeDriver{}
