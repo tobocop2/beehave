@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"go.starlark.net/starlark"
 
@@ -52,8 +51,6 @@ func commentArguments(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	case err != nil:
 	case call.pr < 0:
 		err = fmt.Errorf("pr_comment: pr is %d. Give the number of a pull request, or leave pr out to comment on the pull request of the item", call.pr)
-	case !slices.Contains(workflow.FailureModes(), call.failure):
-		err = fmt.Errorf("pr_comment: failure is %q. Use \"raise\" or \"return\"", call.failure)
 	}
 
 	return call, err

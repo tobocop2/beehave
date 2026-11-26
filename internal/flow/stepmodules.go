@@ -104,7 +104,8 @@ const trackerVersion = 4
 // It also adds the error field of the pr_closing step: a failed read of a pull request named by its number is recorded with its cause and no issues.
 // Version 13 adds the step of the engine that reads who wrote the item before the claim of every run (originStepName).
 // No builtin records that step, so a move to this build compares the forge module for every run (requireSameStartModules).
-const forgeVersion = 13
+// Version 14 adds the error field of the pr_comment step: a post that failed under failure = "return" is recorded with its cause and number 0.
+const forgeVersion = 14
 
 // gateVersion is the version of the gate module. Version 3 records a lost host job in the gate step, then the wait for its proof (gate:lost-start, gate:lost-look.<k>
 // with a wait field), and in the item run the read of the proof after each answer of the owner (<call>/lost-ask.<n>).
