@@ -501,7 +501,7 @@ func itemSignatures() map[string][]Param {
 		},
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
 		prCommentName:  {filled("text"), filled("key"), opt("pr", KindInt), one(failureKeyword, FailureModes()), forbidText(), label},
-		prOpenName:    {filled("title"), filled("base"), opt("body", KindText), opt("parent", KindText), forbidText(), label},
+		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("parent", KindText), forbidText(), label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("id", KindText), label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
 	}

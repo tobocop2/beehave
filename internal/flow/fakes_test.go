@@ -1366,6 +1366,8 @@ type fakeForge struct {
 	// onCreate runs with the item when the first Open call of that item creates its pull request, as the forge makes it: a draft.
 	onCreate func(item string)
 	writeErr error
+	// failPR makes a Comment call on a pull request by its number record the call and fail with errFake, and no other write fails.
+	failPR bool
 	// pushed holds each Push call as project|item|branch|head|expect. pushErr fails it.
 	pushed  []string
 	pushErr error
@@ -1410,6 +1412,10 @@ func (f *fakeForge) Comment(_ context.Context, project, item string, pr int, key
 	}
 
 	f.notes = append(f.notes, project+"|"+item+"|"+key+"|"+text)
+
+	if pr > 0 && f.failPR {
+		return 0, errFake
+	}
 
 	return f.state.Number, f.writeErr
 }

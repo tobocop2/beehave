@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,9 @@ func TestExampleRound_ALandingThatLostALineLaterCommentsItOnTheIntegrationPullRe
 	rig := newRoundRig(t, "3")
 	g := survivalOver(t, rig.batchRig)
 	g.merge(t, "land-lost", "p.txt", "p1", "p2", "p3")
+
+	sha := rig.repo.must(t, "rev-parse", "HEAD")
+
 	g.merge(t, "land-kept", "q.txt", "q1")
 	g.drop(t, "p.txt", "p1", "p3")
 
@@ -47,7 +51,6 @@ func TestExampleRound_ALandingThatLostALineLaterCommentsItOnTheIntegrationPullRe
 	assert.Contains(t, notes[0], testProject+"|"+testItem+"#pr9|", "the comment goes to pull request 9, which the round integration step returned")
 	assert.Contains(t, notes[0], "After this landing, the tip of main lacks lines that merges of the round added")
 
-	sha := rig.repo.must(t, "rev-parse", "main^{/^land-lost$}")
 	assert.Contains(t, notes[0], "| "+sha[:12]+" | land-lost | p.txt | 2 lines gone |", "the row names the merge by its first 12 characters, with the subject, the file and the count")
 	assert.NotContains(t, notes[0], "land-kept", "a merge that lost nothing has no row")
 }
@@ -129,13 +132,23 @@ func TestExampleRound_ALossThatTheFirstLandingPostedIsNotPostedAgainAtTheNextLan
 	g.merge(t, "land-lost", "p.txt", "p1", "p2")
 	g.drop(t, "p.txt", "p1")
 
-	// Item 1 lands first. The review of item 3 ends after that landing, and the merge below is a loss that only the second landing sees.
-	rig.kids.onReview("3", func() {
-		// The landing moved main with plumbing, so the folder of the repository still holds the old tree.
-		rig.repo.must(t, "reset", "-q", "--hard")
-		g.merge(t, "land-late", "q.txt", "q1", "q2")
-		g.drop(t, "q.txt", "q1")
-	})
+	// Item 1 lands first. The round updates the integration pull request after each landing, and the first of those updates after the landing of item 3 adds a merge that lost a line.
+	// The survival read of that landing follows, so only the second landing sees the loss.
+	var once sync.Once
+
+	orig := rig.h.commands.reply
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[0] == integrationProgram && len(rig.merger.landed()) == 2 {
+			once.Do(func() {
+				// The landing moved main with plumbing, so the folder of the repository still holds the old tree.
+				rig.repo.must(t, "checkout", "-q", "-f", "main")
+				g.merge(t, "land-late", "q.txt", "q1", "q2")
+				g.drop(t, "q.txt", "q1")
+			})
+		}
+
+		return orig(request)
+	}
 
 	_, err := rig.run(t)
 
@@ -215,7 +228,7 @@ func TestExampleRound_AFailedPostOfTheSurvivalCommentDoesNotFailTheRound(t *test
 	t.Parallel()
 
 	rig := newRoundRig(t, "3")
-	rig.h.forge.writeErr = errFake
+	rig.h.forge.failPR = true
 	g := survivalOver(t, rig.batchRig)
 	g.merge(t, "land-lost", "p.txt", "p1", "p2")
 	g.drop(t, "p.txt", "p1")
