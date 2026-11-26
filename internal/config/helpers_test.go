@@ -2,7 +2,9 @@ package config_test
 
 import (
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,8 +30,24 @@ func registry() config.Adapters {
 			"ssh":      {Block: machineBlock("ssh")},
 			"slurm":    {Block: machineBlock("slurm")},
 		},
-		Agents: map[model.Agent]*config.Entry{"claude": {Windows: []model.WindowSpec{{Name: "five_hour", DefaultMax: 90}, {Name: "seven_day", DefaultMax: 95}}}, "opencode": {}},
+		Agents:   map[model.Agent]*config.Entry{"claude": {Windows: []model.WindowSpec{{Name: "five_hour", DefaultMax: 90}, {Name: "seven_day", DefaultMax: 95}}}, "opencode": {}},
+		Programs: everyWordRuns,
 	}
+}
+
+// everyWordRuns is the program reader of the config tests: each word of the text is a program, and a `$` or a `(` makes the text unreadable.
+func everyWordRuns(command string) ([]string, bool) {
+	if strings.ContainsAny(command, "$(") {
+		return nil, false
+	}
+
+	var programs []string
+
+	for _, word := range strings.Fields(command) {
+		programs = append(programs, path.Base(word))
+	}
+
+	return programs, true
 }
 
 // machineBlock declares the block of a host that is a machine, as the ssh and slurm adapters do: the link keys, all optional.

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,9 +21,11 @@ func refusedProgram(t *testing.T, line string) string {
 func TestLoadFolder_AValidGateProgramIsLoadedAndAnUnsetOrEmptyOneIsEmpty(t *testing.T) {
 	t.Parallel()
 
+	defaults := []string{".gitleaks.json", ".gitleaks.toml", ".gitleaksignore", "GNUmakefile", "Makefile", "makefile"}
+
 	project, problems := loadProjectText(t, call(goodProject+`, gate_program = ["Makefile", "GNUmakefile", "scripts/", "tools/gate.cfg"]`))
 	require.Empty(t, problems)
-	require.Equal(t, []string{"Makefile", "GNUmakefile", "scripts/", "tools/gate.cfg"}, project.GateProgram)
+	require.Equal(t, append(slices.Clone(defaults), "scripts/", "tools/gate.cfg"), project.GateProgram)
 
 	project, problems = loadProjectText(t, call(goodProject))
 	require.Empty(t, problems)
@@ -101,7 +104,7 @@ func TestLoadFolder_AGateProgramEntryWithAGitComponentInAnyCaseIsRefusedAndNamed
 	project, problems := loadProjectText(t, call(goodProject+`, gate_program = [".gitignore", ".github/", "git/"]`))
 
 	require.Empty(t, problems, "a name that only starts with .git is no git folder")
-	require.Len(t, project.GateProgram, 3)
+	require.Subset(t, project.GateProgram, []string{".gitignore", ".github/", "git/"})
 }
 
 func TestLoadFolder_AGateProgramEntryWithASpaceIsRefusedAndNamed(t *testing.T) {
@@ -149,7 +152,7 @@ func TestLoadFolder_AGateProgramEntryWithEveryPortableCharacterIsLoaded(t *testi
 	project, problems := loadProjectText(t, call(goodProject+`, gate_program = ["Ab_c-9.d/E-f.sh", "x/"]`))
 
 	require.Empty(t, problems)
-	require.Len(t, project.GateProgram, 2)
+	require.Subset(t, project.GateProgram, []string{"Ab_c-9.d/E-f.sh", "x/"})
 }
 
 func TestLoadFolder_AGateProgramEntryThatIsNotAPlainPathIsRefusedAndNamed(t *testing.T) {
@@ -201,7 +204,7 @@ func TestLoadFolder_AGateProgramNextToADirectoryOfALongerNameIsNotInsideIt(t *te
 	project, problems := loadProjectText(t, call(goodProject+`, gate_program = ["scripts/", "scripts-extra/", "scripts.sh"]`))
 
 	require.Empty(t, problems)
-	require.Len(t, project.GateProgram, 3)
+	require.Subset(t, project.GateProgram, []string{"scripts/", "scripts-extra/", "scripts.sh"})
 }
 
 func TestLoadFolder_AGateProgramThatOverlapsATestPathsGlobIsRefusedAndNamesBoth(t *testing.T) {
@@ -232,7 +235,7 @@ func TestLoadFolder_AGateProgramThatNoTestPathsGlobCanMatchIsLoaded(t *testing.T
 	project, problems := loadProjectText(t, call(goodProject+`, test_paths = ["tests/**", "pkg/*_test.go"], gate_program = ["Makefile", "scripts/", "tests-gate/", "pkg/gate/check.sh"]`))
 
 	require.Empty(t, problems)
-	require.Len(t, project.GateProgram, 4)
+	require.Subset(t, project.GateProgram, []string{"Makefile", "scripts/", "tests-gate/", "pkg/gate/check.sh"})
 }
 
 func TestLoadFolder_AGateProgramNeedsARepository(t *testing.T) {

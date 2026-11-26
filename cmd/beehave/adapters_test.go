@@ -437,6 +437,20 @@ func TestAdapters_ANewAdapterNeedsOnlyAnEntryOfTheTable(t *testing.T) {
 	assert.Equal(t, []string{model.ToolGit, "tk"}, cfg.Projects["p"].Tools, "the tools of the entry reach the project with no edit of the config package")
 }
 
+func TestAdapters_TheRegistryReadsTheGateProgramPastAWrapper(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte("project(source = \"/srv/repo\", base_branch = \"main\", gate = \"timeout 600 make check\", test_report = \"r.xml\", gate_program = [\"scripts/\"])\n"), 0o600))
+
+	cfg, problems := config.LoadFolder(dir, map[string]string{}, newAdapters(nil, nil, nil).registry())
+
+	require.Empty(t, problems)
+	assert.Subset(t, cfg.Projects["p"].GateProgram, []string{"GNUmakefile", "makefile", "Makefile"})
+	assert.NotContains(t, cfg.Projects["p"].GateProgram, ".golangci.yml", "a readable make gate adds no golangci-lint name")
+}
+
 func TestAdapters_TheClaimsMapHoldsAnOpenerAndACheckForEachClaimStore(t *testing.T) {
 	t.Parallel()
 

@@ -38,10 +38,10 @@ func processConsole() (io.Reader, bool) {
 }
 
 const gateLong = "Run the gate of one pull request with the gate program of its own head, and post the result as the status beehave/gate on the head.\n" +
-	"Use it for a pull request that changes the files that gate_program lists, which the normal gate refuses. The command runs only on a terminal.\n" +
+	"Use it for a pull request that changes the files of the gate program (the default files of the gate tools and the gate_program paths), which the normal gate refuses. The command runs only on a terminal.\n" +
 	"It prints the diff of the pull request and runs the gate after you type the number of the pull request.\n" +
 	"The command refuses a pull request on the branch of an item, a pull request into a branch that is not the base branch of the project,\n" +
-	"a head that is behind the base branch, a change of a submodule, and a change of a path that gate_program does not list.\n" +
+	"a head that is behind the base branch, a change of a submodule, and a change of a path outside the gate program.\n" +
 	"It posts nothing when the head or the base branch moved while the gate ran."
 
 // pullNumber reads the number of the pull request from the arguments: the first, with an optional project after it.
