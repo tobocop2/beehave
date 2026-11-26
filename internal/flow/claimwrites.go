@@ -37,10 +37,10 @@ func claimedCall(ctx context.Context, read func(context.Context) (context.Contex
 	return call(bound)
 }
 
-// PRComment writes a comment on the pull request of an item.
-func (w runWrites) PRComment(ctx context.Context, project, item, key, text string) (number int, err error) {
+// PRComment writes a comment on the pull request pr, or on the pull request of an item when pr is 0.
+func (w runWrites) PRComment(ctx context.Context, project, item string, pr int, key, text string) (number int, err error) {
 	err = claimedCall(ctx, w.trusted, func(c context.Context) error {
-		number, err = w.e.deps.Forge.Comment(c, project, item, key, text)
+		number, err = w.e.deps.Forge.Comment(c, project, item, pr, key, text)
 
 		return err
 	})

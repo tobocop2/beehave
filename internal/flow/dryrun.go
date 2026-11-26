@@ -548,7 +548,7 @@ func (dryForge) ClosingIssues(context.Context, string, string) ([]model.IssueRef
 }
 
 // Comment shows a comment as posted on the dry-run pull request.
-func (dryForge) Comment(context.Context, string, string, string, string) (int, error) {
+func (dryForge) Comment(context.Context, string, string, int, string, string) (int, error) {
 	return dryPull, nil
 }
 

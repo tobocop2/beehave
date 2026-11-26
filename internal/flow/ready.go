@@ -29,9 +29,9 @@ type forge interface {
 	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them: "#N" for an issue of the repository of the pull request,
 	// "owner/repo#N" for an issue of another repository. Found is false when the item has no pull request yet. A project with no forge is an error that matches forge.ErrNoForge.
 	ClosingIssues(ctx context.Context, project, item string) (issues []model.IssueRef, found bool, err error)
-	// Comment adds a comment to the pull request of the item and returns its number. The same key on the same pull request adds one comment.
-	// An item with no pull request is an error. So is a project with no forge.
-	Comment(ctx context.Context, project, item, key, text string) (number int, err error)
+	// Comment adds a comment to the pull request pr of the project, or to the pull request of the item when pr is 0, and returns its number. The same key on the same pull request adds one comment.
+	// An item with no pull request is an error when pr is 0. So is a project with no forge.
+	Comment(ctx context.Context, project, item string, pr int, key, text string) (number int, err error)
 	// Open finds the open pull request on the branch of the item, or opens a draft one, and makes its body and stack right. The same call again opens no second pull request.
 	// A project with no forge, and a forge that cannot open pull requests, are errors.
 	Open(ctx context.Context, project, item string, req OpenRequest) (OpenResult, error)

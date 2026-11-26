@@ -182,7 +182,7 @@ func TestPulls_CommentPostsOneCommentForOneKeyEvenWhenTheCallRunsTwice(t *testin
 	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}}
 
 	for range 2 {
-		number, err := pullsOver(f).Comment(t.Context(), "p", "bb-1", "run:take", "taken")
+		number, err := pullsOver(f).Comment(t.Context(), "p", "bb-1", 0, "run:take", "taken")
 		require.NoError(t, err)
 		assert.Equal(t, 7, number)
 	}
@@ -190,12 +190,35 @@ func TestPulls_CommentPostsOneCommentForOneKeyEvenWhenTheCallRunsTwice(t *testin
 	assert.Equal(t, []model.Comment{{Body: "taken\n\nbeehave-key: run:take"}}, f.posted)
 
 	f.commentErr = errFake
-	_, err := pullsOver(f).Comment(t.Context(), "p", "bb-1", "run:other", "x")
+	_, err := pullsOver(f).Comment(t.Context(), "p", "bb-1", 0, "run:other", "x")
 	require.ErrorIs(t, err, errFake)
 	assert.Len(t, f.posted, 1, "a failed read of the comments posts nothing")
 
-	_, err = pullsOver(&pullForge{}).Comment(t.Context(), "p", "bb-1", "k", "x")
+	_, err = pullsOver(&pullForge{}).Comment(t.Context(), "p", "bb-1", 0, "k", "x")
 	require.ErrorIs(t, err, forge.ErrNoPull)
+}
+
+func TestPulls_CommentWithAPullRequestNumberPostsThereWithNoLookupOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	f := &pullForge{}
+
+	number, err := pullsOver(f).Comment(t.Context(), "p", "round/main", 12, "run:survival", "lost")
+
+	require.NoError(t, err)
+	assert.Equal(t, 12, number, "the item has no pull request, and the call answers with the number that it was given")
+	assert.Equal(t, []model.Comment{{Body: "lost\n\nbeehave-key: run:survival"}}, f.posted)
+
+	_, err = pullsOver(f).Comment(t.Context(), "unknown", "round/main", 12, "run:survival", "lost")
+	require.ErrorIs(t, err, errUnknownProject)
+
+	lowest := &pullForge{}
+
+	number, err = pullsOver(lowest).Comment(t.Context(), "p", "round/main", 1, "run:survival", "lost")
+
+	require.NoError(t, err, "pull request 1 is a number, as 12 is")
+	assert.Equal(t, 1, number)
+	assert.Len(t, lowest.posted, 1)
 }
 
 func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIsNotFound(t *testing.T) {

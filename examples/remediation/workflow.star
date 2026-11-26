@@ -5,6 +5,7 @@ load("@beehave//batch.star", "batch_merge")
 load("@beehave//claims.star", "claim_stop")
 load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
 load("@beehave//scope.star", "fix_scope", "hold_scope")
+load("@beehave//survival.star", "merge_survival")
 load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
@@ -123,6 +124,10 @@ LIMIT_MOST = 100
 # The time that one write of a record file and one run of the acceptance script may take.
 WRITE_TIMEOUT = "1m"
 ACCEPTANCE_TIMEOUT = "30m"
+
+# The survival comment of a landing shows this many rows, and a subject of a merge shows this many characters. The comment says how many rows it leaves out.
+SURVIVAL_ROWS = 40
+SURVIVAL_SUBJECT = 72
 
 ALNUM = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -653,10 +658,11 @@ def land(approved, project, round_settings, n, run):
     Each entry of `approved` has an item id, the full SHA that the review approved, and the verdict of the child run (`approved`). Each member of the batch carries that verdict, so our own pull request
     lands only on the approval of its own review, and the approval of one member never reaches another. The setting vars.round.merge, the stops before the work and the guards are those of the pipeline of one item.
     The branch of each pull request has the id of its item. Each item that the batch merged is recorded with record_merge.
-    Returns host_losses, the count of the engine for the tree of the run (0 when the pass lands nothing), and moved, which is true when an item merged or was put on hold.
+    Returns host_losses, the count of the engine for the tree of the run (0 when the pass lands nothing), moved, which is true when an item merged or was put on hold,
+    and landed, which is true when the round itself merged an item. A hand-off round never lands: the owner merges, so its landed is false.
     A deferred item writes nothing, so a pass that only deferred has moved false and the round waits."""
     if not round_settings["merge"]:
-        return struct(host_losses = 0, moved = False)
+        return struct(host_losses = 0, moved = False, landed = False)
 
     base = round_settings["base"]
     prs = []
@@ -702,7 +708,7 @@ def land(approved, project, round_settings, n, run):
         item_status(name = "scope-hold-" + refused.item, id = refused.item, status = "hold")
 
     if len(prs) == 0:
-        return struct(host_losses = 0, moved = len(stopped) > 0 or len(held.rejected) > 0)
+        return struct(host_losses = 0, moved = len(stopped) > 0 or len(held.rejected) > 0, landed = False)
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
@@ -750,7 +756,51 @@ def land(approved, project, round_settings, n, run):
         if not accepted.passed:
             fail("REFUSE: the batch landed, but the acceptance script %s failed on %s. Read its output, then fix the round branch by hand:\n%s" % (round_settings["acceptance"], base, accepted.report))
 
-    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(held.rejected) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
+    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(held.rejected) > 0 or len(out.merged) > 0 or len(out.rejected) > 0, landed = len(out.merged) > 0 and not round_settings["hand_off"])
+
+def survival_rows(found):
+    """The table rows of the merges in `found` (the merges of the result of merge_survival) that lost a line or a whole file. A merge that lost nothing has no row."""
+    rows = []
+    for entry in found:
+        subject = entry.subject.replace("|", "/")
+        if len(subject) > SURVIVAL_SUBJECT:
+            subject = subject[:SURVIVAL_SUBJECT] + "..."
+
+        for lost in entry.lost:
+            rows.append("| %s | %s | %s | %d lines gone |" % (entry.merge[:12], subject, lost.file, lost.count))
+        for file in entry.deleted:
+            rows.append("| %s | %s | %s | file gone |" % (entry.merge[:12], subject, file))
+    return rows
+
+def report_survival(project, round_settings, n, pr, posted):
+    """Reads which lines of each merge of the round the tip of the round branch still has, and posts the rows that an earlier landing of the run did not post as one comment on the integration pull request `pr`.
+    `posted` is the list of the rows that the run posted already: the call adds each row that it posts, so the comment of a landing holds the new rows only. The range is the merges that the round branch has and the trunk lacks.
+    The comment shows SURVIVAL_ROWS rows at most and says how many more there are. The read is a signal and never fails the round: a failed git call or a failed post is a line in the run record."""
+    tip = base_tip(base = round_settings["base"], name = "survival-tip-%d" % n).commit
+    found = merge_survival(name = "round-survival-%d" % n, base = "origin/" + project.base_branch, tip = tip)
+    if found.error != "":
+        print("the survival read did not run: " + found.error)
+        return
+
+    rows = [row for row in survival_rows(found.merges) if row not in posted]
+    if len(rows) == 0:
+        return
+
+    shown = rows[:SURVIVAL_ROWS]
+    more = "" if len(rows) == len(shown) else "\n\n%d more rows are not shown. The lost lines of each file are the counts of the rows above and the diff of the merge." % (len(rows) - len(shown))
+    posting = pr_comment(
+        name = "round-survival-%d" % n,
+        key = "survival-%d" % n,
+        pr = pr,
+        text = "After this landing, the tip of %s lacks lines that merges of the round added. There are %d new rows. Read each row. A later commit can rightly change a line, and a file that is gone may be a retirement.\n\n| Merge | Subject | File | Result |\n|---|---|---|---|\n%s%s" % (round_settings["base"], len(rows), "\n".join(shown), more),
+        forbid_text = ATTRIBUTION,
+        failure = "return",
+    )
+    if posting.error != "":
+        print("the survival comment was not posted: " + posting.error)
+        return
+
+    posted.extend(rows)
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
@@ -1140,6 +1190,7 @@ def round(item):
     held = ""
     seen = 0
     acked = 0
+    posted = []
 
     for n in range(1, MAX_PASSES + 1):
         if held == "":
@@ -1161,7 +1212,11 @@ def round(item):
                 landing = land(approved, project, round_settings, n, item.id)
                 seen = max(seen, landing.host_losses)
                 landed = landing.moved
-                round_integration(project, round_settings, "round-integration-land-%d" % n)
+                integration = round_integration(project, round_settings, "round-integration-land-%d" % n)
+
+                # The survival read after each landing of the round itself. It is a signal on the integration pull request and never stops the round.
+                if landing.landed:
+                    report_survival(project, round_settings, n, integration.pr, posted)
 
             take = ready_items(q, round_settings)
             if len(take) > 0:

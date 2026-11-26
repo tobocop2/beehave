@@ -80,13 +80,13 @@ type heldComment struct {
 	once    sync.Once
 }
 
-func (f *heldComment) Comment(ctx context.Context, project, item, key, text string) (int, error) {
+func (f *heldComment) Comment(ctx context.Context, project, item string, pr int, key, text string) (int, error) {
 	f.once.Do(func() {
 		f.entered <- struct{}{}
 		hang(f.hold)
 	})
 
-	return f.forge.Comment(ctx, project, item, key, text)
+	return f.forge.Comment(ctx, project, item, pr, key, text)
 }
 
 func TestPush_ARunThatLostItsClaimPushesNothing(t *testing.T) {

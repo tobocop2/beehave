@@ -140,8 +140,8 @@ type crashForge struct {
 	on    string
 }
 
-func (f *crashForge) Comment(ctx context.Context, project, item, key, text string) (int, error) {
-	number, err := f.forge.Comment(ctx, project, item, key, text)
+func (f *crashForge) Comment(ctx context.Context, project, item string, pr int, key, text string) (int, error) {
+	number, err := f.forge.Comment(ctx, project, item, pr, key, text)
 	f.stop("comment")
 
 	return number, err
