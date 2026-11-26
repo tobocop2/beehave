@@ -2,7 +2,8 @@ package realtools_test
 
 import (
 	"context"
-	"fmt"
+	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,8 +23,13 @@ import (
 // sweepLabel marks every pull request that the suite opens, so a run that crashed leaves pull requests that the next run closes.
 const sweepLabel = "real-tools"
 
-// runID names one run of the suite in the branches and the keys it makes.
-func runID() string { return fmt.Sprintf("%d", time.Now().UnixNano()) }
+// runs counts the calls of runID, so two tests that run in parallel never get the same name.
+var runs atomic.Int64
+
+// runID names one run of a test in the branches and the keys it makes.
+func runID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 10) + "-" + strconv.FormatInt(runs.Add(1), 10)
+}
 
 func sandboxForge(t *testing.T) *forgegh.Forge {
 	t.Helper()
@@ -50,19 +56,8 @@ func later(t *testing.T) context.Context {
 	return context.WithoutCancel(t.Context())
 }
 
-// sweep closes the open pull requests that a crashed run left with the label of the suite.
-func sweep(t *testing.T, forge *forgegh.Forge) {
-	t.Helper()
-
-	left, err := forge.PRList(t.Context(), 100, "--state", "open", "--label", sweepLabel, "--json", "number")
-	require.NoError(t, err)
-
-	for _, pull := range left {
-		require.NoError(t, forge.ClosePR(t.Context(), pull.Number, "closed by the next run of the real-tools suite"))
-	}
-}
-
 func TestRealGh_ReadsOfTheSandbox(t *testing.T) {
+	t.Parallel()
 	requireToken(t)
 
 	forge := sandboxForge(t)
@@ -93,6 +88,7 @@ func TestRealGh_ReadsOfTheSandbox(t *testing.T) {
 }
 
 func TestRealGh_IssueLifecycle(t *testing.T) {
+	t.Parallel()
 	requireToken(t)
 
 	items := sandboxStore(t)
@@ -152,12 +148,11 @@ func openPull(t *testing.T, forge *forgegh.Forge, base, branch string) int {
 }
 
 func TestRealGh_PullLifecycle(t *testing.T) {
+	t.Parallel()
 	requireToken(t)
 
 	forge := sandboxForge(t)
 	ctx := t.Context()
-
-	sweep(t, forge)
 
 	base, err := forge.DefaultBranch(ctx)
 	require.NoError(t, err)
@@ -178,6 +173,7 @@ func TestRealGh_PullLifecycle(t *testing.T) {
 }
 
 func TestRealGh_StackLinkAndUnstack(t *testing.T) {
+	t.Parallel()
 	requireToken(t)
 
 	done := proc.NewExecRunner("gh", "").Run(t.Context(), []string{"stack", "--help"})

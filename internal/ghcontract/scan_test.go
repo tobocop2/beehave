@@ -199,23 +199,37 @@ func (r *resolver) assigned(name string) []ast.Expr {
 	ast.Inspect(r.fn.Body, func(n ast.Node) bool {
 		switch s := n.(type) {
 		case *ast.AssignStmt:
-			for i, l := range s.Lhs {
-				if id, ok := l.(*ast.Ident); ok && id.Name == name && len(s.Lhs) == len(s.Rhs) {
-					rhs = append(rhs, s.Rhs[i])
-				}
-			}
+			rhs = append(rhs, assignedTo(name, s.Lhs, s.Rhs)...)
 		case *ast.ValueSpec:
+			names := make([]ast.Expr, len(s.Names))
 			for i, id := range s.Names {
-				if id.Name == name && len(s.Names) == len(s.Values) {
-					rhs = append(rhs, s.Values[i])
-				}
+				names[i] = id
 			}
+
+			rhs = append(rhs, assignedTo(name, names, s.Values)...)
 		}
 
 		return true
 	})
 
 	return rhs
+}
+
+// assignedTo returns the values that a statement gives to the name. A statement with unequal sides gives none.
+func assignedTo(name string, lhs, rhs []ast.Expr) []ast.Expr {
+	var out []ast.Expr
+
+	if len(lhs) != len(rhs) {
+		return nil
+	}
+
+	for i, l := range lhs {
+		if id, ok := l.(*ast.Ident); ok && id.Name == name {
+			out = append(out, rhs[i])
+		}
+	}
+
+	return out
 }
 
 // param returns the position of the name among the parameters of the function, or -1.
@@ -322,12 +336,16 @@ func (r *resolver) returned(name string) []string {
 	return union(alts)
 }
 
-// scan reads every production file under root. It returns the findings and the number of PRView and PRList calls it read.
-func scan(t *testing.T, root string) ([]string, int) {
+// skipFolder says whether the walk leaves a folder out: a hidden folder, a vendor folder, and test data.
+func skipFolder(name string) bool {
+	return strings.HasPrefix(name, ".") || name == "testdata" || name == "vendor" || name == "node_modules"
+}
+
+// parseTree parses every production file under root and groups the files by folder.
+func parseTree(t *testing.T, fset *token.FileSet, root string) map[string][]*ast.File {
 	t.Helper()
 
 	folders := map[string][]*ast.File{}
-	fset := token.NewFileSet()
 
 	require.NoError(t, filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -335,7 +353,7 @@ func scan(t *testing.T, root string) ([]string, int) {
 		}
 
 		name := entry.Name()
-		if entry.IsDir() && path != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "vendor" || name == "node_modules") {
+		if entry.IsDir() && path != root && skipFolder(name) {
 			return filepath.SkipDir
 		}
 
@@ -352,6 +370,16 @@ func scan(t *testing.T, root string) ([]string, int) {
 
 		return nil
 	}))
+
+	return folders
+}
+
+// scan reads every production file under root. It returns the findings and the number of PRView and PRList calls it read.
+func scan(t *testing.T, root string) ([]string, int) {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	folders := parseTree(t, fset, root)
 
 	var (
 		findings []string
@@ -438,8 +466,7 @@ func nameFindings(where, shape string, allowed, fields []string) []string {
 	var out []string
 
 	for _, field := range fields {
-		switch {
-		case !slices.Contains(allowed, field):
+		if !slices.Contains(allowed, field) {
 			out = append(out, fmt.Sprintf("%s: %q is not a field of gh %s", where, field, shape))
 		}
 	}

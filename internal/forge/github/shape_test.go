@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"reflect"
 	"slices"
 	"sort"
 	"sync"
@@ -124,12 +123,10 @@ func TestForge_EveryCallShapeIsOneGhAccepts(t *testing.T) {
 
 	drivers := shapeDrivers()
 
-	var methods, driven []string
+	var driven []string
 
-	kind := reflect.TypeFor[*github.Forge]()
-	for i := range kind.NumMethod() {
-		methods = append(methods, kind.Method(i).Name)
-	}
+	methods, err := ghcontract.PublicMethods(".", "Forge")
+	require.NoError(t, err)
 
 	for name := range drivers {
 		driven = append(driven, name)

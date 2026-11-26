@@ -2,7 +2,6 @@ package realtools_test
 
 import (
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,9 +22,10 @@ type streamLine struct {
 // TestRealClaude_PrintModeStream makes one print-mode call with the flags of the adapter, capped at 0.05 USD and one turn, and reads each line of the answer as JSON.
 // The call needs CLAUDE_CODE_OAUTH_TOKEN and the pinned claude on PATH.
 func TestRealClaude_PrintModeStream(t *testing.T) {
+	t.Parallel()
 	requireSuite(t)
 
-	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") == "" {
+	if env("CLAUDE_CODE_OAUTH_TOKEN") == "" {
 		t.Skip("CLAUDE_CODE_OAUTH_TOKEN is not set: this row makes one paid call of claude and needs the token")
 	}
 
