@@ -39,6 +39,9 @@ const (
 
 	assigneesHeld   = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
 	associationHeld = "the github adapter test TestAssociation_RefusesAnAnswerThatNamesNoKnownAuthor goes red when the read maps a failed command or an unknown value to an author; this package cannot drive the adapter"
+	historyHeld     = "the github adapter fails each history read under a failed command in TestForge_ConformsToForge (CheckForgeFails) and refuses a cut or unreadable list in " +
+		"TestListReads_RefuseAFailedCutOrUnreadableList; the history of cmd/beehave returns the failure in TestPulls_AHistoryReadThatFailsIsAnError, and pr_history stops the step in " +
+		"TestPRHistory_AFailedReadStopsTheStep; this package cannot drive the adapter"
 	readyHeld       = "the github adapter test TestOptionalReads_ConformToTheFailedReadRules goes red when the read maps a failed command to an empty list; this package cannot drive the adapter"
 	cardHeld        = "the github adapter test TestBoarder_ConformsToTheFailedCommandRules goes red when the read maps a failed command to an empty status; this package cannot drive the adapter"
 	noEngine        = "a read for display or for a command line, which this test does not prove"
@@ -219,6 +222,8 @@ var rules = map[string]rule{
 	"internal/forge.PullReads.PRView":             {NotHeld: inAdapter},
 	"internal/forge.PullFactsRead.PullRead":       {NotHeld: inAdapter},
 	"internal/forge.OpenPullsRead.OpenPulls":      {NotHeld: inAdapter},
+	"internal/forge.HistoryReads.BranchPulls":     {NotHeld: historyHeld},
+	"internal/forge.HistoryReads.SearchPulls":     {NotHeld: historyHeld},
 	"internal/forge.PullReads.PRList":             {NotHeld: inAdapter},
 	"internal/forge.PullReads.PRChecks":           {NotHeld: inAdapter},
 	"internal/forge.PullReads.OpenChangeRequests": {NotHeld: inAdapter},
