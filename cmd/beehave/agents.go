@@ -238,8 +238,8 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 
 // runIn starts the agent of the runner in the folder of the item. The step does not start when the disk is under its floor, or when its sandbox or its skills cannot be made.
 func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
-	if err := a.disk.check(ctx, request.Project); err != nil {
-		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: err.Error()}, nil //nolint:nilerr // a refusal to start is the result of the step, as for a sandbox that cannot be made
+	if note := a.diskNote(ctx, request.Project); note != "" {
+		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
@@ -260,6 +260,15 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
 	return result, err
+}
+
+// diskNote returns the reason why the disk is under the floor of the project, or "" when a step can start.
+func (a agents) diskNote(ctx context.Context, project string) string {
+	if err := a.disk.check(ctx, project); err != nil {
+		return err.Error()
+	}
+
+	return ""
 }
 
 // fillOf returns the function that fills the Go module cache of a sandboxed step, or nil for a step with no cache. The runner calls it after every
