@@ -61,7 +61,7 @@ func (r limitRecord) rerun() *LostRun {
 
 // afterLimit returns the input of the rerun after the limit that record holds. in is the input of the try, so the notes of two limits never stack.
 func (in PhaseInput) afterLimit(record limitRecord) PhaseInput {
-	in.ResetPassed = record.Passed
+	in.ResetPassed, in.Rerun = record.Passed, true
 
 	if in.Limited = record.rerun(); in.Limited == nil {
 		in.Prompt += "\n\n" + record.Note

@@ -274,18 +274,19 @@ A CLI with no budget option refuses the run, unless it reports the dollars of ea
 
 **The cap of an item tree: `agents.max_tree_budget_usd`** (or `BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD`). It caps the sum for the root run and every run it spawns.
 
-- The sum is read from the step records of the root run and of each run below it, so a restart keeps it.
+- The sum is read from the ledger: the `spend` rows of the tree, one for each agent execution, with the id of the root run. A restart and the retention of the runs keep it.
+- An execution that started and has not ended has a row with no cost, and an unknown cost fails the check as it does for the run cap.
 - A spawned run uses the cap of its root. It does not start a new sum and cannot raise the cap.
 - The rule and the wait are the same as for the run cap. Both caps apply when both are set.
 
 **The cap of a week: `agents.max_week_budget_usd`** (or `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD`). It caps the sum for all items of the store in the last seven days.
 
-- The sum reads the step records of the item runs of the store that finished in the last seven days, and of every item run that has not finished. It reads no run that finished before the window, so the cost of a check does not grow with the history of the store.
-- A cost counts when its agent step ended at or after the time of the check minus seven days. A step that ended exactly seven days ago counts. A step that runs has no recorded cost yet and adds 0 until it ends.
-- A cost with no time, such as the cost of a failed run whose call has no step record, counts. The cap errs toward stopping.
+- The sum reads the `spend` rows of the ledger. No run record is read, so the cost of a check does not grow with the history of the runs.
+- A cost counts when its agent execution started at or after the time of the check minus seven days. An execution that started exactly seven days ago counts.
+- An execution that has not ended has a row with no cost. An unknown cost fails the check.
 - The rule and the wait are the same as for the run cap. The stop has the scope `week`. All set caps apply.
 - A cost is recorded when its step ends, and nothing reserves it before. Two agent steps that start at the same time both read the same sum, so both can start under the cap. The overshoot is at most the cost of the steps that run at once.
-- A finished run that `agents.retention_days` deleted is not in the sum, so beehave refuses a config with a week cap and a `retention_days` from 1 to 6. Set `retention_days` to 7 or more, or to 0.
+- The retention of the runs (`agents.retention_days`) never changes the sum, because the ledger is a separate file.
 - The sum covers beehave recorded costs only. The usage windows of a subscription are not read.
 
 **The stop in the status.** `beehave status <run id> --json` shows `cap_stop` with `scope` (`run`, `tree` or `week`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
@@ -399,7 +400,7 @@ The argument `guard` of `review_fix` is a dict of `base`, `hold`, `own` and `own
 
 #### Fix caps across runs: `earlier_calls`
 
-The builtin `earlier_calls(call = "<name>")` returns `count`: the number of `agent` calls with that `name` in the other runs of the item. It is a recorded step, so a replay keeps the count of the first start.
+The builtin `earlier_calls(call = "<name>")` returns `count`: the number of `agent` calls with that `name` that the item started before this run. It reads the `spend` rows of the ledger, so it counts the calls of runs that the retention deleted. A new try of a call and the rerun after a provider limit are part of the same call. It is a recorded step, so a replay keeps the count of the first start.
 
 A candidate counts as spent when its first agent starts: its first scoped fix `fix-scoped-1`, or `scoped-review-implement` when no findings were due. Each candidate makes one of these two calls once. The library function `candidates_spent()` adds up both calls in the other runs of the item, and the example loads it. The first candidate reviews the implementer, so `fix_rounds` fix rounds need one candidate more. The example passes:
 

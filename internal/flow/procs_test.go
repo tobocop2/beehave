@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/ledger"
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
@@ -210,7 +211,11 @@ const procRun = "run-proc"
 func newProcEngine(t *testing.T, agents agents) *Engine {
 	t.Helper()
 
-	engine := &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard, runRedactor(nil))}
+	held, err := ledger.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, held.Close()) })
+
+	engine := &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard, runRedactor(nil)), ledger: held}
 	holdClaim(engine, procRun, claimHold{renewed: time.Now()})
 
 	return engine

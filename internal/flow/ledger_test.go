@@ -97,6 +97,8 @@ func TestLaunch_TheLedgerKeepsItsRowsWhenTheRetentionDeletesEveryRunOlderThanThe
 
 	_, err = first.ledger.DB().ExecContext(t.Context(), `INSERT INTO spend (call, tree, run_id, step, session, item, pull_request, call_name, cost, at) VALUES ('c1', 't', ?, 1, 's', ?, 7, 'fix', 0.5, 1000)`, runID(testItem, 1), testItem)
 	require.NoError(t, err)
+
+	held := ledgerRows(t, first.ledger.DB(), "spend")
 	require.NoError(t, first.Shutdown())
 
 	client := harness.client(t, testVersion)
@@ -118,5 +120,5 @@ func TestLaunch_TheLedgerKeepsItsRowsWhenTheRetentionDeletesEveryRunOlderThanThe
 	rows, err = client.Status()
 	require.NoError(t, err)
 	assert.Empty(t, rows, "the retention deleted every run")
-	assert.Equal(t, 1, ledgerRows(t, second.ledger.DB(), "spend"), "the spend row of the deleted run stays")
+	assert.Equal(t, held, ledgerRows(t, second.ledger.DB(), "spend"), "the spend rows of the deleted run stay")
 }

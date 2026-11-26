@@ -21,6 +21,8 @@ import (
 // Model, Timeout and IdleTimeout go to the agent as they are. Forbid lists the kinds of command that the step forbids.
 type PhaseInput struct {
 	Run string `json:"run"`
+	// Tree is the root run of the item tree of Run, which the spend row of the phase names. The script sets it before it queues the phase.
+	Tree string `json:"tree,omitempty"`
 	// Call is the name of the agent call, such as agent:fix#1. The stop at a cap and the error of a look name it.
 	Call    string `json:"call,omitempty"`
 	Item    string `json:"item"`
@@ -28,6 +30,8 @@ type PhaseInput struct {
 	Login   string `json:"login"`
 	// Severity is the severity of the item, which sets the place of the phase in its queue. It is left out for an item with none.
 	Severity string `json:"severity,omitempty"`
+	// Rerun is true for a phase that runs a call again: a new try after a bad output file, or the rerun after a provider limit. It is left out of the first run of a call.
+	Rerun bool `json:"rerun,omitempty"`
 
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
@@ -107,6 +111,8 @@ type PhaseOutput struct {
 	CapStop *CapStop `json:"cap_stop,omitempty"`
 	// ResumeOf is the session of the lost start or the limited run that this run was given to resume, and is left out of a recorded phase for any other run.
 	ResumeOf string `json:"resume_of,omitempty"`
+	// Execution is the id of the agent execution that the phase ran, which is the key of its spend row. It is left out of a recorded phase that ran no agent.
+	Execution string `json:"execution,omitempty"`
 }
 
 // phase waits for a trusted claim of its run, looks at the caps, then runs the agent as a step; a cap stop ends it with the stop and no agent run.
@@ -147,7 +153,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 	defer context.AfterFunc(ctx, func() { cancel(context.Cause(ctx)) })()
 	defer e.endGroups(holder)
 
-	data, err := e.callFiles(in)
+	data, execution, err := e.prepareAgent(ctx, in)
 	if err != nil {
 		return PhaseOutput{}, err
 	}
@@ -157,8 +163,26 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 
 	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, named, said))
 
-	out, err := e.judgePhase(ctx, in, result, err)
-	out.ResumeOf = lost.session()
+	return e.finishAgent(ctx, in, execution, lost, result, err)
+}
+
+// prepareAgent writes the files of the call and the spend row of the execution that follows. It returns the data file and the id of the execution.
+func (e *Engine) prepareAgent(ctx context.Context, in PhaseInput) (string, string, error) {
+	data, err := e.callFiles(in)
+	if err != nil {
+		return "", "", err
+	}
+
+	execution, err := e.startSpend(ctx, in)
+
+	return data, execution, err
+}
+
+// finishAgent judges the end of the phase, names the execution and the run that it resumes in the output, and sets the cost of the execution in the ledger.
+func (e *Engine) finishAgent(ctx context.Context, in PhaseInput, execution string, lost *LostRun, result agent.Result, runErr error) (PhaseOutput, error) {
+	out, err := e.judgePhase(ctx, in, result, runErr)
+	out.ResumeOf, out.Execution = lost.session(), execution
+	e.endSpend(ctx, execution, in, out)
 
 	return out, err
 }

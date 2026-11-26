@@ -98,7 +98,7 @@ func (e *Engine) weekCap() capLimit {
 	return capLimit{scopeWeek, "the last seven days", "agents.max_week_budget_usd", "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD", e.maxWeekBudget, "all items"}
 }
 
-// checkCaps reads the caps and the sums they count for the item run run. A cap of 0 is not read. Both sums read the records of the runs, so a resume keeps them.
+// checkCaps reads the caps and the sums they count for the item run run. A cap of 0 is not read. The run sum reads the records of the run, so a resume keeps it. The tree and week sums read the ledger.
 func (e *Engine) checkCaps(name, run string) (capCheck, error) {
 	for _, c := range e.capsSet() {
 		if stop, err := underCap(name, c.cap, run, c.sum); err != nil || stop != nil {
@@ -170,7 +170,7 @@ func overCap(name string, c capLimit, spent agent.Spend) (*CapStop, error) {
 		"Raise %s (or %s) and restart beehave, or set it to 0 for no cap", name, c.subject, dollars(c.limit), c.spenders, dollars(spent.Cost), c.key, c.env)}, nil
 }
 
-// treeSpend sums the recorded cost of the root run of the item tree and of every run below it. It reads the step records and the stream of failed agent runs of each run, so a resume keeps the sum.
+// treeSpend sums the cost of every agent execution of the item tree of the run id. It reads the ledger, which the retention of the runs never touches.
 func (e *Engine) treeSpend(id string) (agent.Spend, error) {
 	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
 	root, err := rootRun(e.store(), id)
@@ -178,7 +178,9 @@ func (e *Engine) treeSpend(id string) (agent.Spend, error) {
 		return agent.Spend{}, err
 	}
 
-	return runAndBelowSpend(e.store(), root)
+	sum, err := e.ledger.TreeSpend(e.ctx, root)
+
+	return ledgerSpend(sum), err
 }
 
 // treeRoot is the root run of the item tree of the run of ctx.
@@ -240,26 +242,16 @@ func walkBelow(ctx storeView, id string, load dbos.GetWorkflowStepsOption, fold 
 
 // runSpend sums the cost that the step records and the failed runs of one run hold, as the view of the steps reads it.
 func runSpend(ctx storeView, id string) (agent.Spend, error) {
-	return runSpendSince(ctx, id, time.Time{})
-}
-
-// runSpendSince is runSpend for the lines that count in the window that starts at since. A zero since counts every line.
-func runSpendSince(ctx storeView, id string, since time.Time) (agent.Spend, error) {
 	records, err := dbos.GetWorkflowSteps(ctx.flow, id, dbos.WithStepsLoadOutput(true))
 	if err != nil {
 		return agent.Spend{}, fmt.Errorf("read the steps of %s: %w", id, err)
 	}
 
-	return recordsSpendSince(ctx, id, records, since)
+	return recordsSpend(ctx, id, records)
 }
 
 // recordsSpend sums the cost of the step records of a run and of the failed runs that the run holds.
 func recordsSpend(ctx storeView, id string, records []dbos.StepInfo) (agent.Spend, error) {
-	return recordsSpendSince(ctx, id, records, time.Time{})
-}
-
-// recordsSpendSince is recordsSpend for the lines that count in the window that starts at since. A zero since counts every line.
-func recordsSpendSince(ctx storeView, id string, records []dbos.StepInfo, since time.Time) (agent.Spend, error) {
 	lines, err := runLines(ctx, id, records, "", false, time.Time{})
 	if err != nil {
 		return agent.Spend{}, err
@@ -268,63 +260,21 @@ func recordsSpendSince(ctx storeView, id string, records []dbos.StepInfo, since 
 	var spent agent.Spend
 
 	for _, line := range lines {
-		if inWindow(line, since) {
-			spent = spent.Plus(line.Spend)
-		}
+		spent = spent.Plus(line.Spend)
 	}
 
 	return spent, nil
-}
-
-// inWindow reports whether the cost of a line counts in the window that starts at since: the line ended at since or later. A line that has not ended counts from its start,
-// and a line with no time at all counts, so a cost that cannot be placed in time never drops out of the cap.
-func inWindow(line StepLine, since time.Time) bool {
-	at := cmp.Or(line.Ended, line.Started)
-
-	return at.IsZero() || !at.Before(since)
 }
 
 // weekWindow is the span that the week cap counts back from the time of the check.
 const weekWindow = 7 * 24 * time.Hour
 
-// windowRuns lists the item runs that can hold a cost that ended at or after since: the runs that finished after since, and the runs that have not finished.
-// A run that finished before since holds no such cost, so the sum never reads it.
-func windowRuns(ctx storeView, since time.Time) ([]dbos.WorkflowStatus, error) {
-	finished, err := itemRuns(ctx, dbos.WithFilterCompletedAfter(since), dbos.WithFilterStatus(dbos.WorkflowStatusSuccess, dbos.WorkflowStatusError, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded))
-	if err != nil {
-		return nil, err
-	}
-
-	open, err := itemRuns(ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusDelayed, dbos.WorkflowStatusSuspended))
-	if err != nil {
-		return nil, err
-	}
-
-	return append(finished, open...), nil
-}
-
-// weekSpend sums the recorded cost of every item run of the store that ended inside the last week. The run id is not read: the week cap is one sum for all items.
+// weekSpend sums the cost of every agent execution that started inside the last week, for all items. It reads the ledger, which the retention of the runs never touches.
+// The run id is not read: the week cap is one sum for all items.
 func (e *Engine) weekSpend(string) (agent.Spend, error) {
-	since := e.deps.Clock.wall().Add(-weekWindow)
+	sum, err := e.ledger.SpendSince(e.ctx, e.deps.Clock.wall().Add(-weekWindow))
 
-	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
-	runs, err := windowRuns(e.store(), since)
-	if err != nil {
-		return agent.Spend{}, err
-	}
-
-	var spent agent.Spend
-
-	for _, run := range runs {
-		own, err := runSpendSince(e.store(), run.ID, since)
-		if err != nil {
-			return agent.Spend{}, err
-		}
-
-		spent = spent.Plus(own)
-	}
-
-	return spent, nil
+	return ledgerSpend(sum), err
 }
 
 // itemRuns lists the item runs that match the filters. With no filter it lists every item run of the store.

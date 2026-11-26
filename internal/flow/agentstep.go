@@ -560,7 +560,7 @@ func (s *script) attempts(name string, a agentArgs, in PhaseInput) (stepResult, 
 // A run that a provider limit stopped is followed by a wait for the reset and a rerun inside the same try: a limit spends no output try and no lane.
 // Each phase looks at the caps first, because the limited run can have spent money before the limit stopped it.
 func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (stepResult, error) {
-	in.Severity, in.Call = string(s.severity), name
+	in.Severity, in.Call, in.Rerun = string(s.severity), name, try > 1
 
 	if err := s.clearOutput(name, a, in, try); err != nil {
 		return stepResult{}, err
@@ -601,6 +601,13 @@ func (s *script) runPastLimits(name string, base PhaseInput, try int) (PhaseOutp
 // and the run cap count it after a resume too. The write and its step record are one transaction, so a replay appends nothing.
 // The error of the failed run stays the error of the step, so a failure to write the cost is not reported over it.
 func (s *script) runOnce(name string, in PhaseInput) (PhaseOutput, error) {
+	tree, err := rootRun(s.e.store(), workflowID(s.ctx))
+	if err != nil {
+		return PhaseOutput{}, fmt.Errorf("find the item tree of item %s: %w", s.in.Item, err)
+	}
+
+	in.Tree = tree
+
 	ended, err := s.e.queuePhase(s.ctx, in)
 	if err == nil || !s.running() {
 		return ended, err

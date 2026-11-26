@@ -3,7 +3,6 @@ package flow
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
@@ -14,10 +13,11 @@ import (
 // callKeyword is the keyword of earlier_calls that names the agent calls to count.
 const callKeyword = "call"
 
-// earlierCalls counts the agent calls named `call` in the other runs of the item, so a cap on the calls for one pull request holds over every run of the item.
-// The run records of the engine are the store: the call is a recorded step, so a replay reads the count of the first start and a resume keeps it.
-// The call counts every call that started, finished or not, because a lane that started has used a round. A lane that still waits for a usage cap before it renders its prompt has not started and is not in the count.
-// The runs count whatever their state or attempt number: a canceled, failed, live or newer run counts its lanes as spent. This errs on the safe side, because the cap can be used up early and never exceeded.
+// earlierCalls counts the agent calls named `call` that the item started before this run, so a cap on the calls for one pull request holds over every run of the item.
+// The ledger is the store, not the run records, because the retention deletes the run records: the call is a recorded step, so a replay reads the count of the first start and a resume keeps it.
+// The call counts every call that started, finished or not, because a lane that started has used a round. A lane that still waits for a usage cap before it starts its agent is not in the count.
+// A new try of a call and the rerun after a provider limit are part of one lane.
+// The count holds the calls of every run of the item, whatever its state or attempt number, so the cap can be used up early and never exceeded.
 // The calls of the run itself are not in the count.
 func (s *script) earlierCalls(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var call, label string
@@ -26,8 +26,8 @@ func (s *script) earlierCalls(b *starlark.Builtin, args starlark.Tuple, kwargs [
 		return nil, err
 	}
 
-	return s.durable("earlier_calls", label, func(context.Context, string) (stepResult, error) {
-		count, err := s.countEarlier(call)
+	return s.durable("earlier_calls", label, func(ctx context.Context, _ string) (stepResult, error) {
+		count, err := s.countEarlier(ctx, call)
 
 		return stepResult{Outputs: earlierOutputs(count)}, err
 	})
@@ -35,43 +35,40 @@ func (s *script) earlierCalls(b *starlark.Builtin, args starlark.Tuple, kwargs [
 
 func earlierOutputs(count int) map[string]any { return map[string]any{"count": count} }
 
-// countEarlier adds up the agent calls named call in every other run of the item.
-func (s *script) countEarlier(call string) (int, error) {
-	ids, err := s.earlierRuns(s.in.Item)
+// countEarlier counts the agent calls named call that the item started and that no step of this run recorded.
+func (s *script) countEarlier(ctx context.Context, call string) (int, error) {
+	return s.e.countEarlierOf(ctx, workflowID(s.ctx), s.in.Item, call)
+}
+
+// countEarlierOf counts the agent calls named call that item started and that no step of the run recorded.
+func (e *Engine) countEarlierOf(ctx context.Context, run, item, call string) (int, error) {
+	own, err := e.executionsOf(run)
 	if err != nil {
 		return 0, err
 	}
 
-	return callsInRuns(s.e.ctx, ids, call)
+	return e.ledger.CountCalls(ctx, item, "agent:"+call+"#", own)
 }
 
-// callsInRuns adds up the agent calls named call in the runs with the given ids.
-func callsInRuns(ctx dbos.Context, ids []string, call string) (int, error) {
-	total := 0
-
-	for _, id := range ids {
-		steps, err := dbos.GetWorkflowSteps(ctx, id)
-		if err != nil {
-			return 0, fmt.Errorf("read the steps of %s: %w", id, err)
-		}
-
-		total += callsNamed(steps, call)
+// executionsOf lists the ids of the agent executions that the steps of the run recorded. A caller outside a run has an empty run id and gets none.
+// The id comes from the recorded output of the phase, never from a run id: a run id repeats after the retention deleted the run.
+func (e *Engine) executionsOf(run string) ([]string, error) {
+	if run == "" {
+		return nil, nil
 	}
 
-	return total, nil
-}
+	steps, err := dbos.GetWorkflowSteps(e.ctx, run, dbos.WithStepsLoadOutput(true))
+	if err != nil {
+		return nil, fmt.Errorf("read the steps of %s: %w", run, err)
+	}
 
-// callsNamed counts the distinct agent calls named call in a list of steps. A call leaves a record for the call and records for its sub-steps (`agent:<call>#<n>/...`).
-func callsNamed(steps []dbos.StepInfo, call string) int {
-	prefix := "agent:" + call + "#"
-	seen := map[string]bool{}
+	var own []string
 
 	for _, step := range steps {
-		if strings.HasPrefix(step.StepName, prefix) {
-			base, _, _ := strings.Cut(step.StepName, "/")
-			seen[base] = true
+		if step.ChildWorkflowID != "" {
+			decodeThen(step.Output, func(phase PhaseOutput) { own = append(own, phase.Execution) })
 		}
 	}
 
-	return len(seen)
+	return own, nil
 }

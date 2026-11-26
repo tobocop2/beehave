@@ -400,6 +400,9 @@ func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
 	_, err = engine.queuePhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Login: testLogin})
 	require.ErrorContains(t, err, "queue the agent step of item 12")
 
+	_, err = (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).runOnce("a", PhaseInput{})
+	require.ErrorContains(t, err, "find the item tree of item 12")
+
 	_, err = engine.runOpen(testItem)
 	require.ErrorContains(t, err, "read run 12")
 

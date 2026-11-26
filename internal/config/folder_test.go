@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -667,26 +668,14 @@ func TestLoadFolder_AgentsMaxWeekBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadV
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD=lots is not a number")
 }
 
-func TestLoadFolder_AWeekCapWithARetentionUnderSevenDaysIsRefusedAndNamesBothKeys(t *testing.T) {
+func TestLoadFolder_AWeekCapWithARetentionUnderSevenDaysIsAcceptedBecauseTheWeekSumReadsTheLedger(t *testing.T) {
 	t.Parallel()
 
-	for _, days := range []string{"1", "6"} {
-		_, problems := loadRunnersText(t, "agents(max_week_budget_usd = 100, retention_days = "+days+")\n")
-		require.Len(t, problems, 1, "retention_days %s", days)
-		require.ErrorContains(t, problems[0], "agents.retention_days is "+days)
-		require.ErrorContains(t, problems[0], "agents.max_week_budget_usd")
-		require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_RETENTION_DAYS")
-	}
-
-	for name, text := range map[string]string{
-		"seven days":         "agents(max_week_budget_usd = 100, retention_days = 7)\n",
-		"keep for ever":      "agents(max_week_budget_usd = 100, retention_days = 0)\n",
-		"the default":        "agents(max_week_budget_usd = 100)\n",
-		"no week cap":        "agents(retention_days = 3)\n",
-		"a week cap of zero": "agents(max_week_budget_usd = 0, retention_days = 3)\n",
-	} {
-		_, problems := loadRunnersText(t, text)
-		require.Empty(t, problems, name)
+	for _, days := range []int{1, 6, 7, 0} {
+		cfg, problems := loadRunnersText(t, "agents(max_week_budget_usd = 100, retention_days = "+strconv.Itoa(days)+")\n")
+		require.Empty(t, problems, "retention_days %d", days)
+		require.Equal(t, days, cfg.Agents.RetentionDays)
+		require.InDelta(t, 100.0, cfg.Agents.MaxWeekBudgetUSD, 0)
 	}
 }
 

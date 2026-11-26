@@ -31,7 +31,7 @@ pool(
 # the cap, so the last step can pass it by its own cost (set max_budget_usd to limit that). A child workflow of the run starts its own sum.
 # max_tree_budget_usd caps the same sum for the root run and every run it spawns. A spawned run uses the cap of its root. A step that a cap stops waits:
 # raise the cap (or set it to 0) and restart beehave to resume it.
-# max_week_budget_usd caps the dollars that the agent steps of all items spend in any seven days. A step that ended exactly seven days ago counts. beehave refuses a retention_days from 1 to 6 with this cap: a deleted run is not in the sum. Two steps that start at once can both start under the cap.
+# max_week_budget_usd caps the dollars that the agent steps of all items spend in any seven days. A step that started exactly seven days ago counts. The sum reads the ledger, so retention_days does not change it. Two steps that start at once can both start under the cap.
 # A step can set a lower cap for itself with max_budget_usd in its agent() call.
 # context_window_tokens is the context window of the agent model in tokens (default 200000; 0 means unknown). The max_context_percent keyword of an
 # agent() call stops the step with the output stop "context" when the context of the run reaches that share of the window.

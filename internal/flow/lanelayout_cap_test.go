@@ -89,7 +89,7 @@ func spentCandidates(t *testing.T, engine *Engine) int {
 	spent := 0
 
 	for _, call := range []string{"fix-scoped-1", "scoped-review-implement"} {
-		count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(call)
+		count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), call)
 		require.NoError(t, err)
 
 		spent += count
@@ -158,7 +158,7 @@ func TestLaneLayout_AResumedRunKeepsTheCountOfEarlierFixLanesItStartedWith(t *te
 	require.NoError(t, err)
 	waitOn(t, condition(func() bool { return len(h.agents.seen()) >= 2 }))
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 	require.NoError(t, err)
 	require.Equal(t, 2, count, "both runs started a fix lane, so a live read now gives two")
 
@@ -231,11 +231,73 @@ func TestLaneLayout_AStoreThatIsShutDownGivesNoCountOfEarlierCalls(t *testing.T)
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
-	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).countEarlier("fix")
-	require.ErrorContains(t, err, "list the earlier runs of item 12")
+	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
+	require.ErrorContains(t, err, "count the agent calls of item 12 in the ledger")
 
-	_, err = callsInRuns(engine.ctx, []string{"item-12-r1"}, "fix")
+	_, err = engine.executionsOf("item-12-r1")
 	require.ErrorContains(t, err, "read the steps of item-12-r1")
+}
+
+// The executions of the own run come from the recorded output of its phases. The count leaves them out, and counts the executions of every other run.
+func TestLaneLayout_TheCountOfEarlierCallsLeavesOutTheExecutionsThatTheStepsOfTheRunRecorded(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, "def main(item):\n    agent(name = \"fix\", prompt = \"prompts/work.md\", model = \"m\")\n")
+	engine := h.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	own, err := engine.executionsOf(runID(testItem, 1))
+	require.NoError(t, err)
+	require.Len(t, own, 1, "the run made one agent execution")
+
+	none, err := engine.executionsOf("")
+	require.NoError(t, err)
+	assert.Empty(t, none, "a caller outside a run has no own execution")
+
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "a script outside the run counts the execution of the run as earlier")
+
+	skipped, err := engine.ledger.CountCalls(engine.ctx, testItem, "agent:fix#", own)
+	require.NoError(t, err)
+	assert.Zero(t, skipped, "the execution that the steps of the run recorded is left out")
+}
+
+func TestLaneLayout_ACountWhoseReadOfTheStepsOfTheRunFailsReturnsTheErrorAndNoCount(t *testing.T) {
+	t.Parallel()
+
+	engine := newAgentRig(t).h.opened(t)
+	failing := &Engine{ctx: &failingRead{Context: engine.ctx, at: 1}, ledger: engine.ledger}
+
+	count, err := failing.countEarlierOf(t.Context(), runID(testItem, 1), testItem, "fix")
+
+	require.ErrorContains(t, err, "read the steps of "+runID(testItem, 1))
+	assert.Zero(t, count)
+}
+
+// afterFlow starts a fix lane, then counts the earlier fix lanes, and starts a late agent only when the count is zero.
+const afterFlow = `def main(item):
+    agent(name = "fix", prompt = "prompts/work.md", model = "m")
+    n = earlier_calls(call = "fix", name = "spent").count
+    if n == 0:
+        agent(name = "late", prompt = "prompts/work.md", model = "late-model")
+`
+
+func TestLaneLayout_AnEarlierCallsAfterTheFixLaneOfTheSameRunDoesNotCountThatLane(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, afterFlow)
+	engine := h.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	assert.True(t, slices.ContainsFunc(h.agents.seen(), func(r AgentRequest) bool { return r.Model == "late-model" }),
+		"the fix lane of this run is not an earlier call, so the count is zero and the late agent starts")
 }
 
 // A cap that the first run did not use up is what the second run gets: a first run that ended early after one candidate leaves one candidate fewer.

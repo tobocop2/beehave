@@ -115,7 +115,7 @@ func TestRateLimit_AFixLaneThatHitsARateLimitWaitsThenPassesAndCountsOneLane(t *
 	require.NoError(t, err)
 	assert.Len(t, h.agents.seen(), 2, "the limited run, then the rerun after the reset")
 
-	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier("fix")
+	count, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).countEarlier(t.Context(), "fix")
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "the limited run and its rerun are one fix lane")
 }
