@@ -14,7 +14,7 @@ import (
 func TestNewLife_TheMergeRequestCarriesTheAlertKeyAndTheCIFilesOfTheForge(t *testing.T) {
 	t.Parallel()
 
-	project := config.Project{Project: model.Project{Name: "p", Forge: forgegithub.Name}, SecurityAlerts: true}
+	project := config.Project{Project: model.Project{Name: "p", Forge: forgegithub.Name, SecurityAlerts: true}}
 	life := newLife(config.Config{Projects: map[string]config.Project{"p": project}}, newAdapters(nil, nil, nil), worktrees{})
 
 	request := life.pulls.request(project, 7, gated, flow.MergeSettings{}, nil)
