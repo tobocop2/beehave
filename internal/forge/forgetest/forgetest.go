@@ -540,6 +540,8 @@ func readCalls(target forge.Forge) []call {
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
 		{"PullRead", func(ctx context.Context) error { _, err := target.PullRead(ctx, Seven); return err }},
 		{"OpenPulls", func(ctx context.Context) error { _, err := target.OpenPulls(ctx, SevenBase); return err }},
+		{"BranchPulls", func(ctx context.Context) error { _, err := target.BranchPulls(ctx, SevenBranch); return err }},
+		{"SearchPulls", func(ctx context.Context) error { _, err := target.SearchPulls(ctx, "#7"); return err }},
 		{"PRList", func(ctx context.Context) error {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err

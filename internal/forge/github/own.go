@@ -89,7 +89,7 @@ func (f *Forge) OwnPulls(ctx context.Context, author string) ([]model.OwnPull, e
 // searchOwn runs the batched query with gh api graphql --paginate --slurp, which follows the cursor, and returns every pull request node.
 // A count of the first page above ownLimit is a refusal, and so is a node count that differs from the count the forge reports.
 func (f *Forge) searchOwn(ctx context.Context, author string) ([]ownNode, error) {
-	done := f.run.Run(ctx, []string{argAPI, "graphql", argPaginate, "--slurp", flagRaw, "q=repo:" + f.repo + " is:pr is:open author:" + author, flagRaw, "query=" + ownQuery})
+	done := f.run.Run(ctx, []string{argAPI, argGraphQL, argPaginate, argSlurp, flagRaw, "q=repo:" + f.repo + " is:pr is:open author:" + author, flagRaw, "query=" + ownQuery})
 	if done.ExitCode != 0 {
 		return nil, forge.Refuse("%s", ownBase)
 	}

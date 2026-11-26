@@ -23,6 +23,8 @@ const (
 	argBody        = "--body"
 	argJSON        = "--json"
 	argPaginate    = "--paginate"
+	argSlurp       = "--slurp"
+	argGraphQL     = "graphql"
 	argJQ          = "--jq"
 	cmdAPI         = "gh api"
 	cmdGraphQL     = "gh api graphql"
@@ -65,7 +67,7 @@ func NewExec(repo string) (*Forge, error) {
 
 // readPages reads every page of a paginated REST list as one list.
 func readPages[T any](ctx context.Context, f *Forge, path string) ([]T, error) {
-	done := f.run.Run(ctx, []string{argAPI, argPaginate, "--slurp", "repos/" + f.repo + "/" + path})
+	done := f.run.Run(ctx, []string{argAPI, argPaginate, argSlurp, "repos/" + f.repo + "/" + path})
 	if done.ExitCode != 0 {
 		return nil, errNonZero
 	}

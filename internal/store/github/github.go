@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	argAPI      = "api"
 	argIssue    = "issue"
 	argRepo     = "--repo"
 	argJSON     = "--json"
@@ -169,7 +170,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 func (s *Store) openIssues(ctx context.Context, label string) ([]ghIssue, error) {
 	owner, name, _ := model.SplitRepo(s.repo)
 
-	args := []string{"api", "graphql", "--paginate", "--slurp", "-f", "o=" + owner, "-f", "n=" + name}
+	args := []string{argAPI, "graphql", "--paginate", "--slurp", "-f", "o=" + owner, "-f", "n=" + name}
 	if label != "" {
 		args = append(args, "-f", "l[]="+label)
 	}

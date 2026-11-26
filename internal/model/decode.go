@@ -106,15 +106,9 @@ func DecodeGraphPages[T any](command, text string) ([]T, error) {
 		return nil, err
 	}
 
-	rows, total := []T{}, 0
-
-	for _, page := range pages {
-		list := page.list()
-		if list == nil {
-			return nil, &DecodeError{Command: command, Cause: errNoGraphList}
-		}
-
-		rows, total = append(rows, list.Nodes...), list.TotalCount
+	rows, total, ok := joinPages(pages)
+	if !ok {
+		return nil, &DecodeError{Command: command, Cause: errNoGraphList}
 	}
 
 	if len(rows) < total {
@@ -122,6 +116,22 @@ func DecodeGraphPages[T any](command, text string) ([]T, error) {
 	}
 
 	return rows, nil
+}
+
+// joinPages joins the rows of the pages and returns the total of the last page. It is false when a page holds no list.
+func joinPages[T any](pages []graphPage[T]) ([]T, int, bool) {
+	rows, total := []T{}, 0
+
+	for _, page := range pages {
+		list := page.list()
+		if list == nil {
+			return nil, 0, false
+		}
+
+		rows, total = append(rows, list.Nodes...), list.TotalCount
+	}
+
+	return rows, total, true
 }
 
 // Deref returns the text, or empty for nil.

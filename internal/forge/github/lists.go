@@ -53,7 +53,7 @@ func (f *Forge) ofRepository(vars ...string) []string {
 // readList runs a paged GraphQL query with the variables, each written name=value, and returns every row of every page.
 // A failed call, an answer of another shape and a cut list are refusals that start with base.
 func readList[T any](ctx context.Context, f *Forge, base, query string, vars []string) ([]T, error) {
-	args := []string{argAPI, "graphql", argPaginate, "--slurp"}
+	args := []string{argAPI, argGraphQL, argPaginate, argSlurp}
 	for _, one := range vars {
 		args = append(args, flagRaw, one)
 	}
