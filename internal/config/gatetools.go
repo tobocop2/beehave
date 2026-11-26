@@ -8,9 +8,9 @@ import (
 	shell "mvdan.cc/sh/v3/syntax"
 )
 
-// effectiveGateProgram is the sorted owner gate_program joined with the files that the gate tools read. A project with no base has no gate program.
-func effectiveGateProgram(raw rawProject, hasBase bool) []string {
-	if !hasBase {
+// effectiveGateProgram is the sorted owner gate_program joined with the files that the gate tools read. An empty owner list stays empty.
+func effectiveGateProgram(raw rawProject) []string {
+	if len(raw.GateProgram) == 0 {
 		return nil
 	}
 
