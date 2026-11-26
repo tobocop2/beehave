@@ -222,15 +222,17 @@ The gate program is the set of repository paths that hold the program of the gat
 
 The config computes the list once, when it loads the project. When the owner key `gate_program` is not empty, the list is that key joined with a default list, sorted, with each name once. The owner list only adds. An empty or unset `gate_program` gives an empty list, and the gate runs as before.
 
-The default comes from the programs of the gate. The config parses each command of `gate`, `gate_steps` and `test_command` with the shell parser, and takes the base name of the first word of each simple command, so `a && b`, `a; b` and `a | b` each name two programs. A word that is not plain text, such as `$MAKE`, names no program, and a command that does not parse names none. Each program adds the files at the root that it reads when no option names a file:
+The default comes from the programs of the gate. The config reads each command of `gate`, `gate_steps` and `test_command` with the shell scanner that `beehave check` uses. The scanner takes the base name of the command word of each command, so `a && b`, `a; b` and `a | b` each name two programs. It reads past assignments, wrappers such as `timeout`, `env`, `nice`, `exec`, `command` and `sudo`, quotes, and shell strings such as `sh -c 'make check'`. If a command word cannot be read, the command adds the files of every program in the table. Examples are `$MAKE`, a command substitution, and a line that does not parse. Each program adds the files at the root that it reads when no option names a file:
 
 | Program | Files | Source |
 |---|---|---|
 | `make`, `gmake` | `GNUmakefile`, `makefile`, `Makefile` | the GNU make manual, "What Name to Give Your Makefile" |
 | `golangci-lint` | `.golangci.` with each of `json`, `toml`, `yaml`, `yml`, `properties`, `props`, `prop`, `hcl`, `tfvars`, `dotenv`, `env`, `ini` | golangci-lint v2.15.0 searches for the name `.golangci`, and viper v1.12.0 tries each extension of its supported list |
-| the secret scan of the engine, in every project with a gate program | `.gitleaks.toml`, `.gitleaksignore` | gitleaks 8.30.1 reads both from the path that it scans |
+| the secret scan of the engine, in every project with a gate program | `.gitleaks.json`, `.gitleaks.toml`, `.gitleaksignore` | gitleaks 8.30.1 reads `.gitleaksignore` from the path that it scans. When `.gitleaks.toml` is there, gitleaks reads the first `.gitleaks.<ext>` in the extension order of viper v1.19.0, and `json` is the only extension before `toml` |
 
-The default has limits. A program that another program starts, such as `golangci-lint` inside `make check`, is not seen: list its files in `gate_program`. For beehave, that is `.golangci.yml` and `.go-test-coverage.yml`. An option that names a file, such as `make -f x` or `golangci-lint -c x`, adds no name: list the file. The default holds no file outside the root, no file above the repository or in the home folder, and no `go.work`.
+The config refuses a name of the default that a `test_paths` glob matches, as it refuses an owner entry.
+
+The default has limits. A program that another program starts, such as `golangci-lint` inside `make check`, is not seen: list its files in `gate_program`. For beehave, the key lists `scripts/`, `.go-test-coverage.yml` and the `.golangci.` names, such as `.golangci.yml` and `.golangci.json`, because `golangci-lint` runs inside `make check`. An option that names a file, such as `make -f x` or `golangci-lint -c x`, adds no name: list the file. The default holds no file outside the root, no file above the repository or in the home folder, and no `go.work`.
 
 A gate on a build host with a gate program runs these words, in this order, in a new clone of the head. The clone holds no untracked file, and the job runs no `git submodule update`.
 

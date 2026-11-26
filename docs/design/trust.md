@@ -227,7 +227,7 @@ The review step posts `beehave/review` the same way, with the run id in the desc
 
 A head can weaken the program behind the gate: `make check` and its scripts. The owner is the author of the pull requests and cannot approve them. So a code-owner rule would block every change to those files, and beehave adds no `CODEOWNERS` file.
 
-Instead, the project key `gate_program` lists repository paths, and the config adds the files that the gate tools read to a list that is not empty. For beehave, the key lists `scripts/` and `.golangci.yml`, and the default adds `Makefile`, its shadow files and the gitleaks files. The host gate clones the head, refuses a head that changed a listed path, removes the listed paths and restores them from the base commit, and compares them with the base after the last step. The gate runs the program of the base, so a head that weakens `make check` is gated by the `make check` of the base. See `gate.md`.
+Instead, the project key `gate_program` lists repository paths, and the config adds the files that the gate tools read to a list that is not empty. For beehave, the key lists `scripts/`, `.go-test-coverage.yml` and the `.golangci.` names, such as `.golangci.yml` and `.golangci.json`, and the default adds `Makefile`, its shadow files and the gitleaks files. The host gate clones the head, refuses a head that changed a listed path, removes the listed paths and restores them from the base commit, and compares them with the base after the last step. The gate runs the program of the base, so a head that weakens `make check` is gated by the `make check` of the base. See `gate.md`.
 
 A head whose code needs a new gate program fails the base gate. The owner then lands it by hand. The CI lock stops a head from rewriting the workflow.
 
