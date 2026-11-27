@@ -128,7 +128,7 @@ func TestCancel_ADoneRunAndACancelledRunWithNothingOpenAreStillRefused(t *testin
 
 	err = failedClient.Cancel(testItem)
 	require.ErrorIs(t, err, ErrWrongState)
-	require.ErrorContains(t, err, testRun+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehave status prints
+	require.ErrorContains(t, err, testRun+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehest status prints
 }
 
 func TestCancel_ACancelOfAFailedRunKeepsTheStepsItRecorded(t *testing.T) {
@@ -153,7 +153,7 @@ func TestCancel_ARunOutOfRecoveryAttemptsIsCancelled(t *testing.T) {
 
 	harness, _, other := failedOnOtherBuild(t)
 	storeExec(t, harness, `UPDATE workflow_status SET status = '`+string(dbos.WorkflowStatusMaxRecoveryAttemptsExceeded)+`' WHERE workflow_uuid = '`+testRun+`'`)
-	require.Equal(t, runFailed, stateOfRun(t, other, testRun), "beehave status prints a run out of recovery attempts as failed")
+	require.Equal(t, runFailed, stateOfRun(t, other, testRun), "beehest status prints a run out of recovery attempts as failed")
 
 	require.NoError(t, other.Cancel(testItem))
 	assert.Equal(t, dbos.WorkflowStatusCancelled, statusIn(t, harness, testRun))

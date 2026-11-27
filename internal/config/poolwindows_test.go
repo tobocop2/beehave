@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // twoAgentRegistry has two agents that share the window `daily` with one default, and an agent with no window.
@@ -60,7 +60,7 @@ func TestPoolWindows_TwoDefaultsForOneWindowNameRefuseTheRegistryWithNoRunnersFi
 func TestPoolWindows_TheEnvironmentCapOfASharedWindowReachesEveryAgentOfIt(t *testing.T) {
 	t.Parallel()
 
-	cfg, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool(daily = 10)\n", map[string]string{"BEEHAVE_POOL_DAILY_MAX": "33"})
+	cfg, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool(daily = 10)\n", map[string]string{"BEEHEST_POOL_DAILY_MAX": "33"})
 	require.Empty(t, problems)
 	require.InDelta(t, 33.0, cfg.Pools["alpha"]["daily"], 0)
 	require.InDelta(t, 33.0, cfg.Pools["beta"]["daily"], 0)
@@ -70,10 +70,10 @@ func TestPoolWindows_TheEnvironmentCapOfASharedWindowReachesEveryAgentOfIt(t *te
 func TestPoolWindows_TwoBadEnvironmentCapsAreReportedInTheOrderOfTheWindowNames(t *testing.T) {
 	t.Parallel()
 
-	env := map[string]string{"BEEHAVE_POOL_WEEKLY_MAX": "lots", "BEEHAVE_POOL_DAILY_MAX": "many"}
+	env := map[string]string{"BEEHEST_POOL_WEEKLY_MAX": "lots", "BEEHEST_POOL_DAILY_MAX": "many"}
 	_, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool()\n", env)
 	require.Len(t, problems, 1)
-	require.Regexp(t, `BEEHAVE_POOL_DAILY_MAX=many is not a number[\s\S]*BEEHAVE_POOL_WEEKLY_MAX=lots is not a number`, problems[0].Error())
+	require.Regexp(t, `BEEHEST_POOL_DAILY_MAX=many is not a number[\s\S]*BEEHEST_POOL_WEEKLY_MAX=lots is not a number`, problems[0].Error())
 }
 
 func TestPoolWindows_APoolKeyWhenNoAgentDeclaresAWindowSaysSo(t *testing.T) {
@@ -90,7 +90,7 @@ func TestPoolWindows_APoolKeyWhenNoAgentDeclaresAWindowSaysSo(t *testing.T) {
 func TestPoolWindows_AnEnvironmentCapThatIsNotANumberIsRefusedAndNamesTheVariable(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool()\n", map[string]string{"BEEHAVE_POOL_WEEKLY_MAX": "lots"})
+	_, problems := loadWithRegistry(t, twoAgentRegistry(80), "pool()\n", map[string]string{"BEEHEST_POOL_WEEKLY_MAX": "lots"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_POOL_WEEKLY_MAX=lots is not a number")
+	require.ErrorContains(t, problems[0], "BEEHEST_POOL_WEEKLY_MAX=lots is not a number")
 }

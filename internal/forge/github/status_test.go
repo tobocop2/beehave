@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/forge/forgetest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/forge/forgetest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 func TestStatuses_ConformsToTheStatusesRules(t *testing.T) {
@@ -38,9 +38,9 @@ func TestPostStatus_PostsTheContextTheStateAndTheDescriptionToTheCommit(t *testi
 
 	f, run := fixed(t, "")
 
-	err := f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehave/gate", State: model.StatusSuccess, Description: "passed"})
+	err := f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehest/gate", State: model.StatusSuccess, Description: "passed"})
 	require.NoError(t, err)
-	assert.Equal(t, [][]string{{"api", "-X", "POST", "repos/" + repo + "/statuses/" + tip, "-f", "state=success", "-f", "context=beehave/gate", "-f", "description=passed"}}, run.Calls)
+	assert.Equal(t, [][]string{{"api", "-X", "POST", "repos/" + repo + "/statuses/" + tip, "-f", "state=success", "-f", "context=beehest/gate", "-f", "description=passed"}}, run.Calls)
 }
 
 func TestPostStatus_AnEmptyDescriptionSendsNoDescriptionField(t *testing.T) {
@@ -48,14 +48,14 @@ func TestPostStatus_AnEmptyDescriptionSendsNoDescriptionField(t *testing.T) {
 
 	f, run := fixed(t, "")
 
-	require.NoError(t, f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehave/review", State: model.StatusPending}))
-	assert.Equal(t, [][]string{{"api", "-X", "POST", "repos/" + repo + "/statuses/" + tip, "-f", "state=pending", "-f", "context=beehave/review"}}, run.Calls)
+	require.NoError(t, f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehest/review", State: model.StatusPending}))
+	assert.Equal(t, [][]string{{"api", "-X", "POST", "repos/" + repo + "/statuses/" + tip, "-f", "state=pending", "-f", "context=beehest/review"}}, run.Calls)
 }
 
 func TestPostStatus_RefusesAStatusThatStandsForNoCommitBeforeGhRuns(t *testing.T) {
 	t.Parallel()
 
-	good := model.CommitStatus{SHA: tip, Context: "beehave/gate", State: model.StatusSuccess}
+	good := model.CommitStatus{SHA: tip, Context: "beehest/gate", State: model.StatusSuccess}
 	short, noContext, badState, long := good, good, good, good
 	short.SHA = tip[:7]
 	noContext.Context = ""
@@ -77,9 +77,9 @@ func TestPostStatus_AFailedPostIsARefusalThatKeepsTheMessageOfTheForge(t *testin
 
 	f, _ := failing(t, "gh: Resource not accessible (HTTP 403)")
 
-	err := f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehave/gate", State: model.StatusSuccess})
+	err := f.PostStatus(context.Background(), model.CommitStatus{SHA: tip, Context: "beehest/gate", State: model.StatusSuccess})
 	require.ErrorAs(t, err, new(*forge.Error))
-	require.ErrorContains(t, err, "cannot post the status beehave/gate on commit "+tip)
+	require.ErrorContains(t, err, "cannot post the status beehest/gate on commit "+tip)
 	assert.ErrorContains(t, err, "Resource not accessible (HTTP 403)")
 }
 

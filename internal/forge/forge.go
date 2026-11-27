@@ -4,7 +4,7 @@ package forge
 import (
 	"context"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Forge is a code host: pull requests, reviews, threads and checks. GitHub implements it.
@@ -40,7 +40,7 @@ type Syncer interface {
 	MergeBranch(ctx context.Context, base, head string) (string, error)
 }
 
-// Statuses is the optional side of a forge that posts commit statuses and reads what a branch requires. A forge that lacks it cannot post beehave/review or beehave/gate.
+// Statuses is the optional side of a forge that posts commit statuses and reads what a branch requires. A forge that lacks it cannot post beehest/review or beehest/gate.
 // PostStatus sets one status on the commit that status.SHA names, a full 40-character commit id. The same status again changes nothing, and a later state replaces an earlier one.
 // Protection reads the pull request rule and the required status contexts that apply to a branch. A failed read is an error, never an empty protection.
 type Statuses interface {

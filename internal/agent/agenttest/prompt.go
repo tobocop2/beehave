@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 const (

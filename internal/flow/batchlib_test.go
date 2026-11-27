@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // gitWord is the program of the git commands that the batch library runs.
@@ -63,7 +63,7 @@ func (r *batchRig) runGit() {
 }
 
 // batchIdentity is the word after `git -c` in each git command of the batch library: the author of its union commits.
-const batchIdentity = "user.name=beehave"
+const batchIdentity = "user.name=beehest"
 
 // libraryGit runs a git command of the batch library in the repository of the rig, as the worktree of the round item does. It answers no other command.
 func (r *batchRig) libraryGit(request CommandRequest) (CommandOutput, bool) {
@@ -84,7 +84,7 @@ func (r *batchRig) libCall(items, extra string) string {
 		prs = append(prs, `struct(item = "`+item+`", head = "`+r.heads[item]+`", closes = [])`)
 	}
 
-	return `load("@beehave//batch.star", "batch_merge")
+	return `load("@beehest//batch.star", "batch_merge")
 
 def main(item):
     out = batch_merge(prs = [` + strings.Join(prs, ", ") + `], base = "main", repo = "o/r", ` + extra + `name = "b")
@@ -147,7 +147,7 @@ func TestReviewFix_ABatchLandsItsMembersInOrderAndGatesTheUnion(t *testing.T) {
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed(), "the green members land in item order")
 	assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t), "main holds the two green members and not bad.txt")
 	assert.Equal(t, "report 1,3 2:red on top of the merged members  4  ", rig.libReport(t))
-	assert.Equal(t, []string{"beehave/gate success " + rig.heads["1"], "beehave/gate success " + rig.heads["3"]}, rig.merger.statusesGiven())
+	assert.Equal(t, []string{"beehest/gate success " + rig.heads["1"], "beehest/gate success " + rig.heads["3"]}, rig.merger.statusesGiven())
 
 	gated := rig.gate.ran()
 	require.Len(t, gated, 4, "the union, its first half, member 1, then member 3 on top: the red tree of 2 on top of 1 is not gated again")
@@ -395,7 +395,7 @@ func TestBatchLibrary_ALostGateJobGatesTheSameUnionAgainAndTwoLossesEndTheCall(t
 
 // lostLibBody starts the host gpu-b, lands items 1 and 3 there with the library, then reports the gate count and the loss fields of the result.
 func (r *batchRig) lostLibBody() string {
-	return `load("@beehave//batch.star", "batch_merge")
+	return `load("@beehest//batch.star", "batch_merge")
 
 def main(item):
     host_up(name = "start", host = "gpu-b")
@@ -447,7 +447,7 @@ func TestBatchLibrary_TheMembersAreChecked(t *testing.T) {
 			t.Parallel()
 
 			rig := libRig(t)
-			text := `load("@beehave//batch.star", "batch_merge")
+			text := `load("@beehest//batch.star", "batch_merge")
 
 def main(item):
     batch_merge(prs = [` + one.prs + `], base = "main", repo = "o/r", name = "` + one.name + `")
@@ -476,7 +476,7 @@ func TestBatchLibrary_TheAuditFindingsEqualTheTextOfTheBaseAudit(t *testing.T) {
 	q := &fakeQueue{issueStates: map[int]string{4: issueClosed, 9: issueOpen}, pullClosing: map[int][]model.IssueRef{70: {"#11", "#4", "#8", "other/repo#2"}}}
 	h.queue = q
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["4", "9", "bb-1"], integration = 70, name = "a")
@@ -504,7 +504,7 @@ func TestBatchLibrary_AnIssueReadThatFailsIsAFindingAndTheAuditGoesOn(t *testing
 	q := &fakeQueue{issueStates: map[int]string{9: issueOpen}, issueErrs: map[int]error{4: errors.New("the forge is down")}}
 	h.queue = q
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["4", "9"], name = "a")
@@ -528,7 +528,7 @@ func TestBatchLibrary_ATrackerWithNoIssueNumbersGivesANoteAndNoFindings(t *testi
 	q := &fakeQueue{noIssueNumbers: true}
 	h.queue = q
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["bb-1", "4", "9"], integration = 70, name = "a")
@@ -550,7 +550,7 @@ func TestBatchLibrary_ATrackerWithNoIssueNumbersAndOnlyTextIdsGivesTheNoteAndNoF
 	h.queue = q
 	h.facts = func(string) model.Project { return model.Project{Tracker: "beads"} }
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["bb-1", "bb-2"], integration = 70, name = "a")
@@ -572,7 +572,7 @@ func TestBatchLibrary_AFailedReadOfTheClosingReferencesIsAFindingAndTheAuditGoes
 	q := &fakeQueue{issueStates: map[int]string{4: issueOpen}, closingErr: errors.New("the forge is down")}
 	h.queue = q
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["4"], integration = 70, name = "a")
@@ -596,7 +596,7 @@ func TestBatchLibrary_AnIdWithALeadingZeroOrNoDigitsIsNotAPlainIssueNumber(t *te
 	h.queue = q
 	h.facts = func(string) model.Project { return model.Project{Tracker: "github"} }
 
-	body := `load("@beehave//batch.star", "issue_audit")
+	body := `load("@beehest//batch.star", "issue_audit")
 
 def main(item):
     out = issue_audit(landed = ["07", ""], name = "a")

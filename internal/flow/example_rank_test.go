@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // pullBy is an open pull request on a branch, by an author, with the review decision of the forge.
@@ -34,7 +34,7 @@ func rankedRows(t *testing.T, items []model.Item, pulls []model.PullRequest, row
 	rig.h.queue = &fakeQueue{items: items, pulls: pulls}
 
 	// The engine checks that the file of the run defines every entry that a loaded function spawns, so the file defines the pipeline entry too.
-	source := "load(\"@beehave//queue.star\", \"queue\", \"rank\")\nload(\"//workflow.star\", \"settings\")\n\ndef pipeline(item):\n    pass\n\ndef main(item):\n" +
+	source := "load(\"@beehest//queue.star\", \"queue\", \"rank\")\nload(\"//workflow.star\", \"settings\")\n\ndef pipeline(item):\n    pass\n\ndef main(item):\n" +
 		"    q = queue(name = \"q\")\n    command(name = \"order\", run = [\"order\"] + [r.item for r in rank(" + rows + ", settings(facts())[\"owner\"])])\n"
 
 	order := filepath.Join(filepath.Dir(file), "order.star")

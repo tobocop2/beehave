@@ -13,12 +13,12 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const acc933Settle = 15 * time.Second
 
-// acc933Adopt is `beehave resume <item> --on-this-file` of the library: the run of the item takes the workflow file as it is on disk now.
+// acc933Adopt is `beehest resume <item> --on-this-file` of the library: the run of the item takes the workflow file as it is on disk now.
 func acc933Adopt(c *Client, item string) error {
 	return c.ResumeOnThisFile(item)
 }

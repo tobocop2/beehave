@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-const gateFolder = "/home/lane/beehave-gate-one-abc"
+const gateFolder = "/home/lane/beehest-gate-one-abc"
 
 func TestSubmit_ReturnsAnIdThatHoldsTheFolderOfTheJob(t *testing.T) {
 	t.Parallel()

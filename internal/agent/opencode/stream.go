@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	shellTool     = "shell"
 	toolStep      = "tool-calls"
 	errorStatus   = "error"
-	refusal       = "beehave refused:"
+	refusal       = "beehest refused:"
 )
 
 // streamLine is one line of `opencode run --format json`.
@@ -120,7 +120,7 @@ func (Adapter) Line(line string) (string, string) {
 
 // Calls reads one line of the output.
 // A tool_use line of the bash tool is a shell call. OpenCode writes it when the call ends, so a call shows after it ran.
-// A call whose error starts with "beehave refused:" is refused: the guard plugin threw before the call ran. It still counts as a shell call, with its id in Refused.
+// A call whose error starts with "beehest refused:" is refused: the guard plugin threw before the call ran. It still counts as a shell call, with its id in Refused.
 // A step_finish line carries the dollars (Spent) and the tokens (Usage) of its step. A step that ends for any reason but "tool-calls" ends the run (Result),
 // because OpenCode has no result line. A step that ends with the reason "error", "length" or "content-filter" also sets Failed, as does an error line,
 // because a failed run can exit with code 0.

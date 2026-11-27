@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/step"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/step"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // moduleRegistry is the registry that an engine builds from the module of this package.

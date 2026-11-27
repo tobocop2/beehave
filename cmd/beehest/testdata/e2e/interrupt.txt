@@ -1,0 +1,30 @@
+# Ctrl-C stops the command and leaves the run open with its claim held. The next beehest run continues the same run.
+! exec beehest run 7 --workflow flow/workflow.star &
+waitfile started
+kill -INT
+wait
+
+exec beehest status
+stdout '^item-7-r1\trunning\tnow '
+! grep '^release' events.log
+
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone\tgate pass at [0-9a-f]+\treview 2/24\t'
+! stdout 'item-7-r2'
+
+grep -count=1 '^plan ' calls.log
+grep -count=2 '^implement ' calls.log
+
+cmp events.log expected-events.log
+
+-- hang --
+implement
+-- verdicts --
+approve
+approve
+-- expected-events.log --
+claim 7
+release 7

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestRun_AnEngineThatHoldsTheStateFolderGetsTheItemAndNoOwnEngineOpens(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRun_AJoinWhoseEngineStoppedAndWhoseUserStoppedTheCommandDoesNotTakeOver
 	code, _, stderr := rig.execute(ctx, "run", "12")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "run beehave run again to continue it")
+	assert.Contains(t, stderr, "run beehest run again to continue it")
 	assert.Zero(t, rig.engines)
 }
 
@@ -186,7 +186,7 @@ func TestRun_AJoinThatTheUserStopsSaysHowToContinue(t *testing.T) {
 	code, _, stderr := rig.execute(ctx, "run", "12")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "run beehave run again to continue it")
+	assert.Contains(t, stderr, "run beehest run again to continue it")
 }
 
 func TestRun_AFailureToTellWhetherAnEngineRunsStopsTheCommand(t *testing.T) {

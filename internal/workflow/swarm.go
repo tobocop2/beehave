@@ -181,7 +181,7 @@ func unknownKeyword(builtin, keyword string, allowed []string) string {
 	case builtin == sandboxName && keyword == skillsField:
 		return "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}."
 	case builtin == spawnName && keyword == DebounceKeyword:
-		return "spawn takes no argument debounce. debounce is an option of beehave run."
+		return "spawn takes no argument debounce. debounce is an option of beehest run."
 	case movedArgument(builtin, keyword) != "":
 		return movedArgument(builtin, keyword)
 	case len(allowed) == 0:

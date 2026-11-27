@@ -1,4 +1,4 @@
-// Package gitexec builds the git commands that beehave runs in the trees it manages. Every such command runs with the hooks of the repository off, so a hook
+// Package gitexec builds the git commands that beehest runs in the trees it manages. Every such command runs with the hooks of the repository off, so a hook
 // that the owner or the project put in a tree never runs as the owner. This package is the one place that names the git binary.
 //
 // A runner from New is local: it allows the file transport only and never fetches a missing object from a promisor remote, so no setting that an agent
@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/internal/gitbin"
 )
 
 // IsGit reports whether name is the name of the git program.

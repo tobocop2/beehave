@@ -1,0 +1,51 @@
+# Acceptance d462b R3 (N1 mirror). A round item fails because the remote lacks its base. The base is pushed.
+# beehest resume reopens the failed run and beehest run continues it: the worktree is made, the step runs, and no step is refused as out of order.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+subst flow/round.star
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star
+stderr 'base branch "integration/r1" of round item round/integration/r1'
+! exists before.pwd
+
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+exec sh any.sh resume resume round/integration/r1
+exec sh any.sh run run round/integration/r1 local --workflow flow/round.star
+exec cat resume.rc resume.err run.rc run.err
+
+# CELL R3a: no recorded step of the reopened run is refused as out of order.
+! grep 'UnexpectedStep' resume.err
+! grep 'UnexpectedStep' run.err
+! grep 'deterministic' run.err
+# CELL R3b: the step ran in the worktree of the round.
+exists before.marker
+grep '^base marker$' before.marker
+grep 'item round/integration/r1 finished' run.out
+
+-- any.sh --
+# any.sh <label> <args>: runs beehestreal with the args, keeps its output in <label>.out and <label>.err and its code in <label>.rc, and always exits 0.
+label=$1
+shift
+beehestreal "$@" > "$label.out" 2> "$label.err"
+echo $? > "$label.rc"
+
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- flow/round.star --
+def main(item):
+    command(name = "before", run = ["sh", "-c", "pwd > @WORK@/before.pwd; cat BASE_MARKER > @WORK@/before.marker"])

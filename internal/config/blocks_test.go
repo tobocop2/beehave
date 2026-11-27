@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehest/internal/config"
 )
 
 const blockTail = `base_branch = "main", gate = "make check", test_report = "r.xml"`

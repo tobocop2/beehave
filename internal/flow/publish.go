@@ -11,14 +11,14 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
 	// userEventPrefix starts the DBOS event name of a published key.
 	userEventPrefix = "u."
 	// keysEvent is the DBOS event that lists the keys a run has published, because DBOS has no call that lists the events of a run.
-	keysEvent = "beehave.keys"
+	keysEvent = "beehest.keys"
 	// publishKind and progressKind are the step kinds of the two builtins.
 	publishKind  = "publish"
 	progressKind = "progress"

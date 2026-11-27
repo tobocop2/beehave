@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/ci/githubactions"
-	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehest/internal/ci/githubactions"
+	"github.com/tobocop2/beehest/internal/cli"
 )
 
 const (
@@ -36,7 +36,7 @@ jobs:
 	jobsHead = "permissions: read-all\njobs:\n  ship:\n    steps:\n      - name: Test\n        run: make test\n      - "
 )
 
-// runGateList runs beehave check gate-list over the real GitHub Actions reader and returns the exit code and the two outputs.
+// runGateList runs beehest check gate-list over the real GitHub Actions reader and returns the exit code and the two outputs.
 func runGateList(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 
@@ -246,7 +246,7 @@ func TestCheckGateList_AFileThatGivesNoUsableStepIsExitCodeTwo(t *testing.T) {
 
 			assert.Equal(t, 2, code)
 			assert.Empty(t, out)
-			assert.Contains(t, errOut, "beehave check gate-list: FAIL: ")
+			assert.Contains(t, errOut, "beehest check gate-list: FAIL: ")
 		})
 	}
 }
@@ -308,7 +308,7 @@ func TestCheckGateList_ACallWithNoCIFileShowsTheUsageAndIsExitCodeTwo(t *testing
 
 		assert.Equal(t, 2, code, args)
 		assert.Empty(t, out, args)
-		assert.Equal(t, "usage: beehave check gate-list [--steps <name>]... [--map <json>] <ci-file>...\n", errOut, args)
+		assert.Equal(t, "usage: beehest check gate-list [--steps <name>]... [--map <json>] <ci-file>...\n", errOut, args)
 	}
 }
 

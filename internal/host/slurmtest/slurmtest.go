@@ -9,14 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (
 	// Target is the name of the head node in the ssh config.
-	Target    = "beehave-test"
+	Target    = "beehest-test"
 	sshFailed = 255 // the exit status of ssh for a link that dropped
 	sshPrefix = 3   // the words before the remote command: -o BatchMode=yes <cluster>
 )
@@ -242,7 +242,7 @@ func (f *Cluster) running(marker, log string) model.CommandResult {
 	}
 
 	if f.Files[marker] {
-		return ok("beehave-waiting\n" + size + "\n")
+		return ok("beehest-waiting\n" + size + "\n")
 	}
 
 	return ok(size + "\n")

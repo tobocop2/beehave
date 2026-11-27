@@ -14,14 +14,14 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
 	// firstOfKind is the step kind of the first_of builtin.
 	firstOfKind = "first_of"
 	// childTopic is the topic of the message that a child run sends to its parent when it ends. It is reserved, so no workflow file sends it.
-	childTopic = "beehave.child"
+	childTopic = "beehest.child"
 	// lookSuffix ends the name of the step that records one turn of a first_of call, after the name of its step, and the number of the turn follows.
 	lookSuffix = ".look"
 	// firstOfWindow is the longest that one turn of first_of waits before it reads the runs again, so a lost end notice costs this much and never a hang.

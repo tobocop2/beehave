@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // nameSession makes the fake agent name the session id before it counts as in flight. An empty id names none.
@@ -166,7 +166,7 @@ func TestPhase_AFailedStepThatResumesStartsAFreshSession(t *testing.T) {
 	_, resumed := resumeAndJoin(t, engine, client)
 
 	_, err = dbos.GetEvent[string](client.flow, phases[0].ID, sessionEvent, 0)
-	require.Error(t, err, "the rewind of beehave resume drops the session of the failed step")
+	require.Error(t, err, "the rewind of beehest resume drops the session of the failed step")
 	require.NoError(t, resumed)
 
 	requests := harness.agents.seen()

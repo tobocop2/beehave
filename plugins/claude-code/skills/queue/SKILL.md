@@ -1,11 +1,11 @@
 ---
-description: Add an item to the backlog of an beehave project that has the local tracker
+description: Add an item to the backlog of an beehest project that has the local tracker
 argument-hint: <project> <id> <title>
-allowed-tools: Bash(beehave item add:*)
+allowed-tools: Bash(beehest item add:*)
 disable-model-invocation: true
 ---
 
-Add one item to the backlog with beehave.
+Add one item to the backlog with beehest.
 
 The arguments are: $ARGUMENTS
 
@@ -16,7 +16,7 @@ The arguments are: $ARGUMENTS
 5. Show the command, then run it with the file you wrote. Pass the title as one single-quoted argument, and write each `'` in the title as `'\''`. For the title `Don't crash`, the command is:
 
 ```sh
-beehave item add <project> <id> --title 'Don'\''t crash' --body-file <file>
+beehest item add <project> <id> --title 'Don'\''t crash' --body-file <file>
 ```
 
-6. Report the output of beehave. To start the item, the user runs `/beehave:run <id>`.
+6. Report the output of beehest. To start the item, the user runs `/beehest:run <id>`.

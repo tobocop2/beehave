@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
@@ -51,7 +51,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"gather has no until", `gather([], until = "any")`, "gather takes no argument until"},
 		{"first_of bad topics", `first_of(topics = "a")`, "topics must be a list"},
 		{"first_of bad topic name", `first_of(topics = ["Bad Topic"])`, "topic"},
-		{"first_of reserved topic", `first_of(topics = ["beehave.child"])`, "reserved"},
+		{"first_of reserved topic", `first_of(topics = ["beehest.child"])`, "reserved"},
 		{"first_of bad timeout", `first_of(timeout = "soon")`, "timeout"},
 		{"first_of with no source", `first_of()`, "first_of needs"},
 		{"gather number for fail", `gather([], fail = 3)`, "fail is 3. Use one of: return, raise."},
@@ -84,9 +84,9 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"preflight unknown keyword", `preflight(state = "open")`, "preflight takes no argument state"},
 		{"preflight number for head", `preflight(head = 3)`, "head must be a text, not an int."},
 		{"preflight list for head", `preflight(head = ["h"])`, "head must be a text, not a list."},
-		{"preflight hold", `preflight(hold = "hold")`, "preflight takes no argument hold. The claim stops moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass hold to it."},
-		{"preflight own", `preflight(own = {})`, "preflight takes no argument own. The claim stops moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass own to it."},
-		{"preflight own_draft", `preflight(own_draft = 7)`, "preflight takes no argument own_draft. The draft stop moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass own_draft to it."},
+		{"preflight hold", `preflight(hold = "hold")`, "preflight takes no argument hold. The claim stops moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass hold to it."},
+		{"preflight own", `preflight(own = {})`, "preflight takes no argument own. The claim stops moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass own to it."},
+		{"preflight own_draft", `preflight(own_draft = 7)`, "preflight takes no argument own_draft. The draft stop moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass own_draft to it."},
 		{"spawn unknown keyword", `spawn([], limit = 2)`, "spawn takes no argument limit"},
 		{"spawn missing items", `spawn(name = "n")`, "spawn needs the `items` keyword"},
 		{"spawn text for a list", `spawn("1")`, "items must be a list, not a text."},
@@ -138,7 +138,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`item_status("1", "hold")`,
 		`preflight(head = "h", base = "b", name = "intake")`,
 		`preflight(id = "7", name = "before-fix-1")`,
-		`item_list(label = "beehave-round", name = "n")`,
+		`item_list(label = "beehest-round", name = "n")`,
 		`pr_list(base = "main", name = "n")`,
 		`run_read(items = ["1"], name = "n")`,
 		`pr_closing(item = "9", name = "n")`,
@@ -349,7 +349,7 @@ func TestCheck_MergeRefusesEachKeywordOfTheBatchAndNamesBatchMerge(t *testing.T)
 
 			require.Len(t, got, 1)
 			assert.Contains(t, got[0], workflow.MergeBatchRefusal(keyword))
-			assert.Contains(t, got[0], `load("@beehave//batch.star", "batch_merge")`)
+			assert.Contains(t, got[0], `load("@beehest//batch.star", "batch_merge")`)
 		})
 	}
 }

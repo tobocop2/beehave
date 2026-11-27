@@ -12,15 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/cli"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/local"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/local"
 )
 
 const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
-var errNoItem = store.Refuse("no item fix-login in project p. Add it: beehave item add")
+var errNoItem = store.Refuse("no item fix-login in project p. Add it: beehest item add")
 
 // fakeItems is the item list of one local project. It records what the commands do.
 type fakeItems struct {
@@ -119,7 +119,7 @@ func TestItemAdd_RefusesAProjectWhoseTrackerIsNotLocalAndOpensNoStore(t *testing
 	code, _, stderr := rig.run(t.Context(), "item", "add", "q", "fix-login", "--title", "t", "--body-file", rig.bodyFile)
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "project q has the github tracker. beehave item works only on a project with a tracker that holds a local list")
+	assert.Contains(t, stderr, "project q has the github tracker. beehest item works only on a project with a tracker that holds a local list")
 	assert.Zero(t, rig.opened)
 
 	code, _, stderr = rig.run(t.Context(), "item", "list", "q")
@@ -242,7 +242,7 @@ func TestRun_AnItemThatALocalProjectNeverAddedIsRefusedBeforeTheEngineOpens(t *t
 	code, _, stderr := rig.run(t.Context(), "run", "fix-login", "p", "--workflow", rig.file)
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "no item fix-login in project p. Add it: beehave item add")
+	assert.Contains(t, stderr, "no item fix-login in project p. Add it: beehest item add")
 	assert.Zero(t, rig.engines, "no engine opens and no claim is taken")
 	assert.Equal(t, 1, rig.items.closed)
 }

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 // stopGate holds the gate of each item until the test lets it end. It sends "start <item>" as a gate starts and "end <item>" as it ends.
@@ -698,7 +698,7 @@ func TestGateHold_AReopenCutsTheEarlierExecutionOfTheJobAndWaitsForItsEnd(t *tes
 
 	err := engine.stopJob(t.Context(), "job")
 	require.ErrorContains(t, err, "did not stop within 50ms", "a program that ignores its cancel does not hold the wait for longer than the limit")
-	require.ErrorContains(t, err, "then run beehave resume for the item", "the error names the next step")
+	require.ErrorContains(t, err, "then run beehest resume for the item", "the error names the next step")
 	require.NotErrorIs(t, err, context.DeadlineExceeded)
 
 	engine.cancels.add(newAttempt("job"))

@@ -17,20 +17,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
 	// maxRunArgs is the item and the optional project.
 	maxRunArgs = 2
-	// overCapFlag is the flag of beehave run that lets the first agent step take a runner over its usage cap.
+	// overCapFlag is the flag of beehest run that lets the first agent step take a runner over its usage cap.
 	overCapFlag = "over-cap"
-	// onOpenFlag is the flag of beehave run that says what the start does with an open run of the item.
+	// onOpenFlag is the flag of beehest run that says what the start does with an open run of the item.
 	onOpenFlag = "on-open"
-	// debounceFlag is the flag of beehave run that holds the start back for a window.
+	// debounceFlag is the flag of beehest run that holds the start back for a window.
 	debounceFlag = workflow.DebounceKeyword
 )
 
@@ -38,7 +38,7 @@ const (
 var errNoWorkflow = errors.New("the run has no workflow file")
 
 // errInterrupted is returned by run when the user stops the command before the item ends.
-var errInterrupted = errors.New("stopped before the item finished: run beehave run again to continue it")
+var errInterrupted = errors.New("stopped before the item finished: run beehest run again to continue it")
 
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
@@ -99,7 +99,7 @@ type Resuming interface {
 	ResumeOnThisBuildAndFile(item string) error
 	// ResumeRun is Resume, or with onThisBuild, onThisFile or both the move that ResumeOnThisBuild, ResumeOnThisFile or ResumeOnThisBuildAndFile makes, and it returns the id of the run that it reopened.
 	ResumeRun(item string, onThisBuild, onThisFile bool) (string, error)
-	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
+	// FailedRuns lists the runs that beehest resume can reopen because they failed, and changes nothing.
 	// It returns apart the failed runs of the range whose input cannot be read.
 	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error)
 }
@@ -230,19 +230,19 @@ func oneItem(cmd *cobra.Command, args []string) error {
 }
 
 func addConfigFlag(command *cobra.Command, target *string) {
-	command.Flags().StringVar(target, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
+	command.Flags().StringVar(target, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehest)")
 }
 
 const runLong = "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
 	"The steps of the workflow file run in file order. Name the file with --workflow, or keep " + defaultWorkflowFile + " in the current folder. " +
-	"beehave checks the file first and refuses on any problem. If no file is named and the folder has none, beehave run refuses, unless the item has an open run.\n\n" +
-	"If an earlier run of the item is open, beehave run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and beehave run continues it. A second Ctrl-C during the stop exits at once with code 130. " +
+	"beehest checks the file first and refuses on any problem. If no file is named and the folder has none, beehest run refuses, unless the item has an open run.\n\n" +
+	"If an earlier run of the item is open, beehest run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and beehest run continues it. A second Ctrl-C during the stop exits at once with code 130. " +
 	"If the run has already ended when the stop begins, the next Ctrl-C exits at once with the exit code of the run: 0 for a finished run, 1 for a failed or stopped run.\n" +
-	"If the last run failed, beehave run refuses and names the step that failed. Run beehave resume, then beehave run. If the resume refuses the run, run beehave cancel, then beehave run: the cancel ends the failed run, and the next run starts a new attempt.\n" +
-	"After a finished or a canceled run, beehave run starts a new run.\n" +
-	"With --" + onOpenFlag + " replace, an open run of the item is canceled with its children, as beehave cancel does, and the next attempt starts. The run that the command starts pins the workflow file that the command names. A failed run is still refused, and so is an open run of another project.\n" +
+	"If the last run failed, beehest run refuses and names the step that failed. Run beehest resume, then beehest run. If the resume refuses the run, run beehest cancel, then beehest run: the cancel ends the failed run, and the next run starts a new attempt.\n" +
+	"After a finished or a canceled run, beehest run starts a new run.\n" +
+	"With --" + onOpenFlag + " replace, an open run of the item is canceled with its children, as beehest cancel does, and the next attempt starts. The run that the command starts pins the workflow file that the command names. A failed run is still refused, and so is an open run of another project.\n" +
 	"With --" + debounceFlag + " <duration>, the start waits that long. A later start of the item in the window takes the place of this one: one run starts, with the workflow file of the last start. A start after the window makes a new run. The hold ends 10 windows after the first start. With --" + onOpenFlag + " replace, the first start cancels the open run at once.\n\n" +
-	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
+	"If another engine holds the state folder, beehest run gives the item to that engine and waits for the result. " +
 	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
 	"If that engine stops, the run stays open, and after 10 seconds the command starts its own engine and continues the run.\n\n" +
 	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
@@ -278,7 +278,7 @@ func addStartFlags(command *cobra.Command, onOpen, window *string) {
 	command.Flags().StringVar(window, debounceFlag, "", "hold the start back for this long, so that a later start of the item in the window takes its place (default: start at once)")
 }
 
-// startOptions are the words of the start options of beehave run, as the command line gave them.
+// startOptions are the words of the start options of beehest run, as the command line gave them.
 type startOptions struct {
 	onOpen, debounce string
 }
@@ -442,7 +442,7 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 
 // runItem takes the item to the end of its run. An open run continues with the file that it pinned, so a folder without a workflow file is enough for it.
 // The pinned file is read through the client, which launches nothing: a refused run never opens the engine.
-// When an engine already holds the state folder, as beehave serve does, the run joins that engine and the command waits for the result.
+// When an engine already holds the state folder, as beehest serve does, the run joins that engine and the command waits for the result.
 func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
 	client, err := f.factory.Client(f.ctx, cfg, opts)
 	if err != nil {
@@ -560,9 +560,9 @@ func startsOf(cfg config.Config, project string, opts flow.Options) []flow.RunOp
 	return []flow.RunOption{flow.RunSandbox(cfg.Projects[project].RunSandboxMode()), flow.RunOnOpen(opts.OnOpen), flow.RunDebounce(opts.Debounce)}
 }
 
-// shutDownWithExitStatus shuts the engine down for beehave run.
+// shutDownWithExitStatus shuts the engine down for beehest run.
 // The shutdown can wait for a start that waits for the store. Whatever ended the run (the result or the first interrupt), the command listens from here on:
-// the next signal exits at once, as beehave serve does.
+// the next signal exits at once, as beehest serve does.
 // If no second signal ends the shutdown, it returns the error of the run joined with the error of the shutdown.
 // If a second signal ends the shutdown and the run was interrupted, it returns the exit error with code 130, and the run stays open for the next launch.
 // If a second signal ends the shutdown and the run ended, it returns the error of the run alone (nil for a finished run), and the line says the run is not open.
@@ -575,7 +575,7 @@ func shutDownWithExitStatus(engine Runner, stderr io.Writer, runErr error) error
 	}
 
 	if errors.Is(runErr, errInterrupted) {
-		sayStoppedAtOnce(stderr, "the run stays open: run beehave run again to continue it")
+		sayStoppedAtOnce(stderr, "the run stays open: run beehest run again to continue it")
 
 		return downErr
 	}
@@ -621,7 +621,7 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 }
 
 // openRun returns the open run of the item. It says which file the run continues with, or that the start replaces the run.
-// beehave run ignores --workflow when it joins an open run.
+// beehest run ignores --workflow when it joins an open run.
 func (f flowCommands) openRun(stdout io.Writer, client Steering, opts flow.Options, item string) (flow.OpenRun, error) {
 	open, err := client.OpenRun(item)
 	if err != nil || open.File == "" {
@@ -702,7 +702,7 @@ func (f flowCommands) await(engine Runner, item, project, file string, starts []
 	}
 }
 
-// statusFlags are the flags of beehave status.
+// statusFlags are the flags of beehest status.
 type statusFlags struct {
 	config, item string
 	asJSON       bool
@@ -745,7 +745,7 @@ func (f flowCommands) statusCommand() *cobra.Command {
 // jsonFlag is the name of the flag that makes the per-run view print JSON.
 const jsonFlag = "json"
 
-// cancelRunFlag names the run that beehave cancel stops.
+// cancelRunFlag names the run that beehest cancel stops.
 const cancelRunFlag = "run"
 
 // itemFlag is the name of the flag that makes status list the lanes of one item.
@@ -783,9 +783,9 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"the outcome and the fields that decide the flow.\n\n" +
 	"Give a run id or an item id with --" + followFlag + " to print the text and the tool calls of each agent phase of the run, in order, as they arrive. " +
 	"An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output again and ends. " +
-	"A tool call reads as the name of the tool and its target. Before a line is stored, beehave removes a token shaped like an Anthropic key and the value of each environment variable that is a secret, in plain, JSON-escaped and URL-escaped form. " +
+	"A tool call reads as the name of the tool and its target. Before a line is stored, beehest removes a token shaped like an Anthropic key and the value of each environment variable that is a secret, in plain, JSON-escaped and URL-escaped form. " +
 	"A variable is a secret when its name ends in _KEY, _PAT, _DSN or _AUTH, is PAT, AUTH or DSN, holds _PAT_, or holds TOKEN, SECRET, PASSWORD or CREDENTIAL, or when its value holds scheme://user:password@ with a password. " +
-	"A value shorter than 8 bytes stays in the output, and beehave logs a warning at start that names its variable. A secret in any other variable stays, and so do the tokens of the forge and agent logins, which beehave does not pass to this check yet. " +
+	"A value shorter than 8 bytes stays in the output, and beehest logs a warning at start that names its variable. A secret in any other variable stays, and so do the tokens of the forge and agent logins, which beehest does not pass to this check yet. " +
 	"A run that waits for an answer keeps the command open. It prints one line with the question."
 
 // errFollowAlone is returned when --follow comes with --json, --item, or no run: it reads the output of one run.
@@ -798,7 +798,7 @@ var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")
 const eventsFlag = "events"
 
 // errEventsNeedRun is returned when status gets --events with no run id or with --item.
-var errEventsNeedRun = errors.New("--" + eventsFlag + " takes one run id. Run beehave status to see the run ids")
+var errEventsNeedRun = errors.New("--" + eventsFlag + " takes one run id. Run beehest status to see the run ids")
 
 // status prints the runs of the store, the steps of the run that the command names, or the values that the run published.
 func (f flowCommands) status(cmd *cobra.Command, view statusFlags, args []string) error {
@@ -995,9 +995,9 @@ func statusLine(info flow.RunInfo, now time.Time) string {
 
 	switch {
 	case info.OlderSteps:
-		line += "\tstranded: made by an older step format. Start the beehave build that made it to finish it"
+		line += "\tstranded: made by an older step format. Start the beehest build that made it to finish it"
 	case info.Stranded:
-		line += fmt.Sprintf("\tstranded: start beehave version %s to finish it", info.Version)
+		line += fmt.Sprintf("\tstranded: start beehest version %s to finish it", info.Version)
 	case info.Question != "":
 		line += "\tpaused: " + model.OneLine(info.Question) + askedTail(info.Asked)
 	default:
@@ -1115,7 +1115,7 @@ func (f flowCommands) withClient(cmd *cobra.Command, flag string, fn func(Steeri
 	return errors.Join(fn(client), client.Close())
 }
 
-// manyAnswer holds the flags that make beehave answer reply to many waiting runs.
+// manyAnswer holds the flags that make beehest answer reply to many waiting runs.
 type manyAnswer struct {
 	all             bool
 	project, asking string
@@ -1155,16 +1155,16 @@ func (m manyAnswer) picks(info flow.RunInfo) bool {
 		(len(m.items) == 0 || slices.Contains(m.items, info.Item))
 }
 
-// errNoWaiting is returned when beehave answer --all finds no waiting run that fits the selectors.
-var errNoWaiting = errors.New("no waiting run matches. Run beehave status to see the runs that wait for an answer")
+// errNoWaiting is returned when beehest answer --all finds no waiting run that fits the selectors.
+var errNoWaiting = errors.New("no waiting run matches. Run beehest status to see the runs that wait for an answer")
 
-// errNotTaken is returned when at least one run of beehave answer --all refused the answer.
+// errNotTaken is returned when at least one run of beehest answer --all refused the answer.
 var errNotTaken = errors.New("some runs did not take the answer")
 
 // errAnswerShape is returned when the item and the --all flag do not fit together.
 var errAnswerShape = errors.New("give an item and the text, or --all with the text and no item")
 
-// answerArgs checks the arguments of beehave answer: an item and the text, or with --all the text alone.
+// answerArgs checks the arguments of beehest answer: an item and the text, or with --all the text alone.
 func (m *manyAnswer) answerArgs(cmd *cobra.Command, args []string) error {
 	names := given(cmd)
 
@@ -1245,7 +1245,7 @@ func (m manyAnswer) picked(infos []flow.RunInfo) []string {
 	return items
 }
 
-// addFlags adds the flags of beehave answer --all.
+// addFlags adds the flags of beehest answer --all.
 func (m *manyAnswer) addFlags(command *cobra.Command) {
 	command.Flags().BoolVar(&m.all, "all", false, "answer every paused run that fits the selectors; give the text and no item")
 	command.Flags().StringVar(&m.project, "project", "", "with --all: answer only runs of this project")
@@ -1253,7 +1253,7 @@ func (m *manyAnswer) addFlags(command *cobra.Command) {
 	command.Flags().StringSliceVar(&m.items, "items", nil, "with --all: answer only these items, a comma-separated list")
 }
 
-// answer runs beehave answer: one item, or with --all every run that the selectors pick.
+// answer runs beehest answer: one item, or with --all every run that the selectors pick.
 func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, reply flow.Reply, args []string) error {
 	if many.all {
 		return f.withClient(cmd, flag, func(client Steering) error {
@@ -1270,12 +1270,12 @@ func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, r
 
 const answerLong = "Answer the question of a paused item.\n" +
 	"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
-	"A wait that sets choices takes only those texts. beehave status shows the people, the choices and who answered.\n" +
+	"A wait that sets choices takes only those texts. beehest status shows the people, the choices and who answered.\n" +
 	"Add --key <key> to make a retry safe: an answer with a key that the run already got is not sent again.\n" +
-	"beehave does not prove the name: anyone who can run beehave answer on the run can give any name that the wait asks.\n\n" +
-	"Add --all to give the same answer to every run that beehave status shows as paused with a question, and give the text alone, with no item. " +
+	"beehest does not prove the name: anyone who can run beehest answer on the run can give any name that the wait asks.\n\n" +
+	"Add --all to give the same answer to every run that beehest status shows as paused with a question, and give the text alone, with no item. " +
 	"Narrow the runs with --project (the project of the run), --question (a text that the question holds) and --items (a list of item ids). A run must fit every selector that is set.\n" +
-	"Each run takes the answer as beehave answer <item> would send it, and keeps every refusal rule of that command: a run that refuses prints one line with the reason, and the other runs still take the answer. " +
+	"Each run takes the answer as beehest answer <item> would send it, and keeps every refusal rule of that command: a run that refuses prints one line with the reason, and the other runs still take the answer. " +
 	"The command prints one line for each run. It exits 0 only when every run took the answer, and exits 1 when a run refused or when no run waits."
 
 func (f flowCommands) answerCommand() *cobra.Command {
@@ -1302,17 +1302,17 @@ func (f flowCommands) answerCommand() *cobra.Command {
 
 const resumeLong = "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as the cancelled run state
 	"Resume takes a fresh claim on the item first, and refuses if another holder has it.\n" +
-	"A canceled run that left its claim gives it back at the next beehave run.\n" +
-	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
-	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
+	"A canceled run that left its claim gives it back at the next beehest run.\n" +
+	"Run beehest run for the item next: it continues the reopened run and renews the claim.\n" +
+	"A run that another build of beehest started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
 	"The move is refused when the workflow file or a file the run pinned changed since the run started. A script that a command call names by a path is pinned, in the repository or outside it. A run that an older build started did not pin scripts outside the repository.\n" +
 	"A run replays the workflow file that it pinned when it started, and a changed file refuses the run. Add --on-this-file to run the file as it is now: the run keeps its finished steps and replays them over the new file.\n" +
-	"A change after the step that the run reached goes on at once. A change before it ends the run at the first step that differs, and the error names that step. Nothing that the run wrote is undone. Restore the file and run beehave resume --on-this-file again to finish the run.\n" +
+	"A change after the step that the run reached goes on at once. A change before it ends the run at the first step that differs, and the error names that step. Nothing that the run wrote is undone. Restore the file and run beehest resume --on-this-file again to finish the run.\n" +
 	"Give --on-this-build and --on-this-file together to move a run of another build onto the file in one move.\n\n" +
 	"Add --failed to resume every run that failed, and give no item. After an outage, this reopens the runs that the outage stopped.\n" +
 	"A run is failed when it ended with an error or gave up recovering. A run that was stopped is not failed: resume it by its item.\n" +
 	"Narrow the runs with --since and --until (the end time of the run, ends included, as an RFC 3339 time or a duration such as 6h for that long ago), --project (the project of the run) and --limit (the runs that ended first). A run must fit every filter that is set.\n" +
-	"Each run resumes as beehave resume <item> does, with the same refusals, --on-this-build and --on-this-file. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
+	"Each run resumes as beehest resume <item> does, with the same refusals, --on-this-build and --on-this-file. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
 	"The command prints one line for each run: the item, the run id, the end time and the outcome. It exits 0 when no run refused, and exits 1 when a run refused or when no failed run fits.\n" +
 	"Add --dry-run to list the runs that would resume and change nothing."
 
@@ -1348,7 +1348,7 @@ func (f flowCommands) resumeCommand() *cobra.Command {
 	return command
 }
 
-// resume runs beehave resume: one item, or with --failed every failed run that the filter picks.
+// resume runs beehest resume: one item, or with --failed every failed run that the filter picks.
 func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, args []string) error {
 	if !many.failed {
 		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild, many.onThisFile) })
@@ -1361,10 +1361,10 @@ func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, 
 
 const forkLong = "Start a new run of an item from a step of a run that ended, with other vars if you want.\n" +
 	"The new run is the next attempt of the item. It keeps the recorded outputs of the steps before the step, and runs that step and every later step again.\n" +
-	"Name the step as beehave status shows it, such as command:review#2. The old run does not change.\n" +
+	"Name the step as beehest status shows it, such as command:review#2. The old run does not change.\n" +
 	"--vars names a file that holds one JSON object. Each key replaces the same var of the source run. A key that names a fact of the project is refused.\n" +
-	"The run uses the workflow file that the source run pinned. A fork takes a fresh claim on the item, and refuses an item that has an open run: run beehave cancel first.\n" +
-	"The new run waits in the queue. Run beehave run for the item next: it continues the new run."
+	"The run uses the workflow file that the source run pinned. A fork takes a fresh claim on the item, and refuses an item that has an open run: run beehest cancel first.\n" +
+	"The new run waits in the queue. Run beehest run for the item next: it continues the new run."
 
 // forkRun starts the fork that the flags ask for and prints the id of the new run. varsFile is empty when the owner gave no --vars.
 func forkRun(out io.Writer, client Steering, run, step, varsFile string) error {
@@ -1378,7 +1378,7 @@ func forkRun(out io.Writer, client Steering, run, step, varsFile string) error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(out, "Forked %s from %s as %s. Run beehave run for the item to continue it.\n", run, step, id)
+	_, err = fmt.Fprintf(out, "Forked %s from %s as %s. Run beehest run for the item to continue it.\n", run, step, id)
 
 	return err
 }
@@ -1410,7 +1410,7 @@ func (f flowCommands) forkCommand() *cobra.Command {
 		},
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().StringVar(&step, "from", "", "the step to start from, as beehave status shows it, such as command:review#2")
+	command.Flags().StringVar(&step, "from", "", "the step to start from, as beehest status shows it, such as command:review#2")
 	command.Flags().StringVar(&varsFile, "vars", "", "a file that holds a JSON object of vars to change for the new run")
 
 	return command
@@ -1423,7 +1423,7 @@ func cancelArgs(cmd *cobra.Command, args []string, runID string) error {
 	}
 
 	if len(args) > 0 || strings.TrimSpace(runID) == "" {
-		return errors.New("give a run id with --run and no item: beehave cancel --run <run id>")
+		return errors.New("give a run id with --run and no item: beehest cancel --run <run id>")
 	}
 
 	return nil
@@ -1445,7 +1445,7 @@ func (f flowCommands) cancelCommand() *cobra.Command {
 		Use:   "cancel <item> | --run <run id>",
 		Short: "Stop the open run of an item, or one run by its id",
 		Long: "Stop the open run of an item. With --run, stop the one run with that id, even when it is not the latest run of its item. " +
-			"Use --run for the pass run of a round: beehave status lists the run ids. " +
+			"Use --run for the pass run of a round: beehest status lists the run ids. " +
 			"A failed run ends as canceled in one store write: no step runs, the workflow file is not read, and its error and steps stay, so a run recorded on another build can be closed. " +
 			"A canceled run whose phases an earlier cancel left running is canceled again, and the phases it stops are named.",
 		Args: func(cmd *cobra.Command, args []string) error { return cancelArgs(cmd, args, runID) },

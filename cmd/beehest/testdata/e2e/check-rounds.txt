@@ -1,0 +1,18 @@
+# The check accepts a workflow that reads the round settings from facts().vars, and refuses a round field that facts() does not have.
+isolate
+
+exec beehestreal check workflow ok.star
+! stdout .
+! stderr .
+
+! exec beehestreal check workflow bad.star
+stderr 'round_base is not a field of the result of facts'
+
+-- ok.star --
+def main(item):
+    f = facts()
+    command(run = ["echo", f.vars["round"]["base"]], name = "show")
+-- bad.star --
+def main(item):
+    f = facts()
+    command(run = ["echo", f.round_base], name = "show")

@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // lostTreeFlow is a parent with three children, one after the other. The gate of items 21 and 22 runs on the host gpu-b, and item 23 lands
 // the pull requests that replace PRS with one batch_merge there.
-const lostTreeFlow = `load("@beehave//batch.star", "batch_merge")
+const lostTreeFlow = `load("@beehest//batch.star", "batch_merge")
 
 def worker(item):
     host_up(name = "start", host = "gpu-b")
@@ -71,7 +71,7 @@ func gateRecordOf(t *testing.T, engine *Engine, id, call string) map[string]any 
 	return nil
 }
 
-// statusJSONOf is what beehave status <run id> --json prints for a run, as a JSON object.
+// statusJSONOf is what beehest status <run id> --json prints for a run, as a JSON object.
 func statusJSONOf(t *testing.T, h *harness, id string) map[string]any {
 	t.Helper()
 
@@ -213,7 +213,7 @@ func TestHostLoss_AResumeAfterTheRecordKeepsTheRecordedCountAndWalksNoTree(t *te
 
 	tree.armed.Store(true)
 
-	// The rewind keeps every recorded step, as beehave resume does for a run that failed after them, so the run replays the record of the loss.
+	// The rewind keeps every recorded step, as beehest resume does for a run that failed after them, so the run replays the record of the loss.
 	resumed, err := dbos.RewindWorkflow[int](engine.ctx, id, dbos.WithRewindStartStep(uint(len(steps))))
 	require.NoError(t, err)
 

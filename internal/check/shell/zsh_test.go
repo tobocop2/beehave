@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/check/shell"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/check/shell"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const kindZsh = "zsh-expansion"
@@ -120,7 +120,7 @@ func TestScan_AnApostropheInACommentDoesNotOpenAQuote(t *testing.T) {
 func TestScan_ATextThatLooksLikeAStandInNameIsNotAZshForm(t *testing.T) {
 	t.Parallel()
 
-	for _, command := range []string{"echo ${BEEHAVEZSH7_x}", "echo ${=x} ${BEEHAVEZSH7_x}", "echo ${BEEHAVEZSH99999999999999999999_x}"} {
+	for _, command := range []string{"echo ${BEEHESTZSH7_x}", "echo ${=x} ${BEEHESTZSH7_x}", "echo ${BEEHESTZSH99999999999999999999_x}"} {
 		findings := shell.ScanFor(command, []model.FindingKind{model.FindingZshExpansion})
 
 		assert.LessOrEqual(t, len(findings), 1, command)

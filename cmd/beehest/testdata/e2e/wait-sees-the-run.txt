@@ -1,0 +1,12 @@
+# A background run records its process, so a wait ends when the run is gone. The record is there while the run works, and the process of the record is the run.
+! exec beehest run 7 --workflow flow/workflow.star &
+waitfile started
+exists $TMPDIR/beehest-e2e-runs
+
+exec beehest cancel 7
+wait
+
+-- hang --
+plan
+-- verdicts --
+approve

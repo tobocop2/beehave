@@ -2,10 +2,10 @@
 package enforcers
 
 import (
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/sandbox"
-	"github.com/tobocop2/beehave/internal/sandbox/landlock"
-	"github.com/tobocop2/beehave/internal/sandbox/seatbelt"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox/landlock"
+	"github.com/tobocop2/beehest/internal/sandbox/seatbelt"
 )
 
 // Order lists the enforcers from the best to the weakest. Auto picks the first that can run here.

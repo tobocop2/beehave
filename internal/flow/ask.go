@@ -14,8 +14,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 // errRefusedAnswer is returned when an answer does not fit the open wait.
 var errRefusedAnswer = errors.New("the wait refuses this answer")
 
-// Asked is what an open wait asks of people. It is shown by status and read by beehave answer.
+// Asked is what an open wait asks of people. It is shown by status and read by beehest answer.
 // From names the people who answer, and Quorum is how many of them must. Choices is the closed set of texts an answer may be.
 // Heard lists the people who answered so far, in the order of their first answer.
 type Asked struct {
@@ -129,7 +129,7 @@ func (s *script) waitVoices(plan waitPlan) (heard, error) {
 	asked, count := plan.asked, &tally{answers: map[string]string{}}
 	asked.Question, asked.Wait = s.e.redact(plan.question), plan.id
 
-	// The ask event is the only event of the wait. It holds the question, the people and the id of the wait, so beehave answer decides from one read,
+	// The ask event is the only event of the wait. It holds the question, the people and the id of the wait, so beehest answer decides from one read,
 	// and the wait opens and ends with one write each. The question event stays unset: a plain wait owns it.
 	if err := show(ctx, item, askKey, asked, "who it asks"); err != nil {
 		return heard{}, err
@@ -143,7 +143,7 @@ func (s *script) waitVoices(plan waitPlan) (heard, error) {
 	}
 
 	if err != nil {
-		return heard{}, fmt.Errorf("item %s waits for people: %w. Answer with beehave answer %s <text>", item, err, item)
+		return heard{}, fmt.Errorf("item %s waits for people: %w. Answer with beehest answer %s <text>", item, err, item)
 	}
 
 	return count.outcome(timedOut), nil
@@ -273,7 +273,7 @@ func (e *Engine) remindDue(ctx dbos.Context, item string, plan schedule, asked *
 	return look.Ended, nil
 }
 
-// remind sends one reminder to the people of the wait. The notice is the ask event that beehave status and beehave answer read: it moves the count of sent
+// remind sends one reminder to the people of the wait. The notice is the ask event that beehest status and beehest answer read: it moves the count of sent
 // reminders and the moment of the next one. The log line is written inside the recorded step, so a replay does not write it again.
 func (e *Engine) remind(ctx dbos.Context, item string, plan schedule, asked *Asked, number int) error {
 	_, err := runStep(e, ctx, remindStepPrefix+strconv.Itoa(number), func(c context.Context) (struct{}, error) {
@@ -444,7 +444,7 @@ func (r Reply) check() error {
 }
 
 // Reply sends an answer to the open run of an item. A wait that names people accepts only them, and a wait with choices only those texts.
-// The name is not proved: beehave has no key store, and anyone who can run beehave answer on the run can give any name that the wait asks.
+// The name is not proved: beehest has no key store, and anyone who can run beehest answer on the run can give any name that the wait asks.
 // A second Reply with the same key inserts nothing.
 func (c *Client) Reply(item string, reply Reply) error {
 	if err := reply.check(); err != nil {
@@ -464,7 +464,7 @@ func (c *Client) Reply(item string, reply Reply) error {
 	return c.deliver(info, reply)
 }
 
-// deliver sends an answer to the inbox of the run, after the open wait accepts it. The idempotency key of the DBOS send is the key of the answer under the reserved topic, so it cannot equal the key of a beehave send: that key may not start with the reserved prefix.
+// deliver sends an answer to the inbox of the run, after the open wait accepts it. The idempotency key of the DBOS send is the key of the answer under the reserved topic, so it cannot equal the key of a beehest send: that key may not start with the reserved prefix.
 func (c *Client) deliver(info RunInfo, reply Reply) error {
 	asked := info.Asked
 

@@ -12,9 +12,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/tobocop2/beehave/internal/check/shell"
-	"github.com/tobocop2/beehave/internal/ci"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/check/shell"
+	"github.com/tobocop2/beehest/internal/ci"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (

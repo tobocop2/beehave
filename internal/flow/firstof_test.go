@@ -20,7 +20,7 @@ func TestFirstOf_RefusesACallThatBreaksItsRules(t *testing.T) {
 		"no keyword":     {`first_of(**{"wait": 1})`, "wait"},
 		"runs as number": {"n = 4 + 1\nfirst_of(runs = n)", "runs must"},
 		"topics as text": {"bad = \"go\" + \"\"\nfirst_of(topics = bad, timeout = \"1s\")", "topics"},
-		"reserved topic": {`first_of(topics = ["beehave.child"], timeout = "1s")`, "reserved"},
+		"reserved topic": {`first_of(topics = ["beehest.child"], timeout = "1s")`, "reserved"},
 		"bad timeout":    {`first_of(timeout = "soon")`, "timeout"},
 		"a stranger":     {`first_of(runs = [struct(item = "9", run = "item-9-r1")])`, "not a child"},
 	}

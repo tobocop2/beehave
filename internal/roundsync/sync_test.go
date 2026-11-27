@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/roundsync"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/roundsync"
 )
 
 const (
@@ -251,10 +251,10 @@ func TestCheck_TheSyncPullRequestCarriesTheLabelOfTheRequest(t *testing.T) {
 
 	w := newWorld()
 
-	_, err := roundsync.Check(context.Background(), w, roundsync.Request{Base: base, Trunk: trunk, Label: "made-by-beehave"})
+	_, err := roundsync.Check(context.Background(), w, roundsync.Request{Base: base, Trunk: trunk, Label: "made-by-beehest"})
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"made-by-beehave"}, w.labels)
+	assert.Equal(t, []string{"made-by-beehest"}, w.labels)
 }
 
 func TestCheck_AnOlderSyncPullRequestOfTheSameBaseIsClosedWithACommentThatNamesTheNewOne(t *testing.T) {

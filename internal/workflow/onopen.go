@@ -6,7 +6,7 @@ import (
 	"slices"
 )
 
-// OnOpenKeyword is the keyword of a spawn call, and the name of the start option of beehave run, that says what a start does with an open run of the item.
+// OnOpenKeyword is the keyword of a spawn call, and the name of the start option of beehest run, that says what a start does with an open run of the item.
 const OnOpenKeyword = "on_open"
 
 // OnOpen is what a start does with the open run of its item.

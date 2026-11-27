@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/recount"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/examples/remediation/tools/recount"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const recountSyntax = "recount --pr <number> [--was-rows <n>] [--was-issues <n>]"

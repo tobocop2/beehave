@@ -1,8 +1,8 @@
 #!/bin/sh
-# Fake useradd: log the call and make the job user, which `id` then finds. It makes only the user beehave-jobs.
+# Fake useradd: log the call and make the job user, which `id` then finds. It makes only the user beehest-jobs.
 printf 'useradd %s\n' "$*" >>"$FAKE_LOG"
 case " $* " in
-*' beehave-jobs ') : >"$FAKE_STATE/jobuser" ;;
+*' beehest-jobs ') : >"$FAKE_STATE/jobuser" ;;
 *)
 	echo "fake useradd: unexpected $*" >&2
 	exit 1

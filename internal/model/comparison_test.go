@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestComparison_ABranchHoldsACommitOnlyWhenItIsAheadOrEqualAndTheCommitHasNothingOfItsOwn(t *testing.T) {

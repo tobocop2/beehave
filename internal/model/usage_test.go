@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestReading_KnownHoldsUsageAndNoReason(t *testing.T) {

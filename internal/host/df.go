@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-// ErrDiskText is returned for a df answer that beehave does not read.
-var ErrDiskText = errors.New("df gave an answer that beehave does not read")
+// ErrDiskText is returned for a df answer that beehest does not read.
+var ErrDiskText = errors.New("df gave an answer that beehest does not read")
 
 const (
 	bytesPerKiB     = 1024

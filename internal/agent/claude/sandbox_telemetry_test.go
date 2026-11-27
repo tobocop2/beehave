@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 // stepShell sources the env file of a run in a POSIX shell with the real go command first on its PATH and an owner HOME, runs the script, and returns
@@ -35,7 +35,7 @@ func stepShell(t *testing.T, script string) (string, string) {
 	out, err := shell.CombinedOutput()
 	require.NoError(t, err, string(out))
 
-	return filepath.Join(tmp, "beehave-home-run"), strings.TrimSpace(string(out))
+	return filepath.Join(tmp, "beehest-home-run"), strings.TrimSpace(string(out))
 }
 
 // The go command starts a telemetry child that it does not wait for, in the home folder of the shell, once it holds the upload token. With the mode

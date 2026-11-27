@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // driver loads the plugin like OpenCode does, calls the hook of one tool call and prints the result on one line.
@@ -49,7 +49,7 @@ func nodeRun(t *testing.T, node, guard, tool, line string) (outcome string, mark
 
 	dir := t.TempDir()
 	loaded := filepath.Join(dir, "loaded")
-	text := strings.Replace(opencode.New().Guard(guard, dir, nil, nil).Files[pluginPath], `"`+filepath.Join(dir, "config/beehave-guard-loaded")+`"`, `"`+loaded+`"`, 1)
+	text := strings.Replace(opencode.New().Guard(guard, dir, nil, nil).Files[pluginPath], `"`+filepath.Join(dir, "config/beehest-guard-loaded")+`"`, `"`+loaded+`"`, 1)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.mjs"), []byte(text), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "driver.mjs"), []byte(driver), 0o600))
@@ -172,12 +172,12 @@ func TestGuard_ThePluginRunOnNodeDecidesFromTheExitCodeOfTheCheck(t *testing.T) 
 		name, code, tool, line, want string
 	}{
 		{"exit code 0 lets a bash call through", "0", "bash", "1.x", "pass"},
-		{"exit code 2 refuses with the text of the check", "2", "bash", "1.x", "refused: beehave refused: no staging"},
-		{"another exit code refuses", "1", "bash", "1.x", "refused: beehave refused: the check of the command failed"},
+		{"exit code 2 refuses with the text of the check", "2", "bash", "1.x", "refused: beehest refused: no staging"},
+		{"another exit code refuses", "1", "bash", "1.x", "refused: beehest refused: the check of the command failed"},
 		{"a call of another tool is never checked", "2", "read", "1.x", "pass"},
 		{"exit code 0 lets a shell call of 2.x through", "0", "shell", "2.x", "pass"},
-		{"exit code 2 refuses a shell call of 2.x with the text of the check", "2", "shell", "2.x", "refused: beehave refused: no staging"},
-		{"another exit code refuses a shell call of 2.x", "1", "shell", "2.x", "refused: beehave refused: the check of the command failed"},
+		{"exit code 2 refuses a shell call of 2.x with the text of the check", "2", "shell", "2.x", "refused: beehest refused: no staging"},
+		{"another exit code refuses a shell call of 2.x", "1", "shell", "2.x", "refused: beehest refused: the check of the command failed"},
 		{"a call of another tool of 2.x is never checked", "2", "read", "2.x", "pass"},
 		{"a tool name that holds shell inside a word is never checked", "2", "shellfish", "2.x", "pass"},
 		{"a tool name that holds bash inside a word is never checked", "2", "bashful", "1.x", "pass"},

@@ -13,7 +13,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Diagnostic is one problem in a file. It renders as file:line:col: text. A problem with the whole file has line 0 and renders as file: text.
@@ -39,7 +39,7 @@ const (
 )
 
 // reservedEnvPrefixes lists the prefixes of the variable names that a workflow never sets or reads. The engine and DBOS own these names.
-func reservedEnvPrefixes() []string { return []string{"DBOS__", "BEEHAVE_"} }
+func reservedEnvPrefixes() []string { return []string{"DBOS__", "BEEHEST_"} }
 
 // ReservedEnvName reports whether name starts with a prefix that a workflow never sets or reads.
 func ReservedEnvName(name string) bool {
@@ -267,7 +267,7 @@ func removedHint(msg string) string {
 		return ""
 	}
 
-	return ` Load the library function: load("@beehave//queue.star", "queue").`
+	return ` Load the library function: load("@beehest//queue.star", "queue").`
 }
 
 func placeOf(pos syntax.Position) Diagnostic {

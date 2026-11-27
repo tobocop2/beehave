@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const privateMode = os.FileMode(0o600)
@@ -58,7 +58,7 @@ func TestOptions_RefuseUnusableSettingsForTheEngineAndTheClient(t *testing.T) {
 		{"no_agent_slot", func(o *Options) { o.MaxConcurrent = 0 }, "agents.max_concurrent is 0: set it to 1 or more"},
 		{"a_negative_per_login", func(o *Options) { o.PerLogin = -1 }, "agents.per_login is -1: set it to 1 or more"},
 		{"a_per_login_above_a_queue_cap", func(o *Options) { o.MaxConcurrent, o.MaxReviewConcurrent, o.PerLogin = 3, 1, 2 }, "agents.per_login is 2: set it to agents.max_concurrent (3) or agents.max_review_concurrent (1), whichever is lower, or less"},
-		{"an_unknown_concurrency", func(o *Options) { o.Concurrency = "turbo" }, "agents.concurrency is \"turbo\": set it to \"static\" or \"adaptive\". Set it in runners.star or in BEEHAVE_AGENTS_CONCURRENCY"},
+		{"an_unknown_concurrency", func(o *Options) { o.Concurrency = "turbo" }, "agents.concurrency is \"turbo\": set it to \"static\" or \"adaptive\". Set it in runners.star or in BEEHEST_AGENTS_CONCURRENCY"},
 		{"a_negative_review_lookback", func(o *Options) { o.ReviewLookbackDays = -1 }, "agents.review_lookback_days is -1: set it to 1 or more"},
 		{"a_negative_review_poll", func(o *Options) { o.ReviewPoll = -time.Minute }, "review poll interval is -1m0s: set it to 0 or more"},
 	}
@@ -197,7 +197,7 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 			h.agents.result = func(AgentRequest) agent.Result {
 				return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "bad exit"}
 			}
-		}, "the agent step of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run beehave resume 12", []string{"claim:12", "release:12"}},
+		}, "the agent step of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run beehest resume 12", []string{"claim:12", "release:12"}},
 		{"the_agent_times_out", func(h *harness) {
 			h.agents.result = func(AgentRequest) agent.Result { return agent.Result{Outcome: agent.OutcomeTimedOut, ExitCode: -1} }
 		}, "ended as timed-out", []string{"claim:12", "release:12"}},
@@ -366,7 +366,7 @@ func TestEngine_ARunAfterTheShutdownIsRefusedByTheEngine(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorIs(t, err, errEngineShutDown)
-	require.ErrorContains(t, err, "item 12 was not started: run beehave run 12 again")
+	require.ErrorContains(t, err, "item 12 was not started: run beehest run 12 again")
 	assert.Empty(t, rowsOf(t, harness.client(t, testVersion), testItem), "a refused run stores no row")
 }
 

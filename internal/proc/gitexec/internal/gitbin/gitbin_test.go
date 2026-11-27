@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/internal/gitbin"
 )
 
 func TestArgs_PutsTheHooksSettingFirstAndKeepsTheArguments(t *testing.T) {

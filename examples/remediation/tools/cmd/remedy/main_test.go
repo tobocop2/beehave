@@ -10,8 +10,8 @@ import (
 
 	"github.com/rogpeppe/go-internal/testscript"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // These tests run the remedy tool as a separate process, as testscript does for any command line tool.

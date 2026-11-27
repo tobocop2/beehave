@@ -1,6 +1,6 @@
 // Package remedy is the command line of the remediation tools. One binary holds one subcommand for each tool, and the command table below is the list of them.
 //
-// A subcommand follows the exit codes of beehave: 0 for a pass, 1 for a defect found and 2 for a refusal or a failed read. A subcommand prints its findings to the standard output, one line each.
+// A subcommand follows the exit codes of beehest: 0 for a pass, 1 for a defect found and 2 for a refusal or a failed read. A subcommand prints its findings to the standard output, one line each.
 package remedy
 
 import (
@@ -10,9 +10,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // The exit codes of every subcommand.

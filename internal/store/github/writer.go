@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 var _ store.Writer = (*Store)(nil)
@@ -40,7 +40,7 @@ type ghComment struct {
 	Body string `json:"body"`
 }
 
-// Create files an issue for the key. It writes the line `beehave-key: <key>` at the end of the body and, before it writes, searches all issues for that line, so a repeated key returns the first issue.
+// Create files an issue for the key. It writes the line `beehest-key: <key>` at the end of the body and, before it writes, searches all issues for that line, so a repeated key returns the first issue.
 // The search index of GitHub can lag behind a create, so a search that finds nothing is followed by a read of the newest issues, which does not use the index.
 // A parent is set with --parent, which needs gh 2.101 or newer. The key makes a repeated call safe, as after a crash between the create and the step record.
 // The search and the create are separate calls, so two writers of one key at the same time need the key lock of the caller (see store.Writer).

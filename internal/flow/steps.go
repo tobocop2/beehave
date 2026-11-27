@@ -12,9 +12,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // errNoSuchRun is returned when the store holds no run of the given id.
@@ -167,7 +167,7 @@ func runRowOf(c storeView, id string) (dbos.WorkflowStatus, error) {
 	}
 
 	if len(rows) == 0 {
-		return dbos.WorkflowStatus{}, fmt.Errorf("%w: %q. Run beehave status to see the run ids", errNoSuchRun, id)
+		return dbos.WorkflowStatus{}, fmt.Errorf("%w: %q. Run beehest status to see the run ids", errNoSuchRun, id)
 	}
 
 	return rows[0], nil
@@ -253,7 +253,7 @@ func (c *Client) outputOf(row dbos.WorkflowStatus) (any, error) {
 }
 
 // failedRunsStream is the stream of an item run that holds the cost of each agent run that failed. A rewind keeps the entries of a stream,
-// so beehave resume keeps the cost of the failed run that it runs again.
+// so beehest resume keeps the cost of the failed run that it runs again.
 const failedRunsStream = "failed_runs"
 
 // failedRun is one entry of the stream of failed runs: the agent call and the cost of the run.

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
-	"github.com/tobocop2/beehave/internal/sandbox/seatbelt"
+	"github.com/tobocop2/beehest/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox/seatbelt"
 )
 
 func TestEnforcer_CannotRunOutsideMacOS(t *testing.T) {

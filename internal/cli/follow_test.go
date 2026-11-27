@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehest/internal/flow"
 )
 
 // Follow gives the entries of the test to emit and records the target. It ends with followErr.

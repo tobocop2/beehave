@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 func toJSON(t *testing.T, value any) string {

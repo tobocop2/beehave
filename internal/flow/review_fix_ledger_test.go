@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // ledgerEntry is one entry of the ledger, as the data file and the result field ledger hold it.
@@ -137,7 +137,7 @@ func runLedgerLoop(t *testing.T, script ledgerScript, extra string) ledgerRun {
 		return exited
 	}
 
-	flow := "load(\"@beehave//review_fix.star\", \"review_fix\")\n\n" +
+	flow := "load(\"@beehest//review_fix.star\", \"review_fix\")\n\n" +
 		"def main(item):\n    return pipeline(item)\n\n" +
 		"def pipeline(item):\n" +
 		"    impl = agent(name = \"implement\", prompt = \"prompts/impl.md\", model = \"sonnet\")\n" +

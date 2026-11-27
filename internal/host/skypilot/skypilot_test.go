@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const upCluster = `[{"name": "lane-host", "status": "UP"}]`
@@ -61,7 +61,7 @@ func TestSlot_ARunLimitWithAPartOfASecondGivesTheSlotJobTheNextWholeSecond(t *te
 	require.NoError(t, queue.slot.Hold(context.Background(), jobwait.Job{ID: "77", Nonce: "n"}))
 	assert.Equal(t, [][]string{{
 		"exec", "lane-host", "-d",
-		"cd ~ && timeout 2 sh -c 'until test -e .beehave-banked-lane-host-77-n; do sleep 5; done'",
+		"cd ~ && timeout 2 sh -c 'until test -e .beehest-banked-lane-host-77-n; do sleep 5; done'",
 	}}, sky.Calls)
 }
 
@@ -281,7 +281,7 @@ func TestSlot_HoldStartsASkyJobThatWaitsForTheMarkerForAtMostMaxRun(t *testing.T
 	require.NoError(t, queue.slot.Hold(context.Background(), jobwait.Job{ID: "77", Nonce: "n"}))
 	assert.Equal(t, [][]string{{
 		"exec", "lane-host", "-d",
-		"cd ~ && timeout 43200 sh -c 'until test -e .beehave-banked-lane-host-77-n; do sleep 5; done'",
+		"cd ~ && timeout 43200 sh -c 'until test -e .beehest-banked-lane-host-77-n; do sleep 5; done'",
 	}}, sky.Calls)
 }
 
@@ -292,7 +292,7 @@ func TestSlot_ReleaseWritesTheMarkerOnTheHeadNode(t *testing.T) {
 	ssh.Plan("", "touch")
 
 	require.NoError(t, queue.slot.Release(context.Background(), jobwait.Job{ID: "77", Nonce: "n"}))
-	assert.True(t, ssh.Called("lane-host", "touch", ".beehave-banked-lane-host-77-n"))
+	assert.True(t, ssh.Called("lane-host", "touch", ".beehest-banked-lane-host-77-n"))
 }
 
 func TestSlot_TheMarkerOfAJobWithAFolderHoldsNoFolder(t *testing.T) {
@@ -301,8 +301,8 @@ func TestSlot_TheMarkerOfAJobWithAFolderHoldsNoFolder(t *testing.T) {
 	_, queue, _, ssh := newHost(t, hostConfig(nil))
 	ssh.Plan("", "touch")
 
-	require.NoError(t, queue.slot.Release(context.Background(), jobwait.Job{ID: "77", Nonce: "n", Folder: "/home/lane/beehave-gate-one-abc"}))
-	assert.True(t, ssh.Called("lane-host", "touch", ".beehave-banked-lane-host-77-n"), "the folder is not in a file name")
+	require.NoError(t, queue.slot.Release(context.Background(), jobwait.Job{ID: "77", Nonce: "n", Folder: "/home/lane/beehest-gate-one-abc"}))
+	assert.True(t, ssh.Called("lane-host", "touch", ".beehest-banked-lane-host-77-n"), "the folder is not in a file name")
 }
 
 func TestSlot_ReportsTheFailureOfSkyExec(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/ifacetest"
+	"github.com/tobocop2/beehest/internal/ifacetest"
 )
 
 func TestMethods_ListsTheMethodsOfAnInterfaceAndOfTheOnesItEmbeds(t *testing.T) {

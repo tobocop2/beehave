@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 // CreateWait is the wait that the tracker tests give CreateGate. Under the key lock the second writer looks the key up only after the first one filed, so the first create waits this long and then runs.

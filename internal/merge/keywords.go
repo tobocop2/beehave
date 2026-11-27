@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/closing"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/closing"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // shortSHA is the length of a commit id in a line of a refusal.

@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // These tests run the sync step of the round: the round merges a moved trunk into the round branch before the queue audit of a pass.
@@ -387,7 +387,7 @@ func TestRoundSync_AReviewThatDoesNotApproveTheSyncStopsTheRoundWithTheReasonAnd
 
 	require.NoError(t, err)
 	require.Len(t, rig.questions, 1)
-	assert.Contains(t, rig.questions[0], "sync-review. The review did not approve the sync pull request. Its findings are in the reply of the step sync-review of the last pass: beehave status with the run id of the round lists the steps.")
+	assert.Contains(t, rig.questions[0], "sync-review. The review did not approve the sync pull request. Its findings are in the reply of the step sync-review of the last pass: beehest status with the run id of the round lists the steps.")
 	assert.Empty(t, syncLands(rig))
 
 	steps := strings.Join(stepNames(t, rig.last), " ")

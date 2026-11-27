@@ -1,0 +1,33 @@
+# The beehest process dies during the implement step, after the agent named its session. The next beehest run
+# resumes that session with the short continue prompt, in place of a fresh start with the note.
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
+! exec beehest run 7 --workflow flow/workflow.star &
+waitfile started
+waitsession s-lost
+kill -KILL
+wait
+
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone\tgate pass at [0-9a-f]+\treview 2/24\t'
+
+# The replay of the implement step got the resume flag with the saved id, once, and the continue prompt in place of the brief and the note.
+# The fix round resumes the implementer as the example says, which is now the session s-lost too.
+grep -count=1 '^implement --resume s-lost$' resumes.log
+grep -count=1 '^fix --resume s-lost$' resumes.log
+grep 'Continue the step from where you stopped' resumed.log
+! grep 'step=implement' resumed.log
+! grep 'Read `git status`' resumed.log
+
+grep -count=1 '^plan ' calls.log
+grep -count=2 '^implement ' calls.log
+
+-- hang --
+implement
+-- hang-session --
+s-lost
+-- verdicts --
+approve
+approve

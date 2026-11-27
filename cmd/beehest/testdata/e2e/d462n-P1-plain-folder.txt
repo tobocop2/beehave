@@ -1,0 +1,56 @@
+# d462n row P1-plain-folder: item t-1, project plain, earlier step none, between the runs none.
+isolate
+
+subst flow/wf.star
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add plain t-1 --title 'The item' --body-file body.txt
+! exec beehestreal run t-1 plain --workflow flow/wf.star &
+waitfile started
+kill -KILL
+wait
+
+exec sh any.sh run run t-1 plain --workflow flow/wf.star
+exec cat run.err
+
+# control: the second start got the note
+exists prompt.2
+grep 'This step ran before' prompt.2
+! grep 'The engine found no change to tracked files since the step started' prompt.2
+! grep 'The engine read this summary of the changes' prompt.2
+
+-- any.sh --
+label=$1
+shift
+beehestreal "$@" > "$label.out" 2> "$label.err"
+echo $? > "$label.rc"
+-- body.txt --
+The body.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- origin/MOVED_MARKER --
+moved
+-- config/projects/plain.star --
+# The sandbox is off because a sandboxed step here ends not-started: the tree has no git user.name or user.email, and the fake claude prints version 1.0.0, below the version that the sandbox needs.
+project(sandbox = "off")
+-- flow/wf.star --
+def main(item):
+    agent(name = "probe", prompt = "prompts/probe.md", model = "m")
+-- flow/prompts/probe.md --
+Probe the folder.
+-- fake/claude --
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then echo 1.0.0; exit 0; fi
+n=$(cat "@WORK@/starts" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "@WORK@/starts"
+cat > "@WORK@/prompt.$n"
+if [ "$n" -eq 1 ]; then
+	echo y > AGENT_WORK
+	echo x > "@WORK@/started"
+	sleep 30
+fi
+echo '{"type":"result","session_id":"s1","result":"done"}'

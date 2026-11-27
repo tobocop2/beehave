@@ -1,4 +1,4 @@
-// Package cli builds the beehave command line.
+// Package cli builds the beehest command line.
 package cli
 
 import (
@@ -9,17 +9,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/ci"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/ci"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
 	exitOK    = 0
 	exitError = 1
 
-	commandName = "beehave"
+	commandName = "beehest"
 	shortHelp   = "Take a backlog of issues to reviewed, gated pull requests with any coding agent"
 )
 

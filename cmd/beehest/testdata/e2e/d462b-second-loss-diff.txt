@@ -1,0 +1,78 @@
+# Acceptance d462b R5 (N3). The agent step of a round item is lost twice. The first lost agent leaves the worktree clean,
+# the second commits a file. The base branch moves on the remote after each loss. The note of the third start lists the
+# commit of the agent and no commit of the base.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+subst flow/round.star
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started.1
+kill -KILL
+wait
+
+exec git -C origin checkout -q integration/r1
+exec git -C origin add MOVED_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m moved
+exec git -C origin checkout -q main
+
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started.2
+kill -KILL
+wait
+
+exec git -C origin checkout -q integration/r1
+exec git -C origin add SECOND_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m second
+exec git -C origin checkout -q main
+
+exec beehestreal run round/integration/r1 local --workflow flow/round.star
+stdout 'item round/integration/r1 finished'
+
+# CELL R5a: the note of the third start names the commit of the agent.
+exists prompt.3
+grep 'agent.txt' prompt.3
+# CELL R5b: the note names no commit of the base.
+! grep 'MOVED_MARKER' prompt.3
+! grep 'SECOND_MARKER' prompt.3
+
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- origin/MOVED_MARKER --
+moved
+-- origin/SECOND_MARKER --
+second
+-- flow/round.star --
+def main(item):
+    agent(name = "probe", prompt = "prompts/probe.md", model = "m")
+-- flow/prompts/probe.md --
+Probe the folder.
+-- fake/claude --
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then echo 1.0.0; exit 0; fi
+n=$(cat "@WORK@/starts" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "@WORK@/starts"
+cat > "@WORK@/prompt.$n"
+git rev-parse HEAD > "@WORK@/agent.head.$n"
+if [ "$n" -eq 1 ]; then echo x > "@WORK@/started.1"; sleep 30; fi
+if [ "$n" -eq 2 ]; then echo agent > agent.txt; git add agent.txt; git -c user.name=a -c user.email=a@example.com commit -q -m agent; echo x > "@WORK@/started.2"; sleep 30; fi
+echo '{"type":"result","session_id":"s1","result":"done"}'

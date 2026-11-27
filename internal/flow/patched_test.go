@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // The flows of the patched() tests. A change to the step after the question sits behind patched("greeting"): the new code reads the facts, the old code reads the clock.

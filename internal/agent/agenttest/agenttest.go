@@ -12,15 +12,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
 	prompt   = "do the step"
 	token    = "tok-suite-value"
-	leakName = "BEEHAVE_SUITE_LEAK"
+	leakName = "BEEHEST_SUITE_LEAK"
 	// session is the session whose resume option and transcript the suite checks, and other is a second session.
 	session = "suite-session"
 	other   = "suite-other"
@@ -332,7 +332,7 @@ func CheckLaunch(r Reporter, adapter agent.Adapter) {
 	const runDir = "/run/folder"
 
 	write, skills := []string{outputFile}, []string{skillFolder}
-	guard := adapter.Guard("beehave check command", runDir, write, skills)
+	guard := adapter.Guard("beehest check command", runDir, write, skills)
 
 	checkFiles(r, "guard", guard.Files)
 	checkFiles(r, "guard", guard.Copies)
@@ -340,7 +340,7 @@ func CheckLaunch(r Reporter, adapter agent.Adapter) {
 	checkOpens(r, "launch with no guard", adapter.Guard("", runDir, write, skills), write)
 
 	if adapter.Profile().Sandbox {
-		box := adapter.Sandbox(agent.SandboxPlan{Work: "/work"}, "beehave check command", runDir, write, skills)
+		box := adapter.Sandbox(agent.SandboxPlan{Work: "/work"}, "beehest check command", runDir, write, skills)
 
 		checkFiles(r, "sandbox", box.Files)
 		checkFiles(r, "sandbox", box.Copies)

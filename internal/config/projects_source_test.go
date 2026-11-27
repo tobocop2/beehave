@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -26,7 +26,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: "local", Claims: "local", Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
+		Name: "p", Tracker: "local", Claims: "local", Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local", PRLabel: "made-by-beehest", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
 		Sandbox: model.SandboxOn,
 	}, project.Project)
 }

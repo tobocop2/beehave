@@ -1,0 +1,24 @@
+# The hit of the implementer gets the first scoped fix. Two scoped reviews ask for changes, and each scoped fix carries the findings of the review before it.
+# The third scoped review approves, the gate passes once, and the full review approves.
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone\tgate pass at [0-9a-f]+\treview 4/24\t'
+
+grep -count=1 '^plan ' calls.log
+grep -count=1 '^implement ' calls.log
+grep -count=3 '^fix 1 ' calls.log
+grep -count=4 '^review ' calls.log
+! grep '^fix 2 ' calls.log
+
+cmp events.log expected-events.log
+
+-- verdicts --
+changes
+changes
+approve
+approve
+-- expected-events.log --
+claim 7
+release 7

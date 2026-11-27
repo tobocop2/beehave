@@ -71,7 +71,7 @@ GITLEAKS_VERSION := v8.30.1
 GREMLINS_VERSION := v0.6.0
 # make goreleaser-install installs this goreleaser. make setup, the CI snapshot job and the tag workflow in .github/workflows/release.yaml all run it.
 GORELEASER_VERSION := v2.20.2
-BIN := bin/beehave
+BIN := bin/beehest
 REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
@@ -104,8 +104,8 @@ gitleaks-install:  ## Install gitleaks $(GITLEAKS_VERSION) into the Go bin folde
 golangci-lint-version:  ## Print the golangci-lint version that CI and make setup use
 	@echo $(GOLANGCI_LINT_VERSION)
 
-build:  ## Build bin/beehave
-	go build -trimpath -o $(BIN) ./cmd/beehave
+build:  ## Build bin/beehest
+	go build -trimpath -o $(BIN) ./cmd/beehest
 
 remedy:  ## Build bin/remedy, the tool of the remediation example (not part of the release)
 	go build -trimpath -o $(REMEDY) ./examples/remediation/tools/cmd/remedy
@@ -147,7 +147,7 @@ lint-darwin: lint-version  ## Lint and vet the Go code as GOOS=darwin
 vet:
 	go vet ./...
 
-# No package of the module may link DBOS Conductor, the enterprise module, viper or the shell interpreter. net/http and crypto/tls are allowed in dependencies: DBOS links both, and TestRun_OpensNoNetworkSocket proves beehave opens no connection. The depguard rule no-http-client keeps net/http out of beehave's own code.
+# No package of the module may link DBOS Conductor, the enterprise module, viper or the shell interpreter. net/http and crypto/tls are allowed in dependencies: DBOS links both, and TestRun_OpensNoNetworkSocket proves beehest opens no connection. The depguard rule no-http-client keeps net/http out of beehest's own code.
 deps:  ## Fail if the binary links a forbidden dependency
 	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
 
@@ -184,8 +184,8 @@ coverage:  ## Enforce the coverage gate on coverage.out and the flow profiles (r
 	go-test-coverage --config=.go-test-coverage.yml --profile=$(FLOW_PROFILES)
 
 smoke: build remedy  ## Run the built binary: --version prints and exits 0, and the upload-pack helper of the push answers
-	$(BIN) --version | grep -q '^beehave '
-	$(BIN) --beehave-upload-pack nope / / 2>&1 | grep -q '^beehave upload-pack: '
+	$(BIN) --version | grep -q '^beehest '
+	$(BIN) --beehest-upload-pack nope / / 2>&1 | grep -q '^beehest upload-pack: '
 	$(REMEDY) --help | grep -q '^usage: remedy '
 
 smoke-agent: build  ## Run examples/local once with the real claude CLI (costs an agent run; not part of check)

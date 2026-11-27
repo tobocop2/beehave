@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/roundcut"
-	"github.com/tobocop2/beehave/internal/roundintegration"
-	"github.com/tobocop2/beehave/internal/roundsync"
-	"github.com/tobocop2/beehave/internal/takeover"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/roundcut"
+	"github.com/tobocop2/beehest/internal/roundintegration"
+	"github.com/tobocop2/beehest/internal/roundsync"
+	"github.com/tobocop2/beehest/internal/takeover"
 )
 
 var errForge = errors.New("the forge answered 502")

@@ -16,20 +16,20 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/preflight"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
-	"github.com/tobocop2/beehave/internal/review"
-	"github.com/tobocop2/beehave/internal/roundcut"
-	"github.com/tobocop2/beehave/internal/roundintegration"
-	"github.com/tobocop2/beehave/internal/roundsync"
-	"github.com/tobocop2/beehave/internal/step"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/takeover"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/preflight"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/review"
+	"github.com/tobocop2/beehest/internal/roundcut"
+	"github.com/tobocop2/beehest/internal/roundintegration"
+	"github.com/tobocop2/beehest/internal/roundsync"
+	"github.com/tobocop2/beehest/internal/step"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/takeover"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
@@ -90,7 +90,7 @@ type dryChoice struct {
 type DryOption func(*dryChoice)
 
 // WithVoidGates makes the first count gates of the dry run void: each one did not run, so its step is unknown and it gives no verdict. Each later gate passes.
-// The command beehave check has no flag for it: the option is for tests of the library.
+// The command beehest check has no flag for it: the option is for tests of the library.
 func WithVoidGates(count int) DryOption { return func(c *dryChoice) { c.voidGates = count } }
 
 // WithFixture scripts the agent, gate, wait and recv calls of the dry run from the fixture, so that a review rejects twice and then approves, or a gate is red once.
@@ -113,7 +113,7 @@ func WithSpawnDepth(depth int) DryOption { return func(c *dryChoice) { c.spawnDe
 func WithSandbox(mode model.SandboxMode) DryOption { return func(c *dryChoice) { c.sandbox = mode } }
 
 // WithEntry starts the dry run at the named entry of the file, as a run of the engine does, so that a test walks the file it tests.
-// An entry run skips the finish function. The command beehave check has no flag for it: the option is for tests of the library.
+// An entry run skips the finish function. The command beehest check has no flag for it: the option is for tests of the library.
 func WithEntry(name string) DryOption { return func(c *dryChoice) { c.entry = name } }
 
 // chooseDry applies the options of a dry run in order.
@@ -135,7 +135,7 @@ func chooseDry(options []DryOption) dryChoice {
 func DryRun(ctx context.Context, file, item string, env map[string]string, out io.Writer, options ...DryOption) (err error) {
 	chosen := chooseDry(options)
 
-	root, err := os.MkdirTemp("", "beehave-dry-run-")
+	root, err := os.MkdirTemp("", "beehest-dry-run-")
 	if err != nil {
 		return fmt.Errorf("make the dry-run folder: %w", err)
 	}

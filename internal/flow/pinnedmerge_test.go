@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // member is the struct of the member of a union for the item, at its head.
@@ -31,7 +31,7 @@ func TestMerge_AMemberWithAPassedGateOfThisRunMergesAndGetsItsStatuses(t *testin
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
-	assert.Equal(t, []string{"beehave/gate success " + rig.heads["1"]}, rig.merger.statusesGiven())
+	assert.Equal(t, []string{"beehest/gate success " + rig.heads["1"]}, rig.merger.statusesGiven())
 	require.Len(t, rig.merger.given, 1)
 	assert.Equal(t, rig.repo.must(t, "rev-parse", "HEAD^{tree}"), rig.merger.given[0].GatedTree, "the merge compares the base tree with the tree of the gate")
 	assert.Equal(t, []string{"report 1    False"}, filterReport(rig.h.commands.ran()))
@@ -50,7 +50,7 @@ out = merge(members = [struct(item = "1", head = "` + rig.heads["1"] + `", appro
 	_, err := rig.walk(t, body)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"beehave/review success " + rig.heads["1"], "beehave/gate success " + rig.heads["1"]}, rig.merger.statusesGiven())
+	assert.Equal(t, []string{"beehest/review success " + rig.heads["1"], "beehest/gate success " + rig.heads["1"]}, rig.merger.statusesGiven())
 	assert.Equal(t, []int{7}, rig.merger.given[0].Closes)
 }
 
@@ -161,7 +161,7 @@ func TestMerge_AReplayOfTheRunTrustsTheGateThatTheRecordHolds(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, rig.gate.ran(), 1, "the replay reads the recorded gate and runs no gate again")
-	assert.Equal(t, []string{"beehave/gate success " + rig.heads["1"]}, rig.merger.statusesGiven(), "the gate of the record is trusted")
+	assert.Equal(t, []string{"beehest/gate success " + rig.heads["1"]}, rig.merger.statusesGiven(), "the gate of the record is trusted")
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 }
 

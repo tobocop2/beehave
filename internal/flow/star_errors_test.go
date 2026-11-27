@@ -14,7 +14,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
@@ -23,7 +23,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 	cases := []struct{ name, body, want string }{
 		{"command env is not a dict", `command(run = ["x"], env = "A=b" + "")`, "env must be a dict of strings"},
 		{"command env value is not text", `command(run = ["x"], env = {"A": 1})`, "env must hold strings only"},
-		{"command env name is reserved", `command(run = ["x"], env = {"BEEHAVE_STATE_DIR": "b"})`, "env cannot set `BEEHAVE_STATE_DIR`"},
+		{"command env name is reserved", `command(run = ["x"], env = {"BEEHEST_STATE_DIR": "b"})`, "env cannot set `BEEHEST_STATE_DIR`"},
 		{"command env hands back the SSH agent", `command(run = ["x"], env = {"SSH_AUTH_SOCK": "/tmp/agent.sock"})`, "env cannot set `SSH_AUTH_SOCK`"},
 		{"command env computed key hands back the SSH agent", `command(run = ["x"], env = {"SSH_" + "AUTH_SOCK": "x"})`, "env cannot set `SSH_AUTH_SOCK`"},
 		{"command env dict in a variable hands back the SSH agent", `e = {"SSH_AUTH_SOCK": "x"}` + "\n" + `command(run = ["x"], env = e)`, "env cannot set `SSH_AUTH_SOCK`"},
@@ -43,7 +43,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"env has no name", `env()`, "name"},
 		{"earlier_calls has no call", `earlier_calls()`, "call"},
 		{"item_read has an unknown argument", `item_read(nope = 1)`, "nope"},
-		{"env reads a reserved name", `env("BEEHAVE_STATE_DIR")`, "env cannot read `BEEHAVE_STATE_DIR`"},
+		{"env reads a reserved name", `env("BEEHEST_STATE_DIR")`, "env cannot read `BEEHEST_STATE_DIR`"},
 		{"env reads a name that is not set", `env("NOPE_ZZ")`, "the environment variable NOPE_ZZ is not set"},
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},
 		{"agent has an empty model", `agent(prompt = "p", model = "")`, "an agent call needs a model"},

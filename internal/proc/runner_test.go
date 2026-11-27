@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const fakeScript = `#!/bin/sh
@@ -71,7 +71,7 @@ func TestExecRunner_ReturnsOutputAndExitCode(t *testing.T) { //nolint:parallelte
 func TestExecRunner_PassesTheEnvironmentItIsGivenToTheCommand(t *testing.T) {
 	t.Parallel()
 
-	done := proc.ExecRunner{Binary: "sh", Env: []string{"BEEHAVE_PROC_TEST=seen"}}.Run(context.Background(), []string{"-c", `printf %s "$BEEHAVE_PROC_TEST"`})
+	done := proc.ExecRunner{Binary: "sh", Env: []string{"BEEHEST_PROC_TEST=seen"}}.Run(context.Background(), []string{"-c", `printf %s "$BEEHEST_PROC_TEST"`})
 
 	assert.Equal(t, "seen", done.Stdout)
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 func TestCreatePR_OpensADraftAndReadsTheNumberFromTheAddress(t *testing.T) {
@@ -100,16 +100,16 @@ func TestCreatePR_ALabelGoesToTheSameCreateCallAndAnExistingLabelIsNotCreatedAga
 	t.Parallel()
 
 	run := &proctest.Scripted{}
-	run.Plan(toJSON(t, []fields{{"name": "Made-By-Beehave"}}), "label", "list")
+	run.Plan(toJSON(t, []fields{{"name": "Made-By-Beehest"}}), "label", "list")
 	run.Plan(prAddress, "pr", "create")
 	f := newForge(t, repo, run)
 
-	number, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Title: "t", Body: "b", Label: "made-by-beehave"})
+	number, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Title: "t", Body: "b", Label: "made-by-beehest"})
 	require.NoError(t, err)
 	assert.Equal(t, 42, number)
 	assert.Equal(t, [][]string{
-		{"label", "list", "--repo", repo, "--search", "made-by-beehave", "--json", "name", "--limit", "100"},
-		{"pr", "create", "--draft", "--repo", repo, "--head", "bb-1", "--base", "round-1", "--title", "t", "--body", "b", "--label", "made-by-beehave"},
+		{"label", "list", "--repo", repo, "--search", "made-by-beehest", "--json", "name", "--limit", "100"},
+		{"pr", "create", "--draft", "--repo", repo, "--head", "bb-1", "--base", "round-1", "--title", "t", "--body", "b", "--label", "made-by-beehest"},
 	}, run.Calls, "one create call carries the label, and no second write adds it")
 }
 
@@ -117,22 +117,22 @@ func TestCreatePR_ARepositoryWithoutTheLabelGetsItBeforeThePullRequest(t *testin
 	t.Parallel()
 
 	run := &proctest.Scripted{}
-	run.Plan(toJSON(t, []fields{{"name": "made-by-beehave-old"}}), "label", "list")
+	run.Plan(toJSON(t, []fields{{"name": "made-by-beehest-old"}}), "label", "list")
 	run.Plan("", "label", "create")
 	run.Plan(prAddress, "pr", "create")
 	f := newForge(t, repo, run)
 
-	_, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehave"})
+	_, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehest"})
 	require.NoError(t, err)
 	require.Len(t, run.Calls, 3)
-	assert.Equal(t, []string{"label", "create", "made-by-beehave", "--repo", repo}, run.Calls[1])
+	assert.Equal(t, []string{"label", "create", "made-by-beehest", "--repo", repo}, run.Calls[1])
 	assert.Equal(t, "pr", run.Calls[2][0])
 }
 
 func TestCreatePR_AFailedLabelStepOpensNoPullRequest(t *testing.T) {
 	t.Parallel()
 
-	req := model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehave"}
+	req := model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehest"}
 
 	listDown := &proctest.Scripted{}
 	listDown.Plan(prAddress, "pr", "create")
@@ -151,7 +151,7 @@ func TestCreatePR_AFailedLabelStepOpensNoPullRequest(t *testing.T) {
 	createDown.Plan("[]", "label", "list")
 	_, err = newForge(t, repo, createDown).CreatePR(context.Background(), req)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `cannot create the label "made-by-beehave"`)
+	assert.Contains(t, err.Error(), `cannot create the label "made-by-beehest"`)
 	assert.Len(t, createDown.Calls, 2)
 }
 

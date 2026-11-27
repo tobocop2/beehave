@@ -6,13 +6,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-const gateFolder = sshtest.Root + "/work/beehave-gate-one-abc"
+const gateFolder = sshtest.Root + "/work/beehest-gate-one-abc"
 
 func TestSubmit_ReturnsAnIdThatHoldsTheFolderOfTheJob(t *testing.T) {
 	t.Parallel()
@@ -23,8 +23,8 @@ func TestSubmit_ReturnsAnIdThatHoldsTheFolderOfTheJob(t *testing.T) {
 	id, err := h.Submit(t.Context(), model.JobSpec{Name: "gate", Command: "true", Folder: gateFolder})
 
 	require.NoError(t, err)
-	assert.Equal(t, jobwait.Job{ID: "beehave-n1", Folder: gateFolder}.String(), string(id))
-	require.NotNil(t, m.Units["beehave-n1"], "the unit is named by the key, not by the folder")
+	assert.Equal(t, jobwait.Job{ID: "beehest-n1", Folder: gateFolder}.String(), string(id))
+	require.NotNil(t, m.Units["beehest-n1"], "the unit is named by the key, not by the folder")
 }
 
 func TestSubmit_RefusesAFolderThatIsNotAnAbsolutePath(t *testing.T) {
@@ -79,7 +79,7 @@ func TestWait_RefusesAnIdWhoseFolderIsNotAnAbsolutePath(t *testing.T) {
 	m := sshtest.New(hosttest.Working)
 	h, _, _ := newHost(t, m, config())
 
-	_, err := h.Wait(t.Context(), "beehave-n1~!!!")
+	_, err := h.Wait(t.Context(), "beehest-n1~!!!")
 
 	require.ErrorIs(t, err, jobwait.ErrBadFolder)
 	assert.Zero(t, calledWith(m, "sh"))

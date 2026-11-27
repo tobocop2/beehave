@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/fstree"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/fstree"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // Outcome says how an agent run ended.
@@ -51,7 +51,7 @@ const (
 	runDirMode     = 0o700
 	launchFileMode = 0o600
 	// promptFileName is the file of PromptFile in the run folder.
-	promptFileName = "beehave-prompt.txt"
+	promptFileName = "beehest-prompt.txt"
 	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
 	// keeps the socket paths of the shell under the limit of 104 bytes on macOS, and the path of the CLI home under the limit of cliTempLimit.
 	shortTemp  = "/tmp"
@@ -304,7 +304,7 @@ type timers struct {
 }
 
 func execute(ctx context.Context, spec Spec, p Profile, clock timers, version versionOf, where tempPlace) Result {
-	runDir, err := os.MkdirTemp("", "beehave-run-") // mode 0700
+	runDir, err := os.MkdirTemp("", "beehest-run-") // mode 0700
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
 	}

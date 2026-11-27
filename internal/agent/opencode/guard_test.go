@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
 )
 
-const pluginPath = "config/plugins/beehave-guard.js"
+const pluginPath = "config/plugins/beehest-guard.js"
 
 // closedEnv is what a run with a guard sets so that no file of the owner or of the checkout adds a hook.
 func closedEnv(runDir string) map[string]string {
@@ -33,13 +33,13 @@ func closedEnv(runDir string) map[string]string {
 func TestGuard_WritesOnePluginAndTheClosedRunEnvironment(t *testing.T) {
 	t.Parallel()
 
-	launch := opencode.New().Guard("/bin/beehave check command", "/run", nil, nil)
+	launch := opencode.New().Guard("/bin/beehest check command", "/run", nil, nil)
 
 	assert.Empty(t, launch.Args)
 	assert.Equal(t, closedEnv("/run"), launch.Env)
 	require.Len(t, launch.Files, 1)
 	assert.Contains(t, launch.Files, pluginPath)
-	assert.Contains(t, launch.Files[pluginPath], `"/bin/beehave check command"`)
+	assert.Contains(t, launch.Files[pluginPath], `"/bin/beehest check command"`)
 	assert.Contains(t, launch.Files[pluginPath], "tool.execute.before")
 }
 
@@ -143,7 +143,7 @@ var decisions = []struct {
 	{"OpenCode 1.x checks the call with its output args", `"tool.execute.before": async (input, output) => refuse(directory, input.tool, output && output.args),`, false},
 	{"OpenCode 2.x checks the call with its input", `ctx.tool.hook("execute.before", async (input) => refuse(ctx.location.directory, input.tool, input.input))`, false},
 	{"a context with no tool takes no hook", `if (!ctx.tool) return`, false},
-	{"a refusal throws", `if (why !== "") throw new Error("beehave refused: " + why)`, false},
+	{"a refusal throws", `if (why !== "") throw new Error("beehest refused: " + why)`, false},
 }
 
 // planOf returns the lines of the plugin, trimmed.
@@ -209,7 +209,7 @@ func TestGuard_AMutantOfThePluginBreaksADecision(t *testing.T) {
 		{"OpenCode 2.x takes no hook", `ctx.tool.hook("execute.before", async (input) => refuse(ctx.location.directory, input.tool, input.input))`, `void 0`},
 		{"OpenCode 1.x takes no hook", `"tool.execute.before": async (input, output) => refuse(directory, input.tool, output && output.args),`, ``},
 		{"the verdict never runs the guard command", `const run = spawnSync(GUARD, { shell: true, input: event, encoding: "utf8", timeout: 30000 })`, `const run = { status: 0 }`},
-		{"a refusal does not throw", `if (why !== "") throw new Error("beehave refused: " + why)`, `if (why !== "") return`},
+		{"a refusal does not throw", `if (why !== "") throw new Error("beehest refused: " + why)`, `if (why !== "") return`},
 		{"the marker is not written", `writeFileSync(LOADED, "loaded\n")`, `void 0`},
 		{"exit code 2 passes", `if (run.status === 2) return (run.stderr || "").trim() || "the command is not allowed"`, `if (run.status === 2) return ""`},
 	}
@@ -227,7 +227,7 @@ func TestGuard_TheMarkerPathIsInsideTheRunFolderAndStaysOneJavaScriptString(t *t
 
 	launch := opencode.New().Guard("__LOADED_PATH__", `/run "x"`, nil, nil)
 
-	assert.Equal(t, "config/beehave-guard-loaded", launch.Loaded)
+	assert.Equal(t, "config/beehest-guard-loaded", launch.Loaded)
 	assert.Contains(t, launch.Files[pluginPath], `const GUARD = "__LOADED_PATH__"`, "the text that a command inserts is not read as a place to fill")
-	assert.Contains(t, launch.Files[pluginPath], `const LOADED = "/run \"x\"/config/beehave-guard-loaded"`)
+	assert.Contains(t, launch.Files[pluginPath], `const LOADED = "/run \"x\"/config/beehest-guard-loaded"`)
 }

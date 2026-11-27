@@ -4,9 +4,9 @@ import (
 	"cmp"
 	"encoding/json"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/landing"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/landing"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // commitField is the result field of base_tip that holds the tip commit.
@@ -155,7 +155,7 @@ func itemStopOutputs(recorded bool) map[string]any { return map[string]any{"reco
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns", "budget" or "context" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
-// cost_estimated is true when cost_usd is an estimate that beehave made from the tokens of the run, and false when the agent CLI reported the cost.
+// cost_estimated is true when cost_usd is an estimate that beehest made from the tokens of the run, and false when the agent CLI reported the cost.
 // cost_unknown is true when the run used tokens of a model that has no price, so cost_usd holds no dollars for it.
 // rewrote is true when the commit the run started on is not in the history of the commit it ended on.
 // skills lists the skills that the agent called, in the order of the calls. It is an empty list, never null, for a run that called none.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehest/internal/flow"
 )
 
 const sendLong = "Send a message to the open run of an item. A recv call of its workflow with the same topic receives it.\n" +
@@ -18,10 +18,10 @@ const sendLong = "Send a message to the open run of an item. A recv call of its 
 	"A second send with the same --key to the same run inserts nothing, so a send that you repeat after a failure delivers once. " +
 	"With no --key, the id is a fresh key: give it as --key to repeat the send."
 
-// errSendValue is returned when beehave send gets both a text and --json, or neither.
+// errSendValue is returned when beehest send gets both a text and --json, or neither.
 var errSendValue = errors.New("give the value as text after the item, or as a file with --json, not both")
 
-// sendFlags holds the flags of beehave send.
+// sendFlags holds the flags of beehest send.
 type sendFlags struct {
 	config, topic, key, file string
 }
@@ -44,7 +44,7 @@ func (f flowCommands) sendCommand() *cobra.Command {
 	return command
 }
 
-// send runs beehave send: it reads the value, sends the message and prints its id.
+// send runs beehest send: it reads the value, sends the message and prints its id.
 func (f flowCommands) send(cmd *cobra.Command, flags sendFlags, args []string) error {
 	value, err := sendValue(flags.file, args[1:])
 	if err != nil {

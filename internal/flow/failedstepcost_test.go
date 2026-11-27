@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"modernc.org/sqlite"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // The flags of the helper process. The state folder is empty in the test process, so a trigger left in a store never kills the test process.

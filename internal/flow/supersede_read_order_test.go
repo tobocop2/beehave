@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 // readThenHoldForge reads the pull request, then holds the read that the test names until the test lets it go, and returns what it read.

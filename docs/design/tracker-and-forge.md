@@ -1,6 +1,6 @@
 # Tracker, claims and forge
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 This part describes the tracker backends and their writes, the claim policy, the claim leases in beads, the forge adapter and the shared command runner.
 
@@ -44,8 +44,8 @@ A tracker with no `Writer` stays valid. A workflow that writes to it fails with 
 | Adapter | Create | Comment | SetStatus |
 |---|---|---|---|
 | `local` | A row in `item_keys` for each key, filed in the same `BEGIN IMMEDIATE` transaction as the item. | A row in `comments` with the primary key project, item and key. | An update of the state. `hold` shows as `Hold` in `OpenItems`. `closed` leaves the list. |
-| `github` | The line `beehave-key: <key>` ends the body. `gh issue list --state all --search` finds it first, and the adapter matches the whole line. The search index of GitHub can lag. When the search finds nothing, a second `gh issue list --state all --limit 100` with no `--search` reads the newest issues, and the adapter matches the whole line again. A parent is `--parent`, which needs gh 2.101 or newer. | The same line ends the comment. The adapter first reads every comment of the issue, with `gh api --paginate --slurp` on the comments of the issue (https://cli.github.com/manual/gh_api). | `gh issue view` reads the state and labels. Only the needed command runs: `close`, `reopen`, or `edit` with the `hold` label. gh refuses a label that the repository does not have, so the adapter first runs `gh label list --search` for the name and runs `gh label create` when no label has it. This holds for `hold`, for the severity label and for `operator` at create. A failed label command is a refusal, and the item write does not run. |
-| `beads` | The line `beehave-key: <key>` ends the description. `bd list --all --desc-contains` finds it first. `bd create --silent` prints the new id. | The same line ends the comment, after `--`, so that text which starts with `-` is not read as a flag. `bd comments <id> --json` is read first. | `bd show` reads the status and labels. Only the needed command runs: `close`, `reopen`, or `update` with the `hold` label. |
+| `github` | The line `beehest-key: <key>` ends the body. `gh issue list --state all --search` finds it first, and the adapter matches the whole line. The search index of GitHub can lag. When the search finds nothing, a second `gh issue list --state all --limit 100` with no `--search` reads the newest issues, and the adapter matches the whole line again. A parent is `--parent`, which needs gh 2.101 or newer. | The same line ends the comment. The adapter first reads every comment of the issue, with `gh api --paginate --slurp` on the comments of the issue (https://cli.github.com/manual/gh_api). | `gh issue view` reads the state and labels. Only the needed command runs: `close`, `reopen`, or `edit` with the `hold` label. gh refuses a label that the repository does not have, so the adapter first runs `gh label list --search` for the name and runs `gh label create` when no label has it. This holds for `hold`, for the severity label and for `operator` at create. A failed label command is a refusal, and the item write does not run. |
+| `beads` | The line `beehest-key: <key>` ends the description. `bd list --all --desc-contains` finds it first. `bd create --silent` prints the new id. | The same line ends the comment, after `--`, so that text which starts with `-` is not read as a flag. `bd comments <id> --json` is read first. | `bd show` reads the status and labels. Only the needed command runs: `close`, `reopen`, or `update` with the `hold` label. |
 
 The engine records each call as a step, so a replay does not write again. The key covers the one gap that the step record cannot: a crash between the write and the record.
 
@@ -77,7 +77,7 @@ A project with `claims = "local"` (the default) keeps its claim rows in `local.d
   - The lease lasts 5 minutes, and bd has no flag to change it.
 - **Reclaim.** `bd reclaim --id <row> --older-than 0s` frees a row only when its lease ended. bd ends no lease by itself: a late beat before the reclaim revives the lease. A row set to `in_progress` by hand has no lease, and bd never reclaims it.
 - **Release.** `bd unclaim <row> --if-assignee <holder>` sets the status back to open and ends the lease. A mismatch exits 1 with the text `assignee mismatch`, and `claim` refuses with code 3. A closed row holds nothing and counts as free.
-- **Version.** The leases and the guards exist from bd 1.3.2. The claim store asks `bd --version` once before its first write, and refuses an older bd before it writes anything. `beehave check config` runs the same check.
+- **Version.** The leases and the guards exist from bd 1.3.2. The claim store asks `bd --version` once before its first write, and refuses an older bd before it writes anything. `beehest check config` runs the same check.
 
 ### One dolt server for each project
 
@@ -86,7 +86,7 @@ The lease table of bd is node-local: it is not committed to Dolt and not replica
 ### The claim rules
 
 - A holder is live while the end of its lease is after the clock.
-- The end comes from bd and the clock from beehave. A clock skew between the host of bd and the host of beehave can make `EnsureFree` and `Who` disagree with `Take`. `EnsureFree` only prechecks, and `bd reclaim` decides.
+- The end comes from bd and the clock from beehest. A clock skew between the host of bd and the host of beehest can make `EnsureFree` and `Who` disagree with `Take`. `EnsureFree` only prechecks, and `bd reclaim` decides.
 - A holder with no lease never expires, because bd never reclaims it.
 - A read that fails, does not parse or fills a page is an error, and `claim` turns it into a refusal.
 - `Take` is bd's atomic claim. When another holder wins, `claim` runs one reclaim, then claims again, then refuses with code 3.
@@ -97,17 +97,17 @@ Backends copy small helpers, such as `derefText` and the argument constants, rat
 
 ### The fake bd and the contract test
 
-The package `store/beads/beadstest` holds the fake `bd` that the tests of `store/beads` and `cmd/beehave` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2. The same package holds the helpers that start and stop the private dolt server of the real-bd contract tests, so `internal/store/beads` and `cmd/beehave` share one copy.
+The package `store/beads/beadstest` holds the fake `bd` that the tests of `store/beads` and `cmd/beehest` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2. The same package holds the helpers that start and stop the private dolt server of the real-bd contract tests, so `internal/store/beads` and `cmd/beehest` share one copy.
 
 The contract test `TestLeaseContract` in `internal/store/beads` runs the same scenarios against the fake and against a real bd 1.3.2 on a private dolt server. The real run is off by default. To run it:
 
-1. Set `BEEHAVE_BD_132` to the path of a bd 1.3.2 binary. Check its checksum against the release file.
+1. Set `BEEHEST_BD_132` to the path of a bd 1.3.2 binary. Check its checksum against the release file.
 2. Put `dolt` on `PATH`.
 3. Run `go test ./internal/store/beads -run TestLeaseContract`.
 
 The test starts its own dolt server on a free port, refuses ports 3306 and 3307, and stops the server at the end. It ends a lease with `dolt sql` instead of a wait of 5 minutes.
 
-`cmd/beehave` runs `claim` over the real claim store, because only the composition root may import `store` and `claim` together.
+`cmd/beehest` runs `claim` over the real claim store, because only the composition root may import `store` and `claim` together.
 
 ## Forge and the command runner
 

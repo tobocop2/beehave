@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 func prHarness(t *testing.T) (*harness, *fakeForge) {

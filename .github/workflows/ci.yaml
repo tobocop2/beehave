@@ -96,14 +96,14 @@ jobs:
       - name: Install gitleaks
         run: make gitleaks-install
 
-      # The contract tests against a real bd need dolt and bd 1.3.2. With CI set, they fail when BEEHAVE_BD_132 is missing.
+      # The contract tests against a real bd need dolt and bd 1.3.2. With CI set, they fail when BEEHEST_BD_132 is missing.
       # They run in slice 1, with the other packages.
       - name: Install dolt and bd
         if: startsWith(matrix.slice, '1/')
         run: |
           make contract-tools-install CONTRACT_TOOLS_DIR="$RUNNER_TEMP/contract-tools"
           echo "$RUNNER_TEMP/contract-tools" >> "$GITHUB_PATH"
-          echo "BEEHAVE_BD_132=$RUNNER_TEMP/contract-tools/bd" >> "$GITHUB_ENV"
+          echo "BEEHEST_BD_132=$RUNNER_TEMP/contract-tools/bd" >> "$GITHUB_ENV"
 
       - name: Race tests
         run: make test GO_TEST_SLICE=${{ matrix.slice }}

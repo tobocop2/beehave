@@ -38,7 +38,7 @@ func (f flowCommands) gateHoldCommand() *cobra.Command {
 		Use:   "hold <item>",
 		Short: "Stop the running gate of an item and free its host slot",
 		Long: "Stop the build job of the running gate of an item at the next tick of the engine and free its slot on the host. The gate waits, and it holds no slot of the host and no place on the queue of its project, so another gate of the project starts. " +
-			"Run beehave gate release to put the gate back on the queue of its project with the place that it had. " +
+			"Run beehest gate release to put the gate back on the queue of its project with the place that it had. " +
 			"The command refuses an item with no open gate, a gate that waits in the queue, a gate that runs on this machine, and a gate that is held already.",
 		Args: oneItem,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,7 +71,7 @@ func (f flowCommands) gateReleaseCommand() *cobra.Command {
 // priorityArgs takes the item and the level.
 func priorityArgs(cmd *cobra.Command, args []string) error {
 	if len(args) != gatePriorityArgs {
-		return errors.New("give the item and the level: beehave gate priority <item> <level>")
+		return errors.New("give the item and the level: beehest gate priority <item> <level>")
 	}
 
 	return itemArgs(cmd, args)

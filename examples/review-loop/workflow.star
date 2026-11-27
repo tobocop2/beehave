@@ -1,7 +1,7 @@
 # Two agents improve one draft by messages. The author writes the draft, and the reviewer judges it.
 # The author starts the reviewer as a child run and sends it each draft. The reviewer replies to "parent" with a verdict and notes.
 # The loop stops when the reviewer approves, or after ROUNDS drafts.
-# Add an item with `beehave item add`, then run it with `beehave run <item> <project> --workflow workflow.star`.
+# Add an item with `beehest item add`, then run it with `beehest run <item> <project> --workflow workflow.star`.
 
 ROUNDS = 3
 REPLY_TIMEOUT = "30m"

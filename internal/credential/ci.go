@@ -3,7 +3,7 @@ package credential
 import (
 	"errors"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 var (
@@ -11,7 +11,7 @@ var (
 	ErrCIWritable = errors.New("the writer token can change workflow files. Make a token with no Workflows permission " +
 		"(docs/design/trust.md, section \"The CI lock\"), then start again. ci_locked does not lift this")
 	// ErrCIUnstated is the refusal of a writer token whose CI permission the forge does not show, when the owner has not stated it.
-	ErrCIUnstated = errors.New("beehave cannot read whether the writer token can change workflow files. If the token has no Workflows permission, " +
+	ErrCIUnstated = errors.New("beehest cannot read whether the writer token can change workflow files. If the token has no Workflows permission, " +
 		"set ci_locked = True in its credential(...) block (docs/design/trust.md, section \"The CI lock\")")
 )
 

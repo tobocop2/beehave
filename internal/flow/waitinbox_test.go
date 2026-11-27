@@ -186,7 +186,7 @@ func TestWait_AMessageOfAnotherTopicDoesNotExtendTheDeadline(t *testing.T) {
 	assert.Less(t, time.Since(started), 2500*time.Millisecond, "the wait ends at its own deadline, not one after the message")
 }
 
-func TestReply_AKeyThatBeehaveSendUsedStillSendsTheAnswer(t *testing.T) {
+func TestReply_AKeyThatBeehestSendUsedStillSendsTheAnswer(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)

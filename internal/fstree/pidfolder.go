@@ -128,7 +128,7 @@ func trusted(root string, info fs.FileInfo, uid int) error {
 
 	switch {
 	case !info.IsDir():
-		return fmt.Errorf("%s is not a folder that beehave made", root)
+		return fmt.Errorf("%s is not a folder that beehest made", root)
 	case !owned || int(owner.Uid) != uid:
 		return fmt.Errorf("%s belongs to another user", root)
 	case info.Mode().Perm()&groupOrOtherWrite != 0:

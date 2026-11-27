@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // resumeAfterCrash starts the file again after a crash at its wait, answers the wait and returns the outcome.
@@ -59,7 +59,7 @@ func TestClaimStop_ARestartBetweenTheReadAndTheStopReadsTheForgeOnceAndKeepsTheS
 func TestClaimStop_ARestartAfterTheCallReadsNothingAndKeepsTheStop(t *testing.T) {
 	t.Parallel()
 
-	const flowText = `load("@beehave//claims.star", "claim_stop")
+	const flowText = `load("@beehest//claims.star", "claim_stop")
 
 def main(item):
     c = claim_stop(name = "c", hold = "hold", own = {"logins": ["owner"]})

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 // blockedProject launches an engine whose exclusive queue is held by a program gate of the project, so each gate queued behind it stays queued with the place
@@ -103,7 +103,7 @@ func TestWritePlaces_APlaceWhoseMarkCannotBeWrittenIsNotStored(t *testing.T) {
 
 	defer db.Close()
 
-	_, err = db.ExecContext(t.Context(), `CREATE TRIGGER refuse_mark BEFORE INSERT ON beehave_manual_place BEGIN SELECT RAISE(ABORT, 'no mark'); END`)
+	_, err = db.ExecContext(t.Context(), `CREATE TRIGGER refuse_mark BEFORE INSERT ON beehest_manual_place BEGIN SELECT RAISE(ABORT, 'no mark'); END`)
 	require.NoError(t, err)
 
 	moved, err := writePlaces(engine.dir, true, map[string]placeWrite{gate: {place: priorityP0}})

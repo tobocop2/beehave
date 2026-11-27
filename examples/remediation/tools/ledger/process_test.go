@@ -20,10 +20,10 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/lockfile"
+	"github.com/tobocop2/beehest/examples/remediation/tools/check"
+	"github.com/tobocop2/beehest/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/lockfile"
 )
 
 // The tests below run the ledger in separate operating system processes. The test binary starts itself as the helper:

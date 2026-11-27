@@ -1,0 +1,94 @@
+# beehest serve holds the state folder. beehest run joins that engine, prints the result and exits, and the engine stays up.
+# The command is beehestreal, the real composition root, and the agent is the fake claude of the script.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt Makefile .gitignore
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+example local/workflow.star
+example local/prompts/plan.md
+example local/prompts/implement.md
+example local/prompts/review.md
+example local/prompts/fix.md
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The sandbox stays on, as in local.txt, and reads the folder of the harness wrappers.
+replace config/projects/local.star 'sandbox = "on",' 'sandbox = "on", sandbox_read = ["'$TOOLS'"],'
+claudemodel fake/claude
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add local add-greeting --title 'Add a greeting' --body-file body.txt
+
+# No engine holds the state folder yet.
+exec beehestreal status
+stdout 'no engine runs'
+
+exec beehestreal serve &
+waitstatus 'engine: serve, pid'
+
+# A second serve on the same state folder is refused with the lock text.
+! exec beehestreal serve
+stderr 'another beehest engine owns this state folder'
+
+# The run joins the engine of serve. The result prints, and the command exits.
+exec beehestreal run add-greeting local --workflow local/workflow.star
+stdout 'item add-greeting finished'
+stderr 'joins the engine'
+
+# The engine of serve is still up, and the run is done.
+exec beehestreal status
+stdout 'add-greeting-r1\tdone'
+stdout 'engine: serve, pid [0-9]+, since [0-9]{4}-'
+! stdout 'no engine runs'
+cmp calls.log expected-calls.log
+
+# SIGINT stops the engine once and the command exits with code 0. Then no engine runs.
+kill -INT
+wait
+
+exec beehestreal status
+stdout 'no engine runs'
+! stdout 'engine: serve'
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Add a file with a greeting.
+-- origin/Makefile --
+check: ; @mkdir -p reports && echo '<testsuite tests="1"/>' > reports/r.xml
+-- origin/.gitignore --
+reports/
+-- expected-calls.log --
+plan
+implement
+review
+fix
+review
+-- fake/claude --
+#!/bin/sh
+# The fake claude. It names the step from the first words of the shipped prompt, and a review prompt holds the file for the verdict.
+# Each call adds the step to calls.log. A call leaves its work as a commit in the folder where it runs.
+step=
+write=
+while IFS= read -r line; do
+  case $line in
+    'Read the task below'*) step=plan ;;
+    'Make the change that'*) step=implement ;;
+    'Review the last commit'*) step=review ;;
+    'Fix each problem'*) step=fix ;;
+    'Write the verdict to '*) write=${line#Write the verdict to }; write=${write%% as JSON*} ;;
+  esac
+done
+echo "$step" >> "@WORK@/calls.log"
+commit() { git add "$1" && git -c user.name=agent -c user.email=agent@example.com commit -q -m "$step"; }
+case $step in
+  implement) echo hello > greeting.txt && commit greeting.txt ;;
+  fix) echo fixed > fixed.txt && commit fixed.txt ;;
+  review)
+    if [ -e "@WORK@/reviewed" ]; then verdict=approve; else verdict=changes; : > "@WORK@/reviewed"; fi
+    printf '{"verdict":"%s","mechanism":""}\n' "$verdict" > "$write"
+    ;;
+esac
+echo '{"type":"result","session_id":"s1","result":"done"}'

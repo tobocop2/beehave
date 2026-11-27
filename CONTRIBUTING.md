@@ -2,12 +2,12 @@
 
 ## Build
 
-beehave needs Go 1.27 and Make.
+beehest needs Go 1.27 and Make.
 
 ```bash
 make setup    # install the Go tools and generate the agent files
 make check    # the full gate, the same as CI
-make build    # write bin/beehave only
+make build    # write bin/beehest only
 make remedy   # write bin/remedy, the tool of the remediation example
 make test-examples   # run the tests of the examples folder
 ```

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehest/internal/cli"
 )
 
 const (
@@ -100,14 +100,14 @@ func readText(t *testing.T, path string) string {
 	return string(text)
 }
 
-func TestInit_WritesTheProjectFileIntoBeehaveConfigAndNowhereElse(t *testing.T) {
+func TestInit_WritesTheProjectFileIntoBeehestConfigAndNowhereElse(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
 	confDir := filepath.Join(t.TempDir(), "conf")
 	repo := initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{"BEEHAVE_CONFIG": confDir})
+	code, _, stderr := runInit(t, map[string]string{"BEEHEST_CONFIG": confDir})
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{initProject}, filesBelow(t, confDir))
@@ -264,7 +264,7 @@ func TestInit_RefusesAFolderThatIsNotARepository(t *testing.T) {
 	code, _, stderr := runInit(t, map[string]string{}, "--config", confDir)
 
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, stderr, "run beehave init in the top folder of a git repository")
+	assert.Contains(t, stderr, "run beehest init in the top folder of a git repository")
 	assert.Empty(t, filesBelow(t, confDir))
 	assert.Empty(t, filesBelow(t, dir))
 }
@@ -397,7 +397,7 @@ func TestInit_ConfigFlagWinsOverTheVariable(t *testing.T) { //nolint:paralleltes
 	variableDir := filepath.Join(t.TempDir(), "variable")
 	initRepo(t, "main")
 
-	code, _, stderr := runInit(t, map[string]string{"BEEHAVE_CONFIG": variableDir}, "--config", flagDir)
+	code, _, stderr := runInit(t, map[string]string{"BEEHEST_CONFIG": variableDir}, "--config", flagDir)
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{initProject}, filesBelow(t, flagDir))

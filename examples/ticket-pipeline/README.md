@@ -32,15 +32,15 @@ The data folder (`PIPE_HOME`, default `~/.pipe`, mode 700) is outside the reposi
 ## How to run it
 
 1. Make the data folder with the files `config` and `credential.header`.
-2. Copy `config/projects/pipeline.star` to the config folder of beehave.
+2. Copy `config/projects/pipeline.star` to the config folder of beehest.
 3. Set `PIPE_DIR` to the absolute path of this folder and `PIPE_HOME` to the data folder. Programs need `sqlite3`, `jq` and `curl`.
-4. Add the item: `beehave item add pipeline bf-2025 --title 'Backfill 2025' --body-file body.txt`.
-5. Run it: `beehave run bf-2025 pipeline --workflow backfill.star`.
-6. If the run waits for the budget, `beehave status` shows the question. Answer with `beehave answer bf-2025 500`.
+4. Add the item: `beehest item add pipeline bf-2025 --title 'Backfill 2025' --body-file body.txt`.
+5. Run it: `beehest run bf-2025 pipeline --workflow backfill.star`.
+6. If the run waits for the budget, `beehest status` shows the question. Answer with `beehest answer bf-2025 500`.
 
 A project on a tracker that keeps assignees can set `vars = {"chunk_assignee": "dana"}`. Each chunk item is then filed with that person. The local tracker keeps no assignee, so the shipped project sets none.
 
-Tests need Go and the beehave source: `go test ./cmd/beehave -run TestScripts/pipe`. The scripts `pipe-*.txt` in `cmd/beehave/testdata/e2e` run the example with a stand-in for the source and a fake agent.
+Tests need Go and the beehest source: `go test ./cmd/beehest -run TestScripts/pipe`. The scripts `pipe-*.txt` in `cmd/beehest/testdata/e2e` run the example with a stand-in for the source and a fake agent.
 
 ## Engine gaps
 

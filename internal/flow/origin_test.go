@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/preflight"
 )
 
 var (
@@ -198,7 +198,7 @@ func runCell(t *testing.T, cell foreignCell) {
 
 	require.ErrorContains(t, err, "item "+testItem+" was not started")
 	require.ErrorContains(t, err, `A foreign item runs only in the sandbox on a build host with credentials = "none"`)
-	require.ErrorContains(t, err, "beehave run "+testItem)
+	require.ErrorContains(t, err, "beehest run "+testItem)
 	assert.NotContains(t, rig.h.life.seen(), "claim:"+testItem, "the refusal comes before the claim")
 	assert.Empty(t, rig.h.agents.seen(), "no agent step starts")
 }
@@ -237,7 +237,7 @@ func TestStart_TheRefusalOfAForeignItemSaysWhichPartIsForeignAndWhatToChange(t *
 		},
 		"a read that fails": {
 			answer: originOf("issue", "READ_FAILS"), mode: model.SandboxOff,
-			want: []string{"beehave cannot read who wrote it (" + errFake.Error() + ")"},
+			want: []string{"beehest cannot read who wrote it (" + errFake.Error() + ")"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -266,7 +266,7 @@ func TestStart_ABuildThatCannotReadOrCheckRefusesAForeignItem(t *testing.T) {
 		mode      model.SandboxMode
 		want      string
 	}{
-		"no reader of the forge, in a run with the sandbox off": {hosts: true, mode: model.SandboxOff, want: "beehave cannot read who wrote it (" + errNoPreflight.Error() + ")"},
+		"no reader of the forge, in a run with the sandbox off": {hosts: true, mode: model.SandboxOff, want: "beehest cannot read who wrote it (" + errNoPreflight.Error() + ")"},
 		"no host keeper": {preflight: true, mode: model.SandboxOn, want: "Use a build that can check the build host"},
 	} {
 		t.Run(name, func(t *testing.T) {

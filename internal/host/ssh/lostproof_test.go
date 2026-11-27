@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-const stateFolderPath = sshtest.Root + "/work/.beehave"
+const stateFolderPath = sshtest.Root + "/work/.beehest"
 
 func TestSSH_TheStopMakesTheStateFolderOnAHostThatHasNone(t *testing.T) {
 	t.Parallel()
@@ -23,19 +23,19 @@ func TestSSH_TheStopMakesTheStateFolderOnAHostThatHasNone(t *testing.T) {
 
 	h, bank, _ := newHost(t, m, config())
 
-	proof, err := h.LostProof(t.Context(), "beehave-n1")
+	proof, err := h.LostProof(t.Context(), "beehest-n1")
 
 	require.NoError(t, err)
 	assert.Equal(t, model.LostStopped, proof.Kind, "a unit that is not loaded is stopped")
 	assert.True(t, m.Files[stateFolderPath+"/"], "the stop makes the state folder")
-	assert.True(t, m.Files[stateFolderPath+"/beehave-n1.canceled"], "the marker is written in it")
+	assert.True(t, m.Files[stateFolderPath+"/beehest-n1.canceled"], "the marker is written in it")
 	assert.Empty(t, bank.calls, "the proof never banks")
 	assert.Zero(t, calledWith(m, "tail"), "the proof never reads the log")
 
 	order := words(m)
 	folder := slices.IndexFunc(order, func(call string) bool { return call == "mkdir -p "+stateFolderPath })
-	marker := slices.Index(order, "touch "+stateFolderPath+"/beehave-n1.canceled")
-	stop := slices.Index(order, "systemctl --user stop beehave-n1")
+	marker := slices.Index(order, "touch "+stateFolderPath+"/beehest-n1.canceled")
+	stop := slices.Index(order, "systemctl --user stop beehest-n1")
 
 	require.GreaterOrEqual(t, folder, 0, "the folder is made")
 	assert.Less(t, folder, marker, "the folder comes before the marker")

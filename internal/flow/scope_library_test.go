@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	forgepkg "github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // The tests of this file run the library scope.star on the merge rig: the closing sets come from the fake forge, the owner answers through the client, and the fake merger records what it gets.
@@ -20,7 +20,7 @@ const scopeOffNote = "scope check off: the project has no forge"
 
 const (
 	fixFirstReview = `own = fix_scope(name = "scope")`
-	scopeLoad      = "load(\"@beehave//scope.star\", \"fix_scope\", \"hold_scope\")\n\n"
+	scopeLoad      = "load(\"@beehest//scope.star\", \"fix_scope\", \"hold_scope\")\n\n"
 	otherIssue     = model.IssueRef("other-org/other-repo#5")
 )
 
@@ -242,7 +242,7 @@ func TestHoldScope_AMemberOfAnotherItemTakesItsBaselineFromTheEarlierRunOfThatMe
 	assert.Contains(t, question, "item 1 closes #13 now", "#12 is in the first review of item 1, so only #13 is new")
 	assert.NotContains(t, question, "#12 now")
 	assert.Contains(t, question, `Answer in the form "keep #N[, #N ...]", for example "keep #13".`, "the question shows the form and an example")
-	assert.Contains(t, question, "Answer with beehave answer 9.", "the question names the run that the call gives")
+	assert.Contains(t, question, "Answer with beehest answer 9.", "the question names the run that the call gives")
 	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
@@ -260,7 +260,7 @@ func TestHoldScope_TheQuestionNamesTheRunThatTheCallGivesAndListsTheIssuesOfTheF
 	question := questionOf(t, rig.h, "9")
 
 	assert.Contains(t, question, "closes #13 now, and did not at its first review (then: #12 #14).", "the owner sees the issues that the new one is compared against")
-	assert.Contains(t, question, "Answer with beehave answer 9.", "the question names the run whose wait the owner answers")
+	assert.Contains(t, question, "Answer with beehest answer 9.", "the question names the run whose wait the owner answers")
 	require.ErrorContains(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}), "waits for no answer", "the member is not the run that waits")
 	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
@@ -367,8 +367,8 @@ func TestHoldScope_AMemberWhoseOwnerAnswerIsNoIsRejectedAndTheOtherMembersLand(t
 	require.Len(t, rig.h.commands.ran(), 1)
 	report := rig.h.commands.ran()[0]
 	assert.Contains(t, report, "1:", "item 1 is in the rejected list")
-	assert.Contains(t, report, "beehave answer 9 ", "the refusal names the run whose wait the owner answers")
-	assert.NotContains(t, report, "beehave answer 1 ")
+	assert.Contains(t, report, "beehest answer 9 ", "the refusal names the run whose wait the owner answers")
+	assert.NotContains(t, report, "beehest answer 1 ")
 }
 
 func TestHoldScope_AnAnswerThatIsNotTheKeepFormRejectsTheMemberAndShowsTheForm(t *testing.T) {

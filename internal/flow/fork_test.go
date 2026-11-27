@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // forkFlow runs three commands that each print the vars mode and keep. With mode wait it asks the owner a question after step two.
@@ -117,7 +117,7 @@ func (w *forkWorld) snapshot(t *testing.T, id string) string {
 	return strings.Join(parts, "\n")
 }
 
-// A forked run needs no code of beehave to carry its overlay: DBOS stores an attribute on a run that ended and copies it to the fork.
+// A forked run needs no code of beehest to carry its overlay: DBOS stores an attribute on a run that ended and copies it to the fork.
 func TestFork_TheStoreSetsAnAttributeOnAnEndedRunAndTheForkCopiesIt(t *testing.T) {
 	t.Parallel()
 
@@ -267,7 +267,7 @@ func TestFork_ARequestThatCannotStartARunIsRefusedWithTheCauseAndMakesNoRun(t *t
 	assert.Equal(t, "one a k | two a k | three a k", w.ran())
 }
 
-func TestFork_ARunThatBeehaveRunDidNotStartAsARootIsRefused(t *testing.T) {
+func TestFork_ARunThatBeehestRunDidNotStartAsARootIsRefused(t *testing.T) {
 	t.Parallel()
 
 	w := forkSeed(t)
@@ -309,10 +309,10 @@ func TestFork_AnOpenRunOfTheItemRefusesTheForkOfItselfAndOfAnEarlierRun(t *testi
 	}, forkSettle, 25*time.Millisecond)
 
 	_, err = w.client.Fork(ForkRequest{Run: testRun, Step: "command:two#2"})
-	require.ErrorContains(t, err, "beehave cancel 12 first", "the source ended but a later run is open")
+	require.ErrorContains(t, err, "beehest cancel 12 first", "the source ended but a later run is open")
 
 	_, err = w.client.Fork(ForkRequest{Run: waiting, Step: "command:two#2"})
-	require.ErrorContains(t, err, "beehave cancel 12 first", "the source is the open run")
+	require.ErrorContains(t, err, "beehest cancel 12 first", "the source is the open run")
 
 	rows, err := dbos.ListWorkflows(w.client.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix+testItem+attemptMarker))
 	require.NoError(t, err)
@@ -361,7 +361,7 @@ func TestFork_AClaimThatTheItemDoesNotGiveRefusesTheForkAndNamesTheCommandToRepe
 
 	_, err := w.client.Fork(ForkRequest{Run: testRun, Step: "command:two#2"})
 
-	require.ErrorContains(t, err, "Then run beehave fork item-12-r1 --from command:two#2 again")
+	require.ErrorContains(t, err, "Then run beehest fork item-12-r1 --from command:two#2 again")
 	assert.Equal(t, "one a k | two a k | three a k", w.ran())
 }
 

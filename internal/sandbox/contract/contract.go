@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox"
 )
 
 const (
@@ -138,7 +138,7 @@ func homeFolder(r reporter) string {
 	home, err := os.UserHomeDir()
 	must(r, err)
 
-	dir, err := os.MkdirTemp(home, "beehave-contract-")
+	dir, err := os.MkdirTemp(home, "beehest-contract-")
 	must(r, err)
 
 	r.Cleanup(func() { must(r, os.RemoveAll(dir)) })
@@ -186,7 +186,7 @@ func exists(path string) bool {
 }
 
 // stdinLine is the input that the stdin check gives the command.
-const stdinLine = "beehave-contract-stdin\n"
+const stdinLine = "beehest-contract-stdin\n"
 
 // stdin gives the command a line on its standard input, and the command prints it back among what it prints.
 func stdin(r reporter, e sandbox.Enforcer) {
@@ -199,7 +199,7 @@ func stdin(r reporter, e sandbox.Enforcer) {
 func exitCode(r reporter, e sandbox.Enforcer) {
 	r.Helper()
 
-	for line, want := range map[string]int{"exit 0": 0, "exit " + strconv.Itoa(exitSeven): exitSeven, "beehave-no-such-program": exitNotFound} {
+	for line, want := range map[string]int{"exit 0": 0, "exit " + strconv.Itoa(exitSeven): exitSeven, "beehest-no-such-program": exitNotFound} {
 		got := run(r, e, base(r), line).code
 		expect(r, got == want, "%q exited %d, want %d", line, got, want)
 	}
@@ -299,7 +299,7 @@ func selfSigned(r reporter) tls.Certificate {
 	must(r, err)
 
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "beehave-contract"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "beehest-contract"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(certLifetime), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 
@@ -404,7 +404,7 @@ func socketNames(r reporter) (addresses, flags map[string]string) {
 func socketNamesFor(r reporter, goos string) (addresses, flags map[string]string) {
 	r.Helper()
 
-	folder, err := os.MkdirTemp("", "beehave-sock-")
+	folder, err := os.MkdirTemp("", "beehest-sock-")
 	must(r, err)
 	r.Cleanup(func() { must(r, os.RemoveAll(folder)) })
 
@@ -412,7 +412,7 @@ func socketNamesFor(r reporter, goos string) (addresses, flags map[string]string
 	addresses, flags = map[string]string{"pathname": path}, map[string]string{"pathname": "--unix-socket " + path}
 
 	if goos == "linux" {
-		name := fmt.Sprintf("beehave-contract-%d-%d", os.Getpid(), time.Now().UnixNano())
+		name := fmt.Sprintf("beehest-contract-%d-%d", os.Getpid(), time.Now().UnixNano())
 		addresses["abstract"], flags["abstract"] = "@"+name, "--abstract-unix-socket "+name
 	}
 

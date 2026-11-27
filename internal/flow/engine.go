@@ -20,15 +20,15 @@ import (
 	_ "github.com/dbos-inc/dbos-transact-golang/dbos/driver/sqlite"
 	"github.com/gofrs/flock"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/ledger"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/step"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/ledger"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/step"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
-	appName      = "beehave"
+	appName      = "beehest"
 	executorName = "local"
 	queueName    = "agents"
 	// reviewsQueueName is the queue of the agent steps of the kind review. The agents queue holds the steps of the kind implement.
@@ -94,7 +94,7 @@ type Options struct {
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends.
 	// A client writes there the runs that a cancel of a canceled run stopped. A nil Progress prints nothing.
 	Progress io.Writer
-	// Mode is ModeRun or ModeServe: what beehave status says about the engine that holds the state folder. The empty value means ModeRun.
+	// Mode is ModeRun or ModeServe: what beehest status says about the engine that holds the state folder. The empty value means ModeRun.
 	Mode string
 	// Modules are the step modules that the engine runs. The engine builds its builtins, its step kinds and its tables of signatures and results from them.
 	// A run that calls a builtin needs the module of that builtin in the list. Two modules that name the same builtin or the same step kind fail NewEngine.
@@ -130,7 +130,7 @@ func (o Options) validateConcurrency() error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q. Set it in runners.star or in BEEHAVE_AGENTS_CONCURRENCY", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
+	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q. Set it in runners.star or in BEEHEST_AGENTS_CONCURRENCY", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
 }
 
 // validateReviewPoll refuses a negative poll interval and a negative look-back.
@@ -234,7 +234,7 @@ type Engine struct {
 	limited chan limitSignal
 	// overCap is Options.OverCap.
 	overCap bool
-	// serving is true for the engine of beehave serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
+	// serving is true for the engine of beehest serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
 	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
@@ -573,7 +573,7 @@ func (e *Engine) Launch() error {
 	return e.startController()
 }
 
-// sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,
+// sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehest serve says it, once at its start,
 // before it launches and resumes these runs. A run with no stored mode uses the mode off.
 func (e *Engine) sayResumedOff() error {
 	if !e.serving {
@@ -639,7 +639,7 @@ func (e *Engine) retain() {
 }
 
 // deleteOldRuns deletes the runs that finished more than the retention ago, with the phases they started.
-// A failed or canceled run stays: beehave resume can reopen it.
+// A failed or canceled run stays: beehest resume can reopen it.
 func (e *Engine) deleteOldRuns() error {
 	if e.keepRuns {
 		return nil
@@ -779,7 +779,7 @@ func (e *Engine) enter(item string) error {
 
 // refusedAfterStop is the refusal of a run that asks for its item after the shutdown began.
 func refusedAfterStop(item string) error {
-	return fmt.Errorf("%w: item %s was not started: run beehave run %s again", errEngineShutDown, item, item)
+	return fmt.Errorf("%w: item %s was not started: run beehest run %s again", errEngineShutDown, item, item)
 }
 
 // joinOrStart joins or starts the run of the item while it holds off the shutdown. After the shutdown began, it starts nothing.
@@ -825,7 +825,7 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 }
 
 // handleFor joins the open run of the item, or starts the next attempt.
-// A new attempt starts only after a finished or a canceled one: a failed attempt continues with beehave resume.
+// A new attempt starts only after a finished or a canceled one: a failed attempt continues with beehest resume.
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
@@ -879,7 +879,7 @@ func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found boo
 	return e.start(in, plan.Attempt)
 }
 
-// asClient returns a client over the store of this engine, so that a move of a run to this build runs the code of beehave resume --on-this-build.
+// asClient returns a client over the store of this engine, so that a move of a run to this build runs the code of beehest resume --on-this-build.
 func (e *Engine) asClient() *Client {
 	give := ReleaseDeps{Lifecycle: e.deps.Lifecycle, Beats: e.deps.Beats, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository, Merge: e.deps.Merge}
 
@@ -918,9 +918,9 @@ func (e *Engine) pickLogin(ctx context.Context, in ItemInput, overCap bool, take
 	return login, nil
 }
 
-// busyLogins returns the logins that have agents.per_login agent steps running or queued, counting the logins in taken. The library lists the open workflows, and beehave counts the agents of each login in that list.
+// busyLogins returns the logins that have agents.per_login agent steps running or queued, counting the logins in taken. The library lists the open workflows, and beehest counts the agents of each login in that list.
 // An agent step is an open phase, which has the login as its partition key on the agents queue. A run that a spawn or the queue started holds its login from its start,
-// because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `beehave run` started holds none, so the loop parent needs no login of its own.
+// because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `beehest run` started holds none, so the loop parent needs no login of its own.
 // The engine registers only the run and the phase, so one listing of the open workflows, filtered to those two names, reads both.
 func (e *Engine) busyLogins(taken []string) ([]string, error) {
 	open, err := e.store().Open("", dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))

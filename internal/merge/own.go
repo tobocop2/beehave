@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // fields are what the first read asks for: every fact the guards decide on, in one call.
@@ -20,7 +20,7 @@ func fields() []string {
 // Only Approved lifts it, and it runs before any other read, so a refused pull request has had no write.
 func (a *attempt) ownWork() *refusal {
 	if !named(a.req.OwnLogins) || !named(a.req.OwnEmails) {
-		return refuse("REFUSE: the owner logins and the owner addresses must both be set, and none may be empty. They tell beehave which work is its own, and beehave does not merge its own work without a verdict from another step.")
+		return refuse("REFUSE: the owner logins and the owner addresses must both be set, and none may be empty. They tell beehest which work is its own, and beehest does not merge its own work without a verdict from another step.")
 	}
 
 	if stop := a.read(); stop != nil {
@@ -33,7 +33,7 @@ func (a *attempt) ownWork() *refusal {
 	}
 
 	return ownRefusal(
-		fmt.Sprintf("REFUSE: #%d holds work of %s (%s). beehave does not merge its own work without a verdict from another step.", a.req.PR, who, role),
+		fmt.Sprintf("REFUSE: #%d holds work of %s (%s). beehest does not merge its own work without a verdict from another step.", a.req.PR, who, role),
 		"        The owner merges it in the forge, or the step sets `approved` from a review: the field of a member of `prs`.",
 	)
 }

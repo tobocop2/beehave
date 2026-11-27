@@ -8,8 +8,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // sandboxMark is the constructor of the value that the sandbox builtin returns. The sandbox keyword of an agent call takes only such a value, or None.
@@ -89,7 +89,7 @@ func sandboxFromStruct(value *starlarkstruct.Struct) (sandboxChoice, error) {
 }
 
 // errUnsandboxed is returned for a step that sets sandbox = None in a run whose project has the sandbox on.
-var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start, and the run failed. Set sandbox = "off" in the project, or give the step sandbox(network = [...]) in the workflow file. Then run beehave cancel <item>, and run beehave run <item>`)
+var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start, and the run failed. Set sandbox = "off" in the project, or give the step sandbox(network = [...]) in the workflow file. Then run beehest cancel <item>, and run beehest run <item>`)
 
 // UsedSandbox returns the sandbox mode that the run uses: the stored mode, or off for a run recorded before the mode was stored.
 // The engine and the lines that name the off mode all call it, so the line and the behavior of a run cannot differ.

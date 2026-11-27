@@ -10,9 +10,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/landing"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/landing"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // gateRecord is what a run keeps of a gate it recorded: the verdict, the head and the tree that the gate ran on, and its steps.
@@ -95,7 +95,7 @@ func gateStepOf(gate starlark.Value) (string, error) {
 	return step, nil
 }
 
-// statuses lists the statuses of a member of a union whose gate passed: beehave/gate on its head, and beehave/review on its head when a review approved it.
+// statuses lists the statuses of a member of a union whose gate passed: beehest/gate on its head, and beehest/review on its head when a review approved it.
 // A status stands for the head it names, so a later push to the member leaves its new head with none. A call with no gate has no record and posts none.
 func (r *gateRecord) statuses(m workflow.PullRequest) []model.CommitStatus {
 	if r == nil {

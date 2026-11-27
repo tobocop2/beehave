@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 // PostOnce comments on a pull request once for each key. A step can run twice after a crash, so it reads the comments first and posts nothing when a comment

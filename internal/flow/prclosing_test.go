@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
+	forgepkg "github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // prClosingFlow is a workflow file whose main passes what the call `call` read to the command seen: whether a pull request was found, the issues, and whether the project has a forge.

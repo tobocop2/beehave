@@ -120,7 +120,7 @@ func TestJoin_AMoveWhoseCancelFailsReturnsTheFailure(t *testing.T) {
 	err := client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
 
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "beehave resume", "the cancel failed before any reopen, so the error does not offer a retry of the reopen")
+	require.NotContains(t, err.Error(), "beehest resume", "the cancel failed before any reopen, so the error does not offer a retry of the reopen")
 }
 
 func TestJoin_AMoveWhoseClaimFailsSaysThatTheRunIsCanceledAndHowToRetry(t *testing.T) {
@@ -133,7 +133,7 @@ func TestJoin_AMoveWhoseClaimFailsSaysThatTheRunIsCanceledAndHowToRetry(t *testi
 	err := client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
 
 	require.ErrorContains(t, err, "is now canceled")
-	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build again")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" --on-this-build again")
 }
 
 func TestJoin_ARunThatEndedBeforeTheMoveIsNotReopened(t *testing.T) {

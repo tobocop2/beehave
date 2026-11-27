@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // debounceWindow is the window of the tests. It is long enough that a read right after a start sees the delayed run, and short enough that a test waits for the end of it.

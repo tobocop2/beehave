@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/landing"
+	"github.com/tobocop2/beehest/internal/landing"
 )
 
 // tipHost is a batch host that serves only the read of the tip of a base. The other methods of the host panic when a test calls them.

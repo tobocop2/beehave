@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -122,7 +122,7 @@ func TestLog_AFailedReadOfTheLogIsAnErrorAndNeverAnEmptyLog(t *testing.T) {
 	m := machineWith(map[string]int{"tail": failed}, nil)
 	h, _, _ := newHost(t, m, config())
 
-	out, err := h.Log(t.Context(), "beehave-x")
+	out, err := h.Log(t.Context(), "beehest-x")
 
 	require.Error(t, err)
 	assert.Empty(t, out)
@@ -134,14 +134,14 @@ func TestACallThatNeedsTheWorkRootFailsWhenTheRootCannotBeRead(t *testing.T) {
 	m := machineWith(map[string]int{"test -d": failed}, nil)
 	h, _, _ := newHost(t, m, config())
 
-	_, err := h.Log(t.Context(), "beehave-x")
+	_, err := h.Log(t.Context(), "beehest-x")
 	require.Error(t, err)
 
-	state, err := h.Wait(t.Context(), "beehave-x")
+	state, err := h.Wait(t.Context(), "beehest-x")
 	require.Error(t, err)
 	assert.Equal(t, model.JobUnknown, state)
 
-	require.Error(t, h.Cancel(t.Context(), "beehave-x"))
+	require.Error(t, h.Cancel(t.Context(), "beehest-x"))
 	require.Error(t, h.Drain(t.Context()))
 	require.Error(t, h.Resume(t.Context()))
 
@@ -277,7 +277,7 @@ func TestWait_APollWithAValueTheTableDoesNotListIsAnError(t *testing.T) {
 
 	for _, raw := range []string{
 		"LoadState=masked\nActiveState=inactive\nSubState=dead\nResult=success\nExecMainCode=0\nExecMainStatus=0\n",
-		"beehave-size x\n" + sshtest.Running,
+		"beehest-size x\n" + sshtest.Running,
 	} {
 		m := machineWith(nil, nil)
 		h, _, _ := newHost(t, m, config())

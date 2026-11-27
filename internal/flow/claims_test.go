@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // stopCode is the exit code of a stop that the library function claim_stop reports. It has the Code method of a preflight stop.
@@ -61,7 +61,7 @@ func claimRun(t *testing.T, fake *readsFake, args string) claimOutcome {
 
 	h, w := readsHarness(t, fake)
 	engine := h.engine(t)
-	text := "load(\"@beehave//claims.star\", \"claim_stop\")\n" + bodyFlow(`c = claim_stop(`+args+`)
+	text := "load(\"@beehest//claims.star\", \"claim_stop\")\n" + bodyFlow(`c = claim_stop(`+args+`)
 item_comment(id = "1", key = "k", text = "|".join([str(c.ok), c.stop, str(c.code), c.reason]))
 `)
 

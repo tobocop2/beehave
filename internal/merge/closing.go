@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // closing refuses a pull request whose closing references are not the issues that the request names. An extra issue would be closed by mistake,

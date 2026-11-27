@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehest/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehest/examples/remediation/tools/ledger"
 )
 
 const ledgerSyntax = "ledger add <key> <lane> <kind> --state <folder> [--mechanism <token>] [--model <token>] [--round <n>] [--words <text>] [--body-file <path> | --pr <number>] | ledger count <key> <kinds> --state <folder> | ledger rounds <key> <mechanism> --state <folder> | ledger prior <key> <lane> --state <folder> | ledger closes <key> --state <folder>"

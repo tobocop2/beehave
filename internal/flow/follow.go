@@ -103,7 +103,7 @@ func (c *Client) followedRun(target string) (string, error) {
 	}
 
 	if !found {
-		return "", fmt.Errorf("%w: %q has no run. Run beehave status to see the run ids", errNoSuchRun, target)
+		return "", fmt.Errorf("%w: %q has no run. Run beehest status to see the run ids", errNoSuchRun, target)
 	}
 
 	return last.Status.ID, nil

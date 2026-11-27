@@ -1,0 +1,14 @@
+# An agent step edits a file in its work folder. This run starts no sandbox, so the scrub variable that forces the mode default is not set. The fake claude
+# refuses the Write unless the start arguments hold --permission-mode acceptEdits, as the documented mode does, so the file exists only when the adapter passes the mode.
+# A sandboxed run ignores the mode: the fake does not model that, and the unit tests of the settings cover the Edit rule that replaces it.
+cp flow/edit.star edit-file
+exec beehest run 7 --workflow flow/edit.star
+stdout 'item 7 finished'
+
+grep -count=1 '^implement ' calls.log
+exists edited.txt
+! exists refused.log
+
+-- flow/edit.star --
+def main(item):
+    agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet")

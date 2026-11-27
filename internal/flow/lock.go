@@ -10,8 +10,8 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/tobocop2/beehave/internal/atomicfile"
-	"github.com/tobocop2/beehave/internal/lockfile"
+	"github.com/tobocop2/beehest/internal/atomicfile"
+	"github.com/tobocop2/beehest/internal/lockfile"
 )
 
 const (
@@ -25,9 +25,9 @@ const (
 	engineInfoName = "engine.info"
 	versionMode    = 0o600
 
-	// ModeRun is the mode of an engine that beehave run starts for one item.
+	// ModeRun is the mode of an engine that beehest run starts for one item.
 	ModeRun = "run"
-	// ModeServe is the mode of the engine of beehave serve, which stays up and takes the items of other commands.
+	// ModeServe is the mode of the engine of beehest serve, which stays up and takes the items of other commands.
 	ModeServe = "serve"
 )
 
@@ -47,7 +47,7 @@ type liveEngine struct {
 }
 
 // ErrStateBusy is returned when another engine holds the state folder.
-var ErrStateBusy = errors.New("another beehave run owns this state folder; wait for it, or see beehave status")
+var ErrStateBusy = errors.New("another beehest run owns this state folder; wait for it, or see beehest status")
 
 // lockFile names a lock file in dir.
 func lockFile(dir, name string) *flock.Flock {

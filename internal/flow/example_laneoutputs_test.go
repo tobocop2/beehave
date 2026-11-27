@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/agent"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
 )
 
 // These tests run the review loop of the example and read what it does with the outputs that a lane writes.

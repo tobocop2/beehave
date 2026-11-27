@@ -1,6 +1,6 @@
 package gate
 
-import "github.com/tobocop2/beehave/internal/model"
+import "github.com/tobocop2/beehest/internal/model"
 
 // Tools are the absolute paths of the programs that the job of a gate program uses before head code runs: git, env, which starts git with
 // the environment of the job only, and the tools of the final compare.

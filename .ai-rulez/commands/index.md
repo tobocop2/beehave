@@ -1,3 +1,3 @@
 # Concepts
 
-* [Check](check.md) - Run the full beehave gate and report the result
+* [Check](check.md) - Run the full beehest gate and report the result

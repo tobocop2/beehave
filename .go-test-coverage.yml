@@ -7,5 +7,5 @@ threshold:
 
 exclude:
   paths:
-    - ^cmd/beehave/main\.go$
+    - ^cmd/beehest/main\.go$
     - ^examples/remediation/tools/cmd/remedy/main\.go$

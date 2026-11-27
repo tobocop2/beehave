@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/reach"
 )
 
 const writerToken = "writer-token"
@@ -25,7 +25,7 @@ func fakeGit(t *testing.T) (string, string) {
 
 	bin := t.TempDir()
 	log := filepath.Join(bin, "calls")
-	script := "#!/bin/sh\necho \"$* owner=${GH_TOKEN-unset} writer=${BEEHAVE_FORGE_TOKEN-unset} allow=${GIT_ALLOW_PROTOCOL-unset} dir=${GIT_DIR-unset} prompt=${GIT_TERMINAL_PROMPT-unset}\" >> " + log + "\n"
+	script := "#!/bin/sh\necho \"$* owner=${GH_TOKEN-unset} writer=${BEEHEST_FORGE_TOKEN-unset} allow=${GIT_ALLOW_PROTOCOL-unset} dir=${GIT_DIR-unset} prompt=${GIT_TERMINAL_PROMPT-unset}\" >> " + log + "\n"
 	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), script))
 
 	path := strings.Join([]string{bin, "/usr/bin", "/bin"}, string(os.PathListSeparator))

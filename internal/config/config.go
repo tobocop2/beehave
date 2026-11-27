@@ -14,29 +14,29 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-// Names of the BEEHAVE_* variables that override the config files.
+// Names of the BEEHEST_* variables that override the config files.
 const (
-	envMaxConcurrent       = "BEEHAVE_AGENTS_MAX_CONCURRENT"
-	envMaxReviewConcurrent = "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT"
-	envPerLogin            = "BEEHAVE_AGENTS_PER_LOGIN"
-	envConcurrency         = "BEEHAVE_AGENTS_CONCURRENCY"
-	envMaxTurns            = "BEEHAVE_AGENTS_MAX_TURNS"
-	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
-	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
-	envMaxTreeBudget       = "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD"
-	envMaxWeekBudget       = "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD"
-	envTraceParent         = "BEEHAVE_AGENTS_TRACE_PARENT"
-	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
-	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
-	envReviewLookback      = "BEEHAVE_REVIEW_LOOKBACK_DAYS"
+	envMaxConcurrent       = "BEEHEST_AGENTS_MAX_CONCURRENT"
+	envMaxReviewConcurrent = "BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT"
+	envPerLogin            = "BEEHEST_AGENTS_PER_LOGIN"
+	envConcurrency         = "BEEHEST_AGENTS_CONCURRENCY"
+	envMaxTurns            = "BEEHEST_AGENTS_MAX_TURNS"
+	envMaxBudget           = "BEEHEST_AGENTS_MAX_BUDGET_USD"
+	envMaxRunBudget        = "BEEHEST_AGENTS_MAX_RUN_BUDGET_USD"
+	envMaxTreeBudget       = "BEEHEST_AGENTS_MAX_TREE_BUDGET_USD"
+	envMaxWeekBudget       = "BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD"
+	envTraceParent         = "BEEHEST_AGENTS_TRACE_PARENT"
+	envRetentionDays       = "BEEHEST_AGENTS_RETENTION_DAYS"
+	envReviewPoll          = "BEEHEST_REVIEW_POLL_MINUTES"
+	envReviewLookback      = "BEEHEST_REVIEW_LOOKBACK_DAYS"
 )
 
-// envPoolMax returns the name of the variable that sets the cap of a usage window: BEEHAVE_POOL_<NAME>_MAX.
+// envPoolMax returns the name of the variable that sets the cap of a usage window: BEEHEST_POOL_<NAME>_MAX.
 func envPoolMax(window string) string {
-	return "BEEHAVE_POOL_" + strings.ToUpper(window) + "_MAX"
+	return "BEEHEST_POOL_" + strings.ToUpper(window) + "_MAX"
 }
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
@@ -64,7 +64,7 @@ const (
 // DefaultPerLogin is the default of agents.per_login: the agent steps that one login runs at once. The engine uses it when its options give none.
 const DefaultPerLogin = 1
 
-// floatBits is the bit size of a percent that the BEEHAVE_* variables give.
+// floatBits is the bit size of a percent that the BEEHEST_* variables give.
 const floatBits = 64
 
 // Config is the config folder: the agent limit, the pool caps of each agent, the runners and the projects.
@@ -97,7 +97,7 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadFolder loads runners.star and every projects/*.star of a config folder, applies the BEEHAVE_*
+// LoadFolder loads runners.star and every projects/*.star of a config folder, applies the BEEHEST_*
 // variables of env, and validates the result against the adapters that the build registered. It reports every problem it finds, one for each file.
 func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, Problems) {
 	cfg := DefaultConfig()

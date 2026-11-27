@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 func TestExecRunner_AProcessCapSetsTheLimitWhateverShellIsBinSh(t *testing.T) { //nolint:paralleltest // see above
@@ -78,7 +78,7 @@ func TestExecRunner_ACapWithoutTheRunningProgramFailsTheStepAndTheCommandDoesNot
 }
 
 func TestExecRunner_ACapWithAProgramThatCannotStartFailsTheStepNamingThePath(t *testing.T) { //nolint:paralleltest // see above
-	gone := filepath.Join(t.TempDir(), "beehave-gone")
+	gone := filepath.Join(t.TempDir(), "beehest-gone")
 	runner := proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), MaxNewProcesses: 50}
 	done := proc.WithExecutable(runner, func() (string, error) { return gone, nil }).Run(context.Background(), []string{"-c", "exit 0"})
 
@@ -101,7 +101,7 @@ func TestExecRunner_ACapWithoutASetupPipeFailsTheStepAndTheCommandDoesNotRun(t *
 func TestCapHelper_AnotherProgramNameDoesNothing(t *testing.T) {
 	t.Parallel()
 
-	written, code, _, _ := capHelperRun(t, []string{"beehave", "5", "/bin/true"}, nil, nil)
+	written, code, _, _ := capHelperRun(t, []string{"beehest", "5", "/bin/true"}, nil, nil)
 	assert.Empty(t, written)
 	assert.Equal(t, -1, code)
 
@@ -192,12 +192,12 @@ func TestExecRunner_ACapOnAProgramPathRelativeToDirIsApplied(t *testing.T) { //n
 func requireCap(*testing.T) {}
 
 func TestExecRunner_AProgramThatPrintsTheOldSentinelKeepsItsResult(t *testing.T) { //nolint:paralleltest // see above
-	done := proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), Timeout: 30 * time.Second, MaxNewProcesses: 1000}.Run(context.Background(), []string{"-c", `echo beehave-cap-not-set >&2; echo out; exit 125`})
+	done := proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), Timeout: 30 * time.Second, MaxNewProcesses: 1000}.Run(context.Background(), []string{"-c", `echo beehest-cap-not-set >&2; echo out; exit 125`})
 
 	require.NoError(t, done.SetupErr)
 	assert.Equal(t, 125, done.ExitCode)
 	assert.Equal(t, "out\n", done.Stdout)
-	assert.Equal(t, "beehave-cap-not-set\n", done.Stderr)
+	assert.Equal(t, "beehest-cap-not-set\n", done.Stderr)
 }
 
 func TestExecRunner_AProgramCannotWriteToTheSetupPipe(t *testing.T) { //nolint:paralleltest // see above

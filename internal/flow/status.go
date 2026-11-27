@@ -16,8 +16,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // errNoRunID is returned when no run has the run id that --run names.
@@ -44,7 +44,7 @@ const (
 	runCancelled RunState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
 )
 
-// RunInfo is one line of the status list. Stranded marks an open run that another version of beehave started.
+// RunInfo is one line of the status list. Stranded marks an open run that another version of beehest started.
 type RunInfo struct {
 	ID       string   `json:"id"`
 	State    RunState `json:"state"`
@@ -409,18 +409,18 @@ func stateOf(status dbos.WorkflowStatusType) RunState {
 // It returns the info of the run, which holds the question and who it asks.
 func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {
 	if last.terminal() {
-		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run beehave run %s to start again", ErrWrongState, last.Status.ID, stateOf(last.Status.Status), item)
+		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run beehest run %s to start again", ErrWrongState, last.Status.ID, stateOf(last.Status.Status), item)
 	}
 
 	info, err := c.info(last.Status)
 	if err == nil && info.Question == "" {
-		err = fmt.Errorf("%w: %s asks no question. Run beehave status to see which run waits for an answer", ErrWrongState, last.Status.ID)
+		err = fmt.Errorf("%w: %s asks no question. Run beehest status to see which run waits for an answer", ErrWrongState, last.Status.ID)
 	}
 
 	return info, err
 }
 
-// Resume reopens the canceled or failed run of an item, from its last finished step. Run beehave run for the item to continue it.
+// Resume reopens the canceled or failed run of an item, from its last finished step. Run beehest run for the item to continue it.
 func (c *Client) Resume(item string) error {
 	_, err := c.resumeRun(item)
 
@@ -474,10 +474,10 @@ func (c *Client) dropClaim(project, item, id, owner string) error {
 	return errors.Join(c.give.Lifecycle.Release(ctx, project, item, owner), dropOwner(c.dir, id, owner))
 }
 
-// requireResumable refuses a run that is not canceled or failed, and a run that another version of beehave started.
+// requireResumable refuses a run that is not canceled or failed, and a run that another version of beehest started.
 func (c *Client) requireResumable(item string, last run) error {
 	if state := stateOf(last.Status.Status); state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run beehave run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run beehest run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if last.Status.ApplicationVersion != c.version {
@@ -516,7 +516,7 @@ func (c *Client) takeClaim(item string, last run) (project, owner string, err er
 		return project, "", err
 	}
 
-	owner, err = c.claimFresh(project, item, last.Status.ID, "beehave resume "+item)
+	owner, err = c.claimFresh(project, item, last.Status.ID, "beehest resume "+item)
 
 	return project, owner, err
 }
@@ -529,7 +529,7 @@ func (c *Client) claimFresh(project, item, id, again string) (string, error) {
 
 	owner, err := c.give.Lifecycle.Claim(ctx, project, item)
 	if err != nil {
-		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next beehave run frees it. Then run %s again", model.StepClaim, item, err, again)
+		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next beehest run frees it. Then run %s again", model.StepClaim, item, err, again)
 	}
 
 	if err := saveOwner(c.dir, id, owner); err != nil {
@@ -554,13 +554,13 @@ func (c *Client) Cancel(item string) error {
 }
 
 // nothingToCancel is the error for a run that a cancel does not reach. A run that ended with a stop is shown as stopped, as status shows it,
-// and the error names beehave run, which starts a new attempt after a stop.
+// and the error names beehest run, which starts a new attempt after a stop.
 func nothingToCancel(r run) error {
 	state := stateOf(r.Status.Status)
 
 	if state == runDone {
 		if settled, result, err := settledOf(r.Status); err == nil && settled == runStopped {
-			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", ErrWrongState, r.Status.ID, settled, result.Item)
+			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehest run %s to start a new attempt", ErrWrongState, r.Status.ID, settled, result.Item)
 		}
 	}
 
@@ -592,7 +592,7 @@ func (c *Client) CancelRun(id string) error {
 // runWithID reads the one run with this run id.
 func (c *Client) runWithID(id string) (run, error) {
 	if !runIDForm.MatchString(id) {
-		return run{}, fmt.Errorf("%w: %q. Give a run id that beehave status lists, such as item-12-r1", errBadRunID, id)
+		return run{}, fmt.Errorf("%w: %q. Give a run id that beehest status lists, such as item-12-r1", errBadRunID, id)
 	}
 
 	rows, err := c.store().List(dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
@@ -601,7 +601,7 @@ func (c *Client) runWithID(id string) (run, error) {
 	}
 
 	if len(rows) == 0 {
-		return run{}, fmt.Errorf("%w: %s. Run beehave status to see the run ids", errNoRunID, id)
+		return run{}, fmt.Errorf("%w: %s. Run beehest status to see the run ids", errNoRunID, id)
 	}
 
 	return run{Status: rows[0]}, nil
@@ -707,7 +707,7 @@ func (c *Client) sayStopped(last run, stopped []string) error {
 		return nil
 	}
 
-	_, err := fmt.Fprintf(c.progress, "%s was already cancelled. This cancel stopped what an earlier cancel left running: %s\n", last.Status.ID, strings.Join(stopped, ", ")) //nolint:misspell // the state word that beehave status prints
+	_, err := fmt.Fprintf(c.progress, "%s was already cancelled. This cancel stopped what an earlier cancel left running: %s\n", last.Status.ID, strings.Join(stopped, ", ")) //nolint:misspell // the state word that beehest status prints
 
 	return err
 }
@@ -800,7 +800,7 @@ func (c *Client) OpenRun(item string) (OpenRun, error) {
 	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(), Delayed: last.delayed()}, err
 }
 
-// latest returns the newest run of an item, and refuses a run that another version of beehave started.
+// latest returns the newest run of an item, and refuses a run that another version of beehest started.
 func (c *Client) latest(item string) (run, error) {
 	return latestOf(c.store(), c.version, item)
 }
@@ -836,7 +836,7 @@ func newestOf(client storeView, item string) (run, error) {
 	}
 
 	if !found {
-		return run{}, fmt.Errorf("%w: start item %s with beehave run %s", errNoRun, item, item)
+		return run{}, fmt.Errorf("%w: start item %s with beehest run %s", errNoRun, item, item)
 	}
 
 	return last, nil

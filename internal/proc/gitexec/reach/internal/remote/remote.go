@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/internal/gitbin"
 )
 
 // Runner runs git with the hooks off and allows every transport. Its fields are those of proc.ExecRunner.

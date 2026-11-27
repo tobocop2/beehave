@@ -9,7 +9,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // errNoGate is the refusal of a gate command for an item that has no open gate.
@@ -47,14 +47,14 @@ func (c *Client) SetGatePriority(item, level string) error {
 	}
 
 	if !moved {
-		return fmt.Errorf("%w: the gate of item %s runs, and a gate that runs keeps its place. beehave gate hold %s stops it", errGateState, item, item)
+		return fmt.Errorf("%w: the gate of item %s runs, and a gate that runs keeps its place. beehest gate hold %s stops it", errGateState, item, item)
 	}
 
 	return nil
 }
 
 // HoldGate parks the running gate of an item and stops its build job at the next tick of the engine. The gate leaves the queue of its project, so another gate of the project starts,
-// and the job frees its slot on the host. beehave gate release puts the gate back on the queue of its project with the place that it had.
+// and the job frees its slot on the host. beehest gate release puts the gate back on the queue of its project with the place that it had.
 func (c *Client) HoldGate(item string) error {
 	gate, err := c.openGateOf(item)
 	if err != nil {
@@ -83,13 +83,13 @@ func (g openGate) refuseHold(item string) error {
 	case g.job == nil:
 		return fmt.Errorf("%w: the gate of item %s has no build job on a host, so there is no slot to free", errGateState, item)
 	case g.held():
-		return fmt.Errorf("%w: the gate of item %s is held already. beehave gate release %s puts it back on the queue", errGateState, item, item)
+		return fmt.Errorf("%w: the gate of item %s is held already. beehest gate release %s puts it back on the queue", errGateState, item, item)
 	case g.job.Status == dbos.WorkflowStatusCancelled && g.row.Status == dbos.WorkflowStatusPending:
-		return fmt.Errorf("%w: the gate of item %s started again and has not reopened its job yet. Run beehave gate hold %s when the job runs", errGateState, item, item)
+		return fmt.Errorf("%w: the gate of item %s started again and has not reopened its job yet. Run beehest gate hold %s when the job runs", errGateState, item, item)
 	case g.job.Status == dbos.WorkflowStatusCancelled:
-		return fmt.Errorf("%w: the gate of item %s waits for its place on the queue of its project and has no job that runs. beehave gate priority changes its place", errGateState, item)
+		return fmt.Errorf("%w: the gate of item %s waits for its place on the queue of its project and has no job that runs. beehest gate priority changes its place", errGateState, item)
 	case g.job.Status != dbos.WorkflowStatusPending:
-		return fmt.Errorf("%w: the gate of item %s waits for its host and does not run. beehave gate priority changes its place", errGateState, item)
+		return fmt.Errorf("%w: the gate of item %s waits for its host and does not run. beehest gate priority changes its place", errGateState, item)
 	}
 
 	return nil
@@ -142,7 +142,7 @@ func (c *Client) openGateOf(item string) (openGate, error) {
 	case err != nil:
 		return openGate{}, fmt.Errorf("read the gate of item %s: %w", item, err)
 	case !ok:
-		return openGate{}, fmt.Errorf("%w for item %s. beehave status lists the open runs", errNoGate, item)
+		return openGate{}, fmt.Errorf("%w for item %s. beehest status lists the open runs", errNoGate, item)
 	}
 
 	return found, nil
@@ -275,7 +275,7 @@ func (e *Engine) stopJob(ctx context.Context, job string) error {
 
 	err := waitEnded(wait, e.cancels.stop(job))
 	if err != nil && ctx.Err() == nil {
-		return fmt.Errorf("the earlier run of the build job %s did not stop within %s, so the gate does not reopen it. Stop the program of the job on the host, then run beehave resume for the item", job, limit)
+		return fmt.Errorf("the earlier run of the build job %s did not stop within %s, so the gate does not reopen it. Stop the program of the job on the host, then run beehest resume for the item", job, limit)
 	}
 
 	return err

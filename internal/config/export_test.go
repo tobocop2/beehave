@@ -1,6 +1,6 @@
 package config
 
-import "github.com/tobocop2/beehave/internal/model"
+import "github.com/tobocop2/beehest/internal/model"
 
 // ArgumentOwners maps each constructor argument of the runners file and the project file to its constructor. An argument that two constructors take belongs to the first, as the loader reads it.
 func ArgumentOwners() map[string]string {

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // startRun runs the file for the test item in the background and returns the channel of its end.
@@ -50,7 +50,7 @@ func text(t *testing.T, value string) json.RawMessage {
 	return raw
 }
 
-func TestRecv_TakesTheMessageThatBeehaveSendPutsOnTheInboxOnceAndTimesOutOnTheNext(t *testing.T) {
+func TestRecv_TakesTheMessageThatBeehestSendPutsOnTheInboxOnceAndTimesOutOnTheNext(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -168,7 +168,7 @@ func TestRecv_RefusesATopicOrATimeoutThatBreaksTheRule(t *testing.T) {
 
 	for name, test := range map[string]struct{ call, want string }{
 		"bad topic":      {`recv("Bad " + "Topic", timeout = "1s")`, `topic "Bad Topic" is not allowed`},
-		"reserved topic": {`recv("beehave." + "answer", timeout = "1s")`, "reserved"},
+		"reserved topic": {`recv("beehest." + "answer", timeout = "1s")`, "reserved"},
 		"zero timeout":   {`recv("go", timeout = "0" + "s")`, "timeout"},
 		"extra argument": {`recv("go", "1s", "x", "y")`, "recv"},
 	} {
@@ -316,13 +316,13 @@ func TestClientSend_RefusesAnItemWithNoOpenRun(t *testing.T) {
 	client := h.client(t, testVersion)
 
 	_, err := client.Send(testItem, Outgoing{Topic: "go", Value: text(t, "x")})
-	require.ErrorContains(t, err, "item 12 has no open run. Run beehave status")
+	require.ErrorContains(t, err, "item 12 has no open run. Run beehest status")
 
 	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.NoError(t, err)
 
 	_, err = client.Send(testItem, Outgoing{Topic: "go", Value: text(t, "x")})
-	require.ErrorContains(t, err, "item 12 has no open run. Run beehave status")
+	require.ErrorContains(t, err, "item 12 has no open run. Run beehest status")
 
 	_, err = client.Send("not an item", Outgoing{Topic: "go", Value: text(t, "x")})
 	require.ErrorIs(t, err, ErrBadItem)
@@ -339,7 +339,7 @@ func TestClientSend_RefusesABadTopicKeyOrValueBeforeItReadsTheStore(t *testing.T
 		want string
 	}{
 		"bad topic":    {Outgoing{Topic: "Bad Topic", Value: text(t, "x")}, `topic "Bad Topic" is not allowed`},
-		"reserved key": {Outgoing{Topic: "go", Key: "beehave.k", Value: text(t, "x")}, `key "beehave.k" is reserved`},
+		"reserved key": {Outgoing{Topic: "go", Key: "beehest.k", Value: text(t, "x")}, `key "beehest.k" is reserved`},
 		"not json":     {Outgoing{Topic: "go", Value: json.RawMessage(`{`)}, "not JSON"},
 	} {
 		_, err := client.Send(testItem, test.msg)

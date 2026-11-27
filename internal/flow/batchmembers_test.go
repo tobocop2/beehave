@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // TestMerge_TheCheckAndTheRunRefuseAMemberWithTheSameText runs each member through the entry point of the check and through the run.

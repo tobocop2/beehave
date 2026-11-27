@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // restartPlan is one run that gather starts again: the next attempt of the item, with the input of the attempt that failed and a new login.

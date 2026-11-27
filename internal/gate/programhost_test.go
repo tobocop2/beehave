@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func programProject() model.Project {
@@ -77,7 +77,7 @@ func TestRun_AHostGateWithAGateProgramAndNoBaseCommitStartsNoJob(t *testing.T) {
 func TestVerdict_ARefusedHeadReadsAsAFailedGateProgramStepWithTheChangedPaths(t *testing.T) {
 	t.Parallel()
 
-	log := "beehave-gate-program the head changed the gate program, paths Makefile scripts/check.sh. The gate runs the program of the base commit.\nbeehave-gate-done\n"
+	log := "beehest-gate-program the head changed the gate program, paths Makefile scripts/check.sh. The gate runs the program of the base commit.\nbeehest-gate-done\n"
 	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: log}
 
 	result := runFailedHostJob(t, remote)

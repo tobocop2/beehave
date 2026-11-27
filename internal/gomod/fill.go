@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/gotelemetry"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/gotelemetry"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (

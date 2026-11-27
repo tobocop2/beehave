@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// DebounceKeyword is the name of the start option of beehave run that holds a start back for a window.
+// DebounceKeyword is the name of the start option of beehest run that holds a start back for a window.
 const DebounceKeyword = "debounce"
 
 // DebouncePeriod reads the debounce option of a start. An empty text is no debounce, and a window must be above zero.

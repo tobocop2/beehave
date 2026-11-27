@@ -12,8 +12,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // PhaseInput describes one agent phase of an item. Run is the id of the run that queued the phase.
@@ -97,7 +97,7 @@ type PhaseOutput struct {
 	Denials []agent.Denial `json:"denials,omitempty"`
 	// Stderr is the redacted tail of the error stream of the agent CLI. It is left out of a recorded phase whose CLI wrote none.
 	Stderr string `json:"stderr,omitempty"`
-	// Spend is the cost of the run: the dollars that the agent CLI reported, or an estimate that beehave made from the tokens, or the mark that the cost is unknown.
+	// Spend is the cost of the run: the dollars that the agent CLI reported, or an estimate that beehest made from the tokens, or the mark that the cost is unknown.
 	agent.Spend
 	// Limit is the provider limit that stopped a run that ended as limited. It is left out of a recorded phase for any other run, so a stored phase keeps its form.
 	Limit *agent.Limit `json:"limit,omitempty"`
@@ -165,7 +165,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 
 // judgePhase returns the output of a phase from the result of its agent, and the error that ends the phase.
 // A limit with no reset time gets the one that the usage read gives. The end of the phase is judged inside the step, so a phase that did not exit with code 0,
-// and that no cap and no provider limit with an end to its wait stopped, is a failed step that beehave resume reruns.
+// and that no cap and no provider limit with an end to its wait stopped, is a failed step that beehest resume reruns.
 func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Result, runErr error) (PhaseOutput, error) {
 	out := phaseOutput(result)
 
@@ -206,7 +206,7 @@ func (e *Engine) callFiles(in PhaseInput) (string, error) {
 // because the sandbox opens the folder of the output file to the agent.
 func (e *Engine) checkOutputFile(in PhaseInput) error {
 	if derived := outputFile(e.dir, in.Item, in.Call); len(in.Outputs) > 0 && in.OutputFile != derived {
-		return fmt.Errorf("the agent phase of item %s names the output file %s, and the output file of this item and step is %s. The agent did not start. Run beehave cancel %s, then start a new run",
+		return fmt.Errorf("the agent phase of item %s names the output file %s, and the output file of this item and step is %s. The agent did not start. Run beehest cancel %s, then start a new run",
 			in.Item, in.OutputFile, derived, in.Item)
 	}
 
@@ -221,7 +221,7 @@ func (e *Engine) writeData(in PhaseInput) (string, error) {
 	}
 
 	if in.Call == "" {
-		return "", fmt.Errorf("the agent phase of item %s has data and no step name, so beehave cannot find its data file. The agent did not start. Start a new run", in.Item)
+		return "", fmt.Errorf("the agent phase of item %s has data and no step name, so beehest cannot find its data file. The agent did not start. Start a new run", in.Item)
 	}
 
 	file := dataFile(e.dir, in.Item, in.Call)
@@ -351,7 +351,7 @@ func (s *sessionSaver) finish() {
 }
 
 // recordGroup returns the function that writes the process group of an agent to the process file, under the attempt whose claim the agent runs under.
-// A failed write is logged. The file serves the next start of beehave run: the next worker kills the groups that a crash left.
+// A failed write is logged. The file serves the next start of beehest run: the next worker kills the groups that a crash left.
 func (e *Engine) recordGroup(ctx context.Context, a *attempt, in PhaseInput) func(pid int) {
 	return func(pid int) {
 		if err := e.procs.add(ctx, a, pid); err != nil {
@@ -469,7 +469,7 @@ func phaseEnd(in PhaseInput, out PhaseOutput, now time.Time) error {
 	}
 
 	if out.Outcome != agent.OutcomeExited || out.ExitCode != 0 {
-		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run beehave resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
+		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run beehest resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
 	}
 
 	return nil

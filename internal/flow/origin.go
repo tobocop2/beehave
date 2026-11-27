@@ -7,7 +7,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // originStepName is the recorded step before the claim of every run: it reads who wrote the item and refuses a foreign item that the run may not hold.
@@ -67,14 +67,14 @@ func (e *Engine) admit(ctx context.Context, in ItemInput, outcome string, origin
 		return nil
 	}
 
-	return fmt.Errorf(`item %s %s: %s. A foreign item runs only in the sandbox on a build host with credentials = "none". %s, then run beehave run %s`, in.Item, outcome, from, fix, in.Item)
+	return fmt.Errorf(`item %s %s: %s. A foreign item runs only in the sandbox on a build host with credentials = "none". %s, then run beehest run %s`, in.Item, outcome, from, fix, in.Item)
 }
 
 // foreignPart says which part of the item another account wrote. A failed read counts as foreign.
 func foreignPart(origin model.Origin, read error) (string, bool) {
 	switch {
 	case read != nil:
-		return fmt.Sprintf("beehave cannot read who wrote it (%v)", read), true
+		return fmt.Sprintf("beehest cannot read who wrote it (%v)", read), true
 	case origin.Issue.Foreign():
 		return fmt.Sprintf("its issue #%d comes from another account (%s)", origin.Issue.Number, origin.Issue.Association), true
 	case origin.Pull.Foreign():

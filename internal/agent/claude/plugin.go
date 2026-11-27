@@ -6,11 +6,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // pluginName is the name of the plugin that holds the skills of a run. The CLI names each of its skills <pluginName>:<skill>.
-const pluginName = "beehave-skills"
+const pluginName = "beehest-skills"
 
 // pluginFolder is the plugin folder in the run folder, and pluginManifest its manifest, relative to it.
 const (

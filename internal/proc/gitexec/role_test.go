@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
 )
 
 // fill runs git credential fill in a folder with the role environment and the given input, and returns the output and the error.

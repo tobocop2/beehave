@@ -1,7 +1,7 @@
-# Agent logins that beehave can use. One login for one run: beehave never
+# Agent logins that beehest can use. One login for one run: beehest never
 # switches login inside one lane.
 # No token or real account name belongs in this file.
-# beehave sets CLAUDE_CONFIG_DIR to the config_dir of the chosen runner in the run environment.
+# beehest sets CLAUDE_CONFIG_DIR to the config_dir of the chosen runner in the run environment.
 # The Claude CLI then uses the login stored for that folder. Log in once with:
 #   CLAUDE_CONFIG_DIR=<config_dir> claude
 # This file calls three constructors: pool(), agents() and runner(). Each takes keyword arguments only.
@@ -12,9 +12,9 @@
 #   security add-generic-password -s <keychain> -a $USER -w
 
 # pool() sets the usage caps, in percent. Each argument names a usage window that an agent reports.
-# Claude reports five_hour and seven_day. `beehave run` picks the Claude runner that is under
+# Claude reports five_hour and seven_day. `beehest run` picks the Claude runner that is under
 # both caps, with the lowest seven-day use, then the lowest five-hour use. A runner whose usage
-# cannot be read, or that is not logged in, is never picked; `beehave doctor` names it. When no runner is under both caps, the run stops
+# cannot be read, or that is not logged in, is never picked; `beehest doctor` names it. When no runner is under both caps, the run stops
 # with exit 3 and names the earliest reset time. Both arguments are optional. Call pool() once.
 pool(
     five_hour = 90,
@@ -30,23 +30,23 @@ pool(
 # max_run_budget_usd caps the dollars that all agent steps of one item run spend, failed runs included. An agent step does not start when the sum is at or past
 # the cap, so the last step can pass it by its own cost (set max_budget_usd to limit that). A child workflow of the run starts its own sum.
 # max_tree_budget_usd caps the same sum for the root run and every run it spawns. A spawned run uses the cap of its root. A step that a cap stops waits:
-# raise the cap (or set it to 0) and restart beehave to resume it.
-# max_week_budget_usd caps the dollars that the agent steps of all items spend in any seven days. A step that ended exactly seven days ago counts. beehave refuses a retention_days from 1 to 6 with this cap: a deleted run is not in the sum. Two steps that start at once can both start under the cap.
+# raise the cap (or set it to 0) and restart beehest to resume it.
+# max_week_budget_usd caps the dollars that the agent steps of all items spend in any seven days. A step that ended exactly seven days ago counts. beehest refuses a retention_days from 1 to 6 with this cap: a deleted run is not in the sum. Two steps that start at once can both start under the cap.
 # A step can set a lower cap for itself with max_budget_usd in its agent() call.
 # context_window_tokens is the context window of the agent model in tokens (default 200000; 0 means unknown). The max_context_percent keyword of an
 # agent() call stops the step with the output stop "context" when the context of the run reaches that share of the window.
 # review_poll_minutes is the time between two polls of the open pull requests that wait for your
 # review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
-# `beehave status` shows the newest poll.
+# `beehest status` shows the newest poll.
 # review_lookback_days is the number of days that the poll looks back for replies to answer. The default is 3. The least is 1. The most is 365.
 # per_login is the most agent steps that one login runs at once, in each of the two agent queues. The default is 1. The least is 1. The most is the lower of max_concurrent and max_review_concurrent.
 # concurrency is "static" or "adaptive". The default is "static": the agents queue holds max_concurrent.
 # With "adaptive", max_concurrent is the ceiling. The limit starts at per_login, adds one agent each minute while every login has room and a phase waits,
-# and halves (never below per_login) when a phase ends at a provider limit. beehave status shows the limit.
-# retention_days is the age in days at which `beehave run` deletes a finished run with its recorded steps. The default is 7.
+# and halves (never below per_login) when a phase ends at a provider limit. beehest status shows the limit.
+# retention_days is the age in days at which `beehest run` deletes a finished run with its recorded steps. The default is 7.
 # 0 keeps every finished run. The most is 36500. A failed or canceled run is never deleted.
 # trace_parent is true or false. The default is false. When true, each agent process gets one TRACEPARENT that names the run and the step, so the spans of one run share a trace id.
-# beehave exports no span and passes no exporter setting: the agent CLI exports its own spans.
+# beehest exports no span and passes no exporter setting: the agent CLI exports its own spans.
 # Call agents() once.
 agents(
     max_concurrent = 2,
@@ -68,7 +68,7 @@ runner(
     name = "claude-a",                  # your own label
     agent = "claude",
     config_dir = "~/.claude-profiles/a",  # one Claude config folder for each login
-    # keychain = "beehave-claude-a",       # optional
+    # keychain = "beehest-claude-a",       # optional
 )
 
 runner(
@@ -77,8 +77,9 @@ runner(
     config_dir = "~/.claude-profiles/b",
 )
 
-# Later: a local model through Pi or OpenCode.
+# An OpenCode login. config_dir is the data folder (XDG_DATA_HOME) that holds the OpenCode login and sessions.
 # runner(
-#     name = "local",
+#     name = "opencode",
 #     agent = "opencode",
+#     config_dir = "~/.local/share",
 # )

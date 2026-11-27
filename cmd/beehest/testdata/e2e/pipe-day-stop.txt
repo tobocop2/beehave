@@ -1,0 +1,25 @@
+# A day that fails at the source stops the item with a text that says a plain resume replays the stop and names the steps that start the item again: resume, then cancel, then run.
+[!exec:jq] skip
+[!exec:sqlite3] skip
+isolate
+! exec bd version
+! exec gh version
+
+pipeinit
+pipefakes
+env HOME=$WORK/home
+env PIPE_DIR=$WORK/pl
+env PIPE_HOME=$WORK/pipe
+
+exec beehestreal item add pipeline day-3 --title 'April 3' --body-file day3.json
+! exec beehestreal run day-3 pipeline --workflow pl/partition.star
+stderr 'REFUSE: '
+stderr 'Fix the cause\. A plain beehest resume replays this stop\. To start the item again, run beehest resume day-3, then beehest cancel day-3, then beehest run day-3\.'
+
+-- day3.json --
+{"day":"2026-04-03"}
+-- src/fail-2026-04-03 --
+-- pipe/config --
+SOURCE_API=http://source.test
+-- pipe/credential.header --
+X-Token: TESTONLY

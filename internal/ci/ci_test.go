@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehest/internal/ci"
 )
 
 func TestNewRefusal_EachProblemIsOneFailLineAndTheLinesStay(t *testing.T) {

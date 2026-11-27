@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // localCleanPath is the PATH of the engine at its start in these tests.
@@ -204,7 +204,7 @@ func TestRun_ALocalGateWithAGateProgramReadsItsJobResultFromTheExitCodeAndTheLog
 		{name: "the_time_limit_gives_no_result", project: programProjectOf(), code: ExitTimedOut, report: "time limit", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "a_refusal_line_names_the_step", project: programProjectOf(), code: 1, out: programMarker + " the head changed the gate program, paths Makefile\n", report: "paths Makefile", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
 		{name: "a_refusal_report_holds_the_log_of_the_job", project: programProjectOf(), code: 1, out: "fatal: unable to access a file\n" + programMarker + " the base commit cannot be read\n", report: "fatal: unable to access a file", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
-		{name: "a_marker_inside_a_word_is_no_refusal", project: programProjectOf(), code: 1, out: "x" + programMarker + " the head changed the gate program, paths Makefile\n", report: "xbeehave-gate-program", steps: []Step{{Name: StepCommand, Status: StatusFail}, {Name: StepTests, Status: StatusUnknown}}},
+		{name: "a_marker_inside_a_word_is_no_refusal", project: programProjectOf(), code: 1, out: "x" + programMarker + " the head changed the gate program, paths Makefile\n", report: "xbeehest-gate-program", steps: []Step{{Name: StepCommand, Status: StatusFail}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "the_first_of_two_refusal_lines_gives_the_reason", project: programProjectOf(), code: 1, out: programMarker + " first reason\n" + programMarker + " second reason\n", report: "first reason", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
 		{name: "a_failed_gate_string_fails_with_its_output", project: programProjectOf(), code: 2, out: "boom\n", report: "boom", steps: []Step{{Name: StepCommand, Status: StatusFail}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "a_failed_list_reads_the_step_lines", project: steps, code: 1, out: stepMarker + " lint rc=0\n" + stepMarker + " unit rc=2\n", report: stepMarker, steps: []Step{{Name: "lint", Status: StatusPass}, {Name: "unit", Status: StatusFail}}},

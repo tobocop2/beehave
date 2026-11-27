@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/forge/forgetest"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/forge/forgetest"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 func TestForge_ConformsToForge(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 func TestStateOf_MapsEveryStoreStatusToARunState(t *testing.T) {
@@ -65,7 +65,7 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	require.ErrorIs(t, client.Resume("not an id"), ErrBadItem)
 	require.ErrorIs(t, client.Reply(testItem, Reply{Text: ""}), errEmptyAnswer)
 	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), errNoRun)
-	require.ErrorContains(t, client.Cancel(testItem), "start item 12 with beehave run 12")
+	require.ErrorContains(t, client.Cancel(testItem), "start item 12 with beehest run 12")
 
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)

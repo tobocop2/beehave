@@ -1,0 +1,30 @@
+# The review loop of examples/review-loop stops after three drafts when the reviewer never approves.
+# The author sends three drafts and revises twice. The reviewer ends after its third verdict, and the author fails the run and names the cap.
+isolate
+
+example review-loop/workflow.star
+example review-loop/project.star config/projects/review.star
+example review-loop/prompts/draft.md
+example review-loop/prompts/review.md
+example review-loop/prompts/revise.md
+reviewfakes
+
+exec beehestreal item add review note-1 --title 'Release note' --body-file body.txt
+! exec beehestreal run note-1 review --workflow review-loop/workflow.star
+stderr 'the reviewer did not approve a draft in 3 rounds'
+
+cmp calls.log expected-calls.log
+
+-- body.txt --
+Write the release note.
+-- verdicts --
+changes
+changes
+changes
+-- expected-calls.log --
+draft
+review Draft 1.
+revise Fix round 1.
+review Draft 2.
+revise Fix round 2.
+review Draft 3.

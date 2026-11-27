@@ -1,8 +1,8 @@
 package github
 
 import (
-	"github.com/tobocop2/beehave/internal/credential"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/credential"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // RoleRunner returns a runner for gh that runs as the holder of token. Its environment is the network names of base and three variables: GH_TOKEN, an own

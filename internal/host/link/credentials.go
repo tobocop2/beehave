@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // The values of the ssh settings that a host declared credentials = "none" may get.
@@ -135,14 +135,14 @@ func (s sshSettings) checkForwards(target string) error {
 	return nil
 }
 
-// checkProxies refuses a host that ssh reaches through another host. beehave cannot check what ssh gives that other host, such as the agent.
+// checkProxies refuses a host that ssh reaches through another host. beehest cannot check what ssh gives that other host, such as the agent.
 // The refusal names the key only: a proxy command can hold a secret.
 func checkProxies(target string, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}
 
-	return Refusal("", "the build host %s is reached through another host (ssh -G sets %s). beehave cannot check what ssh gives that host, such as the SSH agent, so a host with credentials = \"none\" must not use ProxyJump or ProxyCommand. Remove it for %s in ~/.ssh/config, or remove credentials = \"none\" for this host", target, keys[0], target)
+	return Refusal("", "the build host %s is reached through another host (ssh -G sets %s). beehest cannot check what ssh gives that host, such as the SSH agent, so a host with credentials = \"none\" must not use ProxyJump or ProxyCommand. Remove it for %s in ~/.ssh/config, or remove credentials = \"none\" for this host", target, keys[0], target)
 }
 
 // checkSendEnv refuses a variable pattern that ssh sends to the host, other than LANG and LC_*.

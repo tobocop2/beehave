@@ -11,9 +11,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // ItemInput starts the workflow of one item.
@@ -24,7 +24,7 @@ type ItemInput struct {
 	// Files are the workflow file and every file it loads, with their hashes. A run executes only these bytes.
 	Files []workflow.PinnedFile `json:"files,omitempty"`
 	// Login is the agent login that a spawn or the queue picked before the run started. DBOS stores the input, so a resume keeps it.
-	// A run that `beehave run` started has none: it picks at its first agent step.
+	// A run that `beehest run` started has none: it picks at its first agent step.
 	Login string `json:"login,omitempty"`
 	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
 	// A run that spawn started has it set to the entry of the spawn call.
@@ -99,7 +99,7 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 }
 
 // endItem releases the item of a run whose work ended with workErr, and returns the error of the run.
-// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
+// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehest run.
 // A run that lost its claim has nothing to release.
 // A replay over a changed file records no step: a step recorded at a later id would stand in the way of the replay that follows the author's fix.
 // The claim and the worktree go back as a cancel gives them back, with no step, and the parent reads the end of the run at its next look.
@@ -345,7 +345,7 @@ func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error
 	return owner, took, err
 }
 
-// ownerOf returns the token of the claim of the run: the token that beehave resume or beehave fork saved for it, or else the recorded one. It then shows the other orchestrators of the project.
+// ownerOf returns the token of the claim of the run: the token that beehest resume or beehest fork saved for it, or else the recorded one. It then shows the other orchestrators of the project.
 func (e *Engine) ownerOf(ctx dbos.Context, in ItemInput, recorded string) (string, error) {
 	saved, err := savedOwner(e.dir, workflowID(ctx))
 	if err != nil {
@@ -390,7 +390,7 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 	return nil
 }
 
-// waitOwner blocks until the owner answers through beehave answer. The wait holds no queue slot.
+// waitOwner blocks until the owner answers through beehest answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
 func (s *script) waitOwner(question string) (string, error) {
 	answer, _, err := s.waitOwnerUntil(question, 0)
@@ -412,7 +412,7 @@ func (s *script) waitOwnerUntil(question string, deadline time.Duration) (answer
 	}
 
 	if err != nil {
-		return "", false, fmt.Errorf("item %s waits for the owner: %w. Answer with beehave answer %s <text>", item, err, item)
+		return "", false, fmt.Errorf("item %s waits for the owner: %w. Answer with beehest answer %s <text>", item, err, item)
 	}
 
 	return answer, timedOut, nil

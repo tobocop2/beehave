@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // tailBytes is the size of the log tail that the ssh host reads.
@@ -79,7 +79,7 @@ func runCandidateOf(t *testing.T, project model.Project, root, repo, head string
 	baseTip, err := exec.CommandContext(t.Context(), "git", "-C", repo, "rev-parse", "main").Output() //nolint:gosec // test helper
 	require.NoError(t, err)
 
-	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
+	command := hostCommand(project, nil, repo, head, root+"/beehest-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 
@@ -147,7 +147,7 @@ func TestBeforeReview_TheJobExitsWithTheExitOfTheHeadGate(t *testing.T) {
 	t.Parallel()
 
 	project := model.Project{Name: "demo", Gate: "false", TestReport: "r/*.xml"}
-	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehave-gate-demo-abc", "main", "0123456789abcdef0123456789abcdef01234567")
+	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehest-gate-demo-abc", "main", "0123456789abcdef0123456789abcdef01234567")
 
 	require.Contains(t, command, `[ "$headrc" -eq 0 ]`)
 	require.Contains(t, command, stepMarker+" "+stepHeadGate+" rc=$headrc")
@@ -218,7 +218,7 @@ func TestBeforeReview_AHeadWithNoMergeBaseWithTheBaseCommitNamesTheBaseBranchAnd
 	require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), "#!/bin/sh\nexit 0\n"))
 
 	project := model.Project{Name: "demo", Gate: "sh mkreport.sh", TestReport: "reports/*.xml", TestCommand: "sh mkreport.sh"}
-	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", absent)
+	command := hostCommand(project, nil, repo, head, root+"/beehest-gate-demo-"+head, "main", absent)
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 

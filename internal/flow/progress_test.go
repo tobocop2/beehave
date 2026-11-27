@@ -138,7 +138,7 @@ func TestProgress_RefusesRunsThatSpawnDidNotReturn(t *testing.T) {
 func TestPublish_RefusesAKeyThatTheRuleRejectsWhenTheKeyIsComputed(t *testing.T) {
 	t.Parallel()
 
-	for name, key := range map[string]string{"shape": "Bad Key", "reserved": "beehave.keys"} {
+	for name, key := range map[string]string{"shape": "Bad Key", "reserved": "beehest.keys"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -153,7 +153,7 @@ func TestPublish_RefusesAKeyThatTheRuleRejectsWhenTheKeyIsComputed(t *testing.T)
 func TestProgress_RefusesAKeyThatTheRuleRejectsWhenTheKeyIsComputed(t *testing.T) {
 	t.Parallel()
 
-	flow := "def main(item):\n    runs = spawn(items = [\"21\"], entry = \"main\", name = \"fan\")\n    k = \"beehave.keys\"\n    progress(runs, k, name = \"peek\")\n"
+	flow := "def main(item):\n    runs = spawn(items = [\"21\"], entry = \"main\", name = \"fan\")\n    k = \"beehest.keys\"\n    progress(runs, k, name = \"peek\")\n"
 	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.ErrorContains(t, err, "is reserved")
@@ -351,7 +351,7 @@ func TestPublished_AKeyThatTheListNamesAndNoEventHoldsIsAnError(t *testing.T) {
 	require.NoError(t, err)
 
 	// WyJnaG9zdCJd is the base64 of ["ghost"], the way the store keeps the list of keys.
-	_, err = sqlOf(t, h).ExecContext(t.Context(), "INSERT INTO workflow_events (workflow_uuid, key, value, serialization) VALUES (?, ?, ?, ?)", testRun, "beehave.keys", "WyJnaG9zdCJd", "DBOS_JSON")
+	_, err = sqlOf(t, h).ExecContext(t.Context(), "INSERT INTO workflow_events (workflow_uuid, key, value, serialization) VALUES (?, ?, ?, ?)", testRun, "beehest.keys", "WyJnaG9zdCJd", "DBOS_JSON")
 	require.NoError(t, err)
 
 	_, err = h.client(t, testVersion).Published(testRun)

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // gapCase is one input: the reset mode of the limit, the run of the try whose limit is the last one, and the step records the store refuses.

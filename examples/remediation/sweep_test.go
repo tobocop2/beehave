@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // exprText writes the source form of the expressions that the workflow uses for a keyword value: names, fields, indexes, calls and text.

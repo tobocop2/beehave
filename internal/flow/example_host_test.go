@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (
@@ -186,7 +186,7 @@ func (f failingHosts) CheckCredentials(context.Context, string) error { return f
 func TestStopHost_ACanceledRunRecordsNoResultSoAResumeStopsTheHostAgain(t *testing.T) {
 	t.Parallel()
 
-	// The engine runs; only the context of the step ends, as it does when beehave cancels a run.
+	// The engine runs; only the context of the step ends, as it does when beehest cancels a run.
 	s := &script{e: &Engine{ctx: newHarness(t).engine(t).ctx, deps: Deps{Hosts: failingHosts{err: context.Canceled}}}}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

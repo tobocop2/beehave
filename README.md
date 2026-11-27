@@ -1,20 +1,20 @@
 > [!CAUTION]
 > # Early release
 >
-> **beehave is an early release.** The workflow API, the commands and the file formats can still change. Do not run it on work you cannot lose.
+> **beehest is an early release.** The workflow API, the commands and the file formats can still change. Do not run it on work you cannot lose.
 
 <p align="center">
-  <a href="https://github.com/tobocop2/beehave">
+  <a href="https://github.com/tobocop2/beehest">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehave/main/docs/beehave-logo-dark.svg">
-      <img alt="beehave" src="https://raw.githubusercontent.com/tobocop2/beehave/main/docs/beehave-logo-light.svg" width="580">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-logo-dark.svg">
+      <img alt="beehest" src="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-logo-light.svg" width="580">
     </picture>
   </a>
 </p>
 
-<p align="center"><strong>A deterministic, durable workflow engine for AI coding agents: write your process down once, and beehave makes your agents follow it, every time.</strong></p>
+<p align="center"><strong>A deterministic, durable workflow engine for AI coding agents: write your process down once, and beehest makes your agents follow it, every time.</strong></p>
 
-<p align="center">A process written in plain language is not durable: an agent reads it, skips a step or invents one, and nothing records where it stopped. beehave keeps the steps in code. The agent does the work inside a step, and the engine decides which step runs next.</p>
+<p align="center">A process written in plain language is not durable: an agent reads it, skips a step or invents one, and nothing records where it stopped. beehest keeps the steps in code. The agent does the work inside a step, and the engine decides which step runs next.</p>
 
 <p align="center"><a href="#quickstart">Quickstart</a> &nbsp;·&nbsp; <a href="#examples">Examples</a> &nbsp;·&nbsp; <a href="docs/architecture.md">Architecture</a> &nbsp;·&nbsp; <a href="docs/claude-code-plugin.md">Claude Code plugin</a></p>
 
@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/status-under%20construction-eb6f92?style=flat-square&labelColor=191724" alt="Status: under construction">
   <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/go-1.27-9ccfd8?logo=go&logoColor=9ccfd8&style=flat-square&labelColor=191724" alt="Go 1.27"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6e6a86?style=flat-square&labelColor=191724" alt="License: MIT"></a>
-  <a href="https://github.com/tobocop2/beehave/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehave?logo=github&logoColor=f6c177&style=flat-square&labelColor=191724&color=f6c177" alt="GitHub stars"></a>
+  <a href="https://github.com/tobocop2/beehest/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehest?logo=github&logoColor=f6c177&style=flat-square&labelColor=191724&color=f6c177" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -30,15 +30,16 @@
   <a href="https://github.com/bazelbuild/starlark"><img src="https://img.shields.io/badge/workflows-Starlark-c4a7e7?style=flat-square&labelColor=191724" alt="Workflows in Starlark"></a>
   <a href="https://www.dbos.dev/"><img src="https://img.shields.io/badge/durable-DBOS%20%2B%20SQLite-31748f?style=flat-square&labelColor=191724" alt="Durable on DBOS and SQLite"></a>
   <a href="https://claude.ai/code"><img src="https://img.shields.io/badge/agent-Claude%20Code-ebbcba?logo=claude&logoColor=ebbcba&style=flat-square&labelColor=191724" alt="Agent: Claude Code"></a>
+  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/agent-OpenCode-ebbcba?logo=opencode&logoColor=ebbcba&style=flat-square&labelColor=191724" alt="Agent: OpenCode"></a>
 </p>
 
 <!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
 
 AI agents are good at one task at a time and bad at following a process. On a big job they skip steps, forget what they did, say they finished when they did not, and stop when something crashes.
 
-beehave runs them through your process instead. You write the steps once in a short Starlark file: plan, implement, test, review, merge. Code picks the next step, not a model. A run resumes where it stopped, and beehave asks you only when a decision is yours.
+beehest runs them through your process instead. You write the steps once in a short Starlark file: plan, implement, test, review, merge. Code picks the next step, not a model. A run resumes where it stopped, and beehest asks you only when a decision is yours.
 
-## Why beehave
+## Why beehest
 
 <details><summary><strong>Deterministic by design</strong>: code picks the next step, not a model</summary>
 
@@ -49,7 +50,7 @@ The workflow file has no clock, no randomness and no direct access to files or t
 
 When a model runs the loop, every check is a model call: is the test done, did the review pass, what comes next. Each call sends the whole conversation again. In our own runs, such an orchestrator read 60 to 250 million cached tokens an hour, many times more than the agents that did the work.
 
-In beehave, the workflow file is the loop. Waiting, routing, testing and merging cost no tokens. Each agent gets the prompt of its own step, not a long manual of rules for the whole process. A finished step never runs again after a crash, so you never pay for it twice.
+In beehest, the workflow file is the loop. Waiting, routing, testing and merging cost no tokens. Each agent gets the prompt of its own step, not a long manual of rules for the whole process. A finished step never runs again after a crash, so you never pay for it twice.
 
 </details>
 <details><summary><strong>Write the process once</strong>: every job follows the same steps</summary>
@@ -57,9 +58,9 @@ In beehave, the workflow file is the loop. Waiting, routing, testing and merging
 Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
 
 </details>
-<details><summary><strong>Works with the tools you already use</strong>: beads, GitHub, SkyPilot, Slurm</summary>
+<details><summary><strong>Works with the tools you already use</strong>: Claude Code, OpenCode, beads, GitHub, SkyPilot, Slurm</summary>
 
-Adapters connect beehave to [beads](https://github.com/steveyegge/beads) and GitHub issues for the backlog, GitHub for pull requests, reviews and merges, and [SkyPilot](https://github.com/skypilot-org/skypilot), [Slurm](https://slurm.schedmd.com/) or plain SSH for build machines. Claude Code is the agent today. The adapters fit coding work first, but the engine is not tied to them.
+Adapters connect beehest to [beads](https://github.com/steveyegge/beads) and GitHub issues for the backlog, GitHub for pull requests, reviews and merges, and [SkyPilot](https://github.com/skypilot-org/skypilot), [Slurm](https://slurm.schedmd.com/) or plain SSH for build machines. The agent is [Claude Code](https://claude.ai/code) or [OpenCode](https://opencode.ai). The adapters fit coding work first, but the engine is not tied to them.
 
 </details>
 <details><summary><strong>Nothing is lost</strong>: a crash resumes where it stopped</summary>
@@ -69,7 +70,7 @@ If the laptop sleeps, the program crashes or the account runs out of credit, run
 </details>
 <details><summary><strong>Limits that hold</strong>: time, turns and money</summary>
 
-You set the most time, turns and money a job may use. beehave stops the job at the limit. It does not ask the agent to stop.
+You set the most time, turns and money a job may use. beehest stops the job at the limit. It does not ask the agent to stop.
 
 </details>
 <details><summary><strong>It asks you only what it cannot decide</strong>: other jobs keep going</summary>
@@ -101,19 +102,19 @@ Code changes are the first use. The same engine runs research reports, an incide
 <details>
 <summary><strong>The problems this came from</strong></summary>
 
-beehave grew out of months of running teams of AI agents on real backlogs. These are the failures that cost the most, worst first.
+beehest grew out of months of running teams of AI agents on real backlogs. These are the failures that cost the most, worst first.
 
-1. **Agents ran far past their token limit.** A limit written in the instructions did nothing: agents told to stop at 70k tokens used 120k to 240k. Across 295 agent runs, the median was 187k. *In beehave, each agent step has a cap on turns and on dollars, and each run has a total budget. The engine stops the step.*
-2. **Fix loops patched the same bug again and again.** One pull request used 27 agent runs. Another got five review rounds for code that the tool it wrapped could already do. *In beehave, the number of rounds is a number in the workflow file, not a hope in a prompt.*
-3. **Agents said a review or a test ran when it never did.** Reports named reviews that did not happen, and "tests pass" came from a log that said they failed. *In beehave, every step is recorded. `beehave status` shows what ran, and the engine reads the exit code itself.*
-4. **Waiting burned tokens.** A model that checks on other agents pays for every check: 123 calls in one hour went to status wake-ups alone. *In beehave, the engine waits, not a model. A step that waits for a person or for another run costs nothing.*
-5. **Agents redid work that was already done.** Agents spent hours on issues that were already fixed on main, and two sessions started the same 118-issue audit within minutes. *In beehave, a finished step never runs again, an item is claimed before work starts, and an open pull request by someone else holds the item.*
-6. **Agents ignored the rules in their instructions.** In one day, one agent run in three broke a written rule: bulk `git add`, unsafe deletes, `--no-verify`. One bulk commit pushed a 4.3 MB data file to a public pull request. *In beehave, a shell check refuses those commands before they run, and protected paths stop the step.*
-7. **Too many builds at once overloaded the machine,** so tests failed on timeouts and ran again, 25 minutes each time. *In beehave, `max_concurrent` caps the agent processes, and the items wait in a queue.*
-8. **One open question stopped all the work.** A single question to the owner sat for seven hours while a rented machine billed. *In beehave, a question pauses only its own run. The other runs go on, and `beehave answer` lets the paused run continue.*
-9. **Merges went in under running reviews.** Eleven pull requests merged in one minute, and one merge ignored an open "changes requested". *In beehave, the merge guard reads every review and lands only the commit that was reviewed.*
-10. **Rented machines kept billing, or were deleted with work on them.** One machine billed for 16 days after the work ended. *In beehave, a workflow starts the build host when it needs one and stops it when the run ends. It saves the work on the host first.
-11. **A crash meant starting again, and paying again.** *That is why beehave saves each step before the next one starts.*
+1. **Agents ran far past their token limit.** A limit written in the instructions did nothing: agents told to stop at 70k tokens used 120k to 240k. Across 295 agent runs, the median was 187k. *In beehest, each agent step has a cap on turns and on dollars, and each run has a total budget. The engine stops the step.*
+2. **Fix loops patched the same bug again and again.** One pull request used 27 agent runs. Another got five review rounds for code that the tool it wrapped could already do. *In beehest, the number of rounds is a number in the workflow file, not a hope in a prompt.*
+3. **Agents said a review or a test ran when it never did.** Reports named reviews that did not happen, and "tests pass" came from a log that said they failed. *In beehest, every step is recorded. `beehest status` shows what ran, and the engine reads the exit code itself.*
+4. **Waiting burned tokens.** A model that checks on other agents pays for every check: 123 calls in one hour went to status wake-ups alone. *In beehest, the engine waits, not a model. A step that waits for a person or for another run costs nothing.*
+5. **Agents redid work that was already done.** Agents spent hours on issues that were already fixed on main, and two sessions started the same 118-issue audit within minutes. *In beehest, a finished step never runs again, an item is claimed before work starts, and an open pull request by someone else holds the item.*
+6. **Agents ignored the rules in their instructions.** In one day, one agent run in three broke a written rule: bulk `git add`, unsafe deletes, `--no-verify`. One bulk commit pushed a 4.3 MB data file to a public pull request. *In beehest, a shell check refuses those commands before they run, and protected paths stop the step.*
+7. **Too many builds at once overloaded the machine,** so tests failed on timeouts and ran again, 25 minutes each time. *In beehest, `max_concurrent` caps the agent processes, and the items wait in a queue.*
+8. **One open question stopped all the work.** A single question to the owner sat for seven hours while a rented machine billed. *In beehest, a question pauses only its own run. The other runs go on, and `beehest answer` lets the paused run continue.*
+9. **Merges went in under running reviews.** Eleven pull requests merged in one minute, and one merge ignored an open "changes requested". *In beehest, the merge guard reads every review and lands only the commit that was reviewed.*
+10. **Rented machines kept billing, or were deleted with work on them.** One machine billed for 16 days after the work ended. *In beehest, a workflow starts the build host when it needs one and stops it when the run ends. It saves the work on the host first.
+11. **A crash meant starting again, and paying again.** *That is why beehest saves each step before the next one starts.*
 
 </details>
 
@@ -155,44 +156,45 @@ flowchart LR
 ```
 
 ```bash
-beehave run fix-login myrepo --workflow workflow.star
+beehest run fix-login myrepo --workflow workflow.star
 ```
 
 The file is [Starlark](https://github.com/bazelbuild/starlark), the configuration language of Bazel: loops, functions and conditions, with no clock, no randomness and no direct access to files or the network. Each call (`agent`, `gate`, `command`) is one recorded step.
 
 ## Quickstart
 
-You need [Claude Code](https://claude.ai/code), logged in.
+You need [Claude Code](https://claude.ai/code) or [OpenCode](https://opencode.ai), logged in.
 
 ```bash
-brew install --cask tobocop2/tap/beehave
+brew install --cask tobocop2/tap/beehest
 
 cd ~/work/myrepo                  # the top folder of your git repository
-beehave init                      # writes the project file, workflow.star and prompts/
+beehest init                      # writes the project file, workflow.star and prompts/
 
-CONFIG="${BEEHAVE_CONFIG:-$HOME/.config/beehave}"   # the folder that init wrote the project file into
+CONFIG="${BEEHEST_CONFIG:-$HOME/.config/beehest}"   # the folder that init wrote the project file into
 echo 'runner(name = "claude", agent = "claude", config_dir = "~/.claude")' > "$CONFIG/runners.star"   # one Claude runner, with the login folder of Claude Code
+# or, for OpenCode: runner(name = "opencode", agent = "opencode", config_dir = "~/.local/share")   # the data folder that holds the OpenCode login
 
-beehave check workflow --dry-run  # walk the workflow, no agent calls
-beehave item add myrepo fix-login --title "Fix the login" --body-file task.md
-beehave run fix-login             # no --workflow: run reads workflow.star in this folder
+beehest check workflow --dry-run  # walk the workflow, no agent calls
+beehest item add myrepo fix-login --title "Fix the login" --body-file task.md
+beehest run fix-login             # no --workflow: run reads workflow.star in this folder
 ```
 
-`beehave init` writes the project file `projects/<name>.star` into the config folder (`$BEEHAVE_CONFIG`, else `~/.config/beehave`). It writes `workflow.star` and `prompts/` into the repository. It never replaces a file: if one of them exists, it names the file and writes nothing. Set the gate to the test command of your repository with `--gate`, or edit the project file. Run `beehave init --help` for the other flags.
+`beehest init` writes the project file `projects/<name>.star` into the config folder (`$BEEHEST_CONFIG`, else `~/.config/beehest`). It writes `workflow.star` and `prompts/` into the repository. It never replaces a file: if one of them exists, it names the file and writes nothing. Set the gate to the test command of your repository with `--gate`, or edit the project file. Run `beehest init --help` for the other flags.
 
-The result is a branch named `fix-login` in your repository. If the run stops, run the same command again. `beehave status` lists the runs and the questions that wait for you.
+The result is a branch named `fix-login` in your repository. If the run stops, run the same command again. `beehest status` lists the runs and the questions that wait for you.
 
 ### A round on the remediation example
 
-The remediation example needs a clone of beehave and its own tools. These steps run after the steps above:
+The remediation example needs a clone of beehest and its own tools. These steps run after the steps above:
 
-1. Clone beehave, and run `make remedy` in the clone.
-2. Edit the project file. Set `base_branch`, `tracker`, `test_command`, `test_report`, `gate`, and in `vars` the `round` keys `base`, `next_base`, `label`, `merge`, `owner`, `lane_cap` and `fix_rounds`. Run `beehave check config` until it exits 0.
+1. Clone beehest, and run `make remedy` in the clone.
+2. Edit the project file. Set `base_branch`, `tracker`, `test_command`, `test_report`, `gate`, and in `vars` the `round` keys `base`, `next_base`, `label`, `merge`, `owner`, `lane_cap` and `fix_rounds`. Run `beehest check config` until it exits 0.
 3. Add the host keys: `build_host`, and a `host(...)` block with `provider = "skypilot"`, `disk_floor_gb`, `setup_command` and `skypilot = skypilot(cloud, region, instance_type, disk_size_gb, spot)`.
 4. Add the `credentials` entry with a `writer` that names a keychain entry. The file never holds the token.
 5. Add the label of the round to an issue by its number.
-6. Start the engine with `beehave serve`.
-7. Run the round: `PATH="$PWD/bin:$PATH" beehave run round/<base> --workflow examples/remediation/workflow.star`.
+6. Start the engine with `beehest serve`.
+7. Run the round: `PATH="$PWD/bin:$PATH" beehest run round/<base> --workflow examples/remediation/workflow.star`.
 
 [`examples/remediation`](examples/remediation) holds the details.
 
@@ -216,16 +218,16 @@ The remediation example needs a clone of beehave and its own tools. These steps 
 
 ## Status
 
-beehave is under construction, and the workflow API changes without notice.
+beehest is under construction, and the workflow API changes without notice.
 
 - **Works today:** the engine, the CLI, the examples, the merge guards, the sandbox on Linux and macOS, and Claude Code and OpenCode as agents.
-- **Next:** pi, Codex and Hermes as agents, and `beehave serve`, a resident engine that runs the review poll.
+- **Next:** pi, Codex and Hermes as agents, and `beehest serve`, a resident engine that runs the review poll.
 - **Windows** comes last.
 
 ## Learn more
 
 - [`docs/architecture.md`](docs/architecture.md): the packages, the durable loop, and the reasons for DBOS and Starlark.
-- [`docs/claude-code-plugin.md`](docs/claude-code-plugin.md): `/beehave:run`, `/beehave:status` and the other slash commands for Claude Code.
+- [`docs/claude-code-plugin.md`](docs/claude-code-plugin.md): `/beehest:run`, `/beehest:status` and the other slash commands for Claude Code.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): build, test and the gate.
 
 ## License

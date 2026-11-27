@@ -3,10 +3,10 @@ package slurm
 import (
 	"context"
 
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/slurmtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/slurmtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // sshFailed is the exit status of ssh for a link that dropped.
@@ -16,7 +16,7 @@ const sshFailed = 255
 type fakeSlot struct{ f *slurmtest.Cluster }
 
 func markerOf(job jobwait.Job) string {
-	return ".beehave-banked-" + slurmtest.Target + "-" + job.String()
+	return ".beehest-banked-" + slurmtest.Target + "-" + job.String()
 }
 
 func (s fakeSlot) Hold(_ context.Context, job jobwait.Job) error {

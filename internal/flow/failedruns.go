@@ -23,7 +23,7 @@ type FailedFilter struct {
 	Limit int
 }
 
-// FailedRun is one run that failed and that beehave resume reopens.
+// FailedRun is one run that failed and that beehest resume reopens.
 type FailedRun struct {
 	Item  string
 	ID    string
@@ -60,7 +60,7 @@ func (f FailedFilter) within(ended time.Time) bool {
 	return (f.Since.IsZero() || !ended.Before(f.Since)) && (f.Until.IsZero() || !ended.After(f.Until))
 }
 
-// FailedRuns lists the runs that failed and that beehave resume can reopen: the newest attempt of an item, ended with an error or with too many recovery attempts.
+// FailedRuns lists the runs that failed and that beehest resume can reopen: the newest attempt of an item, ended with an error or with too many recovery attempts.
 // A run that a move has canceled is not failed, so it is never listed. The list is ordered by end time, then run id. It reads the store and changes nothing.
 // A failed run in the range whose input cannot be read is returned apart, and the other runs are still listed. The limit counts only the listed runs.
 func (c *Client) FailedRuns(filter FailedFilter) ([]FailedRun, []UnreadableRun, error) {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // The limits of the poll. gh caps an unlimited list at 30 without a word, so every list names its limit.

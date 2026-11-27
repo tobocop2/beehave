@@ -9,7 +9,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -90,8 +90,8 @@ type agents struct {
 	// MaxWeekBudgetUSD is the most dollars that the agent steps of all items spend in any seven days. An agent step does not start when the sum of the steps that ended in the last seven days is at or past it.
 	// The sum reads the recorded runs of the store, so a `agents.retention_days` from 1 to 6 is refused with this cap. 0 means no cap.
 	MaxWeekBudgetUSD float64
-	// RetentionDays is the age in days at which `beehave run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
-	// A failed or canceled run is never deleted, because `beehave resume` can reopen it.
+	// RetentionDays is the age in days at which `beehest run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
+	// A failed or canceled run is never deleted, because `beehest resume` can reopen it.
 	RetentionDays int
 	// TraceParent passes a W3C TRACEPARENT to each agent process, built from the run and the step. The default is false: no trace variable reaches an agent.
 	TraceParent bool

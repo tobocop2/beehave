@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gotelemetry"
+	"github.com/tobocop2/beehest/internal/gotelemetry"
 )
 
 func TestOff_WritesTheModeOffAtEachPathTheGoCommandReads(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // writer changes the items of the tracker of a project. Each method is the method of store.Writer with the project in front.

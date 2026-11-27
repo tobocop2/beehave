@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // fixFlow is one fix lane.
@@ -195,7 +195,7 @@ func TestRateLimit_ALimitThatNoReadingDatesFailsTheStepAndNamesTheLimit(t *testi
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "the agent step of item "+testItem+" stopped at the rate limit five_hour of login "+testLogin+", and neither the agent nor the usage read gives a reset time")
-	require.ErrorContains(t, err, "Run beehave resume "+testItem+" when the limit is gone")
+	require.ErrorContains(t, err, "Run beehest resume "+testItem+" when the limit is gone")
 	assert.Len(t, h.agents.seen(), 1, "no rerun without a time to wait for")
 
 	steps, err := h.client(t, testVersion).Steps(testRun)
@@ -242,7 +242,7 @@ func TestRateLimit_TwoLimitsInARowWithAResetInThePastFailTheStep(t *testing.T) {
 	_, err := h.engine(t).Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "the agent step of item "+testItem+" stopped at the rate limit five_hour of login "+testLogin+" twice in a row with a reset time that has passed")
-	require.ErrorContains(t, err, "Run beehave resume "+testItem+" when the limit is gone")
+	require.ErrorContains(t, err, "Run beehest resume "+testItem+" when the limit is gone")
 	assert.Len(t, h.agents.seen(), 2, "one rerun after the first past reset, none after the second")
 }
 
@@ -286,7 +286,7 @@ func TestRateLimit_AFailedUsageReadFailsTheStepAndNamesTheLogin(t *testing.T) {
 	_, err := h.engine(t).Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "read the usage of login "+testLogin+" for the reset of the rate limit five_hour: "+errFake.Error())
-	require.ErrorContains(t, err, "Run beehave resume "+testItem+" when the usage read works")
+	require.ErrorContains(t, err, "Run beehest resume "+testItem+" when the usage read works")
 	assert.Len(t, h.agents.seen(), 1, "no rerun after a failed read")
 }
 

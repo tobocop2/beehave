@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehest/internal/flow"
 )
 
 // The serve tests send a real signal to the test process, and every running serve command receives it. So they do not run in parallel.
@@ -24,7 +24,7 @@ type serveResult struct {
 	stdout, stderr string
 }
 
-// startServe runs beehave serve in the background and returns the channel of its result.
+// startServe runs beehest serve in the background and returns the channel of its result.
 func startServe(t *testing.T, rig *flowRig) <-chan serveResult {
 	t.Helper()
 
@@ -161,13 +161,13 @@ func TestRun_ASecondInterruptDuringASlowShutdownExits130AndSaysTheRunStaysOpen(t
 		assert.Equal(t, 130, got.code, got.stderr)
 		assert.Contains(t, got.stderr, "the run stays open")
 	case <-time.After(serveWait):
-		t.Fatal("a second interrupt did not end beehave run")
+		t.Fatal("a second interrupt did not end beehest run")
 	}
 
 	assert.Equal(t, 1, rig.runner.count(), "the second interrupt does not call Shutdown again")
 }
 
-// runThenSlowStop runs beehave run on a fake engine whose run ends at once and whose Shutdown is held, then sends one interrupt.
+// runThenSlowStop runs beehest run on a fake engine whose run ends at once and whose Shutdown is held, then sends one interrupt.
 func runThenSlowStop(t *testing.T, rig *flowRig) serveResult {
 	t.Helper()
 
@@ -190,7 +190,7 @@ func runThenSlowStop(t *testing.T, rig *flowRig) serveResult {
 	case got := <-done:
 		return got
 	case <-time.After(serveWait):
-		t.Fatal("an interrupt did not end beehave run")
+		t.Fatal("an interrupt did not end beehest run")
 	}
 
 	return serveResult{}
@@ -241,8 +241,8 @@ func TestServe_AFolderThatAnotherEngineOwnsIsRefusedWithTheLockText(t *testing.T
 
 	assert.Equal(t, 1, code)
 	assert.Empty(t, stdout)
-	assert.Contains(t, stderr, "another beehave engine owns this state folder")
-	assert.NotContains(t, stderr, "another beehave run")
+	assert.Contains(t, stderr, "another beehest engine owns this state folder")
+	assert.NotContains(t, stderr, "another beehest run")
 }
 
 func TestServe_AnEngineThatCannotOpenFailsWithExitOne(t *testing.T) {
@@ -318,6 +318,6 @@ func TestServe_TheHelpSaysTheEngineAppliesTheReviewPollAndStartsEachSentenceWith
 	code, stdout, _ := rig.execute(t.Context(), "serve", "--help")
 
 	assert.Equal(t, 0, code)
-	assert.Contains(t, stdout, "applies the review poll and waits. A beehave run on the same state folder")
+	assert.Contains(t, stdout, "applies the review poll and waits. A beehest run on the same state folder")
 	assert.NotContains(t, stdout, "project schedules")
 }

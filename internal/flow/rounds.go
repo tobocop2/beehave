@@ -11,12 +11,12 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/roundcut"
-	"github.com/tobocop2/beehave/internal/roundintegration"
-	"github.com/tobocop2/beehave/internal/roundsync"
-	"github.com/tobocop2/beehave/internal/takeover"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/roundcut"
+	"github.com/tobocop2/beehest/internal/roundintegration"
+	"github.com/tobocop2/beehest/internal/roundsync"
+	"github.com/tobocop2/beehest/internal/takeover"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // The step kinds and keywords of the builtins that write the forge for a round.

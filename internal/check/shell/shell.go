@@ -9,7 +9,7 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (

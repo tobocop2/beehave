@@ -7,16 +7,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 var (
-	errBadJobID    = errors.New("a job id is the unit name that Submit returned: beehave, a dash and letters or digits")
-	errUnitText    = errors.New("systemd gave a unit record that beehave does not read")
-	errUnitState   = errors.New("systemd gave a unit state that beehave does not know")
-	errLingerText  = errors.New("loginctl gave an answer that beehave does not read")
-	errVersionText = errors.New("systemd-run gave a version line that beehave does not read")
+	errBadJobID    = errors.New("a job id is the unit name that Submit returned: beehest, a dash and letters or digits")
+	errUnitText    = errors.New("systemd gave a unit record that beehest does not read")
+	errUnitState   = errors.New("systemd gave a unit state that beehest does not know")
+	errLingerText  = errors.New("loginctl gave an answer that beehest does not read")
+	errVersionText = errors.New("systemd-run gave a version line that beehest does not read")
 )
 
 // isRecorded says whether a state is one of the final states that a poll writes beside the log. A cancel has its own marker, and died has no record.
@@ -35,7 +35,7 @@ func isFault(result string) bool {
 	return false
 }
 
-var unitPattern = regexp.MustCompile(`^beehave-[A-Za-z0-9]+$`)
+var unitPattern = regexp.MustCompile(`^beehest-[A-Za-z0-9]+$`)
 
 // The words of the read of one poll. The script prints the cancel marker, the properties of the unit and the size of its log (-1 for none).
 // systemctl show prints the keys in its own order, so the parser reads them by key.
@@ -44,10 +44,10 @@ var unitPattern = regexp.MustCompile(`^beehave-[A-Za-z0-9]+$`)
 // that state as an empty file beside the log (`<base>.succeeded`, `.failed` or `.timed_out`), and every later poll reads the file back.
 // This keeps the result of a job readable after its release, as the accounting of Slurm does.
 const (
-	canceledLine = "beehave-canceled"
-	waitingLine  = "beehave-waiting"
-	resultPrefix = "beehave-result "
-	sizePrefix   = "beehave-size "
+	canceledLine = "beehest-canceled"
+	waitingLine  = "beehest-waiting"
+	resultPrefix = "beehest-result "
+	sizePrefix   = "beehest-size "
 	observeShell = `if test -e "$2.canceled"; then echo ` + canceledLine + `; fi
 if test -e "$2.waiting"; then echo ` + waitingLine + `; fi
 for s in succeeded failed timed_out; do if test -e "$2.$s"; then echo "` + resultPrefix + `$s"; fi; done
@@ -87,7 +87,7 @@ type reading struct {
 	code, status              int
 }
 
-// parseReading reads the output of the poll script. A key that is missing, or a number that is not one, is an error: beehave never guesses a state.
+// parseReading reads the output of the poll script. A key that is missing, or a number that is not one, is an error: beehest never guesses a state.
 func parseReading(out string) (reading, int64, error) {
 	var r reading
 

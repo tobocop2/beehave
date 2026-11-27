@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehest/internal/merge"
 )
 
 // emptyTree is the id of the tree with no file, which every git repository knows.
@@ -76,7 +76,7 @@ func TestMerge_AUnionGatedOnceLandsEveryMemberInOrderWithOneGate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed(), "both members land, in the given order")
 	assert.Len(t, rig.gate.ran(), 1, "one gate for the whole union")
-	assert.Equal(t, []string{"beehave/gate success " + rig.heads["1"], "beehave/gate success " + rig.heads["3"]}, rig.merger.statusesGiven())
+	assert.Equal(t, []string{"beehest/gate success " + rig.heads["1"], "beehest/gate success " + rig.heads["3"]}, rig.merger.statusesGiven())
 	assert.Equal(t, []string{"report 1,3    False"}, filterReport(rig.h.commands.ran()))
 	require.Len(t, rig.merger.given, 2)
 	assert.Equal(t, rig.repo.must(t, "rev-parse", "HEAD^{tree}"), rig.merger.given[1].GatedTree, "the last member proves the tree that the gate ran on")

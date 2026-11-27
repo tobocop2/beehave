@@ -1,0 +1,25 @@
+# The cost cap of a swarm is agents.max_tree_budget_usd. Each call costs 1.00 and the cap is 1 dollar.
+# The first two tasks start together: the rendezvous holds each one until the other runs, so both pass the look at the cap with a sum of 0. They run and land.
+# The next tasks find a sum of 2, so the engine holds their agent step. No third agent starts, and the status shows the stop at the cap of the tree.
+isolate
+swarmfakes
+
+env BEEHEST_AGENTS_MAX_TREE_BUDGET_USD=1
+exec beehestswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+! exec beehestswarm run swarm-1 swarm --workflow swarm/workflow.star &
+waitstatus 'stopped at the tree cap'
+kill -KILL
+wait
+
+# Two tasks ran and landed, and the held tasks started no agent.
+grep -count=2 '^task ' calls.log
+grep -count=2 '^MergePR ' forge/calls.log
+
+-- rendezvous --
+-- cost --
+1.00
+-- backlog.txt --
+P0	one	a.txt
+P1	two	b.txt
+P2	three	c.txt
+P3	four	d.txt

@@ -9,7 +9,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // pinAttribute names the attribute of a run that holds the files it replays against after an adoption: the workflow file and each file it loads, as the author left them.

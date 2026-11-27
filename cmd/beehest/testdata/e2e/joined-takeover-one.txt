@@ -1,0 +1,26 @@
+# Row T1. Two items wait for the owner. The second beehest run joins the engine of the first. The first run ends and its process exits.
+# The joined run must not end with it: the joined command takes over the engine, and the item finishes after its answer.
+isolate
+! exec bd version
+! exec gh version
+
+example review-loop/project.star config/projects/orders.star
+exec beehestreal item add orders ui-1 --title 'UI' --body-file body.txt
+exec beehestreal item add orders base-1 --title 'Base' --body-file body.txt
+
+exec beehestreal run ui-1 orders --workflow flow/wait.star &ui&
+waitstatus 'question of ui-1'
+exec beehestreal run base-1 orders --workflow flow/wait.star &base&
+waitstatus 'question of base-1'
+exec beehestreal answer ui-1 done
+wait ui
+stdout 'item ui-1 finished'
+exec beehestreal answer base-1 done
+wait base
+stdout 'item base-1 finished'
+
+-- body.txt --
+Wait.
+-- flow/wait.star --
+def main(item):
+    wait(name = "close", question = "question of " + item.id)

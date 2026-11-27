@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func timeoutProject(buildHost string) model.Project {
@@ -96,8 +96,8 @@ func TestHostCommand_AStepWithATimeoutIsKilledAtItsLimitAndTheNextStepStillRuns(
 
 	assert.NotZero(t, code)
 	assert.True(t, ran, "the step after the timed-out step runs")
-	assert.Contains(t, out, "beehave-gate-step one rc=124")
-	assert.Contains(t, out, "beehave-gate-step two rc=0")
+	assert.Contains(t, out, "beehest-gate-step one rc=124")
+	assert.Contains(t, out, "beehest-gate-step two rc=0")
 }
 
 func TestHostCommand_AStepThatIgnoresTERMIsKilledAfterTheGraceAndTheNextStepStillRuns(t *testing.T) {
@@ -112,14 +112,14 @@ func TestHostCommand_AStepThatIgnoresTERMIsKilledAfterTheGraceAndTheNextStepStil
 	assert.Less(t, time.Since(start), 15*time.Second, "the step ends after the grace, not when its sleep ends")
 	assert.NotZero(t, code)
 	assert.True(t, ran, "the step after the killed step runs")
-	assert.Contains(t, out, "beehave-gate-step one rc=137")
-	assert.Contains(t, out, "beehave-gate-step two rc=0")
+	assert.Contains(t, out, "beehest-gate-step one rc=137")
+	assert.Contains(t, out, "beehest-gate-step two rc=0")
 }
 
 func TestVerdict_AHostStepWithATimeoutThatTheMarkerGivesAs137IsUnknownWithTheReasonTimeout(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehave-gate-step build rc=137\nbeehave-gate-step test rc=0\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehest-gate-step build rc=137\nbeehest-gate-step test rc=0\n"}
 	g := gate.New((&fakeShell{}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
 
 	result, err := g.Run(context.Background(), hostRequest(timeoutProject("gpu-a")))
@@ -132,7 +132,7 @@ func TestVerdict_AHostStepWithATimeoutThatTheMarkerGivesAs137IsUnknownWithTheRea
 func TestVerdict_AHostStepWithNoTimeoutThatExits137IsAFailure(t *testing.T) {
 	t.Parallel()
 
-	result := hostListResult(t, model.JobFailed, "beehave-gate-step fmt rc=137\nbeehave-gate-step lint rc=0\nbeehave-gate-step test rc=0\n", nil)
+	result := hostListResult(t, model.JobFailed, "beehest-gate-step fmt rc=137\nbeehest-gate-step lint rc=0\nbeehest-gate-step test rc=0\n", nil)
 
 	assert.Equal(t, []gate.Step{step("fmt", gate.StatusFail), step("lint", gate.StatusPass), step("test", gate.StatusPass)}, result.Steps)
 }
@@ -167,7 +167,7 @@ func TestSteps_WhenTheStepLimitAndTheLimitOfTheWholeGateBothFireTheGateStopsAndE
 func TestVerdict_AHostStepWithATimeoutThatTheMarkerGivesAs124IsUnknownWithTheReasonTimeout(t *testing.T) {
 	t.Parallel()
 
-	log := "beehave-gate-step build rc=124\nbeehave-gate-step test rc=0\n"
+	log := "beehest-gate-step build rc=124\nbeehest-gate-step test rc=0\n"
 	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: log}
 	g := gate.New((&fakeShell{}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
 
@@ -182,7 +182,7 @@ func TestVerdict_AHostStepWithATimeoutThatTheMarkerGivesAs124IsUnknownWithTheRea
 func TestVerdict_AHostStepWithNoTimeoutThatExits124IsAFailure(t *testing.T) {
 	t.Parallel()
 
-	result := hostListResult(t, model.JobFailed, "beehave-gate-step fmt rc=124\nbeehave-gate-step lint rc=0\nbeehave-gate-step test rc=0\n", nil)
+	result := hostListResult(t, model.JobFailed, "beehest-gate-step fmt rc=124\nbeehest-gate-step lint rc=0\nbeehest-gate-step test rc=0\n", nil)
 
 	assert.Equal(t, []gate.Step{step("fmt", gate.StatusFail), step("lint", gate.StatusPass), step("test", gate.StatusPass)}, result.Steps)
 	assert.NotContains(t, result.Report, "timeout")

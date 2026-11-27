@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/gotelemetry"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/gotelemetry"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // minSandboxVersion is the oldest Claude Code that knows every key of the sandbox settings below. The newest key is allowUnsandboxedCommands
@@ -40,7 +40,7 @@ const envFile = "sandbox-env.sh"
 func homeLines(runDir string) string {
 	var lines strings.Builder
 
-	lines.WriteString("export HOME=\"${TMPDIR:-/tmp}\"/" + model.ShellQuote("beehave-home-"+filepath.Base(runDir)) + "\nmkdir -p \"$HOME\"\n")
+	lines.WriteString("export HOME=\"${TMPDIR:-/tmp}\"/" + model.ShellQuote("beehest-home-"+filepath.Base(runDir)) + "\nmkdir -p \"$HOME\"\n")
 	lines.WriteString("export XDG_CONFIG_HOME=\"$HOME\"/" + model.ShellQuote(gotelemetry.ConfigFolder) + "\n")
 
 	for _, file := range gotelemetry.ModeFiles() {

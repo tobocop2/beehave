@@ -3,7 +3,7 @@ package model
 
 import "strings"
 
-// Agent names an agent CLI that beehave can start. The agent package of each CLI exports its name.
+// Agent names an agent CLI that beehest can start. The agent package of each CLI exports its name.
 type Agent string
 
 // Runner is one agent login. It holds no token: Keychain names the entry that does.

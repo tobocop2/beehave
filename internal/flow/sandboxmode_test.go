@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // countingLogins counts the picks of a login.
@@ -56,7 +56,7 @@ func TestAgent_ASandboxNoneStepInASandboxedRunIsRefusedBeforeItsLoginIsPicked(t 
 
 	require.ErrorContains(t, err, "sets sandbox = None")
 	require.ErrorContains(t, err, `Set sandbox = "off" in the project`)
-	require.ErrorContains(t, err, "beehave run")
+	require.ErrorContains(t, err, "beehest run")
 	assert.Zero(t, picks, "the refusal comes before the pick of a login")
 	assert.Empty(t, rig.h.agents.seen())
 }
@@ -196,12 +196,12 @@ func TestResume_ARunWithNoRecordedSandboxModeRunsAStepWithNoKeywordWithNoSandbox
 func TestRun_TheRefusalOfASandboxNoneStepTellsTheOwnerHowToStartAgain(t *testing.T) {
 	t.Parallel()
 
-	for _, want := range []string{`sandbox = "off"`, "beehave cancel <item>", "beehave run <item>", "the run failed"} {
+	for _, want := range []string{`sandbox = "off"`, "beehest cancel <item>", "beehest run <item>", "the run failed"} {
 		assert.Contains(t, errUnsandboxed.Error(), want)
 	}
 
-	assert.NotContains(t, errUnsandboxed.Error(), "run again", "a failed run refuses beehave run until it is canceled")
-	assert.NotContains(t, errUnsandboxed.Error(), "<run>", "beehave cancel takes an item, and a run id only with --run")
+	assert.NotContains(t, errUnsandboxed.Error(), "run again", "a failed run refuses beehest run until it is canceled")
+	assert.NotContains(t, errUnsandboxed.Error(), "<run>", "beehest cancel takes an item, and a run id only with --run")
 }
 
 // runOldRecord stores and runs a run with no sandbox mode, as a record written before the mode was stored. It passes the run around the start check.
@@ -394,7 +394,7 @@ func TestServe_ARunThatStartedWithTheSandboxOnRefusesASandboxNoneStepAfterAResta
 	assert.Equal(t, model.SandboxOn, storedInput(t, client, testItem).Sandbox)
 }
 
-func TestResume_AStepRefusedForItsSandboxIsRefusedAgainAndTheMessageNamesBeehaveRun(t *testing.T) {
+func TestResume_AStepRefusedForItsSandboxIsRefusedAgainAndTheMessageNamesBeehestRun(t *testing.T) {
 	t.Parallel()
 
 	rig := newAgentRig(t)
@@ -405,12 +405,12 @@ func TestResume_AStepRefusedForItsSandboxIsRefusedAgainAndTheMessageNamesBeehave
 	file := flowFile(t, agentFlow(`sandbox = None, `), "x")
 
 	_, err := engine.RunFile(testItem, testProject, file, RunSandbox(model.SandboxOn))
-	require.ErrorContains(t, err, "beehave run")
+	require.ErrorContains(t, err, "beehest run")
 
 	_, err = resumeAndJoin(t, engine, client)
 
 	require.ErrorContains(t, err, "sets sandbox = None")
-	require.ErrorContains(t, err, "beehave run")
+	require.ErrorContains(t, err, "beehest run")
 	assert.Empty(t, rig.h.agents.seen())
 }
 

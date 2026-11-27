@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // sshGate is the gate of an engine whose gate jobs run on one ssh host. Submit starts the job, and then the link to the machine goes down.
@@ -117,11 +117,11 @@ func TestHostLoss_TheSshAdapterEndsTheGateVoidAfterTheHostComesBack(t *testing.T
 
 	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
-	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=beehave-n1`)
+	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=beehest-n1`)
 	assert.Equal(t, 2, hosts.proofReads(), "the first read finds the link down and gives no proof, and the second read comes after the host is back")
-	assert.True(t, machine.Units["beehave-n1"].Stopped, "the proof is the stop of the unit on the machine")
-	assert.True(t, machine.Files[stateFolderOnMachine+"/beehave-n1.canceled"], "the stop writes the marker of the job")
+	assert.True(t, machine.Units["beehest-n1"].Stopped, "the proof is the stop of the unit on the machine")
+	assert.True(t, machine.Files[stateFolderOnMachine+"/beehest-n1.canceled"], "the stop writes the marker of the job")
 }
 
 // stateFolderOnMachine is the state folder of the ssh host on the fake machine.
-const stateFolderOnMachine = sshtest.Root + "/work/.beehave"
+const stateFolderOnMachine = sshtest.Root + "/work/.beehest"

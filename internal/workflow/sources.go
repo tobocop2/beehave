@@ -18,12 +18,12 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
 	localPrefix    = "//"
-	embeddedPrefix = "@beehave//"
+	embeddedPrefix = "@beehest//"
 	librarySuffix  = ".star"
 	libraryFolder  = "lib"
 )
@@ -31,7 +31,7 @@ const (
 //go:embed lib/*.star
 var library embed.FS
 
-// PinnedFile is one file of a run and its SHA-256, in hex. Path is relative to the folder of the workflow file, or starts with @beehave// for a library in the binary.
+// PinnedFile is one file of a run and its SHA-256, in hex. Path is relative to the folder of the workflow file, or starts with @beehest// for a library in the binary.
 type PinnedFile struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`

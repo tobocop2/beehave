@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // localProgram runs the gate of a project with a gate_program on this machine. It runs the job text of the host gate in a new folder: a clone of the head,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // reopen puts a failed run back in the queue at its first failed step. The steps before it keep their results.

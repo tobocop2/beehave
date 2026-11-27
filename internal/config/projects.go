@@ -14,7 +14,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Project is one project profile and the path of its file.
@@ -234,11 +234,11 @@ func notifyCommand(raw rawProject) error {
 	}
 
 	if len(raw.Notify.Words) == 0 {
-		return refuseAt(raw.At, "`notify` is an empty list. Name the program, such as [\"ntfy\", \"publish\", \"beehave\"], or leave `notify` out.")
+		return refuseAt(raw.At, "`notify` is an empty list. Name the program, such as [\"ntfy\", \"publish\", \"beehest\"], or leave `notify` out.")
 	}
 
 	if strings.TrimSpace(raw.Notify.Words[0]) == "" {
-		return refuseAt(raw.At, "`notify` names an empty program. Put the program first in the list, such as [\"ntfy\", \"publish\", \"beehave\"].")
+		return refuseAt(raw.At, "`notify` names an empty program. Put the program first in the list, such as [\"ntfy\", \"publish\", \"beehest\"].")
 	}
 
 	return nil
@@ -350,7 +350,7 @@ func sandboxKeys(raw rawProject) error {
 }
 
 // DefaultPRLabel is the label of a pull request that the engine opens, for a project that sets no pr_label.
-const DefaultPRLabel = "made-by-beehave"
+const DefaultPRLabel = "made-by-beehest"
 
 // prLabel refuses a pr_label that is set and empty. An unset key is allowed and gives DefaultPRLabel.
 func prLabel(raw rawProject) error {

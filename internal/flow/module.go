@@ -7,9 +7,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/step"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/step"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // moduleName is the name of the module that holds the builtins that live in this package.

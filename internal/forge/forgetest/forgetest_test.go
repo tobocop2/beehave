@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/forge/forgetest"
-	"github.com/tobocop2/beehave/internal/ifacetest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/forge/forgetest"
+	"github.com/tobocop2/beehest/internal/ifacetest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 var errDown = errors.New("down")
@@ -746,7 +746,7 @@ func TestCheckStatuses_AcceptsRightAnswersAndFailsWrongOnes(t *testing.T) {
 
 	r = &recorder{}
 	forgetest.CheckStatuses(r, memStatuses{wrong: true})
-	assert.Contains(t, r.failures, "protection: got {false []}, want {true [beehave/gate beehave/review]}")
+	assert.Contains(t, r.failures, "protection: got {false []}, want {true [beehest/gate beehest/review]}")
 
 	r = &recorder{}
 	forgetest.CheckStatuses(r, memStatuses{down: true})

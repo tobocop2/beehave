@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/agenttest"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/agenttest"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 const (
@@ -198,7 +198,7 @@ func texts(calls []agent.Call) []string {
 // The fixture of the reviewer: a Bash call, then the tool_result that the PreToolUse hook produced when it refused the call.
 const (
 	refusedCall   = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_9","name":"Bash","input":{"command":"git add -A"}}]}}`
-	refusedResult = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":"PreToolUse:Bash hook error: [beehave check command]: beehave refused the command: bulk-staging: git add -A"}]}}`
+	refusedResult = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":"PreToolUse:Bash hook error: [beehest check command]: beehest refused the command: bulk-staging: git add -A"}]}}`
 )
 
 func TestCalls_ACallCarriesItsIdAndAHookRefusalNamesTheSameId(t *testing.T) {
@@ -317,6 +317,6 @@ func TestProfile_TheSkillLineLoadsTheSkillOfThePluginFolder(t *testing.T) {
 	p := claude.New(nil).Profile()
 
 	require.NotNil(t, p.SkillLine, "Claude Code loads a skill from the first line of the prompt")
-	assert.Equal(t, "/beehave-skills:x", p.SkillLine("x"))
-	assert.Equal(t, "/beehave-skills:lint-pass", p.SkillLine("lint-pass"), "the line names the plugin of the skills of a run, then the skill")
+	assert.Equal(t, "/beehest-skills:x", p.SkillLine("x"))
+	assert.Equal(t, "/beehest-skills:lint-pass", p.SkillLine("lint-pass"), "the line names the plugin of the skills of a run, then the skill")
 }

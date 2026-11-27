@@ -163,7 +163,7 @@ func TestSpawnGather_FailRaiseCancelsTheOpenChildrenAndRaisesAfterTheStep(t *tes
 	ended := `"error":"the run ended as ` + string(dbos.WorkflowStatusCancelled) + `"`
 
 	assert.JSONEq(t, `{"outcomes":[{"item":"21","ok":false,"cost_usd":0,`+ended+`},{"item":"22","ok":false,"cost_usd":0,"error":"workflow.star:2:12: fake failure"},`+
-		`{"item":"23","ok":false,"cost_usd":0,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehave resume 12 to reopen item 22 and run the spawn again"}`,
+		`{"item":"23","ok":false,"cost_usd":0,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehest resume 12 to reopen item 22 and run the spawn again"}`,
 		gatherJSON(t, engine))
 
 	h.tick(t)
@@ -235,14 +235,14 @@ func TestSpawnGather_ResumeOfAFailedParentReopensTheMidListChildAndEachOutputIsI
 
 	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "item 22 did not finish")
-	require.ErrorContains(t, err, "Run beehave resume 12 to reopen item 22 and run the spawn again")
+	require.ErrorContains(t, err, "Run beehest resume 12 to reopen item 22 and run the spawn again")
 
 	failed := gatherJSON(t, engine)
 
 	assert.Contains(t, failed, `"item":"22","ok":false`)
 	assert.Equal(t, dbos.WorkflowStatusError, childStatus(t, engine, testItem))
 
-	// The retry route is beehave resume of the parent: it reopens the failed child and forks the parent from the step that started it.
+	// The retry route is beehest resume of the parent: it reopens the failed child and forks the parent from the step that started it.
 	failing.Store(false)
 	require.NoError(t, client.Resume(testItem))
 	waitOn(t, waiting[struct{}]{what: "the parent to succeed", run: runOfEngine(t, engine), last: func() string { return dumpRuns(engine, testItem, "21", "22", "23") }, read: func() (struct{}, bool, error) {
@@ -451,7 +451,7 @@ func TestSpawnGather_SpawnRefusesAnItemWithAnOpenRunAndNamesHowToEndIt(t *testin
 
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
-	require.ErrorContains(t, err, "item 21 has an open run, item-21-r1. Run beehave status to see it, or beehave cancel 21 to end it, then start this item again")
+	require.ErrorContains(t, err, "item 21 has an open run, item-21-r1. Run beehest status to see it, or beehest cancel 21 to end it, then start this item again")
 	assert.Empty(t, h.commands.ranBy("22"), "no child started")
 }
 
@@ -489,7 +489,7 @@ func TestSpawnGather_SpawnRefusesAnItemWhoseLastAttemptFailedAndNamesResume(t *t
 	_, err = engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorIs(t, err, errRunFailed)
-	require.ErrorContains(t, err, "Run beehave resume 21 to continue it from the last finished step")
+	require.ErrorContains(t, err, "Run beehest resume 21 to continue it from the last finished step")
 	assert.Empty(t, h.commands.ranBy("22"), "no child started")
 }
 

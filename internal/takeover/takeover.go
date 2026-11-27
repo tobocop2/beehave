@@ -6,8 +6,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // CodeGuard is the exit code of a pull request that must not be touched. CodeRule is the exit code of a rule of the takeover.

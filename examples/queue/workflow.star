@@ -1,5 +1,5 @@
 # A queue loop: one parent item reads the open work of the project, starts a run for each ready item up to the free slots, and starts the next item when any run ends.
-# Run it with `beehave run <item> --workflow workflow.star`, where the item is a parent that has no work of its own.
+# Run it with `beehest run <item> --workflow workflow.star`, where the item is a parent that has no work of its own.
 # Set OWNER_LOGIN before the run. It names your own login on the forge; an open pull request by another login claims the item.
 # Set BASE before the run. It names the integration branch that receives the pull requests.
 # Set PAUSE_AFTER_FAILURE to the time that the loop sleeps after a pass that saw a failed run, such as "2m". The default is "30s".
@@ -16,8 +16,8 @@
 # This file is separate from examples/remediation because main is the entry of the parent and of a child alike.
 # The child function `work` is the one place to put the pipeline of one item: replace its agent call with the steps of the remediation example.
 
-load("@beehave//claims.star", "claim_stop")
-load("@beehave//queue.star", "queue")
+load("@beehest//claims.star", "claim_stop")
+load("@beehest//queue.star", "queue")
 
 # The label of the forge that holds an item. Change it to the label that your repository uses.
 HOLD = "hold"
@@ -48,7 +48,7 @@ def work(item):
 
     # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the work may be half done. The item fails with the reason.
     if implement.stop != "":
-        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (implement.stop, item.id, item.id, item.id))
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehest resume replays this stop. To start the item again, run beehest resume %s, then beehest cancel %s, then beehest run %s." % (implement.stop, item.id, item.id, item.id))
 
     # The agent has no credential, so the engine pushes the commit of the step and opens the pull request. pr_open opens a draft; mark it ready when you want it reviewed.
     # A step that made no commit opens nothing. These two steps need no patched: they come after the last step that an open run of the earlier file recorded, so that run takes them as new steps.

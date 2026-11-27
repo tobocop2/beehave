@@ -25,7 +25,7 @@ def hold_scope(name, prs, run = "", own = None):
     prs is a list of the members of a merge. The result prs holds the members that may land: each one has the field kept (the issues that the owner kept for it) and,
     when its scope is known, the field closing (the closing issues that were read now, which the merge checks again). rejected holds struct(item, reason) for each member that the owner did not keep.
     A member with no scope of its first review has nothing to compare: it passes with no read. name labels the call in its errors.
-    run is the item of the run, which the owner names in beehave answer. An empty run is the item of the first member.
+    run is the item of the run, which the owner names in beehest answer. An empty run is the item of the first member.
     own is the result of fix_scope in this run. It is the scope of the member whose item is the item of the run. With no own, that member takes the scope that fix_scope(name = "scope") fixed in this run or in an earlier run of the item.
     The scope of any other member is the one that an earlier run of that member fixed.
     A read that fails, or a pull request that is gone, ends the run.
@@ -103,7 +103,7 @@ def _issue_list(issues):
     return " ".join(issues) if issues else "no issue"
 
 def _question(item, fresh, then, run):
-    return "The pull request of item %s closes %s now, and did not at its first review (then: %s). Answer in the form \"keep #N[, #N ...]\", for example \"keep %s\". Any other answer rejects item %s from this merge. The other members still land. Answer with beehave answer %s." % (item, _issue_list(fresh), _issue_list(then), ", ".join(fresh), item, run)
+    return "The pull request of item %s closes %s now, and did not at its first review (then: %s). Answer in the form \"keep #N[, #N ...]\", for example \"keep %s\". Any other answer rejects item %s from this merge. The other members still land. Answer with beehest answer %s." % (item, _issue_list(fresh), _issue_list(then), ", ".join(fresh), item, run)
 
 def _refusal(item, missing, run):
-    return "the pull request closes an issue that is new since its first review: item %s: %s has no owner line, so this merge rejects it and the other members still land. To keep it, run the merge again and answer with beehave answer %s \"keep %s\". Or remove the closing keyword" % (item, _issue_list(missing), run, ", ".join(missing))
+    return "the pull request closes an issue that is new since its first review: item %s: %s has no owner line, so this merge rejects it and the other members still land. To keep it, run the merge again and answer with beehest answer %s \"keep %s\". Or remove the closing keyword" % (item, _issue_list(missing), run, ", ".join(missing))

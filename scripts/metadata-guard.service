@@ -10,8 +10,8 @@ Before=network-pre.target systemd-user-sessions.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/nft -f /etc/beehave/metadata-guard.nft
-ExecReload=/usr/sbin/nft -f /etc/beehave/metadata-guard.nft
+ExecStart=/usr/sbin/nft -f /etc/beehest/metadata-guard.nft
+ExecReload=/usr/sbin/nft -f /etc/beehest/metadata-guard.nft
 
 [Install]
 WantedBy=multi-user.target

@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (
 	homePrefix    = "~/"
-	storeFolder   = ".config/beehave/credentials"
+	storeFolder   = ".config/beehest/credentials"
 	fileMode      = 0o600
 	folderMode    = 0o700
 	commandLimit  = 30 * time.Second
@@ -32,7 +32,7 @@ var (
 )
 
 // Load reads the token that the credential names. env is the environment of the engine: it gives the home folder for a file, and the path and home for a command.
-// A file must lie in ~/.config/beehave/credentials, have mode 0600 and belong to the user, in a folder of mode 0700. A command runs once with no shell and sees only PATH, HOME and USER.
+// A file must lie in ~/.config/beehest/credentials, have mode 0600 and belong to the user, in a folder of mode 0700. A command runs once with no shell and sees only PATH, HOME and USER.
 func Load(ctx context.Context, cred model.Credential, env map[string]string) (string, error) {
 	text, err := read(ctx, cred, env)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"modernc.org/sqlite"
 
-	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehest/internal/merge"
 )
 
 // refuseJobCancel makes the store refuse the write that cancels a build job: a fault after the cancel of the levels above the job, as a busy store,
@@ -143,12 +143,12 @@ func TestCancel_ACancelThatFailedAtTheBuildJobIsFinishedByTheNextCancel(t *testi
 			require.NoError(t, cancel(client, run), "a cancel of the canceled run finishes the cancel")
 			assert.Equal(t, dbos.WorkflowStatusCancelled, statusIn(t, h, job), "the second cancel reached the job that the first one left running")
 			// The fault aborts the write of the whole level under the run, so the other children of that level stay open too.
-			assert.True(t, strings.HasPrefix(said.String(), run+" was already cancelled. This cancel stopped what an earlier cancel left running: "), said.String()) //nolint:misspell // the state word that beehave status prints
+			assert.True(t, strings.HasPrefix(said.String(), run+" was already cancelled. This cancel stopped what an earlier cancel left running: "), said.String()) //nolint:misspell // the state word that beehest status prints
 			assert.Contains(t, said.String(), job, "the cancel names the job it stopped")
 
 			err := cancel(client, run)
 			require.ErrorIs(t, err, ErrWrongState, "a canceled run with nothing open is refused")
-			require.ErrorContains(t, err, run+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehave status prints
+			require.ErrorContains(t, err, run+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehest status prints
 			endsAfterTheCancel(t, h, done)
 		})
 	}

@@ -13,9 +13,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/landing"
-	"github.com/tobocop2/beehave/internal/review"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/landing"
+	"github.com/tobocop2/beehest/internal/review"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // watchEvery is the time between two reads of the ready pull requests of a hand-off. A day of waiting costs 24 reads and 24 sleeps in the durable history.

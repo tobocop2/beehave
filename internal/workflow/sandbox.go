@@ -6,7 +6,7 @@ import (
 
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // sandboxKeyword is the keyword of an agent call and of a command call that sets the sandbox, and sandboxName the builtin that builds its value.
@@ -41,7 +41,7 @@ func CheckSandboxNone(file, project string, mode model.SandboxMode) []Diagnostic
 	var found []Diagnostic
 
 	for _, at := range scan(file).noneSandboxes {
-		at.Text = "sandbox is None, and project " + project + " has the sandbox on, so the run refuses this step. Write sandbox = sandbox(network = [...]) on the step, or set sandbox = \"off\" in the project file. Then run beehave run for the item."
+		at.Text = "sandbox is None, and project " + project + " has the sandbox on, so the run refuses this step. Write sandbox = sandbox(network = [...]) on the step, or set sandbox = \"off\" in the project file. Then run beehest run for the item."
 		found = append(found, at)
 	}
 

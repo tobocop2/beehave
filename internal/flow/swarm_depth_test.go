@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // chainFlow is a chain of spawns: the entry lN spawns the item 2N with the entry l<N+1>, and l4 runs the command leaf. main spawns item 21 with the entry top.
@@ -268,7 +268,7 @@ func TestNestedSpawn_ADryRunWithASpawnDepthOfOneRefusesTheRunAtDepthTwo(t *testi
 	require.ErrorContains(t, err, "item 23 would run at depth 2, and the project has a cap of 1.")
 }
 
-func TestNestedSpawn_ARootThatBeehaveRunQueuesWaitsForItsChainWithOneSlotForEachLevel(t *testing.T) {
+func TestNestedSpawn_ARootThatBeehestRunQueuesWaitsForItsChainWithOneSlotForEachLevel(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)

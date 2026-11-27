@@ -17,4 +17,4 @@ Two agents improve one draft by messages. The author writes a draft, and a revie
 
 ## A message from the command line
 
-`beehave send <item> --topic <topic> <text>` puts a message on the inbox of the open run of an item. A `recv` call with the same topic receives it.
+`beehest send <item> --topic <topic> <text>` puts a message on the inbox of the open run of an item. A `recv` call with the same topic receives it.

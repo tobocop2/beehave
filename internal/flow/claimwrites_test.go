@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/roundcut"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/roundcut"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
 )
 
 // claimLoser loses the claim of the run of the test item, as the renewal does when the tracker says that the claim is gone.
@@ -707,7 +707,7 @@ func TestClaimWrites_TheLostClaimOfAMergeChildNamesTheItemOfTheRun(t *testing.T)
 
 	require.NotNil(t, failure)
 	assert.Contains(t, failure.Text, "item "+testItem+":", "the claim is on the item of the run, not on the member")
-	assert.Contains(t, failure.Text, "Run beehave run "+testItem+" again")
+	assert.Contains(t, failure.Text, "Run beehest run "+testItem+" again")
 	assert.NotContains(t, failure.Text, "item 1:", "the member holds no claim, so the advice names the item of the run")
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // fakeQueue is the open work of a project: the items of the tracker and the open pull requests of the forge.
@@ -152,7 +152,7 @@ const seenLine = `    command(name = "seen", run = ["seen"] + [r.item + ":" + r.
 `
 
 // queueLoad loads the queue function of the library, as the workflow files of the examples do.
-const queueLoad = "load(\"@beehave//queue.star\", \"queue\")\n\n"
+const queueLoad = "load(\"@beehest//queue.star\", \"queue\")\n\n"
 
 func queueFlow(arguments string) string {
 	return queueLoad + "def main(item):\n    q = queue(" + arguments + ")\n" + seenLine

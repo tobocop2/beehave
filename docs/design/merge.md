@@ -1,6 +1,6 @@
 # Merge
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 `merge` merges one reviewed pull request into the base, pinned to the commit that a reviewer gated. `batch` lands a set of reviewed pull requests with one gate run for the whole set. The remediation tools are the `remedy` binary of the remediation example. They are not part of the engine.
 
@@ -23,7 +23,7 @@ The request carries every policy value: the repository, the base, the own identi
 
 The `Result` keeps the lines of the guard that stopped in their own field, `Refusal`. `Lines` is the whole log of the run, and it ends with `Refusal`. A caller that shows why a pull request was refused uses `Refusal`, so it shows every line of the cause and no line of a guard that passed.
 
-No line of a `Result` that `Run`, `Poll` or `Disarm` builds matches a pattern of the `forbid_text` of its request, because callers post these lines. The test is the one that the posting steps use: it splits a text at each newline and tests each part, so an anchored pattern such as `^Co-Authored-By` finds the second line of a comment or of a forge error. The forbidden text guard names each hit by its line number and by the position of the pattern in `forbid_text`, for example `line 3 matches pattern 4 of forbid_text`. It never quotes the line or the pattern, because a pattern such as `(?i)noreply@anthropic` matches its own source. The open threads guard leaves out a first comment when a pattern matches one of its lines, and names the pattern in the same way. The one place that builds the result then tests every line once: the lines of the guards that passed and the lines of the refusal. It replaces a line that a pattern still matches with `(a line is left out: it matches pattern N of forbid_text)`. A line that holds a newline is replaced whole. This holds only for patterns that do not match the words of beehave itself, such as "left out" in the replacement line or the fixed header of a refusal. No replacement can satisfy such a pattern.
+No line of a `Result` that `Run`, `Poll` or `Disarm` builds matches a pattern of the `forbid_text` of its request, because callers post these lines. The test is the one that the posting steps use: it splits a text at each newline and tests each part, so an anchored pattern such as `^Co-Authored-By` finds the second line of a comment or of a forge error. The forbidden text guard names each hit by its line number and by the position of the pattern in `forbid_text`, for example `line 3 matches pattern 4 of forbid_text`. It never quotes the line or the pattern, because a pattern such as `(?i)noreply@anthropic` matches its own source. The open threads guard leaves out a first comment when a pattern matches one of its lines, and names the pattern in the same way. The one place that builds the result then tests every line once: the lines of the guards that passed and the lines of the refusal. It replaces a line that a pattern still matches with `(a line is left out: it matches pattern N of forbid_text)`. A line that holds a newline is replaced whole. This holds only for patterns that do not match the words of beehest itself, such as "left out" in the replacement line or the fixed header of a refusal. No replacement can satisfy such a pattern.
 
 ### Tree proof
 
@@ -52,7 +52,7 @@ The `github` backend reads a log with `gh run view --job <number> --log-failed`.
 The round cut is the engine step `round_cut`.
 ### Own work merges only after another step approved it
 
-[The trust boundary](trust.md#the-merge-checks-no-flag) describes the planned change: the forge requires the statuses `beehave/review` and `beehave/gate` at the head, and the `Approved` flag is deleted.
+[The trust boundary](trust.md#the-merge-checks-no-flag) describes the planned change: the forge requires the statuses `beehest/review` and `beehest/gate` at the head, and the `Approved` flag is deleted.
 
 Nobody merges their own work. Guard 0 runs before any other read or refusal. It reads the pull request once.
 
@@ -108,9 +108,9 @@ After guard 0, the guards refuse in this order:
 
 The protection guard reads the rules of the base from the forge, before any write, with the optional `Statuses` side of the forge.
 
-- A project with a `writer` entry in `credentials` needs a base whose protection has a pull request rule and requires `beehave/gate` and `beehave/review`. The refusal names the base, what is missing, and the ruleset to add (see [trust.md](trust.md#the-ruleset)). The forge enforces the rules. The merge only refuses to merge into a base that would not.
+- A project with a `writer` entry in `credentials` needs a base whose protection has a pull request rule and requires `beehest/gate` and `beehest/review`. The refusal names the base, what is missing, and the ruleset to add (see [trust.md](trust.md#the-ruleset)). The forge enforces the rules. The merge only refuses to merge into a base that would not.
 - A forge that cannot read the protection refuses such a project, and the refusal names the forge. A read that fails is a transient refusal.
-- A project with no `credentials` key keeps its guards. If the base requires `beehave/gate` or `beehave/review`, the merge refuses and says that the project needs credentials, because nothing posts those statuses. A forge that cannot read the protection, or a read that fails, does not refuse such a project: the forge still enforces its own rules.
+- A project with no `credentials` key keeps its guards. If the base requires `beehest/gate` or `beehest/review`, the merge refuses and says that the project needs credentials, because nothing posts those statuses. A forge that cannot read the protection, or a read that fails, does not refuse such a project: the forge still enforces its own rules.
 
 #### Reads
 
@@ -219,11 +219,11 @@ The author check is inside `SetBody`, the forge write that sets a body. It is th
 - A body of another author is never edited.
 - A body whose author login or token login cannot be read is never edited.
 
-A merge writes no row into the body of an integration pull request. The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehave merges third-party work that is reviewed.
+A merge writes no row into the body of an integration pull request. The step never edits a title. Ready, draft and base changes are not covered by this rule, because beehest merges third-party work that is reviewed.
 
 ## Batch
 
-The batch lands a set of reviewed pull requests with one gate run for the whole set. It is the library function `batch_merge` of `lib/batch.star`, which a workflow loads with `load("@beehave//batch.star", "batch_merge")`. The library is policy: the fold, the split, the retry of held members and the audit. The engine gives it the builtins that touch the world: `base_tip`, `command` for git, `gate`, the union `merge`, `landing_proof`, `issue_state` and `pr_closing`. A project that wants another policy copies the file and changes it.
+The batch lands a set of reviewed pull requests with one gate run for the whole set. It is the library function `batch_merge` of `lib/batch.star`, which a workflow loads with `load("@beehest//batch.star", "batch_merge")`. The library is policy: the fold, the split, the retry of held members and the audit. The engine gives it the builtins that touch the world: `base_tip`, `command` for git, `gate`, the union `merge`, `landing_proof`, `issue_state` and `pr_closing`. A project that wants another policy copies the file and changes it.
 
 ### The union merge
 
@@ -257,20 +257,20 @@ The scope check is the library `scope.star`, and the workflow calls it before `b
 
 The scope holds each issue as a reference: `#N` for an issue of the repository of the pull request, and `owner/repo#N` (in lower case) for an issue of another repository. An issue of another repository is new, and the run asks the owner about it, in the same way as for an own issue. The number of an own issue does not keep an issue of another repository with the same number.
 
-A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehave answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`, and `keep owner/repo#N` for an issue of another repository. A later call of the member, in this run or in a new run of the same item, reads the kept issues from the owner waits of the earlier calls and asks nothing for them. An owner line keeps only an issue that an earlier check of the member read as a closing issue: an issue that the question did not ask about is asked about when it appears. The kept set only grows: a kept issue stays kept when a later pull request of the member no longer closes it. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no first review has nothing to compare.
+A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehest answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`, and `keep owner/repo#N` for an issue of another repository. A later call of the member, in this run or in a new run of the same item, reads the kept issues from the owner waits of the earlier calls and asks nothing for them. An owner line keeps only an issue that an earlier check of the member read as a closing issue: an issue that the question did not ask about is asked about when it appears. The kept set only grows: a kept issue stays kept when a later pull request of the member no longer closes it. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no first review has nothing to compare.
 
 The library gives each member two fields, `kept` and `closing`. The closing keyword guard allows a kept issue in a commit message. The merge refuses a pull request whose closing set at the merge differs from `closing`, the set that the check read, and the line says to run the scope check again. A member with no `closing` pins no set. The check does not read the item id, so it also holds for an item of a tracker other than GitHub, and the line of the closing-references guard for such an item says so.
 
-A project with no forge has no scope to fix. The read then records that the scope check is off, and `beehave status` shows `scope check off: the project has no forge` on the run. A workflow that does not load the library has no scope check.
+A project with no forge has no scope to fix. The read then records that the scope check is off, and `beehest status` shows `scope check off: the project has no forge` on the run. A workflow that does not load the library has no scope check.
 
 ### Commit statuses
 
 After a gate passes on a union, the merge of each member carries its commit statuses. The merge run of the member posts them as the `writer` role of the project after every guard passed, and right before its merge call:
 
-- `beehave/gate` with the state `success` on the head of the member. The description names the union commit.
-- `beehave/review` with the state `success` on the head of the member when its `approved` field is true.
+- `beehest/gate` with the state `success` on the head of the member. The description names the union commit.
+- `beehest/review` with the state `success` on the head of the member when its `approved` field is true.
 
-A member that a guard rejects or defers gets no status, and so does a member whose base moved before the merge call. A red or void gate posts nothing. A status belongs to one commit, so a new push to a member leaves its new head with no status. beehave keeps no list of the statuses, and the post is not a recorded step: the forge is the record. A resume after a post that worked and a merge that failed posts again and merges. A status with the same context, state and commit replaces the last one, so the second post changes nothing.
+A member that a guard rejects or defers gets no status, and so does a member whose base moved before the merge call. A red or void gate posts nothing. A status belongs to one commit, so a new push to a member leaves its new head with no status. beehest keeps no list of the statuses, and the post is not a recorded step: the forge is the record. A resume after a post that worked and a merge that failed posts again and merges. A status with the same context, state and commit replaces the last one, so the second post changes nothing.
 
 A project with no `credentials` key posts none, and the merge says so in a `WARN:` line. A forge that cannot post statuses does the same. A post that the forge refuses stops that member before its merge call, and the member is deferred. The members that merged before it stay merged.
 
@@ -338,15 +338,15 @@ Every other member, and every member whose read failed, is a line of the result 
 
 ### Binary and packages
 
-- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`. `make build` does not make it. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
+- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`. `make build` does not make it. The release archive and the cask hold only `beehest`. A `command` step finds `remedy` on the `PATH` of the beehest process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only check `report`. The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only check `report`. The gate list derive is `beehest check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
 ### Exit codes
 
-Each subcommand follows the exit codes of beehave:
+Each subcommand follows the exit codes of beehest:
 
 | Code | Meaning |
 |---|---|
@@ -371,7 +371,7 @@ The step has no dry run. The `--dry` flag of the old `remedy cut` has no engine 
 
 ### `round_sync`
 
-`round_sync(base = <branch>, trunk = <branch>)` runs `roundsync`. The pull request that it opens carries the `pr_label` of the project (`made-by-beehave` when the project sets none). The step `integration_pull` labels the integration pull request the same way. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`round_sync(base = <branch>, trunk = <branch>)` runs `roundsync`. The pull request that it opens carries the `pr_label` of the project (`made-by-beehest` when the project sets none). The step `integration_pull` labels the integration pull request the same way. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|
@@ -426,7 +426,7 @@ A landing that ends `stale` or `head-moved` holds nothing: the same pass goes on
 
 A held round starts no sync and no item in a later pass. It gathers and lands the child runs that are open, so it never returns while one is open. A step that stops the run, such as an exit code 2 of `sync-<n>` in a later pass, ends the round with its open runs. With none open, it waits in `round-wait` with a question that names the reason and what the owner does. CONTINUE starts a pass that checks the trunk again. STOP or the timeout returns `{"state": "waiting", "base": ..., "pr": ..., "reason": <reason>}`; the reason is an empty text when no sync held the round.
 
-When no sync held the round and no item can move, the question names each listed item, its state and the step of the owner: `beehave resume <item>` for a failed item, then `beehave cancel <item>` when the resume refuses the run, so the next pass starts a new attempt. A round with no item list gets the count of the rows in each state and the ids of the failed rows. The round starts no new attempt for a failed item on its own.
+When no sync held the round and no item can move, the question names each listed item, its state and the step of the owner: `beehest resume <item>` for a failed item, then `beehest cancel <item>` when the resume refuses the run, so the next pass starts a new attempt. A round with no item list gets the count of the rows in each state and the ids of the failed rows. The round starts no new attempt for a failed item on its own.
 
 ### The takeover step `pr_take`
 
@@ -514,7 +514,7 @@ The limit and the file warning are constants, not settings.
 
 ### Boundaries and tests
 
-`depguard` keeps the engine free of the tools: no file under `internal/` or `cmd/beehave/` imports `examples/`. The rule has no exception, test files included.
+`depguard` keeps the engine free of the tools: no file under `internal/` or `cmd/beehest/` imports `examples/`. The rule has no exception, test files included.
 
 - The `testscript` scripts of `remedy` are a test in `examples/remediation/tools/cmd/remedy`.
 - A test in `examples/remediation/tools/remedy` reads the calls of `workflow.star`. It fails when a `remedy` command in it names a subcommand that is not in the table.

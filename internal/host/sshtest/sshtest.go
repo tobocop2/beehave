@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (
@@ -219,7 +219,7 @@ func (m *Machine) tail(words []string) model.CommandResult {
 
 	found := m.Units[unit]
 	if found == nil {
-		found = m.Units[strings.TrimPrefix(unit, "beehave-")]
+		found = m.Units[strings.TrimPrefix(unit, "beehest-")]
 	}
 
 	if found == nil || found.Log == "" {
@@ -393,20 +393,20 @@ func (m *Machine) observe(words []string) model.CommandResult {
 
 	var lines []string
 	if m.Files[base+".canceled"] {
-		lines = append(lines, "beehave-canceled")
+		lines = append(lines, "beehest-canceled")
 	}
 
 	if m.Files[base+".waiting"] {
-		lines = append(lines, "beehave-waiting")
+		lines = append(lines, "beehest-waiting")
 	}
 
 	for _, state := range []string{"succeeded", "failed", "timed_out"} {
 		if m.Files[base+"."+state] {
-			lines = append(lines, "beehave-result "+state)
+			lines = append(lines, "beehest-result "+state)
 		}
 	}
 
-	lines = append(lines, strings.TrimSuffix(m.properties(u), "\n"), "beehave-size "+strconv.Itoa(m.size(u)))
+	lines = append(lines, strings.TrimSuffix(m.properties(u), "\n"), "beehest-size "+strconv.Itoa(m.size(u)))
 
 	return ok(strings.Join(lines, "\n") + "\n")
 }

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -15,32 +15,32 @@ const (
 	nameRoom = 4096
 
 	// baseCache is the folder, below the work root of the host, that holds one parsed base report for each base commit.
-	baseCache = "beehave-base-reports"
+	baseCache = "beehest-base-reports"
 
 	// newTestMarker starts the line that names one new test: the class and the name follow.
-	newTestMarker = "beehave-new-test "
+	newTestMarker = "beehest-new-test "
 
 	// failedTestMarker starts the line of a new test that failed or was skipped on the head: the kind, the class and the name follow.
-	failedTestMarker = "beehave-new-test-failed "
+	failedTestMarker = "beehest-new-test-failed "
 
 	// newTestsEnd starts the end marker of the new-tests check: "new=<count> failed=<count>".
-	newTestsEnd = "beehave-new-tests-end "
+	newTestsEnd = "beehest-new-tests-end "
 
 	// newTestsError starts the line that says why the new-tests check could not compare.
-	newTestsError = "beehave-new-tests-error "
+	newTestsError = "beehest-new-tests-error "
 
 	// badNameExit is the exit code of junitAwk for a report with a test name or class name that holds a tab or a newline. The tab splits the fields
 	// of the parsed report and the newline splits its lines, so such a name cannot be compared. The job then writes an error line and no end marker, and a cache keeps no report that holds such a name.
 	badNameExit = "3"
 
 	// revertPassedMarker starts the line of a new test that passed or was skipped on the base code: the class and the name follow.
-	revertPassedMarker = "beehave-revert-passed "
+	revertPassedMarker = "beehest-revert-passed " //nolint:gosec // G101: a marker of the job output, not a credential
 
 	// revertEnd starts the end marker of the revert run: "new=<count> passed=<count> cases=<count>".
-	revertEnd = "beehave-revert-end "
+	revertEnd = "beehest-revert-end "
 
 	// revertError starts the line that says why the revert run could not run.
-	revertError = "beehave-revert-error "
+	revertError = "beehest-revert-error "
 
 	// The names of the steps that the job of a candidate runs apart. Each writes a stepMarker line.
 	stepHeadGate  = model.StepHeadGate

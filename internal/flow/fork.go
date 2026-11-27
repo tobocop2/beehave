@@ -12,7 +12,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // errBadFork is returned when a fork request cannot start a run: the step, the vars or the source run do not fit.
@@ -70,7 +70,7 @@ func (r ForkRequest) check() error {
 	return nil
 }
 
-// Fork starts a new run of an item from a step of a run that ended, as the next attempt of the item, and returns its id. The new run waits in the queue: run beehave run for the item to continue it.
+// Fork starts a new run of an item from a step of a run that ended, as the next attempt of the item, and returns its id. The new run waits in the queue: run beehest run for the item to continue it.
 // It takes the fresh claim that the new run releases. The old run is not changed.
 func (c *Client) Fork(req ForkRequest) (string, error) {
 	if err := req.check(); err != nil {
@@ -132,7 +132,7 @@ func (c *Client) forkAs(id string, in ItemInput, req ForkRequest, records []dbos
 		return err
 	}
 
-	owner, err := c.forkClaim(in, id, records, start, "beehave fork "+req.Run+" --from "+req.Step)
+	owner, err := c.forkClaim(in, id, records, start, "beehest fork "+req.Run+" --from "+req.Step)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (c *Client) forkSource(id string) (ItemInput, int, error) {
 	}
 
 	if !source.terminal() || !newest.terminal() {
-		return ItemInput{}, 0, fmt.Errorf("%w: item %s has an open run. Run beehave cancel %s first", ErrWrongState, in.Item, in.Item)
+		return ItemInput{}, 0, fmt.Errorf("%w: item %s has an open run. Run beehest cancel %s first", ErrWrongState, in.Item, in.Item)
 	}
 
 	return in, newest.Attempt + 1, nil
@@ -201,7 +201,7 @@ func callStart(group []dbos.StepInfo, name string) uint {
 	return uint(group[0].StepID)
 }
 
-// forkStart returns the id of the first record of the call that the request names. The error lists the calls of the run, as beehave status shows them.
+// forkStart returns the id of the first record of the call that the request names. The error lists the calls of the run, as beehest status shows them.
 func forkStart(records []dbos.StepInfo, req ForkRequest) (uint, error) {
 	calls := namedCalls(records)
 
@@ -217,7 +217,7 @@ func forkStart(records []dbos.StepInfo, req ForkRequest) (uint, error) {
 	return 0, fmt.Errorf("%w: run %s has no step %q. Its steps are %s", errBadFork, req.Run, req.Step, strings.Join(names, ", "))
 }
 
-// namedCall is the records of one call and its name as beehave status shows it.
+// namedCall is the records of one call and its name as beehest status shows it.
 type namedCall struct {
 	name    string
 	records []dbos.StepInfo

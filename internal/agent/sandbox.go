@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // SandboxPlan is what an adapter needs to confine the shell of one run. Every path is absolute, except that an adapter may write the home folder as "~/".
@@ -162,7 +162,7 @@ func versionArgs(p Profile, out string) []string {
 // unreadable says why a run does not start when the version of the CLI cannot be read.
 func unreadable(p Profile, err error, needs []versionNeed, ranged bool) string {
 	if ranged {
-		return fmt.Sprintf("cannot read the version of %s (%v), so the step is not started. Install a version in the range that beehave supports: %s.", p.Binary, err, rangeText(p))
+		return fmt.Sprintf("cannot read the version of %s (%v), so the step is not started. Install a version in the range that beehest supports: %s.", p.Binary, err, rangeText(p))
 	}
 
 	return fmt.Sprintf("cannot read the version of %s (%v), so %s. To go on, %s.", p.Binary, err, needs[0].stop, needs[0].off)
@@ -176,13 +176,13 @@ func rangeProblem(p Profile, out string) string {
 
 	found := versionNumber.FindStringSubmatch(out)
 	if found == nil {
-		return fmt.Sprintf("the version of %s is not readable from %q, so the step is not started. Install a version in the range that beehave supports: %s.", p.Binary, out, rangeText(p))
+		return fmt.Sprintf("the version of %s is not readable from %q, so the step is not started. Install a version in the range that beehest supports: %s.", p.Binary, out, rangeText(p))
 	}
 
 	got := semverOf(found)
 
 	if semver.Compare(got, "v"+p.SupportedFrom) < 0 || semver.Compare(got, "v"+p.SupportedBefore) >= 0 {
-		return fmt.Sprintf("%s is at version %s.%s.%s, which beehave does not support. It supports %s, so the step is not started. Install a version in that range.",
+		return fmt.Sprintf("%s is at version %s.%s.%s, which beehest does not support. It supports %s, so the step is not started. Install a version in that range.",
 			p.Binary, found[1], found[2], found[3], rangeText(p))
 	}
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehest/internal/forge/github"
 )
 
 func TestRoleRunner_AChildGetsTheRoleTokenAnEmptyConfigFolderAndNoVariableOfTheEngine(t *testing.T) {

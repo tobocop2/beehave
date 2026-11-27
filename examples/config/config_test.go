@@ -8,12 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/config"
-	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store/beads"
-	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/config"
+	forgegithub "github.com/tobocop2/beehest/internal/forge/github"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store/beads"
+	storegithub "github.com/tobocop2/beehest/internal/store/github"
 )
 
 // registry is the adapter registry that the example config names: GitHub issues and forge, beads claims and the Claude agent.
@@ -47,7 +47,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) {
 	require.Equal(t, config.Pool{"five_hour": 90, "seven_day": 95}, cfg.Pools["claude"])
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(".", "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth, Sandbox: model.SandboxOn},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(".", "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehest", MaxSpawnDepth: config.DefaultMaxSpawnDepth, Sandbox: model.SandboxOn},
 		cfg.Projects["example"].Project)
 }
 

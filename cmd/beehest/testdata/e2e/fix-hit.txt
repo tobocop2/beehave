@@ -1,0 +1,34 @@
+# The implementer leaves a forbidden command, and every review approves with the gate green.
+# The first fix hits too, so the scoped loop goes on: a hit in any lane run forces another fix. The clean second fix ends it.
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone\tgate pass at [0-9a-f]+\treview 3/24\t'
+
+# Both fixes belong to candidate 1, so both are round 1. Two scoped reviews and the full review.
+grep -count=1 '^plan ' calls.log
+grep -count=1 '^implement ' calls.log
+grep -count=3 '^review ' calls.log
+grep -count=2 '^fix 1 ' calls.log
+! grep '^fix 2 ' calls.log
+
+# The scoped review after the first fix sees its hit. The scoped review after the clean second fix and the full review see none.
+grep -count=1 '^bulk-staging: git add -A$' seen.log
+
+# Both fixes get the hit of the run before them as the first line of their findings.
+grep -count=2 '^fix: bulk-staging: git add -A$' found.log
+! grep '^settle ' calls.log
+
+cmp events.log expected-events.log
+
+-- verdicts --
+approve
+approve
+approve
+-- fixhits --
+hit
+clean
+-- expected-events.log --
+claim 7
+release 7

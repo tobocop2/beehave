@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // headGate passes every run on the head of the item folder as it is when the run starts, so a commit of a fix agent is the head of the next candidate.
@@ -65,7 +65,7 @@ func fullReviews(names []string) int {
 
 // refusalFlow runs the review loop of the library on the base main with two rounds, and one prompt file for each kind of agent step.
 // The text %s is the extra arguments of review_fix.
-const refusalFlow = "load(\"@beehave//review_fix.star\", \"review_fix\")\n\n" +
+const refusalFlow = "load(\"@beehest//review_fix.star\", \"review_fix\")\n\n" +
 	"def main(item):\n" +
 	"    return pipeline(item)\n\n" +
 	"def pipeline(item):\n" +
@@ -267,7 +267,7 @@ func TestReviewFixBeforeReview_AClosingKeywordStopsTheLoopBeforeAnyFixAgentWithT
 	require.ErrorContains(t, err, "the commit "+keyword[:7]+" (add a) closes #12 with a closing keyword")
 	require.ErrorContains(t, err, "Rebuild the branch without the keyword")
 	assert.Equal(t, 1, strings.Count(err.Error(), "Rebuild the branch"), "the stop text says the repair once")
-	require.ErrorContains(t, err, "A plain beehave resume replays this stop")
+	require.ErrorContains(t, err, "A plain beehest resume replays this stop")
 	assert.Empty(t, run.fixes, "no fix round is spent on a refusal that a new commit cannot repair")
 	assert.Len(t, run.reviews, 1, "the one scoped review of the implementer runs before the candidate")
 	assert.Zero(t, fullReviews(run.names), "the full review does not read a head with the keyword")

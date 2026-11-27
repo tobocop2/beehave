@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const listProject = `repo = "o/n", tracker = "github", forge = "github", base_branch = "main", test_report = "reports/*.xml"`

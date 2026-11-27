@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // These tests run the settings function of the example file: it reads the round settings from facts().vars and refuses a missing or wrong one.
 
 // roundSettings is the smallest valid round: the four required keys and a label.
 func roundSettings() map[string]any {
-	return map[string]any{"base": "integration/s1", "owner": "tobocop2", "lane_cap": json.Number("4"), "fix_rounds": json.Number("5"), "label": "beehave-round"}
+	return map[string]any{"base": "integration/s1", "owner": "tobocop2", "lane_cap": json.Number("4"), "fix_rounds": json.Number("5"), "label": "beehest-round"}
 }
 
 // with returns the settings with the keys of change set. A nil value removes the key.
@@ -112,7 +112,7 @@ func TestRound_TheSettingsGiveEveryKeyAndTheDefaultsOfTheKeysTheFileLeavesOut(t 
 
 	require.NoError(t, err)
 	for _, want := range []string{
-		`"base": "integration/s1"`, `"owner": "tobocop2"`, `"lane_cap": 4`, `"fix_rounds": 5`, `"label": "beehave-round"`,
+		`"base": "integration/s1"`, `"owner": "tobocop2"`, `"lane_cap": 4`, `"fix_rounds": 5`, `"label": "beehest-round"`,
 		`"lane_kind": "impl"`, `"base_reds_file": "../base-reds-integration_2Fs1.md"`, `"wait_hours": 24`, `"integration_pr": 0`, `"merge": False`, `"hand_off": False`, `"items": []`,
 	} {
 		assert.Contains(t, shown, want)

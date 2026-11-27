@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/roundcut"
-	"github.com/tobocop2/beehave/internal/roundintegration"
-	"github.com/tobocop2/beehave/internal/roundsync"
-	"github.com/tobocop2/beehave/internal/takeover"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/roundcut"
+	"github.com/tobocop2/beehest/internal/roundintegration"
+	"github.com/tobocop2/beehest/internal/roundsync"
+	"github.com/tobocop2/beehest/internal/takeover"
 )
 
 // fakeRounds is the round writer of a test. It runs no forge: each call is written as the line of the engine step that it stands for, and goes to the fake commands, whose reply says what the

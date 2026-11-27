@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehest/internal/cli"
 )
 
 const lintAndFixFile = `def main(item):

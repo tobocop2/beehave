@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 const (

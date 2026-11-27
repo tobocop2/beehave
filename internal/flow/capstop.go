@@ -9,7 +9,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // The scopes of a cap that stops an agent step.
@@ -85,17 +85,17 @@ func (s *script) waitForCap() error {
 
 // runCap is the cap of one item run, as the config of the engine sets it.
 func (e *Engine) runCap() capLimit {
-	return capLimit{scopeRun, "one item run", "agents.max_run_budget_usd", "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD", e.maxRunBudget, "the item run"}
+	return capLimit{scopeRun, "one item run", "agents.max_run_budget_usd", "BEEHEST_AGENTS_MAX_RUN_BUDGET_USD", e.maxRunBudget, "the item run"}
 }
 
 // treeCap is the cap of the item tree, as the config of the engine sets it.
 func (e *Engine) treeCap() capLimit {
-	return capLimit{scopeTree, "the item tree", "agents.max_tree_budget_usd", "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD", e.maxTreeBudget, "the item tree"}
+	return capLimit{scopeTree, "the item tree", "agents.max_tree_budget_usd", "BEEHEST_AGENTS_MAX_TREE_BUDGET_USD", e.maxTreeBudget, "the item tree"}
 }
 
 // weekCap is the cap of the last seven days over all items, as the config of the engine sets it.
 func (e *Engine) weekCap() capLimit {
-	return capLimit{scopeWeek, "the last seven days", "agents.max_week_budget_usd", "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD", e.maxWeekBudget, "all items"}
+	return capLimit{scopeWeek, "the last seven days", "agents.max_week_budget_usd", "BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD", e.maxWeekBudget, "all items"}
 }
 
 // checkCaps reads the caps and the sums they count for the item run run. A cap of 0 is not read. Both sums read the records of the runs, so a resume keeps them.
@@ -167,7 +167,7 @@ func overCap(name string, c capLimit, spent agent.Spend) (*CapStop, error) {
 
 	return &CapStop{Scope: c.scope, Cap: c.limit, Spent: spent.Cost, Note: fmt.Sprintf("the agent step %s waits: the cap for %s is $%s and the agent steps of %s spent $%s. "+
 		"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
-		"Raise %s (or %s) and restart beehave, or set it to 0 for no cap", name, c.subject, dollars(c.limit), c.spenders, dollars(spent.Cost), c.key, c.env)}, nil
+		"Raise %s (or %s) and restart beehest, or set it to 0 for no cap", name, c.subject, dollars(c.limit), c.spenders, dollars(spent.Cost), c.key, c.env)}, nil
 }
 
 // treeSpend sums the recorded cost of the root run of the item tree and of every run below it. It reads the step records and the stream of failed agent runs of each run, so a resume keeps the sum.

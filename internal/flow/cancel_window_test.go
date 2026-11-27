@@ -109,7 +109,7 @@ func TestCancel_ABuildJobThatStartsDuringTheCancelOfItsRunIsCanceledWithIt(t *te
 
 	status := startJobDuringCancel(t, h, run, func() error { return client.Cancel(testItem) })
 
-	assert.Equal(t, dbos.WorkflowStatusCancelled, status, "beehave cancel reached the job that started while it listed the children of the run")
+	assert.Equal(t, dbos.WorkflowStatusCancelled, status, "beehest cancel reached the job that started while it listed the children of the run")
 	endsAfterTheCancel(t, h, done)
 }
 

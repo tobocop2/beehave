@@ -1,7 +1,7 @@
 # A workflow for a project with no tracker and no forge: the items are in local.db, and the result is a branch in the source repository.
-# Add an item with `beehave item add`, then run it with `beehave run <item> --workflow workflow.star`.
+# Add an item with `beehest item add`, then run it with `beehest run <item> --workflow workflow.star`.
 
-load("@beehave//review_fix.star", "is_void", "void_names")
+load("@beehest//review_fix.star", "is_void", "void_names")
 
 # The gates in a row that may give no verdict before the item stops.
 VOID_LIMIT = 3
@@ -9,7 +9,7 @@ VOID_LIMIT = 3
 def capped(step, name, item):
     """Stops the item when a cap ended the agent step. The output `stop` is "turns", "budget" or "context", and the work of a capped run may be half done."""
     if step.stop != "":
-        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (name, step.stop, item.id, item.id, item.id))
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehest resume replays this stop. To start the item again, run beehest resume %s, then beehest cancel %s, then beehest run %s." % (name, step.stop, item.id, item.id, item.id))
 
 def judged(item, rerun_void):
     """Runs the gate and returns the first result that judged the code. A gate that failed a step is red and judged the code.
@@ -21,7 +21,7 @@ def judged(item, rerun_void):
         if not rerun_void or not is_void(check):
             return check
 
-    fail("REFUSE: the gate gave no verdict %d times in a row. The steps with no result: %s. The code was not judged. Fix the host or the gate command, then run beehave run %s again." % (VOID_LIMIT, void_names(check), item.id))
+    fail("REFUSE: the gate gave no verdict %d times in a row. The steps with no result: %s. The code was not judged. Fix the host or the gate command, then run beehest run %s again." % (VOID_LIMIT, void_names(check), item.id))
 
 def main(item):
     # Every agent step runs in the sandbox with no network: the steps read and edit the work folder, and the gate runs the tests.

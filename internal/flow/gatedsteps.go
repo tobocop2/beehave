@@ -6,7 +6,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
 )
 
 // requiredSteps are the names of the steps that the gate list of the project gives now. A project with a gate string has no list, and a gate records none.

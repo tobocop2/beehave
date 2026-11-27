@@ -1,8 +1,8 @@
 #!/bin/sh
 # Fake id: the login user builder, with the user id from FAKE_UID (FAKE_LOGIN_UID, the user that runs the test, by default) and the groups
 # from FAKE_GROUPS (builder).
-# `id -u beehave-jobs` and `id -nG beehave-jobs` read the job user: it exists once the fake useradd made the file jobuser in FAKE_STATE,
-# and its groups are FAKE_JOB_GROUPS (beehave-jobs).
+# `id -u beehest-jobs` and `id -nG beehest-jobs` read the job user: it exists once the fake useradd made the file jobuser in FAKE_STATE,
+# and its groups are FAKE_JOB_GROUPS (beehest-jobs).
 user=
 for arg; do
 	case $arg in
@@ -11,11 +11,11 @@ for arg; do
 	esac
 done
 if [ -n "$user" ]; then
-	[ "$user" = beehave-jobs ] && [ -f "$FAKE_STATE/jobuser" ] || {
+	[ "$user" = beehest-jobs ] && [ -f "$FAKE_STATE/jobuser" ] || {
 		echo "id: '$user': no such user" >&2
 		exit 1
 	}
-	groups=${FAKE_JOB_GROUPS:-beehave-jobs}
+	groups=${FAKE_JOB_GROUPS:-beehest-jobs}
 	uid=1001
 else
 	groups=${FAKE_GROUPS:-builder}

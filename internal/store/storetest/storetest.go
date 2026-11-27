@@ -9,8 +9,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 // ItemID is the item that a tracker under test serves when it is not broken.

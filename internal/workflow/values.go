@@ -201,7 +201,7 @@ func PreflightClaimRefusal(keyword string) string {
 		stop = "The draft stop"
 	}
 
-	return fmt.Sprintf("preflight takes no argument %s. %s moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass %s to it.",
+	return fmt.Sprintf("preflight takes no argument %s. %s moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass %s to it.",
 		keyword, stop, keyword)
 }
 
@@ -210,7 +210,7 @@ func BatchKeywords() []string { return []string{"prs", "gate_run", integrationKe
 
 // MergeBatchRefusal is the sentence for a merge call that passes a keyword of the batch. It names the library function that takes the keyword.
 func MergeBatchRefusal(keyword string) string {
-	return fmt.Sprintf("merge takes no argument %s. The batch with its own gate moved to the library function batch_merge: load(\"@beehave//batch.star\", \"batch_merge\") and pass %s to it.",
+	return fmt.Sprintf("merge takes no argument %s. The batch with its own gate moved to the library function batch_merge: load(\"@beehest//batch.star\", \"batch_merge\") and pass %s to it.",
 		keyword, keyword)
 }
 

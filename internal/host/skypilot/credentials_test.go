@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 // declaredNone is a config that the loader refuses for this provider. The tests below pass it to the host directly to prove that the host keeps no promise of its own.
@@ -47,7 +47,7 @@ func TestUp_ASetupCommandOfAClusterRunsInTheLaunchAndNoSshGFollowsIt(t *testing.
 	ssh.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
 
 	h, err := New(clusterName, cfg, sky, ssh, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} },
-		WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+		WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 	require.NoError(t, err)
 
 	require.NoError(t, h.Up(t.Context()))

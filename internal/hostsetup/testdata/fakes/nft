@@ -2,7 +2,7 @@
 # Fake nft: log the call. `list table` succeeds, and fails when FAKE_NFT_EMPTY is set.
 printf 'nft %s\n' "$*" >>"$FAKE_LOG"
 case "$*" in
-'list table inet beehave_metadata_guard') [ -z "${FAKE_NFT_EMPTY:-}" ] ;;
+'list table inet beehest_metadata_guard') [ -z "${FAKE_NFT_EMPTY:-}" ] ;;
 *)
 	echo "fake nft: unexpected $*" >&2
 	exit 1

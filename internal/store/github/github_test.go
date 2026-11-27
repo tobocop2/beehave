@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/github"
 )
 
 const ghRepo = "owner/name"
@@ -58,7 +58,7 @@ func TestNew_NeedsOwnerAndName(t *testing.T) {
 func TestNew_TakesLettersDigitsDotsUnderscoresAndHyphens(t *testing.T) {
 	t.Parallel()
 
-	for _, repo := range []string{"tobocop2/beehave", "A.b_c-1/Z.y_x-0"} {
+	for _, repo := range []string{"tobocop2/beehest", "A.b_c-1/Z.y_x-0"} {
 		_, err := github.New(repo, &proctest.Scripted{})
 		require.NoError(t, err, repo)
 	}

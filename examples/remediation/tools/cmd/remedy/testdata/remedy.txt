@@ -1,4 +1,4 @@
-# The remedy tool runs in the test binary. It follows the exit codes of beehave.
+# The remedy tool runs in the test binary. It follows the exit codes of beehest.
 exec remedy --help
 stdout '^  size '
 stdout '^  report '

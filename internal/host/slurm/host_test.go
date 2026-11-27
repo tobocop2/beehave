@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/slurmtest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/slurmtest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // spy records the ssh calls and can answer one command with a failure that is not a dropped link.
@@ -206,7 +206,7 @@ func TestUp_NamesTheSSHCommandWhenTheHeadNodeDoesNotAnswer(t *testing.T) {
 	err := h.Up(t.Context())
 
 	require.ErrorIs(t, err, link.ErrDropped)
-	assert.Contains(t, err.Error(), "ssh beehave-test")
+	assert.Contains(t, err.Error(), "ssh beehest-test")
 }
 
 func TestUp_RefusesAHeadNodeWithoutSlurm(t *testing.T) {
@@ -259,7 +259,7 @@ func TestDown_SendsNothingAndLeavesTheClusterUp(t *testing.T) {
 
 	require.NoError(t, h.Down(t.Context()))
 
-	assert.Equal(t, before, s.total(), "beehave did not create the cluster, so Down sends no command")
+	assert.Equal(t, before, s.total(), "beehest did not create the cluster, so Down sends no command")
 
 	got, err := h.Status(t.Context())
 	require.NoError(t, err)
@@ -278,7 +278,7 @@ func TestTeardown_BanksTheWorkAndLeavesTheClusterUp(t *testing.T) {
 
 	got, err := h.Status(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, model.HostUp, got.State, "the cluster is not the cluster of beehave")
+	assert.Equal(t, model.HostUp, got.State, "the cluster is not the cluster of beehest")
 }
 
 func TestTeardown_ABankThatFailsIsAnErrorThatSaysTheHostKeepsItsWork(t *testing.T) {

@@ -12,10 +12,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
-var notifyProgram = []string{"notifier", "--title", "beehave"}
+var notifyProgram = []string{"notifier", "--title", "beehest"}
 
 func notifyFacts(argv []string) func(string) model.Project {
 	return func(project string) model.Project { return model.Project{Name: project, Notify: argv} }

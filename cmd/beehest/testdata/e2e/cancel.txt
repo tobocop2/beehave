@@ -1,0 +1,20 @@
+# Cancel stops a run while its agent works. status shows the run as cancelled.
+! exec beehest run 7 --workflow flow/workflow.star &
+waitfile started
+
+exec beehest cancel 7
+wait
+
+exec beehest status
+stdout '^item-7-r1\tcancelled\titem 7 of [a-z]+$'
+
+# A second cancel has nothing to stop.
+! exec beehest cancel 7
+stderr 'nothing to cancel'
+
+! grep '^implement' calls.log
+
+-- hang --
+plan
+-- verdicts --
+approve

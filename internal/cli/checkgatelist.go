@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehest/internal/ci"
 )
 
 const (
 	gateListName   = "gate-list"
-	gateListSyntax = "beehave check " + gateListName + " [--steps <name>]... [--map <json>] <ci-file>..."
+	gateListSyntax = "beehest check " + gateListName + " [--steps <name>]... [--map <json>] <ci-file>..."
 	stepsFlag      = "steps"
 	mapFlag        = "map"
 )

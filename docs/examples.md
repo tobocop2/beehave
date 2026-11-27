@@ -7,24 +7,24 @@ Each folder under `examples/` is a complete workflow. This page lists the settin
 `examples/local` needs no tracker and no forge. The items are in `local.db`, and the result is a branch in a git repository on this machine. Copy `examples/local/project.star` to `<config folder>/projects/<name>.star`, set `source`, and run:
 
 ```bash
-beehave item add <name> fix-login --title "Fix the login" --body-file task.md
-beehave run fix-login <name> --workflow examples/local/workflow.star
+beehest item add <name> fix-login --title "Fix the login" --body-file task.md
+beehest run fix-login <name> --workflow examples/local/workflow.star
 ```
 
-`beehave run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
+`beehest run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
 
 ```bash
-beehave status
-beehave status item-fix-login-r1
+beehest status
+beehest status item-fix-login-r1
 ```
 
-The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `beehave run` writes its progress lines to stderr.
+The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `beehest run` writes its progress lines to stderr.
 
 `examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
 
 `examples/incident` is an incident desk. An alert starts a run. An analyst agent proposes one mitigation from a runbook table, and the on-call roles approve it in order, each before a deadline. A safe mitigation runs when someone was paged and nobody answered. A risky one never does. If no page reaches a person, the desk holds the incident. The desk checks the health of the service and restores the earlier state if the check fails. Set `INCIDENT_DIR` to the absolute path of `examples/incident` and `OPS_API` to your ops API.
 
-`examples/research-desk` turns a question into a cited report on a wiki. A planner splits the question into sections, the question run spawns one run for each source, each source run spawns a claims run that reads its page (three levels of runs), and a script tests every quote against the page. A judge agent grades the claims and a person approves the draft before the publish. Set `RESEARCH_DESK_DIR` to the absolute path of the folder, `RESEARCH_HOME` to the folder of the store, `SEARCH_API` to a search server and `WIKI_API` to the page store. The review and the budget pause end with a failed run if nobody answers in time. Run `beehave resume <item>` and then `beehave run` again to continue at the same question.
+`examples/research-desk` turns a question into a cited report on a wiki. A planner splits the question into sections, the question run spawns one run for each source, each source run spawns a claims run that reads its page (three levels of runs), and a script tests every quote against the page. A judge agent grades the claims and a person approves the draft before the publish. Set `RESEARCH_DESK_DIR` to the absolute path of the folder, `RESEARCH_HOME` to the folder of the store, `SEARCH_API` to a search server and `WIKI_API` to the page store. The review and the budget pause end with a failed run if nobody answers in time. Run `beehest resume <item>` and then `beehest run` again to continue at the same question.
 
 `examples/ticket-pipeline` loads the support tickets of each day to a warehouse, with an agent that labels the tickets. It covers a backfill of many days in chunks, the retry of one day, a re-run of a range, an idempotent load, a cost budget that waits for a person, and a version change in the middle of a backfill. Set `PIPE_DIR` to the absolute path of the folder and `PIPE_HOME` to the data folder. The folder holds its own README with the engine gaps.
 

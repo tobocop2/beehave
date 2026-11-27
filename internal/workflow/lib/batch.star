@@ -18,7 +18,7 @@ NO_ISSUE_NUMBERS_NOTE = "issue states: the tracker of the project has no issue n
 LOST_JOBS_OF_A_CALL = 2
 
 # The author and committer of the union commits. They exist in the object database of the worktree only, and no forge sees them.
-IDENTITY = ["-c", "user.name=beehave", "-c", "user.email=beehave@localhost"]
+IDENTITY = ["-c", "user.name=beehest", "-c", "user.email=beehest@localhost"]
 
 # git cat-file -e exits with 1 or 128 for an object that the repository does not hold, and git merge-tree exits with 1 for a conflict.
 NO_OBJECT = [1, 128]
@@ -83,7 +83,7 @@ def _union(st, members):
     for m in members:
         made = _merge_tree(st, commit, m.head)
         if not made.conflict:
-            commit = _git(st, ["commit-tree", made.tree, "-m", "beehave batch union", "-p", commit, "-p", m.head], []).stdout.strip()
+            commit = _git(st, ["commit-tree", made.tree, "-m", "beehest batch union", "-p", commit, "-p", m.head], []).stdout.strip()
             tree = made.tree
             included.append(m)
         elif _merge_tree(st, tip.commit, m.head).conflict:

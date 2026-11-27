@@ -40,15 +40,15 @@ func TestConfig_TheTraceParentKeyOfTheFileTurnsItOn(t *testing.T) {
 func TestConfig_TheTraceParentVariableOverlaysTheFileInBothDirections(t *testing.T) {
 	t.Parallel()
 
-	off, problems := loadTraceKey(t, "agents(trace_parent = True)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": "false"})
+	off, problems := loadTraceKey(t, "agents(trace_parent = True)\n", map[string]string{"BEEHEST_AGENTS_TRACE_PARENT": "false"})
 	require.Empty(t, problems)
 	assert.False(t, off)
 
-	on, problems := loadTraceKey(t, "agents(trace_parent = False)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": "true"})
+	on, problems := loadTraceKey(t, "agents(trace_parent = False)\n", map[string]string{"BEEHEST_AGENTS_TRACE_PARENT": "true"})
 	require.Empty(t, problems)
 	assert.True(t, on)
 
-	kept, problems := loadTraceKey(t, "agents(trace_parent = True)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": ""})
+	kept, problems := loadTraceKey(t, "agents(trace_parent = True)\n", map[string]string{"BEEHEST_AGENTS_TRACE_PARENT": ""})
 	require.Empty(t, problems)
 	assert.True(t, kept, "an empty variable leaves the value of the file")
 }
@@ -56,18 +56,18 @@ func TestConfig_TheTraceParentVariableOverlaysTheFileInBothDirections(t *testing
 func TestConfig_ATraceParentVariableThatIsNoBooleanIsRefusedAndNamed(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadTraceKey(t, "agents(max_turns = 3)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": "maybe"})
+	_, problems := loadTraceKey(t, "agents(max_turns = 3)\n", map[string]string{"BEEHEST_AGENTS_TRACE_PARENT": "maybe"})
 
-	assert.Contains(t, problems, "BEEHAVE_AGENTS_TRACE_PARENT=maybe")
+	assert.Contains(t, problems, "BEEHEST_AGENTS_TRACE_PARENT=maybe")
 }
 
 func TestConfig_ATraceParentVariableOtherThanTrueOrFalseIsRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, value := range []string{"1", "t", "T", "0", "f", "F", "TRUE", "True", "yes"} {
-		_, problems := loadTraceKey(t, "agents(max_turns = 3)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": value})
+		_, problems := loadTraceKey(t, "agents(max_turns = 3)\n", map[string]string{"BEEHEST_AGENTS_TRACE_PARENT": value})
 
-		assert.Contains(t, problems, "BEEHAVE_AGENTS_TRACE_PARENT="+value, value)
+		assert.Contains(t, problems, "BEEHEST_AGENTS_TRACE_PARENT="+value, value)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // rowFieldsFlow prints the container, the author and the change request of each row.
@@ -170,7 +170,7 @@ func rowsSeenBy(t *testing.T, h *harness, engine *Engine, observer string) ([]st
 	return strings.Fields(ran[0])[1:], err
 }
 
-func TestQueue_ABeehaveRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(t *testing.T) {
+func TestQueue_ABeehestRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(t *testing.T) {
 	t.Parallel()
 
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
@@ -197,8 +197,8 @@ func TestQueue_ABeehaveRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(
 
 	cancel := h.client(t, testVersion).Cancel("21")
 	require.ErrorContains(t, cancel, "item-21-r1 is stopped and has nothing to cancel")
-	require.ErrorContains(t, cancel, "run beehave run 21 to start a new attempt")
-	require.ErrorContains(t, h.client(t, testVersion).CancelRun(runID("21", 1)), "is stopped and has nothing to cancel. Fix the cause, then run beehave run 21")
+	require.ErrorContains(t, cancel, "run beehest run 21 to start a new attempt")
+	require.ErrorContains(t, h.client(t, testVersion).CancelRun(runID("21", 1)), "is stopped and has nothing to cancel. Fix the cause, then run beehest run 21")
 
 	stopping.Store(false)
 
@@ -210,7 +210,7 @@ func TestQueue_ABeehaveRunOfAStoppedItemStartsANewAttemptAndTheRowLeavesStopped(
 	assert.Equal(t, []string{"21|done"}, rows, "the second run is the last run of the item, and it ended without a stop")
 }
 
-func TestQueue_ABeehaveRunOfAnItemWhoseResultCannotBeReadReplacesThatRun(t *testing.T) {
+func TestQueue_ABeehestRunOfAnItemWhoseResultCannotBeReadReplacesThatRun(t *testing.T) {
 	t.Parallel()
 
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
@@ -222,7 +222,7 @@ func TestQueue_ABeehaveRunOfAnItemWhoseResultCannotBeReadReplacesThatRun(t *test
 
 	_, err = rowsSeenBy(t, h, engine, "7")
 	require.ErrorContains(t, err, "read the result of "+runID("21", 1))
-	require.ErrorContains(t, err, "Run beehave run 21 to start a new attempt")
+	require.ErrorContains(t, err, "Run beehest run 21 to start a new attempt")
 
 	_, err = engine.RunFile("21", testProject, writeFlow(t, stopOrWork), modeOff())
 	require.NoError(t, err)

@@ -13,7 +13,7 @@ func TestCheck_RefusesTheArgumentsOfTheRunThatAreText(t *testing.T) {
 	cases := []struct{ name, call, want string }{
 		{"command env value", `command(run = ["x"], env = {"A": 1})`, "command: env must hold strings only"},
 		{"command env key", `command(run = ["x"], env = {1: "a"})`, "command: env must hold strings only"},
-		{"command env reserved", `command(run = ["x"], env = {"BEEHAVE_X": "1"})`, "command: env cannot set `BEEHAVE_X`"},
+		{"command env reserved", `command(run = ["x"], env = {"BEEHEST_X": "1"})`, "command: env cannot set `BEEHEST_X`"},
 		{"command env hands back the SSH agent", `command(run = ["x"], env = {"SSH_AUTH_SOCK": "/tmp/agent.sock"})`, "command: env cannot set `SSH_AUTH_SOCK`"},
 		{"command env hands back the SSH agent from the environment", `command(run = ["x"], env = {"SSH_AUTH_SOCK": env("SSH_AUTH_SOCK")})`, "command: env cannot set `SSH_AUTH_SOCK`"},
 		{"env reads the SSH agent", `env("SSH_AUTH_SOCK")`, "env: env cannot read `SSH_AUTH_SOCK`"},

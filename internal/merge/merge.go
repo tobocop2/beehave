@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // stateOpen is the state of a pull request that is open.
@@ -170,7 +170,7 @@ type Poster interface {
 // Result is the verdict. A Done result merged the pull request. Lines are the lines to show, a refusal last.
 // Refusal holds the lines of the guard that stopped the run, and it is empty for a Done result. Lines end with Refusal.
 // In a Result that Run, Poll or Disarm builds, no line of Lines or Refusal matches a pattern of the ForbidText of the request, with each line split at its newlines.
-// This holds only for patterns that do not match the words of beehave itself, such as "left out" in the replacement line or the fixed header of a refusal.
+// This holds only for patterns that do not match the words of beehest itself, such as "left out" in the replacement line or the fixed header of a refusal.
 type Result struct {
 	Stop    Stop
 	Reason  Reason

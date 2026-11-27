@@ -18,8 +18,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // contractUnreached is the exception of the rule that a use counts only when an entry of a workflow reaches it. foreign_followup of the remediation example
@@ -39,7 +39,7 @@ var contractUnreached = map[contractPair]string{
 
 // contractLibrary is the label of the embedded library in a load, and the folder that holds it.
 const (
-	contractLibraryLabel  = "@beehave//"
+	contractLibraryLabel  = "@beehest//"
 	contractLibraryFolder = "internal/workflow/lib"
 )
 

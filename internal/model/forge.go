@@ -101,7 +101,7 @@ type ClosingRefs struct {
 	Elsewhere []IssueRef
 }
 
-// PullRequest holds the fields of gh pr list and gh pr view that beehave reads.
+// PullRequest holds the fields of gh pr list and gh pr view that beehest reads.
 // A pointer field is one a gate decides on: nil means gh sent null or the call did not ask for it, so a gate must not read nil as false or empty.
 type PullRequest struct {
 	Number         int             `json:"number"`
@@ -548,8 +548,8 @@ func OrNull(text string) string {
 
 // The contexts of the commit statuses that a base must require before a merge: the gate on the head, and the review of the head.
 const (
-	ContextGate   = "beehave/gate"
-	ContextReview = "beehave/review"
+	ContextGate   = "beehest/gate"
+	ContextReview = "beehest/review"
 )
 
 // StatusState is the state of a commit status. The values are the states that GitHub accepts.

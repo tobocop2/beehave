@@ -34,9 +34,9 @@ func TestMerge_EachMergeOfAGreenUnionCarriesTheGateStatusOfItsHeadAndTheReviewSt
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"beehave/review success " + rig.heads["1"],
-		"beehave/gate success " + rig.heads["1"],
-		"beehave/gate success " + rig.heads["3"],
+		"beehest/review success " + rig.heads["1"],
+		"beehest/gate success " + rig.heads["1"],
+		"beehest/gate success " + rig.heads["3"],
 	}, rig.merger.statusesGiven(), "the merge run of each member posts these after its guards")
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
 }

@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehest/internal/claim"
 )
 
 // Open builds the claims over the rows. The claims say nothing on their own: the caller shows what it wants to show.

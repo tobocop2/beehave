@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -22,13 +22,13 @@ const (
 // errResumeShape is returned when the item and the --failed flag do not fit together.
 var errResumeShape = errors.New("give an item, or --failed with no item")
 
-// errNoFailed is returned when beehave resume --failed finds no failed run that fits the filter.
+// errNoFailed is returned when beehest resume --failed finds no failed run that fits the filter.
 var errNoFailed = errors.New("no failed run matches")
 
-// errNotResumed is returned when at least one run of beehave resume --failed refused.
+// errNotResumed is returned when at least one run of beehest resume --failed refused.
 var errNotResumed = errors.New("some runs did not resume")
 
-// manyResume holds the flags that make beehave resume reopen every failed run that fits a filter.
+// manyResume holds the flags that make beehest resume reopen every failed run that fits a filter.
 type manyResume struct {
 	failed, dryRun, onThisBuild, onThisFile bool
 	since, until, project                   string
@@ -37,7 +37,7 @@ type manyResume struct {
 	picked flow.FailedFilter
 }
 
-// addFlags adds the flags of beehave resume --failed.
+// addFlags adds the flags of beehest resume --failed.
 func (m *manyResume) addFlags(command *cobra.Command) {
 	command.Flags().BoolVar(&m.failed, "failed", false, "resume every failed run that fits the filter; give no item")
 	command.Flags().StringVar(&m.since, sinceFlag, "", "with --failed: only runs that ended at or after this time, an RFC 3339 time or a duration such as 6h for that long ago")
@@ -62,7 +62,7 @@ func typed(cmd *cobra.Command) []string {
 	return names
 }
 
-// resumeArgs checks the arguments of beehave resume: one item, or with --failed no item and a valid filter.
+// resumeArgs checks the arguments of beehest resume: one item, or with --failed no item and a valid filter.
 func (m *manyResume) resumeArgs(now func() time.Time, cmd *cobra.Command, args []string) error {
 	names := typed(cmd)
 
@@ -166,7 +166,7 @@ func (m *manyResume) resumeMany(out, errOut io.Writer, client Steering, filter f
 	}
 
 	if len(runs) == 0 && len(unreadable) == 0 {
-		return fmt.Errorf("%w: %s. Run beehave status to see the runs", errNoFailed, describe(filter))
+		return fmt.Errorf("%w: %s. Run beehest status to see the runs", errNoFailed, describe(filter))
 	}
 
 	reportUnreadable(errOut, unreadable)
@@ -189,7 +189,7 @@ func reportUnreadable(errOut io.Writer, unreadable []flow.UnreadableRun) {
 	}
 }
 
-// failedOutcome returns the error of beehave resume --failed: how many runs refused, and how many runs had an input that could not be read. It is nil when both counts are 0.
+// failedOutcome returns the error of beehest resume --failed: how many runs refused, and how many runs had an input that could not be read. It is nil when both counts are 0.
 func failedOutcome(refused, unreadable, total int) error {
 	var problems []error
 

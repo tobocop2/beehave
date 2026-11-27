@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehest/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehest/examples/remediation/tools/gate"
 )
 
 const reportSyntax = "report <file> --head <sha>"

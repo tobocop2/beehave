@@ -1,0 +1,23 @@
+# Row V1. beehest serve hosts the engine, a run joins it, and serve stops by SIGINT while the joined run waits. The joined run is not cancelled: it takes over and finishes after its answer.
+isolate
+! exec bd version
+! exec gh version
+
+example review-loop/project.star config/projects/orders.star
+exec beehestreal item add orders base-1 --title 'Base' --body-file body.txt
+
+exec beehestreal serve &serve&
+waitstatus 'engine: serve, pid'
+exec beehestreal run base-1 orders --workflow flow/wait.star &base&
+waitstatus 'question of base-1'
+kill -INT serve
+wait serve
+exec beehestreal answer base-1 done
+wait base
+stdout 'item base-1 finished'
+
+-- body.txt --
+Wait.
+-- flow/wait.star --
+def main(item):
+    wait(name = "close", question = "question of " + item.id)

@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const clusterProject = hostProject + `,build_host = "gpu"`
@@ -102,8 +102,8 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 		{"ssh_block_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, ssh = ssh())`), "the `host` block holds the `ssh` block, and `host.provider` \"slurm\" does not take it"},
 		{"slurm_block_on_ssh", call(clusterProject + ", host = " + sshCall(`, slurm = slurm()`)), "the `host` block holds the `slurm` block, and `host.provider` \"ssh\" does not take it"},
 		{"idle_on_ssh", call(clusterProject + ", host = " + sshCall(", idle_minutes = 30")), "`host.idle_minutes` is not allowed for provider \"ssh\""},
-		{"setup_command_on_ssh", call(clusterProject + ", host = " + sshCall(`, setup_command = "make setup"`)), "`host.setup_command` is not allowed for provider \"ssh\": beehave does not create the machine"},
-		{"setup_command_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, setup_command = "make setup")`), "`host.setup_command` is not allowed for provider \"slurm\": beehave does not create the machine"},
+		{"setup_command_on_ssh", call(clusterProject + ", host = " + sshCall(`, setup_command = "make setup"`)), "`host.setup_command` is not allowed for provider \"ssh\": beehest does not create the machine"},
+		{"setup_command_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, setup_command = "make setup")`), "`host.setup_command` is not allowed for provider \"slurm\": beehest does not create the machine"},
 		{"setup_command_empty", call(clusterProject + ", host = " + hostCall(`, setup_command = "  "`)), "`host.setup_command` must not be empty"},
 		{"setup_command_of_the_wrong_type", call(clusterProject + ", host = " + hostCall(", setup_command = 3")), `for parameter "setup_command": got int, want string`},
 		{"idle_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, idle_minutes = 30)`), "`host.idle_minutes` is not allowed for provider \"slurm\""},
@@ -298,7 +298,7 @@ func TestLoadFolder_ABlockValueIsAnOpaqueValue(t *testing.T) {
 	require.NotNil(t, project.Host)
 }
 
-func TestLoadFolder_AHostSetupCommandOfAProviderThatBeehaveCreatesReachesTheHostConfigAndAnOmittedOneStaysEmpty(t *testing.T) {
+func TestLoadFolder_AHostSetupCommandOfAProviderThatBeehestCreatesReachesTheHostConfigAndAnOmittedOneStaysEmpty(t *testing.T) {
 	t.Parallel()
 
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall(`, setup_command = "make setup"`)))

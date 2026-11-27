@@ -3,8 +3,8 @@ package hosttest
 import (
 	"context"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // CleanSSHConfig is an `ssh -G` answer that gives the host neither the agent nor the X display of the owner.

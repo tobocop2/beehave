@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/exectest"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
 )
 
 // dryRoundFile is the file of the example as it is. A dry run of it runs the round, which ends at the read of the queue.
@@ -32,7 +32,7 @@ var dryPipeline = WithEntry("pipeline")
 // dryRound gives the dry run the vars of the example project: the round settings, which every entry of the example reads, and the command of the mutation step.
 var dryRound = WithVars(with(roundVars(map[string]any{
 	"base": "integration", "owner": "owner", "owner_email": "owner@example.com", "source_checkout": "/own/checkout", "merge": false,
-	"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehave-round",
+	"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehest-round",
 }), map[string]any{"mutation_command": []any{"sh", "scripts/mutation-pr.sh"}, "review_skill": exampleSkill}))
 
 func dryFile(t *testing.T, text string) string {
@@ -889,7 +889,7 @@ func TestDryRun_AProjectWithNoReviewSkillInItsVarsReportsNoSkillAndTheExampleRef
 	var out bytes.Buffer
 
 	vars := with(roundVars(map[string]any{
-		"base": "integration", "owner": "owner", "lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehave-round",
+		"base": "integration", "owner": "owner", "lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehest-round",
 	}), map[string]any{"mutation_command": []any{"sh", "scripts/mutation-pr.sh"}})
 
 	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryPipeline, WithVars(vars))
@@ -916,7 +916,7 @@ func TestDryRun_AnImplementRunnerWithNoSkillLineIsRefusedAsARealRunRefusesIt(t *
 
 	vars := with(roundVars(map[string]any{
 		"base": "integration", "owner": "owner", "owner_email": "owner@example.com", "source_checkout": "/own/checkout", "merge": false,
-		"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehave-round",
+		"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehest-round",
 		"steps": map[string]any{"implement": map[string]any{"runner": "oc"}},
 	}), map[string]any{"mutation_command": []any{"sh", "scripts/mutation-pr.sh"}, "review_skill": exampleSkill})
 

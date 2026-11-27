@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // launchScript records, for one run, what it sees of the launch: the arguments, the run folder, its mode, the content of one file and one variable.
@@ -65,7 +65,7 @@ func launchFixture(t *testing.T, adapter agent.Adapter) (*fixture, string) {
 	require.NoError(t, exectest.Write(filepath.Join(f.records, "claude"), launchScript))
 
 	f.spec.Adapter = adapter
-	f.spec.Guard = "beehave check command"
+	f.spec.Guard = "beehest check command"
 	f.spec.Log = &bytes.Buffer{}
 
 	return f, f.records
@@ -122,7 +122,7 @@ func TestRunner_ARunNeedsAVersionInTheSupportedRangeWithOrWithoutAGuard(t *testi
 		"3.99.99": agent.OutcomeExited, "4.0.0": agent.OutcomeNotStarted, "4.0.1": agent.OutcomeNotStarted,
 	}
 
-	for _, guard := range []string{"", "beehave check command"} {
+	for _, guard := range []string{"", "beehest check command"} {
 		for version, outcome := range versions {
 			f := newFixture(t, "claude", claude.Name, "")
 			f.spec.Adapter, f.spec.Guard = ranged{f.spec.Adapter}, guard
@@ -164,7 +164,7 @@ func TestRunner_ARunWithNoSupportedRangeAndNoSandboxNeverReadsTheVersion(t *test
 
 func TestRunner_AGuardedRunWhoseHookNeedsPOSIXDoesNotStartOnWindows(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "")
-	f.spec.Adapter, f.spec.Guard = ranged{f.spec.Adapter}, "beehave check command"
+	f.spec.Adapter, f.spec.Guard = ranged{f.spec.Adapter}, "beehest check command"
 
 	got := agent.Runner{OS: "windows", Version: seen("cli 3.0.0")}.Run(context.Background(), f.spec)
 
@@ -253,7 +253,7 @@ func TestRunner_TheRunFolderIsGoneAfterARefusalThatCameAfterItWasMade(t *testing
 func TestRunner_TheRunFolderIsGoneAfterACancelledRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	launch, folders := foldersOf(map[string]string{"conf/hooks.json": "x"})
 	f := newFixture(t, "claude", claude.Name, "holdgrand")
-	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(nil), launch: launch}, "beehave check command", &bytes.Buffer{}
+	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(nil), launch: launch}, "beehest check command", &bytes.Buffer{}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

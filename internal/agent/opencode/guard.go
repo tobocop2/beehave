@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 const (
-	pluginPath = "config/plugins/beehave-guard.js"
+	pluginPath = "config/plugins/beehest-guard.js"
 	// loadedPath is the marker that the plugin writes when it loads, inside the config folder of the run.
-	loadedPath         = "config/beehave-guard-loaded"
+	loadedPath         = "config/beehest-guard-loaded"
 	commandPlaceholder = "__GUARD_COMMAND__"
 	loadedPlaceholder  = "__LOADED_PATH__"
 )

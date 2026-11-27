@@ -9,7 +9,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const runPrefix = "item-"
@@ -25,7 +25,7 @@ const attemptMarker = "-r"
 // runIDForm matches the two forms of run id that the engine makes: item-<item>-r<n> and round-<base>-r<k>-p<n>.
 var runIDForm = regexp.MustCompile(`^(item-.+-r[1-9][0-9]*|round-.+-r[1-9][0-9]*-p[1-9][0-9]*)$`)
 
-// errBadRunID is returned when --run names an id that no run of beehave has the form of.
+// errBadRunID is returned when --run names an id that no run of beehest has the form of.
 var errBadRunID = errors.New("not a run id")
 
 // ErrBadItem is returned when an item id is not an item id: digits, or a prefix, a dash and a name.
@@ -41,7 +41,7 @@ var errNoSandboxMode = errors.New("the run has no sandbox mode")
 var errProjectConflict = errors.New("the item has an open run under another project")
 
 // errStranded is returned when a run belongs to another build version.
-var errStranded = errors.New("the run belongs to another version of beehave")
+var errStranded = errors.New("the run belongs to another version of beehest")
 
 // errRunFailed is returned when run finds that the last attempt of the item failed.
 var errRunFailed = errors.New("the last run of the item failed")
@@ -71,7 +71,7 @@ func (r run) cancelable() bool {
 	return !r.terminal() || r.Status.Status == dbos.WorkflowStatusCancelled || r.failed()
 }
 
-// failed reports whether the attempt ended with an error. Only beehave resume continues it.
+// failed reports whether the attempt ended with an error. Only beehest resume continues it.
 func (r run) failed() bool {
 	return stateOf(r.Status.Status) == runFailed
 }
@@ -88,17 +88,17 @@ func checkItemID(id string) error {
 // failedError tells the owner why a new attempt does not start after a failed one.
 // The error text of the run names the step that failed.
 func failedError(failed run, item string) error {
-	return fmt.Errorf("%w: %s failed: %s. Run beehave resume %s to continue it from the last finished step. To start a new attempt instead, run beehave cancel %s",
+	return fmt.Errorf("%w: %s failed: %s. Run beehest resume %s to continue it from the last finished step. To start a new attempt instead, run beehest cancel %s",
 		errRunFailed, failed.Status.ID, fmt.Sprint(failed.Status.Error), item, item)
 }
 
-// endFailedFirst gives the sentence that sends the owner to beehave cancel when the last run of the item failed, and an empty text for any other run.
+// endFailedFirst gives the sentence that sends the owner to beehest cancel when the last run of the item failed, and an empty text for any other run.
 func endFailedFirst(last run, item string) string {
 	if !last.failed() {
 		return ""
 	}
 
-	return fmt.Sprintf("End the failed run first: beehave cancel %s. ", item)
+	return fmt.Sprintf("End the failed run first: beehest cancel %s. ", item)
 }
 
 // runID names attempt k of an item. A second start of the same attempt joins the first.
@@ -179,7 +179,7 @@ func (r run) input() (ItemInput, error) {
 
 // conflictError names both projects when run asks for a project the open run of the item does not use.
 func conflictError(item, held, asked string) error {
-	return fmt.Errorf("%w: item %s has an open run under project %s and you asked for %s. Run beehave cancel %s to end it, then run beehave run %s %s",
+	return fmt.Errorf("%w: item %s has an open run under project %s and you asked for %s. Run beehest cancel %s to end it, then run beehest run %s %s",
 		errProjectConflict, item, held, asked, item, item, asked)
 }
 
@@ -194,7 +194,7 @@ func strandedError(stranded run, version string) error {
 
 	moveWith := ""
 	if in, err := stranded.input(); err == nil {
-		moveWith = fmt.Sprintf(", or run beehave resume %s --on-this-build to move the run to this build from its last finished step", in.Item)
+		moveWith = fmt.Sprintf(", or run beehest resume %s --on-this-build to move the run to this build from its last finished step", in.Item)
 	}
 
 	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it%s",

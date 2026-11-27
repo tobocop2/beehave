@@ -6,7 +6,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // prStateKind is the step kind and the builtin name of pr_state, and stateField is the field of a result that holds the state of a pull request or a merge.

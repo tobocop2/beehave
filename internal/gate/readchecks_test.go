@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // runPassedCandidate runs a candidate head on a host whose job succeeded, and returns the result.
@@ -29,7 +29,7 @@ func runPassedCandidate(t *testing.T, remote gate.Remote) gate.Result {
 func TestChecks_APassedCandidateJobGivesTheChecksOfItsLog(t *testing.T) {
 	t.Parallel()
 
-	log := "beehave-new-test pkg TestA\nbeehave-new-tests-end new=1 failed=0\n"
+	log := "beehest-new-test pkg TestA\nbeehest-new-tests-end new=1 failed=0\n"
 	result := runPassedCandidate(t, logRemote{fakeRemote: &fakeRemote{state: model.JobSucceeded}, log: log})
 
 	require.NotNil(t, result.Checks)
@@ -41,7 +41,7 @@ func TestChecks_APassedCandidateJobGivesTheChecksOfItsLog(t *testing.T) {
 func TestChecks_AResumedJobIsACandidateByItsPlanAndNotByTheBaseOfTheRequest(t *testing.T) {
 	t.Parallel()
 
-	log := "beehave-new-test pkg TestA\nbeehave-new-tests-end new=1 failed=0\n"
+	log := "beehest-new-test pkg TestA\nbeehest-new-tests-end new=1 failed=0\n"
 	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobSucceeded}, log: log}
 	g := gate.New((&fakeShell{}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
 
@@ -64,7 +64,7 @@ func TestChecks_AResumedJobIsACandidateByItsPlanAndNotByTheBaseOfTheRequest(t *t
 func TestReadChecks_ALogThatIsOnlyTheEndMarkerIsComplete(t *testing.T) {
 	t.Parallel()
 
-	checks := gate.ReadChecks("beehave-new-tests-end new=0 failed=0")
+	checks := gate.ReadChecks("beehest-new-tests-end new=0 failed=0")
 
 	assert.True(t, checks.Complete)
 	assert.Zero(t, checks.New)

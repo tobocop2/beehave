@@ -4,7 +4,7 @@
 
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "zsh-expansion", "laptop-copy"]
 
-load("@beehave//claims.star", "claim_stop")
+load("@beehest//claims.star", "claim_stop")
 
 # The keys of a guard that claim_stop takes. The preflight call takes the others.
 CLAIM_KEYS = ["hold", "own", "own_draft"]
@@ -29,7 +29,7 @@ def candidates_spent():
 
 def restart_steps(item):
     """The sentence that ends a stop text: a plain resume replays the recorded stop, so the item starts again with a resume, a cancel and a run."""
-    return "A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (item.id, item.id, item.id)
+    return "A plain beehest resume replays this stop. To start the item again, run beehest resume %s, then beehest cancel %s, then beehest run %s." % (item.id, item.id, item.id)
 
 def capped(step, name, item):
     """Stops the item when a cap ended the agent step. The output `stop` is "turns", "budget" or "context", and the work of a capped run may be half done."""

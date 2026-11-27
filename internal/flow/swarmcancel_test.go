@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // cancelFlow spawns 21 and 22, cancels the run of 21, gathers both and runs a command that names what cancel returned and how each run ended.
