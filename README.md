@@ -30,7 +30,7 @@
   <a href="https://github.com/bazelbuild/starlark"><img src="https://img.shields.io/badge/workflows-Starlark-c4a7e7?style=flat-square&labelColor=191724" alt="Workflows in Starlark"></a>
   <a href="https://www.dbos.dev/"><img src="https://img.shields.io/badge/durable-DBOS%20%2B%20SQLite-31748f?style=flat-square&labelColor=191724" alt="Durable on DBOS and SQLite"></a>
   <a href="https://claude.ai/code"><img src="https://img.shields.io/badge/agent-Claude%20Code-ebbcba?logo=claude&logoColor=ebbcba&style=flat-square&labelColor=191724" alt="Agent: Claude Code"></a>
-  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/agent-OpenCode-ebbcba?style=flat-square&labelColor=191724" alt="Agent: OpenCode"></a>
+  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/agent-OpenCode-ebbcba?logo=opencode&logoColor=ebbcba&style=flat-square&labelColor=191724" alt="Agent: OpenCode"></a>
 </p>
 
 <!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
