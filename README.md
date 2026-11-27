@@ -1,16 +1,13 @@
-> [!CAUTION]
-> # Early release
->
-> **beehest is an early release.** The workflow API, the commands and the file formats can still change. Do not run it on work you cannot lose.
-
 <p align="center">
   <a href="https://github.com/tobocop2/beehest">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-logo-dark.svg">
-      <img alt="beehest" src="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-logo-light.svg" width="580">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-dark.svg">
+      <img alt="beehest" src="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-light.svg" width="840">
     </picture>
   </a>
 </p>
+
+<p align="center"><strong>Early release.</strong> The workflow API, the commands and the file formats can still change. Do not run it on work you cannot lose.</p>
 
 <p align="center"><strong>A deterministic, durable workflow engine for AI coding agents: write your process down once, and beehest makes your agents follow it, every time.</strong></p>
 
