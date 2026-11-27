@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
 )
 
 // dumpGit puts a fake git first on PATH that appends its whole environment to the file that the function returns, one block for each call, after a line

@@ -25,7 +25,7 @@ const (
 
 // SQLiteFile describes a SQLite file of the state folder and the schema it must hold.
 // Name is the file name in the folder. Schema is a list of statements that each run again on a file that has them, and that sets user_version to Version.
-// Owned names every table the schema creates: a new file that holds another name is not a file of beehave.
+// Owned names every table the schema creates: a new file that holds another name is not a file of beehest.
 // BusyMs is the time that a connection waits for a lock.
 type SQLiteFile struct {
 	Name    string
@@ -181,7 +181,7 @@ func refuseForeign(ctx context.Context, tx *sql.Tx, file SQLiteFile) error {
 
 	err := tx.QueryRowContext(ctx, query, args...).Scan(&foreign)
 	if err == nil {
-		return fmt.Errorf("the file holds %q, which beehave does not own. Move %s away, and beehave makes a new file", foreign, file.Name)
+		return fmt.Errorf("the file holds %q, which beehest does not own. Move %s away, and beehest makes a new file", foreign, file.Name)
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {

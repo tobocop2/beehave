@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // lossyGate gives a void result with no host cause for its first `void` runs, loses the host job of the next `lose` runs, and passes every later run, on the head that it is given.
@@ -53,7 +53,7 @@ func (g *lossyGate) Run(context.Context, string, string, string, GateJob) (GateR
 const loopSteps = "{\"implement\": {\"model\": \"sonnet\"}, \"review\": {\"model\": \"opus\"}, \"fix\": {\"model\": \"sonnet\"}}"
 
 // loopFlow runs the review loop of the library on the base main, on the host gpu-b, and returns the loop result fields that the tests read.
-const loopFlow = "load(\"@beehave//review_fix.star\", \"review_fix\")\n\n" +
+const loopFlow = "load(\"@beehest//review_fix.star\", \"review_fix\")\n\n" +
 	"def main(item):\n" +
 	"    return pipeline(item)\n\n" +
 	"def pipeline(item):\n" +

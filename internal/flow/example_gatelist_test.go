@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // These tests run the gate list step of the example: the round derives its gate list from the gate files of the project and holds gate_steps to it by gate_map.
@@ -38,7 +38,7 @@ func TestExampleProfile_TheRoundPassesTheGateStepsAndTheMapToTheDerive(t *testin
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{`beehave check gate-list --steps vet --steps test --map {"go install x@v1":[],"make vet":["vet"]} ` + ciFile + " " + lintFile}, commandsNamed(rig, "beehave check gate-list"))
+	assert.Equal(t, []string{`beehest check gate-list --steps vet --steps test --map {"go install x@v1":[],"make vet":["vet"]} ` + ciFile + " " + lintFile}, commandsNamed(rig, "beehest check gate-list"))
 }
 
 func TestExampleProfile_AMapThatDoesNotMatchTheCICommandsStopsTheRoundBeforeItsFirstPass(t *testing.T) {
@@ -48,7 +48,7 @@ func TestExampleProfile_AMapThatDoesNotMatchTheCICommandsStopsTheRoundBeforeItsF
 
 	previous := rig.h.commands.reply
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 2 && request.Run[0] == "beehave" && request.Run[2] == "gate-list" {
+		if len(request.Run) > 2 && request.Run[0] == "beehest" && request.Run[2] == "gate-list" {
 			return CommandOutput{RC: 2, Stdout: "unmapped ship:test: make test"}, nil
 		}
 
@@ -73,7 +73,7 @@ func TestExampleProfile_AProjectWithGateFilesAndNoGateStepsStopsTheRound(t *test
 	_, err := rig.run(t)
 
 	require.ErrorContains(t, err, "REFUSE: vars.gate_files is set, but the project has no gate_steps")
-	assert.Empty(t, commandsNamed(rig, "beehave check gate-list"), "the derive does not run")
+	assert.Empty(t, commandsNamed(rig, "beehest check gate-list"), "the derive does not run")
 	assert.Empty(t, commandsNamed(rig, syncProgram), "no pass ran after the refusal")
 }
 
@@ -109,5 +109,5 @@ func TestExampleProfile_AProjectWithNoGateFilesDerivesNoGateList(t *testing.T) {
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Empty(t, commandsNamed(rig, "beehave check gate-list"))
+	assert.Empty(t, commandsNamed(rig, "beehest check gate-list"))
 }

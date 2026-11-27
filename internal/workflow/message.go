@@ -9,14 +9,14 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // MaxMessageBytes is the largest JSON text that a message value may have.
 const MaxMessageBytes = 64 << 10
 
-// reservedPrefix starts the names that beehave uses for its own messages.
-const reservedPrefix = "beehave."
+// reservedPrefix starts the names that beehest uses for its own messages.
+const reservedPrefix = "beehest."
 
 // The builtins of the inbox and their keyword of the topic.
 const (
@@ -34,7 +34,7 @@ func MessageName(what, name string) error {
 	}
 
 	if strings.HasPrefix(name, reservedPrefix) {
-		return fmt.Errorf("%s %q is reserved for beehave. Use a name that does not start with %q", what, name, reservedPrefix)
+		return fmt.Errorf("%s %q is reserved for beehest. Use a name that does not start with %q", what, name, reservedPrefix)
 	}
 
 	return nil
@@ -97,7 +97,7 @@ const (
 const SendTargetHint = `Give "parent", "item:<id>" with the id of an item, or a run that spawn returned`
 
 // sendTargetRule is the rule of the to keyword of send. A text must be "parent", or "item:" and an id. A run that spawn returned is a struct, which the run checks.
-// The id must be an item id. A text that the file builds at run time reaches the run, which checks the id with the rule of beehave send.
+// The id must be an item id. A text that the file builds at run time reaches the run, which checks the id with the rule of beehest send.
 func sendTargetRule(v starlark.Value) error {
 	text, isText := starlark.AsString(v)
 	if !isText || text == ParentTarget {

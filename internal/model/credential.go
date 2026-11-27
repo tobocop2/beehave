@@ -15,7 +15,7 @@ func (p Project) HasWriter() bool {
 
 // Credential says where the engine reads the token of a role. It sets File or Command, never both.
 type Credential struct {
-	// File is a path inside ~/.config/beehave/credentials. A leading ~/ means the home folder.
+	// File is a path inside ~/.config/beehest/credentials. A leading ~/ means the home folder.
 	File string
 	// Command is a program and its arguments, run once at start with no shell. Its trimmed output is the token.
 	Command []string

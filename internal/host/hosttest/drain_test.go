@@ -8,15 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/host/slurmtest"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/host/slurmtest"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 // drainingSSH returns the ssh adapter over a fake machine. The owner provides the machine, so it is up.

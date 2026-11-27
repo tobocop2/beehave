@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/step"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/step"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // shapeOf renders the keywords of a signature for a comparison. A Rule is a function, so the shape holds only whether the keyword has one.

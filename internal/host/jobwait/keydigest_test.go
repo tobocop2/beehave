@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
 )
 
 func TestKeyDigest_IsTheSameForTheSameKeyAndDiffersForAnotherKey(t *testing.T) {

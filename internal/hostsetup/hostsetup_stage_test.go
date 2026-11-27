@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 const (
 	rootDone    = "HOST-SETUP-ROOT-DONE"
-	jobUser     = "beehave-jobs"
-	jobUserLog  = "useradd --create-home --home-dir /home/beehave-jobs --shell /bin/sh beehave-jobs\n"
+	jobUser     = "beehest-jobs"
+	jobUserLog  = "useradd --create-home --home-dir /home/beehest-jobs --shell /bin/sh beehest-jobs\n"
 	unsafeClone = "can be written by a user other than root and the admin"
 )
 
@@ -149,12 +149,12 @@ func TestHostSetupRoot_WritesTheKeyAsTheJobUser(t *testing.T) {
 	out, err := h.rootSetup()
 	require.NoError(t, err, out)
 
-	copied := filepath.Join(h.sysroot, "etc/beehave/job-key.pub")
+	copied := filepath.Join(h.sysroot, "etc/beehest/job-key.pub")
 	log := h.read(h.log)
 	assert.Contains(t, log, "\nsudo install -D -m 0644 "+h.jobKey+" "+copied+"\n", "root copies the key to a root folder")
-	assert.Contains(t, log, "\nsudo -u beehave-jobs install -d -m 0700 "+filepath.Dir(h.jobKeyFile())+"\n")
-	assert.Contains(t, log, "\nsudo -u beehave-jobs install -m 0600 "+copied+" "+h.jobKeyFile()+"\n")
-	assert.NotContains(t, log, "-o beehave-jobs", "root writes nothing in the home of the job user, so a link there does not lead root")
+	assert.Contains(t, log, "\nsudo -u beehest-jobs install -d -m 0700 "+filepath.Dir(h.jobKeyFile())+"\n")
+	assert.Contains(t, log, "\nsudo -u beehest-jobs install -m 0600 "+copied+" "+h.jobKeyFile()+"\n")
+	assert.NotContains(t, log, "-o beehest-jobs", "root writes nothing in the home of the job user, so a link there does not lead root")
 	assert.Equal(t, controllerKey, h.read(h.jobKeyFile()))
 }
 
@@ -372,7 +372,7 @@ func TestHostSetupRoot_RefusesAJobUserThatHasARootGroup(t *testing.T) {
 			t.Parallel()
 
 			h := newFakeHost(t)
-			out, err := h.rootSetup("FAKE_JOB_GROUPS=beehave-jobs " + group)
+			out, err := h.rootSetup("FAKE_JOB_GROUPS=beehest-jobs " + group)
 
 			require.Error(t, err)
 			assert.Contains(t, out, "the job user "+jobUser+" is in the group "+group+", which gives root. Remove it: sudo gpasswd -d "+jobUser+" "+group)
@@ -539,7 +539,7 @@ func TestHostSetupJob_ChecksAgainAtTheEndThatTheUserHasNoSudo(t *testing.T) {
 	assert.Contains(t, out, "the user builder can run sudo without a password")
 	assert.Contains(t, h.read(h.log), "make setup", "the first check passed: the grant came during the run")
 	assert.NotContains(t, out, done)
-	assert.NoFileExists(t, filepath.Join(h.workRoot, ".beehave/host-setup.record"), "a record that says sudo=none is never written for a user that has sudo")
+	assert.NoFileExists(t, filepath.Join(h.workRoot, ".beehest/host-setup.record"), "a record that says sudo=none is never written for a user that has sudo")
 }
 
 func TestHostSetupJob_RefusesAUserInARootGroup(t *testing.T) {

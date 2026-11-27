@@ -16,10 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/model"
+	forgepkg "github.com/tobocop2/beehest/internal/forge"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 var errNotKept = errors.New("an error that nobody keeps")

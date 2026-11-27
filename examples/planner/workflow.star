@@ -1,9 +1,9 @@
 # A planner and its workers. Each worker publishes where it is, and the planner reads that without waiting for the worker to end (part 1).
 # The planner waits for the first of a worker end, a "stall" message and the end of CHECK_IN (part 2).
 # It cancels each stalled worker and gives its task to a new worker, and one deadline bounds the new workers (part 3).
-# Run: TASKS="21 22" beehave run <item> <project> --workflow workflow.star
+# Run: TASKS="21 22" beehest run <item> <project> --workflow workflow.star
 # TASKS lists the item ids of the workers, split by spaces. CHECK_IN and DEADLINE are durations, such as "10m".
-# To stall a worker by hand, run: beehave send <item> --topic stall 22. The text is the item id of the worker.
+# To stall a worker by hand, run: beehest send <item> --topic stall 22. The text is the item id of the worker.
 
 KEY = "progress"
 MODEL = "sonnet"

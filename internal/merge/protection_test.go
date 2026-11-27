@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // shielded is the fake forge that also reads the protection of a branch. reads lists the branches it was asked about.
@@ -70,15 +70,15 @@ func TestRun_AProjectWithCredentialsIsRefusedBeforeAnyWriteWhenTheBaseLacksARule
 		protection model.Protection
 		missing    string
 	}{
-		"no rule at all":      {model.Protection{}, "a pull request and beehave/gate and beehave/review"},
-		"no gate status":      {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextReview}}, "beehave/gate."},
-		"no review status":    {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextGate}}, "beehave/review."},
+		"no rule at all":      {model.Protection{}, "a pull request and beehest/gate and beehest/review"},
+		"no gate status":      {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextReview}}, "beehest/gate."},
+		"no review status":    {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextGate}}, "beehest/review."},
 		"no pull request":     {model.Protection{RequiredStatuses: full.RequiredStatuses}, "a pull request."},
-		"other status only":   {model.Protection{PullRequest: true, RequiredStatuses: []string{"ci"}}, "beehave/gate and beehave/review."},
-		"statuses and no pr":  {model.Protection{RequiredStatuses: []string{model.ContextGate}}, "a pull request and beehave/review."},
-		"nil status list":     {model.Protection{PullRequest: true}, "beehave/gate and beehave/review."},
-		"gate inside a name":  {model.Protection{PullRequest: true, RequiredStatuses: []string{"xbeehave/gate", model.ContextReview}}, "beehave/gate."},
-		"review status twice": {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextReview, model.ContextReview}}, "beehave/gate."},
+		"other status only":   {model.Protection{PullRequest: true, RequiredStatuses: []string{"ci"}}, "beehest/gate and beehest/review."},
+		"statuses and no pr":  {model.Protection{RequiredStatuses: []string{model.ContextGate}}, "a pull request and beehest/review."},
+		"nil status list":     {model.Protection{PullRequest: true}, "beehest/gate and beehest/review."},
+		"gate inside a name":  {model.Protection{PullRequest: true, RequiredStatuses: []string{"xbeehest/gate", model.ContextReview}}, "beehest/gate."},
+		"review status twice": {model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextReview, model.ContextReview}}, "beehest/gate."},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -92,7 +92,7 @@ func TestRun_AProjectWithCredentialsIsRefusedBeforeAnyWriteWhenTheBaseLacksARule
 			assert.Empty(t, s.writes, "the refusal comes before any write")
 			assert.Empty(t, merges(s.world))
 			assert.Contains(t, all(result), "REFUSE: the base main does not require "+tc.missing)
-			assert.Contains(t, all(result), "Add a ruleset on main that requires a pull request and the statuses beehave/gate and beehave/review")
+			assert.Contains(t, all(result), "Add a ruleset on main that requires a pull request and the statuses beehest/gate and beehest/review")
 		})
 	}
 }
@@ -169,7 +169,7 @@ func TestRun_AForgeThatCannotReadTheProtectionRefusesAProjectWithCredentialsAndN
 	}
 }
 
-func TestRun_AProjectWithNoCredentialsKeepsItsGuardsOnABaseWithNoBeehaveStatusRule(t *testing.T) {
+func TestRun_AProjectWithNoCredentialsKeepsItsGuardsOnABaseWithNoBeehestStatusRule(t *testing.T) {
 	t.Parallel()
 
 	for name, protection := range map[string]model.Protection{
@@ -190,7 +190,7 @@ func TestRun_AProjectWithNoCredentialsKeepsItsGuardsOnABaseWithNoBeehaveStatusRu
 	}
 }
 
-func TestRun_AProjectWithNoCredentialsIsToldItNeedsThemWhenTheBaseRequiresABeehaveStatus(t *testing.T) {
+func TestRun_AProjectWithNoCredentialsIsToldItNeedsThemWhenTheBaseRequiresABeehestStatus(t *testing.T) {
 	t.Parallel()
 
 	for name, required := range map[string]string{"gate": model.ContextGate, "review": model.ContextReview} {
@@ -203,7 +203,7 @@ func TestRun_AProjectWithNoCredentialsIsToldItNeedsThemWhenTheBaseRequiresABeeha
 
 			assert.Equal(t, merge.Refused, result.Stop)
 			assert.Empty(t, s.writes)
-			assert.Contains(t, all(result), "REFUSE: the base main requires the status "+required+", and the project has no `credentials` key, so beehave cannot post it.")
+			assert.Contains(t, all(result), "REFUSE: the base main requires the status "+required+", and the project has no `credentials` key, so beehest cannot post it.")
 			assert.Contains(t, all(result), "The project needs credentials")
 		})
 	}

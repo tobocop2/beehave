@@ -1,7 +1,7 @@
 # One project profile. Make one file for each project, and call project() once in it.
 # The arguments of project() are keyword arguments. An unknown argument is refused. build_host is optional; the default is local.
 # tracker, claims and forge name the adapters of the project. Each one is optional.
-# Name this file in `beehave run --project <name>`. The gate step runs `gate` for that project.
+# Name this file in `beehest run --project <name>`. The gate step runs `gate` for that project.
 
 project(
     repo = "your-org/your-repo",   # owner/name; required when tracker or forge is "github"
@@ -14,10 +14,10 @@ project(
     gate = "make check",       # the same command that your CI runs
     # gate_steps = {"fmt": "make fmt", "lint": "make lint", "test": "make test"},  # instead of `gate`: one named step for each command, in order. The gate gives a result for each name, and a merge needs a pass for every one. The loader refuses `gate` and `gate_steps` together, and the name `tests`
     test_report = "reports/*.xml",  # required; a glob for JUnit XML files, relative to the work tree. A local gate that exits 0 fails when no new file matches, a file does not parse, or the files hold 0 tests. A file that the gate leaves unchanged (same modification time and size) does not count. A gate on a build host fails when the glob matches no testcase element. The loader refuses a project without it
-    # visibility = "private",  # optional; "public" or "private". A project that leaves it out counts as public. For a public repository, beehave refuses to copy files from this machine to a build host: the host clones the repository from the forge, and data moves only through a private bucket
-    # pr_label = "made-by-beehave",  # optional; the label of every item pull request that the engine opens. The default is "made-by-beehave". An empty value is refused. The forge creates the label when the repository has none.
+    # visibility = "private",  # optional; "public" or "private". A project that leaves it out counts as public. For a public repository, beehest refuses to copy files from this machine to a build host: the host clones the repository from the forge, and data moves only through a private bucket
+    # pr_label = "made-by-beehest",  # optional; the label of every item pull request that the engine opens. The default is "made-by-beehest". An empty value is refused. The forge creates the label when the repository has none.
     # max_spawn_depth = 3,  # optional; the deepest level below the run a user started at which spawn may start a run. The default is 3. Set 1 to let a run spawn but stop its children from spawning. A value below 1 is refused.
-    # pin_file =".tool-versions",  # optional; a relative path with no `..`. beehave reads the file at origin/<base_branch>, not in the work tree of the lane, one tool and its exact version on each line ("1.27.3", not "1.27"). Before a local gate runs, beehave asks each tool for its version by name, in the directory and the environment of the gate. A gate that sets its own PATH or runs the tool through a wrapper is not checked. A tool at another version, or one that gives no version, voids the gate: every step is unknown and the gate command does not run. A gate on a build host runs the same check on the host
+    # pin_file =".tool-versions",  # optional; a relative path with no `..`. beehest reads the file at origin/<base_branch>, not in the work tree of the lane, one tool and its exact version on each line ("1.27.3", not "1.27"). Before a local gate runs, beehest asks each tool for its version by name, in the directory and the environment of the gate. A gate that sets its own PATH or runs the tool through a wrapper is not checked. A tool at another version, or one that gives no version, voids the gate: every step is unknown and the gate command does not run. A gate on a build host runs the same check on the host
     # gate_program = ["Makefile", "scripts/"],  # optional; the repository paths that hold the program of the gate, with no `..` and no glob. A directory ends in `/`. A path that the base branch lacks is legal and means the path must stay absent. A project with no `source` and no `forge` refuses it. The config reads the key; the gate does not use it yet
     # sandbox = "on",  # optional; "on" or "off". "on" runs the shell of each agent step that sets no `sandbox` in the Claude Code sandbox: no network, and no read outside the work folder. A project that leaves it out gets "on". "off" runs those steps with no sandbox, for a project whose steps cannot run in it, such as one with an OpenCode step or one on Linux with no bwrap and socat. A step sets `sandbox = sandbox(network = [...])` to name the hosts that its shell reaches
     # sandbox_read = ["~/sdk"],         # optional; extra paths that a sandboxed shell can read. Absolute, or starting with ~/
@@ -54,7 +54,7 @@ project(
     #     "owner": "your-login",            # the login of the owner; required
     #     "lane_cap": 4,                    # the lanes that run at once, 1 or more; required
     #     "fix_rounds": 5,                  # the fix rounds for one item, 1 or more; required
-    #     "label": "beehave-round",         # the tracker label that selects the items; set this or "items", not both; required
+    #     "label": "beehest-round",         # the tracker label that selects the items; set this or "items", not both; required
     #     # "items": ["12", "15"],          # the explicit list of item ids, in place of "label"
     #     "next_base": "integration/r3",    # the branch of the next round; empty means the round does not cut
     #     "merge": False,                   # True lets the round land approved items; the default is False
@@ -83,7 +83,7 @@ project(
     #     lost_job_wait = "60m",   # how long a job that lost its link waits for the proof that it no longer runs; from "1m" to "24h" (default "60m")
     #     lost_after = "5m",       # how long a job gets no answer to a read before the wait ends as lost; above zero (default "5m")
     #     stop_limit = "5m",       # how long a job may take to end after a cancel; above zero (default "5m")
-    #     private_remote = "git@example.com:your-org/your-repo-private.git",  # where beehave pushes unbanked work before the host goes down
+    #     private_remote = "git@example.com:your-org/your-repo-private.git",  # where beehest pushes unbanked work before the host goes down
     #     setup_command = "make setup",  # runs once in a clone of the project when the cluster is created; skypilot only (default: no set-up)
     #     skypilot = skypilot(
     #         cloud = "gcp",       # empty leaves the choice to SkyPilot
@@ -94,7 +94,7 @@ project(
     #         # instance_sizes = "3:n2-standard-4,n2-standard-16",  # up to 3 waiting gates: the first type; more: the last type. The first gate starts the host
     #     ),
     # ),
-    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the block of any other provider. beehave never deletes the machine: host_teardown banks the work and leaves it up.
+    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the block of any other provider. beehest never deletes the machine: host_teardown banks the work and leaves it up.
     # A Slurm cluster you own: provider = "slurm" takes the slurm block, with the same keys as the ssh block. It names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
     # max_run goes to sbatch as --time. The cluster is yours, so no slot job holds it and host_teardown banks the work and leaves it up.
     # host = host(

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const watchPoll = 2 * time.Millisecond
@@ -65,7 +65,7 @@ func (d *diskHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {
 	return id, nil
 }
 
-// addJob makes a job that the host runs and that no guard submitted, as a job that an earlier beehave started.
+// addJob makes a job that the host runs and that no guard submitted, as a job that an earlier beehest started.
 func (d *diskHost) addJob(ids ...model.JobID) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -294,7 +294,7 @@ func TestDiskWatch_AGuardWithNoPollDoesNotReadTheDiskWhileAJobRuns(t *testing.T)
 	assert.Empty(t, d.cancels())
 }
 
-func TestDiskWatch_AJobThatABeehaveBeforeStartedIsStoppedLikeAnyOtherJob(t *testing.T) {
+func TestDiskWatch_AJobThatABeehestBeforeStartedIsStoppedLikeAnyOtherJob(t *testing.T) {
 	t.Parallel()
 
 	d := newDiskHost(10 * gb)

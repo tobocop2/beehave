@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // shaWidth is how many characters of a commit id a line of an author shows.

@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // Name is the name the SkyPilot host provider is chosen by.
@@ -233,7 +233,7 @@ func (h *Host) taskFile() (string, error) {
 		return "", nil
 	}
 
-	dir, err := os.MkdirTemp("", "beehave-sky-")
+	dir, err := os.MkdirTemp("", "beehest-sky-")
 	if err != nil {
 		return "", fmt.Errorf("write the SkyPilot task file: %w", err)
 	}
@@ -251,12 +251,12 @@ func (h *Host) taskFile() (string, error) {
 	return path, nil
 }
 
-// setupScript clones the project at its base branch into ~/beehave-setup and runs `host.setup_command` there. It stops at the first failed line.
+// setupScript clones the project at its base branch into ~/beehest-setup and runs `host.setup_command` there. It stops at the first failed line.
 func (h *Host) setupScript() string {
 	lines := []string{
 		"set -e",
-		`mkdir -p "$HOME/beehave-setup"`,
-		`cd "$HOME/beehave-setup"`,
+		`mkdir -p "$HOME/beehest-setup"`,
+		`cd "$HOME/beehest-setup"`,
 		"git clone --branch " + model.ShellQuote(h.checkout.branch) + " " + model.ShellQuote(h.checkout.url) + " " + model.ShellQuote(h.checkout.project),
 		"cd " + model.ShellQuote(h.checkout.project),
 		h.config.SetupCommand,
@@ -275,7 +275,7 @@ func (h *Host) infra() string {
 }
 
 // Status reports whether the cluster exists, whether the queue drains its nodes, and its free disk space.
-// A cluster that is in the list but not up, and any answer that beehave does not recognize, is an error.
+// A cluster that is in the list but not up, and any answer that beehest does not recognize, is an error.
 func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	out, err := link.Run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
 	if err != nil {
@@ -335,7 +335,7 @@ func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
 // so a job id that the queue uses again never matches the marker of an earlier job.
 func (s slot) markerName(job jobwait.Job) string {
-	return ".beehave-banked-" + s.h.cluster + "-" + job.Key()
+	return ".beehest-banked-" + s.h.cluster + "-" + job.Key()
 }
 
 // slotCommand is the command of the SkyPilot job that keeps the cluster busy until the marker exists.

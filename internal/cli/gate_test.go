@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/cli"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/ownprogram"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/ownprogram"
 )
 
 const ownHead = "0123456789012345678901234567890123456789"
@@ -107,7 +107,7 @@ func TestGate_OwnProgramJudgesThePullRequestAndPostsTheStatusOnItsHead(t *testin
 
 	require.Equal(t, 0, code, stderr)
 	assert.Contains(t, stdout, "pull request 7: the gate passed on "+ownHead)
-	assert.Equal(t, []model.CommitStatus{{SHA: ownHead, Context: "beehave/gate", State: model.StatusSuccess, Description: "gate program changed, run by owner command, gate key k"}}, rig.posted)
+	assert.Equal(t, []model.CommitStatus{{SHA: ownHead, Context: "beehest/gate", State: model.StatusSuccess, Description: "gate program changed, run by owner command, gate key k"}}, rig.posted)
 }
 
 func TestGate_OwnProgramRefusesAPullRequestOnTheBranchOfAnItemOfTheProject(t *testing.T) {

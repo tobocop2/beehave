@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // onThisFileRun leaves the run of the test item open at its question, stops the engine, and ends the lease of the run, so no holder protects it.
@@ -118,7 +118,7 @@ func TestClient_ResumeOnThisFileRefusesARunThatIsDone(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "only a cancelled, failed or open run moves") //nolint:misspell // user-facing state word
-	require.ErrorContains(t, err, "beehave run "+testItem+" to start again")
+	require.ErrorContains(t, err, "beehest run "+testItem+" to start again")
 }
 
 func TestClient_ResumeOnThisFileRefusesAnItemWithNoRun(t *testing.T) {
@@ -127,7 +127,7 @@ func TestClient_ResumeOnThisFileRefusesAnItemWithNoRun(t *testing.T) {
 	err := newHarness(t).client(t, testVersion).ResumeOnThisFile(testItem)
 
 	require.ErrorIs(t, err, errNoRun)
-	require.ErrorContains(t, err, "start item "+testItem+" with beehave run "+testItem)
+	require.ErrorContains(t, err, "start item "+testItem+" with beehest run "+testItem)
 }
 
 func TestClient_ResumeOnThisFileRefusesAnItemThatIsNoItemId(t *testing.T) {
@@ -148,7 +148,7 @@ func TestClient_ResumeOnThisFileRefusesARunOfAnotherBuildAndNamesTheBuildFlag(t 
 	err := other.ResumeOnThisFile(testItem)
 
 	require.ErrorIs(t, err, errStranded)
-	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" --on-this-build")
 
 	last, found, readErr := latestRun(other.store(), testItem)
 	require.NoError(t, readErr)
@@ -169,7 +169,7 @@ func TestClient_ResumeOnThisFileRefusesARunWhoseHolderStillRuns(t *testing.T) {
 
 	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, "claim lease")
-	require.ErrorContains(t, err, "beehave resume "+testItem+" again with the same flags")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" again with the same flags")
 
 	_, found := pinAttributeOf(t, client, testRun)
 	assert.False(t, found, "a refused adoption writes no pin")
@@ -206,7 +206,7 @@ func TestClient_ResumeOnThisFileOfAnOpenRunThatCannotWriteThePinLeavesItCanceled
 
 	require.ErrorIs(t, err, errSpy)
 	require.ErrorContains(t, err, "pin the workflow file for run "+testRun)
-	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-file again")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" --on-this-file again")
 	assert.True(t, run{Status: exactRun(t, client)}.terminal(), "the pin is written after the cancel, so the run is canceled")
 
 	_, found := pinAttributeOf(t, client, testRun)
@@ -448,7 +448,7 @@ func TestClient_AChangedFileRefusesAMoveToThisBuildAndNamesBothFlags(t *testing.
 	err := other.ResumeOnThisBuild(testItem)
 
 	require.ErrorContains(t, err, "changed since the run started")
-	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build --on-this-file")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" --on-this-build --on-this-file")
 }
 
 func TestPinOf_TheAttributeWinsOverTheInputAndAMissingOrClearedOneReadsTheInput(t *testing.T) {

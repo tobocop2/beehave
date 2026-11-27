@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // codeScript is the test suite of a revert repository. code.txt is the code: one line "<function> <value>" each. A test file under tests/ holds
@@ -162,7 +162,7 @@ func TestBeforeReview_ARevertRunThatFailsBesideAPassingHeadGateRecordsBothExitsA
 	baseTip, err := exec.CommandContext(t.Context(), "git", "-C", repo, "rev-parse", "main").Output() //nolint:gosec // test helper
 	require.NoError(t, err)
 
-	command := hostCommand(revertProject(), nil, repo, head, t.TempDir()+"/beehave-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
+	command := hostCommand(revertProject(), nil, repo, head, t.TempDir()+"/beehest-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 	out, err := job.CombinedOutput()

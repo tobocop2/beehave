@@ -17,18 +17,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/cli"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 var errFake = errors.New("fake failure")
 
 const (
-	stateDirVariable = "BEEHAVE_STATE_DIR"
+	stateDirVariable = "BEEHEST_STATE_DIR"
 	validRunners     = "runner(name = \"a\", agent = \"claude\")\n"
 	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 )
@@ -394,7 +394,7 @@ type flowRig struct {
 	dir      string
 	engines  int // how many times the run command asked for an engine
 	env      map[string]string
-	// file is a valid workflow file. execute adds it to beehave run as --workflow when useFile is set and the arguments name none.
+	// file is a valid workflow file. execute adds it to beehest run as --workflow when useFile is set and the arguments name none.
 	file    string
 	useFile bool
 }
@@ -638,7 +638,7 @@ func TestRun_StopsOnInterruptAndTellsHowToContinue(t *testing.T) {
 	code, _, stderr := rig.execute(ctx, "run", "12")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "run beehave run again to continue it")
+	assert.Contains(t, stderr, "run beehest run again to continue it")
 	assert.Equal(t, 1, rig.runner.count())
 }
 
@@ -707,7 +707,7 @@ func TestCommands_RefuseAnUnusableConfigAndAnUnknownStateFolder(t *testing.T) {
 			code, _, stderr := rig.execute(t.Context(), command...)
 
 			assert.Equal(t, 1, code)
-			assert.Contains(t, stderr, "BEEHAVE_STATE_DIR")
+			assert.Contains(t, stderr, "BEEHEST_STATE_DIR")
 		})
 	}
 }
@@ -750,11 +750,11 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "item-1-r1\tdone\nitem-2-r1\trunning\tpaused: pick option a or b\n"+
-		"item-3-r1\trunning\tstranded: start beehave version v1 to finish it\n"+
+		"item-3-r1\trunning\tstranded: start beehest version v1 to finish it\n"+
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
 		"item-6-r1\tstopped\tstopped at check rc 2: refused\n"+
-		"item-7-r1\trunning\tstranded: made by an older step format. Start the beehave build that made it to finish it\n"+
+		"item-7-r1\trunning\tstranded: made by an older step format. Start the beehest build that made it to finish it\n"+
 		"item-8-r1\tdone\tended: the pull request was closed\n"+
 		"item-9-r1\trunning\tother orchestrators: ann: 3, 4; bob: 7\n\nno engine runs\n", stdout)
 	assert.True(t, rig.steering.closeOK)

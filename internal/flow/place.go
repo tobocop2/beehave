@@ -8,7 +8,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // gatePlaceName is the step that records the build host of a gate that names none, when the gate leaves the exclusive queue.

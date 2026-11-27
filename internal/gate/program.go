@@ -4,12 +4,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
 	// programMarker starts the line that the job writes when it refuses a head or fails the final check of the gate program. The reason follows.
-	programMarker = "beehave-gate-program"
+	programMarker = "beehest-gate-program"
 
 	// programCheck is the word that compares the gate paths with the base commit after the last head command.
 	programCheck = "gpcompare"

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/store/beads/beadstest"
 )
 
 func run(runner proc.Runner, args ...string) model.CommandResult {

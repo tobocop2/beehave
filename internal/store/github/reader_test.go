@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/github"
-	"github.com/tobocop2/beehave/internal/store/storetest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/github"
+	"github.com/tobocop2/beehest/internal/store/storetest"
 )
 
 var _ store.Reader = (*github.Store)(nil)
@@ -28,7 +28,7 @@ func TestComments_ReadsEveryPageAndDropsTheMarkerLine(t *testing.T) {
 	t.Parallel()
 
 	run := &proctest.Scripted{}
-	run.Plan(`[[{"body":"first"}],[{"body":"second\n\nbeehave-key: run-1:note"}]]`, "api", "--paginate", "--slurp", "repos/"+ghRepo+"/issues/3/comments")
+	run.Plan(`[[{"body":"first"}],[{"body":"second\n\nbeehest-key: run-1:note"}]]`, "api", "--paginate", "--slurp", "repos/"+ghRepo+"/issues/3/comments")
 
 	got, err := readerOver(t, run).Comments(t.Context(), "3")
 	require.NoError(t, err)

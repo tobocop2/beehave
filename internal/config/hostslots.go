@@ -8,7 +8,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // slotTable is the slots argument of the host block: a dict of slot class names to counts. The range of the counts is checked later, with the position of the block.

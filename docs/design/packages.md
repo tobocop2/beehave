@@ -1,6 +1,6 @@
 # Packages and layers
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 This part describes the Go packages, the layers they sit on, the composition root that builds them, and the adapters that a project selects.
 
@@ -8,11 +8,11 @@ This part describes the Go packages, the layers they sit on, the composition roo
 
 A package imports its own layer and lower layers. `depguard` in `.golangci.yml` fails an upward import. It also fails a package that is not on a layer list.
 
-The diagram shows each package and its imports of other beehave packages. A solid box is a package that exists. A dashed box is a package that a later milestone adds.
+The diagram shows each package and its imports of other beehest packages. A solid box is a package that exists. A dashed box is a package that a later milestone adds.
 
 ```mermaid
 flowchart TD
-    main["cmd/beehave<br/>composition root"]
+    main["cmd/beehest<br/>composition root"]
 
     subgraph L4["Layer 4: surfaces"]
         cli["cli<br/>cobra commands"]
@@ -141,13 +141,13 @@ flowchart TD
 
 ### The model package
 
-Every package imports `model`. `model` imports no beehave package.
+Every package imports `model`. `model` imports no beehest package.
 
 ### Processes and git
 
 Only `proc` starts a process. `forge` and `agent` call it. `store` reaches it through the runner that the composition root passes in.
 
-`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. The name of the git program and the hooks setting sit in `proc/gitexec/internal/gitbin`, which only `proc/gitexec` and the packages below it import. Code outside that tree gets the local runner from `gitexec.New`, or a runner from `proc/gitexec/reach`, and no exported name of `gitexec` builds any other git runner. The compiler cannot refuse a string, so a runner built with a `"git"` literal, with `model.ToolGit` or with `exec.Command` still compiles. A source test in `gitexec` fails on the first two as a runner `Binary`, in `NewExecRunner`, in `GroupCommand` and in `exec.Command`, also when a variable or a constant of the same folder holds the name. Review catches any other route, such as a path from `proc.LookPath`. The copy of a head in `cmd/beehave` finds the path of git with `proc.LookPath`, because the sandbox needs the file path to build the read set of upload-pack. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
+`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehest manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. The name of the git program and the hooks setting sit in `proc/gitexec/internal/gitbin`, which only `proc/gitexec` and the packages below it import. Code outside that tree gets the local runner from `gitexec.New`, or a runner from `proc/gitexec/reach`, and no exported name of `gitexec` builds any other git runner. The compiler cannot refuse a string, so a runner built with a `"git"` literal, with `model.ToolGit` or with `exec.Command` still compiles. A source test in `gitexec` fails on the first two as a runner `Binary`, in `NewExecRunner`, in `GroupCommand` and in `exec.Command`, also when a variable or a constant of the same folder holds the name. Review catches any other route, such as a path from `proc.LookPath`. The copy of a head in `cmd/beehest` finds the path of git with `proc.LookPath`, because the sandbox needs the file path to build the read set of upload-pack. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
 
 ### File locks and whole-file writes
 
@@ -155,7 +155,7 @@ File locks come from `github.com/gofrs/flock`. `flow`, `merge` and `store` open 
 
 `flow` and `merge` write the cancel marker and the saved check logs through `atomicfile.Write`, a layer 0 package. It writes a temporary file in the same folder, syncs it and renames it over the target. It sets the mode every time.
 
-`agent` removes the temporary folder of a sandboxed run, and `cmd/beehave` removes the copy of a gate, through `fstree.Remove`, a layer 0 package. When a plain removal fails, it gives the owner write rights on every folder and tries again, because the Go command extracts its module cache read-only.
+`agent` removes the temporary folder of a sandboxed run, and `cmd/beehest` removes the copy of a gate, through `fstree.Remove`, a layer 0 package. When a plain removal fails, it gives the owner write rights on every folder and tries again, because the Go command extracts its module cache read-only.
 
 ### The step contract
 
@@ -171,7 +171,7 @@ Layer 2 packages declare the small interfaces they need and do not import layer 
 
 ## Composition root
 
-`cmd/beehave/main.go` builds these once and passes them down as constructor arguments:
+`cmd/beehest/main.go` builds these once and passes them down as constructor arguments:
 
 - the config,
 - the logger,
@@ -205,7 +205,7 @@ A project file selects each adapter with a key. Each key is optional.
 | `claims` | `local` or `beads` | `local` |
 | `forge` | `github` | The project has no forge |
 
-`beehave check config` refuses each of these cases at the position of the key:
+`beehest check config` refuses each of these cases at the position of the key:
 
 - `repo` is missing when `tracker` or `forge` is `github`.
 - The `beads` block is missing when `tracker` or `claims` is `beads`.
@@ -215,16 +215,16 @@ A project file selects each adapter with a key. Each key is optional.
 
 ### The local tracker and claim store
 
-The local tracker and the local claim store keep their rows in `local.db` in the state folder (`internal/store/local`). The state folder is where `BEEHAVE_STATE_DIR` points. The file has mode 0600.
+The local tracker and the local claim store keep their rows in `local.db` in the state folder (`internal/store/local`). The state folder is where `BEEHEST_STATE_DIR` points. The file has mode 0600.
 
 The local claim store covers one state folder, on one machine. Two machines need beads.
 
 | Command | Does |
 |---|---|
-| `beehave item add <project> <id> --title <title> --body-file <file>` | Files an open item |
-| `beehave item list <project>` | Shows the open items |
+| `beehest item add <project> <id> --title <title> --body-file <file>` | Files an open item |
+| `beehest item list <project>` | Shows the open items |
 
-Both commands refuse a project whose tracker is not `local`. `beehave run <id>` refuses an id that the local project never added, and names the fix: `beehave item add`.
+Both commands refuse a project whose tracker is not `local`. `beehest run <id>` refuses an id that the local project never added, and names the fix: `beehest item add`.
 
 ### Where the clone comes from
 
@@ -241,7 +241,7 @@ For a project with no forge and no `source`:
 - `pin_file` is refused.
 - `gate_program` is refused.
 
-Each item gets a plain folder under the state folder that beehave makes. Release keeps the folder and beehave never deletes it, so the state folder grows with each item.
+Each item gets a plain folder under the state folder that beehest makes. Release keeps the folder and beehest never deletes it, so the state folder grows with each item.
 
 No step reads git there:
 
@@ -251,20 +251,20 @@ No step reads git there:
 - The builtins `merge` and `preflight`, and a `gate` call with no `run`, refuse the project with a plain message.
 - A `gate` call that names `run` runs its own program, reads no git, and records an empty `head` and an empty `tree`.
 
-`beehave run` and `beehave check workflow --project <name>` refuse each such call for a project with no repository. `beehave run` refuses it before any step runs.
+`beehest run` and `beehest check workflow --project <name>` refuse each such call for a project with no repository. `beehest run` refuses it before any step runs.
 
 A project with a source or a forge still needs `base_branch`, `gate` and `test_report`. Any other call that needs a forge gets the error "no forge" (`forge.ErrNoForge`).
 
 ### Adapter names
 
-`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `beehave check config` refuses an unknown name.
+`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `beehest check config` refuses an unknown name.
 
-`cmd/beehave/adapters.go` holds the one table from name to constructor. A test fails when the table and the name lists differ. No other package dispatches on an adapter name.
+`cmd/beehest/adapters.go` holds the one table from name to constructor. A test fails when the table and the name lists differ. No other package dispatches on an adapter name.
 
-`beehave check config` builds only what the project names:
+`beehest check config` builds only what the project names:
 
 - A local tracker and a local claim store open no file in that check.
-- A project that names beads, for the tracker or the claims, also runs `bd --version` through the command runner. It refuses a bd older than 1.3.2: "beehave needs bd 1.3.2 or newer for claims; found 0.56.1".
+- A project that names beads, for the tracker or the claims, also runs `bd --version` through the command runner. It refuses a bd older than 1.3.2: "beehest needs bd 1.3.2 or newer for claims; found 0.56.1".
 - A project that names no beads never starts `bd`.
 
 Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
@@ -282,7 +282,7 @@ The suite runs against every adapter with a fake command line. It checks the cla
 ```mermaid
 flowchart LR
     project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads = beads(prefix = …)"]
-    table["cmd/beehave/adapters.go<br/>name → constructor"]
+    table["cmd/beehest/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]
         Tracker

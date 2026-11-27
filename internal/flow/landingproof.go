@@ -8,8 +8,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/landing"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/landing"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // landingProofKind is the step kind and the builtin name of landing_proof.

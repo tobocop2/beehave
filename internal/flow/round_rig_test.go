@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 var errNoWorktree = errors.New("the rig could not make the worktree of an item")

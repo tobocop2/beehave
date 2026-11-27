@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func sandboxSeen(t *testing.T, rig *agentRig) *model.Sandbox {

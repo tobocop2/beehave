@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
 )
 
 func TestMachine_FlockAnswersTheVersionUnlessThePlanTakesItAway(t *testing.T) {
@@ -27,9 +27,9 @@ func TestMachine_ThePollPrintsTheWaitingLineOnlyWhileTheMarkerExists(t *testing.
 	m := sshtest.New(hosttest.Working)
 	submit(m, "u1", hosttest.PassingCommand)
 
-	assert.NotContains(t, observe(m, "u1"), "beehave-waiting")
+	assert.NotContains(t, observe(m, "u1"), "beehest-waiting")
 
 	m.Files["/b/u1.waiting"] = true
 
-	assert.Contains(t, observe(m, "u1"), "beehave-waiting")
+	assert.Contains(t, observe(m, "u1"), "beehest-waiting")
 }

@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 const pollMe = "me"
@@ -515,7 +515,7 @@ func TestClient_PollNotScheduledSaysWhenTheIntervalIsZero(t *testing.T) {
 	cause, err := client.PollNotScheduled()
 	require.NoError(t, err)
 	assert.Equal(t, pollOff, cause, "no launch ran")
-	assert.Contains(t, cause, "Under beehave serve, set 60.")
+	assert.Contains(t, cause, "Under beehest serve, set 60.")
 
 	launchedWith(t, harness, func(*Deps) {})
 

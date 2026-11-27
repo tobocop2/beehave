@@ -7,7 +7,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // cancelOutcome is what the cancel step records: whether the call ended the run.
@@ -81,7 +81,7 @@ func (e *Engine) isOpen(ref spawnedRun) (bool, error) {
 	return looks[0].open, nil
 }
 
-// cancelChild cancels a run that is still open, as beehave cancel does, and the children of a run that is canceled already. It reports whether the store
+// cancelChild cancels a run that is still open, as beehest cancel does, and the children of a run that is canceled already. It reports whether the store
 // now holds the run as canceled and the run was open at the recorded read. A run that ended before the cancel, with success or not, is no cancel of this
 // call: the store leaves an ended run as it is.
 func (e *Engine) cancelChild(project string, ref spawnedRun, open bool) (cancelOutcome, error) {

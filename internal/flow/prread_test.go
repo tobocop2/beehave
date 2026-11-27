@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/preflight"
 )
 
 // readsFake serves the reads of the claim stops: the facts of the pull request of each item, and the assignees of each issue by its text, such as "acme/tools#9".

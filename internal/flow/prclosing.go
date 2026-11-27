@@ -9,9 +9,9 @@ import (
 
 	"go.starlark.net/starlark"
 
-	forgepkg "github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	forgepkg "github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // prClosingKind is the step kind and the builtin name of pr_closing, itemKeyword is the keyword that names the item whose pull request it reads,

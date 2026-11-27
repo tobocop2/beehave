@@ -1,0 +1,41 @@
+# One fix round, so two candidates, does not satisfy the review. The item pauses and asks the owner to rule on the open findings.
+# After the answer, the settle step applies the ruling once and the run ends. The pull request is not marked ready.
+replace config/projects/shop.star '"fix_rounds": 5' '"fix_rounds": 1'
+exec beehest run 7 --workflow flow/workflow.star &
+
+# The run has opened the store once the first agent call is in the record.
+waitfile calls.log
+waitstatus 'paused: The review loop used all of its rounds'
+
+exec beehest status
+stdout '^item-7-r1\trunning\tpaused: The review loop used all of its rounds'
+! grep '^settle ' calls.log
+
+exec beehest answer 7 keep the current API
+wait
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone'
+
+# The fixes after candidate 1 are fix round 1, and the fixes inside candidate 1 are round 1 too. Each candidate has three scoped fixes:
+# the hit of the implementer is due at once, so candidate 1 has three too.
+grep -count=6 '^fix 1 ' calls.log
+! grep '^fix 2 ' calls.log
+grep -count=8 '^review ' calls.log
+grep -count=1 '^settle +[ab] keep the current API$' calls.log
+
+cmp events.log expected-events.log
+
+-- verdicts --
+changes
+changes
+changes
+changes
+changes
+changes
+changes
+changes
+-- expected-events.log --
+claim 7
+release 7

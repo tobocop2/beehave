@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -167,7 +167,7 @@ func runProgramJob(t *testing.T, project model.Project, repo, head, tip, base st
 	require.NoError(t, os.MkdirAll(bin, 0o750))
 	require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), "#!/bin/sh\nexit 0\n"))
 
-	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, base, tip)
+	command := hostCommand(project, nil, repo, head, root+"/beehest-gate-demo-"+head, base, tip)
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + ":/usr/bin:/bin:/opt/homebrew/bin", "HOME=" + t.TempDir()}
 	out, err := job.CombinedOutput()

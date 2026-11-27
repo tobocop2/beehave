@@ -20,8 +20,8 @@ import (
 
 	xunicode "golang.org/x/text/encoding/unicode"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/examples/remediation/tools/check"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (

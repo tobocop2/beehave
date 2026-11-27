@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 // testDeadline is the longest a test that can block may run. A parser that is wrong makes Wait poll for ever, so the test fails here instead.
@@ -274,12 +274,12 @@ func TestLog_ReadsTheTailOfTheSlurmLogOfTheJob(t *testing.T) {
 	t.Parallel()
 
 	h, ssh := newScripted(t)
-	ssh.Plan("line\nbeehave-gate-done\n", "tail")
+	ssh.Plan("line\nbeehest-gate-done\n", "tail")
 
 	log, err := h.Log(deadline(t), "5-n")
 
 	require.NoError(t, err)
-	assert.Equal(t, "line\nbeehave-gate-done\n", log)
+	assert.Equal(t, "line\nbeehest-gate-done\n", log)
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "tail", "-c", "16384", "slurm-5.out"}, ssh.Calls[0])
 
 	_, err = h.Log(deadline(t), "5; rm -rf x")
@@ -306,7 +306,7 @@ func TestDrainAndResume_UpdateEveryNode(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{
-		"scontrol update NodeName=n1 State=DRAIN Reason=beehave", "scontrol update NodeName=n2 State=DRAIN Reason=beehave",
+		"scontrol update NodeName=n1 State=DRAIN Reason=beehest", "scontrol update NodeName=n2 State=DRAIN Reason=beehest",
 		"scontrol update NodeName=n1 State=RESUME", "scontrol update NodeName=n2 State=RESUME",
 	}, updates)
 }

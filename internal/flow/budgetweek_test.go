@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // weekStore runs one item run for each entry of costs, with no run above any of them. Each run records the cost of its entry the way an agent call does.
@@ -89,7 +89,7 @@ func TestWeekCap_CostsOfAllItemsInsideTheWindowOverTheCapRefuseTheNextStep(t *te
 	assert.InDelta(t, 6.0, got.Stop.Spent, 0)
 	assert.Contains(t, got.Stop.Note, "the cap for the last seven days is $5 and the agent steps of all items spent $6")
 	assert.Contains(t, got.Stop.Note, "agents.max_week_budget_usd")
-	assert.Contains(t, got.Stop.Note, "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD")
+	assert.Contains(t, got.Stop.Note, "BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD")
 	assert.Equal(t, "stopped at the week cap $5, spent $6", got.Stop.text())
 }
 

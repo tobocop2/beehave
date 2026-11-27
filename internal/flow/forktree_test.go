@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // recordOf makes the record of a star step that returned outputs. The store keeps the output of a step as JSON text.
@@ -165,7 +165,7 @@ func TestFork_TheStartOfACallWithManyRecordsIsItsOwnFirstRecord(t *testing.T) {
 	assert.Greater(t, show, idOf(t, records, "agent:a#1/commit"))
 }
 
-// A run that failed in a step shows that step in beehave status, so a fork can start from it, as it starts from a finished step.
+// A run that failed in a step shows that step in beehest status, so a fork can start from it, as it starts from a finished step.
 func TestFork_TheStepThatARunFailedInIsAStartLikeAFinishedStep(t *testing.T) {
 	t.Parallel()
 

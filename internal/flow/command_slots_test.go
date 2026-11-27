@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehest/internal/host"
 )
 
 // slotJobs holds each host job of a test until the test lets it go. The jobs report their start on started, and the log keeps the order of the starts and the ends.

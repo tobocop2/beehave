@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	trackerstore "github.com/tobocop2/beehave/internal/store"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
 )
 
 // fakeWriter plays a tracker writer. Like an adapter, it files one item for each key.

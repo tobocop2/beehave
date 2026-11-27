@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
-// Name is the name the Slurm host provider is chosen by. The host is a Slurm cluster whose head node beehave reaches over ssh.
+// Name is the name the Slurm host provider is chosen by. The host is a Slurm cluster whose head node beehest reaches over ssh.
 const Name model.HostProvider = "slurm"
 
-// Host is a Slurm cluster that the owner provides and beehave reaches over ssh, at the head node. It creates and deletes nothing.
+// Host is a Slurm cluster that the owner provides and beehest reaches over ssh, at the head node. It creates and deletes nothing.
 //
 // Up checks that the head node answers and runs Slurm, and changes nothing. Down sends nothing. A caller releases the host with Teardown,
 // which banks the work and leaves the cluster up. No slot holds the cluster for a job, because nothing deletes an idle cluster.
@@ -93,10 +93,10 @@ func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	return status, err
 }
 
-// Down sends nothing and stops no job. beehave did not create the cluster, so it never deletes it.
+// Down sends nothing and stops no job. beehest did not create the cluster, so it never deletes it.
 func (*Host) Down(context.Context) error { return nil }
 
-// Teardown banks the work of the head node to `host.private_remote` and leaves the cluster up. It is the release of a host that beehave does not own:
+// Teardown banks the work of the head node to `host.private_remote` and leaves the cluster up. It is the release of a host that beehest does not own:
 // host.Teardown cannot be used, as it ends with an audit that the host is gone.
 func (h *Host) Teardown(ctx context.Context) error {
 	if err := h.bank(ctx); err != nil {

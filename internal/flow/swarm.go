@@ -13,10 +13,10 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
@@ -299,7 +299,7 @@ func (e *Engine) spawnCap(project string) int {
 }
 
 // planOne plans one item. An open run is refused, as a joined run has no parent row and a cancel of the parent would not reach it.
-// A failed last attempt is refused until beehave resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
+// A failed last attempt is refused until beehest resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
 // taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
 func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []string) (spawnedRun, error) {
 	last, found, err := latestRun(e.store(), id)
@@ -353,7 +353,7 @@ func openRunError(open run, item, project string) error {
 		return err
 	}
 
-	return fmt.Errorf("item %s has an open run, %s. Run beehave status to see it, or beehave cancel %s to end it, then start this item again", item, open.Status.ID, item)
+	return fmt.Errorf("item %s has an open run, %s. Run beehest status to see it, or beehest cancel %s to end it, then start this item again", item, open.Status.ID, item)
 }
 
 // startRuns starts the runs of the plan as child workflows of this run, one level deeper, on the items queue of that depth. The call is outside a step, so the library records each child.
@@ -662,7 +662,7 @@ func (s *script) waitFor(call gatherCall, spawned []spawnedRun) (gathered, error
 }
 
 // cancelExpired cancels the runs that were open at the deadline of a gather with on_timeout "cancel", as the step <gather step>.cancel after the wait,
-// through the path of beehave cancel. Each one is the latest attempt of a spawned run. A run that has ended since is left as it is, and the children of a
+// through the path of beehest cancel. Each one is the latest attempt of a spawned run. A run that has ended since is left as it is, and the children of a
 // run that is canceled already are canceled.
 func (s *script) cancelExpired(step string, spawned []spawnedRun, expired []string) error {
 	if len(expired) == 0 {
@@ -764,10 +764,10 @@ func settled(parent string, looks []look, fired raiseResult) gathered {
 
 	if fired.trigger >= 0 {
 		failed := looks[fired.trigger]
-		done.Failed = fmt.Sprintf("item %s did not finish: %s. Run beehave resume %s to reopen item %s and run the spawn again", failed.out.Item, failed.out.Error, parent, failed.out.Item)
+		done.Failed = fmt.Sprintf("item %s did not finish: %s. Run beehest resume %s to reopen item %s and run the spawn again", failed.out.Item, failed.out.Error, parent, failed.out.Item)
 
 		if failed.canceled {
-			done.Failed = fmt.Sprintf("item %s did not finish: %s. It was canceled by hand, and beehave resume %s does not reopen a child canceled by hand", failed.out.Item, failed.out.Error, parent)
+			done.Failed = fmt.Sprintf("item %s did not finish: %s. It was canceled by hand, and beehest resume %s does not reopen a child canceled by hand", failed.out.Item, failed.out.Error, parent)
 		}
 	}
 
@@ -846,7 +846,7 @@ func succeeded(ref spawnedRun, row dbos.WorkflowStatus) childOutcome {
 	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Closed: result.Closed, Stopped: result.Stopped, Value: result.Value}
 }
 
-// cancelOpen cancels the runs that are still open, as beehave cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.
+// cancelOpen cancels the runs that are still open, as beehest cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.
 // The cancel reaches the phases of each run, so none waits in the queue. The tick of the engine ends each local run and gives its claim back.
 // It cancels the children of a canceled run again, and returns the ids of the open runs it canceled.
 func (e *Engine) cancelOpen(project string, looks []look) ([]string, error) {

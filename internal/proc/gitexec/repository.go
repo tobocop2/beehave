@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // exitRefused is the exit code of a pinned call that git did not run: the folder is unknown, the clone config cannot be read, or it holds a setting
@@ -24,7 +24,7 @@ const (
 )
 
 // ErrUnknownRepository is the error for a folder that is neither a clone nor a worktree that a clone of the engine holds a record of.
-var ErrUnknownRepository = errors.New("the folder is not a clone or a worktree that beehave made")
+var ErrUnknownRepository = errors.New("the folder is not a clone or a worktree that beehest made")
 
 // Repository is a git repository that the engine names: its git dir, its common dir and its work tree.
 type Repository struct {
@@ -41,7 +41,7 @@ type SettingError struct {
 
 // Error names the settings and the command that removes them.
 func (e *SettingError) Error() string {
-	return fmt.Sprintf("the git config of %s holds %s, which beehave does not allow, so beehave runs no git there. Remove each with git config --unset <setting> in %s.",
+	return fmt.Sprintf("the git config of %s holds %s, which beehest does not allow, so beehest runs no git there. Remove each with git config --unset <setting> in %s.",
 		e.Clone, strings.Join(e.Keys, ", "), e.Clone)
 }
 

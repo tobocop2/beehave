@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 const (
@@ -322,11 +322,11 @@ func (h *fakeHost) setup(extra ...string) (string, error) {
 func (h *fakeHost) record() string {
 	h.t.Helper()
 
-	return h.read(filepath.Join(h.workRoot, ".beehave/host-setup.record"))
+	return h.read(filepath.Join(h.workRoot, ".beehest/host-setup.record"))
 }
 
 func (h *fakeHost) envFile() string {
-	return filepath.Join(h.home, ".config/environment.d/zz-beehave.conf")
+	return filepath.Join(h.home, ".config/environment.d/zz-beehest.conf")
 }
 
 // setModule makes the fake go print another module and version, split by a space, on the mod line of a tool. The text "-" prints no mod line.
@@ -487,7 +487,7 @@ func TestHostSetup_RefusesAWorkRootThatIsNotTheLoginUsers(t *testing.T) {
 		{name: "a_trailing_slash_on_an_existing_folder", workRoot: "<base>/work/", message: notCanonical},
 		{name: "a_missing_folder_whose_parent_is_missing", workRoot: "<base>/no/jobs", message: "Make the parent folder first"},
 		{name: "a_missing_folder_whose_parent_is_a_file", workRoot: "<base>/file/jobs", message: "Make the parent folder first"},
-		{name: "a_missing_folder_in_a_system_folder", workRoot: "/usr/beehave-missing-work-root", message: byHand},
+		{name: "a_missing_folder_in_a_system_folder", workRoot: "/usr/beehest-missing-work-root", message: byHand},
 		{name: "a_missing_folder_whose_parent_is_owned_by_root", workRoot: "<base>/theirs/jobs", message: byHand},
 		{name: "a_missing_folder_whose_parent_is_owned_by_another_user", workRoot: "<base>/theirs/jobs", message: byHand},
 	}
@@ -559,7 +559,7 @@ func TestHostSetup_TheFakesRefuseAPathOutsideTheTestFolder(t *testing.T) {
 	t.Parallel()
 
 	// No parent of an outside path exists, so a fake without the guard fails in the real tool and writes nothing.
-	const outside = "/beehave-no-such-folder/x"
+	const outside = "/beehest-no-such-folder/x"
 
 	// More .. parts than the temporary folder has parts, so the path leaves it.
 	up := strings.Repeat("/..", 32)
@@ -1052,7 +1052,7 @@ func TestHostSetup_PutsTheToolFoldersOnThePathOfTheUserManager(t *testing.T) {
 	out, err := h.setup()
 
 	require.NoError(t, err, out)
-	assert.Equal(t, "PATH="+h.sysroot+"/usr/local/go/bin:"+h.home+"/go/bin:${PATH}\nBEEHAVE_BD_132="+h.home+"/go/bin/bd\n", h.read(h.envFile()))
+	assert.Equal(t, "PATH="+h.sysroot+"/usr/local/go/bin:"+h.home+"/go/bin:${PATH}\nBEEHEST_BD_132="+h.home+"/go/bin/bd\n", h.read(h.envFile()))
 	assert.Contains(t, h.unitEnvironment(), "PATH="+h.sysroot+"/usr/local/go/bin:"+h.home+"/go/bin:"+h.bin+":/usr/bin:/bin:/snap/bin\n")
 
 	log := h.read(h.log)
@@ -1075,7 +1075,7 @@ func TestHostSetup_ReadsTheGoPathFromGo(t *testing.T) {
 	out, err := h.setup("FAKE_GOPATH=" + gopath + ":" + filepath.Join(h.base, "second"))
 
 	require.NoError(t, err, out)
-	assert.Equal(t, "PATH="+h.sysroot+"/usr/local/go/bin:"+gopath+"/bin:${PATH}\nBEEHAVE_BD_132="+gopath+"/bin/bd\n", h.read(h.envFile()))
+	assert.Equal(t, "PATH="+h.sysroot+"/usr/local/go/bin:"+gopath+"/bin:${PATH}\nBEEHEST_BD_132="+gopath+"/bin/bd\n", h.read(h.envFile()))
 	assert.Contains(t, h.read(h.log), "make setup PATH="+h.sysroot+"/usr/local/go/bin:"+gopath+"/bin:")
 	assert.Contains(t, out, "host-tools: actionlint v1.7.12 is installed", "host-tools finds actionlint in the GOPATH")
 	assert.Equal(t, done, lastLine(out))
@@ -1188,7 +1188,7 @@ func TestHostSetup_ThePathSurvivesTheSystemEnvironmentFiles(t *testing.T) {
 	assert.Equal(t, done, lastLine(out))
 	assert.Contains(t, h.unitEnvironment(), "PATH="+h.sysroot+"/usr/local/go/bin:"+h.home+"/go/bin:"+h.bin+":/usr/bin:/bin:/snap/bin\n",
 		"the Go folders come first, and the files of the system still apply")
-	assert.Contains(t, h.unitEnvironment(), "BEEHAVE_BD_132="+h.home+"/go/bin/bd\n")
+	assert.Contains(t, h.unitEnvironment(), "BEEHEST_BD_132="+h.home+"/go/bin/bd\n")
 }
 
 func TestHostSetup_FailsWhenALaterFileReplacesThePath(t *testing.T) {
@@ -1201,7 +1201,7 @@ func TestHostSetup_FailsWhenALaterFileReplacesThePath(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, out, "the PATH of the user manager does not start with "+h.sysroot+"/usr/local/go/bin:"+h.home+"/go/bin")
-	assert.Contains(t, out, "sorts after zz-beehave.conf")
+	assert.Contains(t, out, "sorts after zz-beehest.conf")
 
 	for _, folder := range []string{"~/.config/environment.d", "/etc/environment.d", "/run/environment.d", "/usr/local/lib/environment.d", "/usr/lib/environment.d"} {
 		assert.Contains(t, out, folder, "the refusal names the folder that environment.d(5) reads for a user manager")
@@ -1259,7 +1259,7 @@ func TestHostSetup_ReadsThePinOfAGoInstalledToolFromItsModuleLine(t *testing.T) 
 }
 
 func (h *fakeHost) guardFiles() (rules, unit string) {
-	return filepath.Join(h.sysroot, "etc/beehave/metadata-guard.nft"), filepath.Join(h.sysroot, "etc/systemd/system/metadata-guard.service")
+	return filepath.Join(h.sysroot, "etc/beehest/metadata-guard.nft"), filepath.Join(h.sysroot, "etc/systemd/system/metadata-guard.service")
 }
 
 func TestHostSetup_RestartsTheMetadataGuardOnlyWhenItsFilesOrItsStateDiffer(t *testing.T) {
@@ -1368,7 +1368,7 @@ func TestMetadataGuard_RulesRejectNonRootTCPOnEveryPortButDNSToTheMetadataAddres
 	h := newFakeHost(t)
 	set := parseGuardRuleset(h.readSource("metadata-guard.nft"))
 
-	assert.Equal(t, []string{"make beehave_metadata_guard", "delete beehave_metadata_guard", "define beehave_metadata_guard"}, set.tables, "the file makes the table, deletes it and defines it again in one load")
+	assert.Equal(t, []string{"make beehest_metadata_guard", "delete beehest_metadata_guard", "define beehest_metadata_guard"}, set.tables, "the file makes the table, deletes it and defines it again in one load")
 	assert.Equal(t, "output", set.chain)
 	assert.Equal(t, "type filter hook output priority 0; policy accept;", set.hook)
 	assert.Equal(t, []string{
@@ -1411,7 +1411,7 @@ func TestMetadataGuard_UnitLoadsAfterNftablesAndBeforeTheNetworkAndUserSessions(
 	assert.Contains(t, unit["Unit"]["Before"], "network-pre.target")
 	assert.Contains(t, unit["Unit"]["Before"], "systemd-user-sessions.service")
 	assert.Equal(t, []string{"multi-user.target"}, unit["Install"]["WantedBy"], "the rules load at every boot")
-	assert.Equal(t, []string{"/usr/sbin/nft", "-f", "/etc/beehave/metadata-guard.nft"}, unit["Service"]["ExecStart"])
+	assert.Equal(t, []string{"/usr/sbin/nft", "-f", "/etc/beehest/metadata-guard.nft"}, unit["Service"]["ExecStart"])
 	assert.Equal(t, []string{"oneshot"}, unit["Service"]["Type"])
 	assert.Equal(t, []string{"yes"}, unit["Service"]["RemainAfterExit"])
 	assert.NotContains(t, unit["Service"], "ExecStop", "a stop that deletes the table opens a window with no rule during a restart")

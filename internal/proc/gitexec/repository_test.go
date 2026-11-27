@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
 )
 
 // engineLayout is a state folder with a clone of an origin at repos/p and a linked worktree of it at trees/p/item, as the engine makes them.

@@ -1,0 +1,65 @@
+# d462n row K2-uncommitted: item round/integration/r1, project git, earlier step none, between the runs none.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+subst flow/wf.star
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add local round/integration/r1 --title 'The item' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/wf.star &
+waitfile started
+kill -KILL
+wait
+
+exec sh any.sh run run round/integration/r1 local --workflow flow/wf.star
+exec cat run.err
+
+# control: the second start got the note
+exists prompt.2
+grep 'This step ran before' prompt.2
+grep readme.txt prompt.2
+! grep 'The engine found no change to tracked files since the step started' prompt.2
+
+-- any.sh --
+label=$1
+shift
+beehestreal "$@" > "$label.out" 2> "$label.err"
+echo $? > "$label.rc"
+-- body.txt --
+The body.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- origin/MOVED_MARKER --
+moved
+-- flow/wf.star --
+def main(item):
+    agent(name = "probe", prompt = "prompts/probe.md", model = "m")
+-- flow/prompts/probe.md --
+Probe the folder.
+-- fake/claude --
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then echo 1.0.0; exit 0; fi
+n=$(cat "@WORK@/starts" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "@WORK@/starts"
+cat > "@WORK@/prompt.$n"
+if [ "$n" -eq 1 ]; then
+	echo more >> readme.txt
+	echo x > "@WORK@/started"
+	sleep 30
+fi
+echo '{"type":"result","session_id":"s1","result":"done"}'

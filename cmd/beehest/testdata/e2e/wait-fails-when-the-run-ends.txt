@@ -1,0 +1,12 @@
+# A wait for a fact that the run never writes fails when the run ends, with the status of the run in its text. It does not run to its bound.
+# The negated wait passes only when it fails on the end of the run with the status; a wait that runs to the bound fails the script.
+exec beehest run 7 --workflow flow/workflow.star &
+! waitfile never-written
+wait
+
+exec beehest status
+stdout '^item-7-r1\tdone\t'
+
+-- verdicts --
+approve
+approve

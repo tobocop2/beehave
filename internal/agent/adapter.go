@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // VersionArgs are arguments that a CLI takes from the version From on, such as "2.0.0".
@@ -136,7 +136,7 @@ const (
 
 // Launch is what an adapter adds to the start of one run, beyond the arguments of its profile.
 // Prompt says how the prompt reaches the CLI. For PromptArgument and PromptFile the runner appends one argument after every other argument, so a flag that
-// names the prompt goes last in Args. The file of PromptFile is beehave-prompt.txt in the run folder, has mode 0600 and is removed with the folder when the run ends. A launch file of that name is replaced.
+// names the prompt goes last in Args. The file of PromptFile is beehest-prompt.txt in the run folder, has mode 0600 and is removed with the folder when the run ends. A launch file of that name is replaced.
 // Prefix is a list of words that the runner puts before the CLI on the command line, such as a wrapper that sets up an environment. The first word is looked
 // up on PATH, and the runner does not look up the CLI itself: the program of the prefix finds it by name. Each word is one argument and no shell reads the line.
 // The probe of the version of the CLI runs the prefix, then the CLI, then --version.

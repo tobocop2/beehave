@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
 )
 
 const (
@@ -32,7 +32,7 @@ const (
 )
 
 var (
-	errNotARepository = errors.New("run beehave init in the top folder of a git repository")
+	errNotARepository = errors.New("run beehest init in the top folder of a git repository")
 	errGitNotFound    = errors.New("git was not found. Install git and put it on PATH")
 )
 
@@ -71,7 +71,7 @@ func newInitCommand(ctx context.Context, env map[string]string) *cobra.Command {
 		},
 	}
 	flags := command.Flags()
-	flags.StringVar(&opts.folder, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
+	flags.StringVar(&opts.folder, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehest)")
 	flags.StringVar(&opts.name, initNameFlag, "", "the project name (default: the name of the repository folder)")
 	flags.StringVar(&opts.branch, initBranchFlag, "", "the branch that rounds start from (default: the branch that HEAD names)")
 	flags.StringVar(&opts.gate, initGateFlag, initGateDefault, "the command that judges a change; set it to the test command of the repository")

@@ -1,5 +1,5 @@
 # A swarm: one backlog, many tasks, many agents at once, and a merge queue that lands pull requests by priority.
-# Run: SWARM=<item> beehave run <item> <project> --workflow workflow.star
+# Run: SWARM=<item> beehest run <item> <project> --workflow workflow.star
 # The body of the parent item holds one task on each line: a priority (P0 to P3), a tab, the title, and optionally a tab and a body.
 #
 # The spend cap is agents.max_tree_budget_usd in runners.star. At the cap, the engine holds each agent step that has not started (see durable-loop.md).
@@ -11,8 +11,8 @@
 #   DEADLINE_MIN optional, default 480: the most minutes that the swarm starts new runs.
 #   BATCH        optional, default 8: the number of finished pull requests that starts a landing pass.
 
-load("@beehave//batch.star", "batch_merge")
-load("@beehave//queue.star", "queue")
+load("@beehest//batch.star", "batch_merge")
+load("@beehest//queue.star", "queue")
 
 HOLD = "hold"
 TIERS = ["P0", "P1", "P2", "P3"]

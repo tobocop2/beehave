@@ -6,7 +6,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // patched is the builtin patched(name). It is true for a run that has not passed this call and false for a run that has, so an author changes a step

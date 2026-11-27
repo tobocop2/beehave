@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // logRemote is a fakeRemote that also gives the log of a job, as a host that can read its log does.
@@ -38,7 +38,7 @@ func runFailedHostJob(t *testing.T, remote gate.Remote) gate.Result {
 func TestVerdict_ACommandThatPassedWithNoTestCaseReadsAsPassedCommandAndFailedTests(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "ok\nbeehave-gate-no-tests\nbeehave-gate-done\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "ok\nbeehest-gate-no-tests\nbeehest-gate-done\n"}
 
 	result := runFailedHostJob(t, remote)
 
@@ -50,7 +50,7 @@ func TestVerdict_ACommandThatPassedWithNoTestCaseReadsAsPassedCommandAndFailedTe
 func TestVerdict_AFailedCommandKeepsItsFailureWhenTheLogHasNoMarker(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "make: *** Error 2\nbeehave-gate-done\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "make: *** Error 2\nbeehest-gate-done\n"}
 
 	result := runFailedHostJob(t, remote)
 
@@ -74,7 +74,7 @@ func TestVerdict_AHostThatCannotReadItsLogKeepsTheOldReadingAndNamesBothCauses(t
 func TestVerdict_ATrackedReportFileIsRefusedAndNamed(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehave-gate-tracked-report reports/old.xml\nbeehave-gate-done\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehest-gate-tracked-report reports/old.xml\nbeehest-gate-done\n"}
 
 	result := runFailedHostJob(t, remote)
 

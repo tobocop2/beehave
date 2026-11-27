@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/storetest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/storetest"
 )
 
 // toolTracker is a tracker tool with two subcommands: `list <key>` prints the id that holds the key, and `create <key>` files an item and prints its id.

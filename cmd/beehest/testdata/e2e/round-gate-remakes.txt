@@ -1,0 +1,69 @@
+# The process dies while the project gate of a round item runs. Someone removes the worktree and the base moves while no run is alive.
+# The next run resumes the gate, which makes the worktree again at the commit that the run started on before it runs, not at the new tip of the base.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER .gitignore
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+replace config/projects/local.star '"make check"' '"sh '$WORK'/gate.sh"'
+subst gate.sh
+subst flow/round.star
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started
+kill -KILL
+wait
+
+rm state/trees/local/round_2Fintegration_2Fr1
+exec git -C origin checkout -q integration/r1
+exec git -C origin add MOVED_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m moved
+exec git -C origin checkout -q main
+exec git -C origin rev-parse integration/r1
+cp stdout new-tip
+cp body.txt second
+
+exec beehestreal run round/integration/r1 local --workflow flow/round.star
+stdout 'item round/integration/r1 finished'
+
+# The gate ran again in the worktree at the start commit of the run, and the tree holds no commit of the moved base.
+cmp second.head first.head
+! cmp second.head new-tip
+grep '^absent$' second.moved
+grep '^passed$' result
+
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- origin/MOVED_MARKER --
+moved
+-- origin/.gitignore --
+reports/
+-- gate.sh --
+mkdir -p reports
+echo '<testsuite name="g" tests="1"><testcase classname="g" name="t"/></testsuite>' > reports/g.xml
+if [ -e @WORK@/second ]; then
+	git rev-parse HEAD > @WORK@/second.head
+	if [ -e MOVED_MARKER ]; then echo present > @WORK@/second.moved; else echo absent > @WORK@/second.moved; fi
+else
+	git rev-parse HEAD > @WORK@/first.head
+	echo x > @WORK@/started
+	sleep 20
+fi
+-- flow/round.star --
+def main(item):
+    result = gate(name = "g")
+    command(name = "record", run = ["sh", "-c", "echo " + ("passed" if result.passed else "failed") + " > @WORK@/result"])

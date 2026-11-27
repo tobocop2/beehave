@@ -1,6 +1,6 @@
 # Agent runs, shell rules and lane papers
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 An `agent` step starts one AI coding CLI through an adapter, feeds it the prompt and reads the calls it makes. The setting `forbid_commands` refuses shell commands of listed kinds through a hook and records hits after the run. The setting `allow_paths` limits which files a step may change. `check/shell` holds the shell rules; the lane paper checks live in the remediation tools.
 
@@ -10,13 +10,13 @@ An `agent` step starts one AI coding CLI through an adapter, feeds it the prompt
 
 - `agent` holds the runner and the `Adapter` contract.
 - An adapter supplies the profile of one CLI (binary, fixed arguments, login variables) and reads its output stream.
-- `agent/claude` and `agent/opencode` are the adapters. Each other agent is its own package. OpenCode has no sandbox, so a sandboxed step with it is refused. Its guard is a plugin file that beehave writes into the run folder and that OpenCode loads. beehave runs no JavaScript.
-- `cmd/beehave` holds the table that maps an agent name to the constructor of its adapter. It puts the adapter in the `Spec` of each run. A run with no adapter does not start.
+- `agent/claude` and `agent/opencode` are the adapters. Each other agent is its own package. OpenCode has no sandbox, so a sandboxed step with it is refused. Its guard is a plugin file that beehest writes into the run folder and that OpenCode loads. beehest runs no JavaScript.
+- `cmd/beehest` holds the table that maps an agent name to the constructor of its adapter. It puts the adapter in the `Spec` of each run. A run with no adapter does not start.
 - `agent/agenttest` is the conformance suite. It starts a fake CLI and checks the profile, the arguments and the call reader of an adapter. Every new adapter calls it from its tests.
 
 ### Time limits of a step
 
-The keys `timeout` and `idle_timeout` of the `agent` call take a duration text, such as `"90s"` or `"10m"`. `beehave check workflow` refuses any other text.
+The keys `timeout` and `idle_timeout` of the `agent` call take a duration text, such as `"90s"` or `"10m"`. `beehest check workflow` refuses any other text.
 
 - `timeout` limits the whole run. The Go module download before a sandboxed step does not count against it (see [sandbox.md](sandbox.md#the-go-module-cache)).
 - `idle_timeout` limits the time with no output. Each write of the CLI to its standard output or its standard error starts the time again.
@@ -42,14 +42,14 @@ A step author must know these limits:
 - **The guard needs a POSIX shell.** A step with `forbid_commands` does not start on Windows. If the plugin does not load, OpenCode runs every shell command with no check. The plugin writes a marker file when it loads, and a run that ends with no marker gets a violation line.
 - **A run with no timeout ends after one hour.** A model over its usage quota prints nothing and retries. The note of the timed-out run names that cause.
 - **The pool never picks OpenCode.** OpenCode has no usage report, so the pool reads an unknown usage for it and skips it, and the doctor makes no login check for it. A step runs on OpenCode only when it names the runner with `runner = "<name>"`.
-- **The record names the runner and the model.** The render record of an agent step holds `label` (the free label of the call, left out when empty), `login` (the named runner, or the login that the pool picked) and `model` (the model that the step sets). The engine writes it before the agent starts, so `beehave status <run id>` and `beehave status <run id> --json` show all three on the step line while the step runs and after it fails, and `beehave status --item <item>` lists a running or failed lane with them. The dry run prints them in the render record. The engine reads both fields for display only, so a record without them replays as before.
+- **The record names the runner and the model.** The render record of an agent step holds `label` (the free label of the call, left out when empty), `login` (the named runner, or the login that the pool picked) and `model` (the model that the step sets). The engine writes it before the agent starts, so `beehest status <run id>` and `beehest status <run id> --json` show all three on the step line while the step runs and after it fails, and `beehest status --item <item>` lists a running or failed lane with them. The dry run prints them in the render record. The engine reads both fields for display only, so a record without them replays as before.
 
 ### The process of the CLI
 
 The launch of an adapter says how the prompt reaches the CLI. The default is stdin, so the prompt never shows in a process list. Both adapters use it.
 
 - `argument` puts the prompt in one argument, the last one, after every other argument. It shows in the process list of the machine. The argument limit of the operating system bounds it: a prompt over the limit fails to start, so use `file` for a long prompt. A flag that names the prompt goes last in the arguments of the launch.
-- `file` writes the prompt to `beehave-prompt.txt` in the run folder and puts the path in the last argument. The file has mode 0600, the folder has mode 0700, and the runner removes the folder when the run ends.
+- `file` writes the prompt to `beehest-prompt.txt` in the run folder and puts the path in the last argument. The file has mode 0600, the folder has mode 0700, and the runner removes the folder when the run ends.
 
 The launch can also set a prefix: a list of words that the runner puts before the CLI. The first word is a program found on PATH, and each other word is one argument. No shell reads the command line. With a prefix, the runner does not look up the CLI on PATH: the program of the prefix finds it by name. The probe of the version of the CLI runs the prefix, then the CLI, then `--version`. A run with no prefix looks up the CLI on PATH as before.
 
@@ -60,7 +60,7 @@ The CLI gets an allowlisted environment:
 - the token, if one is passed;
 - one `TRACEPARENT`, only when `agents.trace_parent` is true.
 
-The `TRACEPARENT` names the run and the step. The trace id is the first 16 bytes of the SHA-256 of `beehave-trace:` and the run id. The parent span id is the first 8 bytes of the SHA-256 of `beehave-span:`, the run id, `/` and the call name. The flags are `01`. A replay builds the same value. A sandboxed run gets it too. The engine value replaces any `TRACEPARENT` of the caller. `TRACESTATE`, `OTEL_*` and the telemetry switches of the caller never reach the CLI, and beehave exports no span: the CLI exports its own. A child run has its own run id and so its own trace id. The `command` step gets no trace variable.
+The `TRACEPARENT` names the run and the step. The trace id is the first 16 bytes of the SHA-256 of `beehest-trace:` and the run id. The parent span id is the first 8 bytes of the SHA-256 of `beehest-span:`, the run id, `/` and the call name. The flags are `01`. A replay builds the same value. A sandboxed run gets it too. The engine value replaces any `TRACEPARENT` of the caller. `TRACESTATE`, `OTEL_*` and the telemetry switches of the caller never reach the CLI, and beehest exports no span: the CLI exports its own. A child run has its own run id and so its own trace id. The `command` step gets no trace variable.
 
 No other variable of the caller reaches it. `SSH_AUTH_SOCK` is not on the list, for any step, sandboxed or not, and the usage reader and the `command` step use the same list. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
 
@@ -102,7 +102,7 @@ The tap gives each new session id to the request at the line that holds it, so t
 - A Bash call counts at any depth of a line.
 - A call of a sub-agent counts too. Claude Code forwards the `tool_use` blocks of sub-agents in the stream; they carry `parent_tool_use_id`.
 
-The entries that the adapter reads go to the durable stream `agent` of the phase, redacted. The workflow builtin `stream` reads that stream for a child run, with the reader of `beehave status --follow` (see [`stream`](workflow-files.md#stream)).
+The entries that the adapter reads go to the durable stream `agent` of the phase, redacted. The workflow builtin `stream` reads that stream for a child run, with the reader of `beehest status --follow` (see [`stream`](workflow-files.md#stream)).
 
 The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules](#shell-rules)).
 
@@ -177,7 +177,7 @@ Setup rules:
 
 - The setting `protect_paths` of the step lists the directories. No built-in path exists.
 - The kind needs at least one path. If a step lists the kind with no `protect_paths`, or sets `protect_paths` without the kind, the step is refused when it runs, before any agent starts.
-- `beehave check workflow` refuses the same two cases, and an empty path, when both settings are list literals of text literals. A setting that is not a literal is left to the run.
+- `beehest check workflow` refuses the same two cases, and an empty path, when both settings are list literals of text literals. A setting that is not a literal is left to the run.
 - A relative path starts at the folder of the step.
 - The hook gets the directories as `--protect` (absolute, comma-separated or repeated). `--protect` is required when `--forbid` lists the kind. The default `--forbid` list leaves the kind out, as it leaves out `git-write`.
 - The hook gets the directory of the command from the event: the `cwd` of Claude Code, or the `directory` that the OpenCode plugin forwards.
@@ -214,27 +214,27 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 `worktree add` and `worktree list` pass. A reviewer builds its own copy of the tree with `worktree add`, not with `apply`.
 
-`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehave check command --agent <agent>` holds every kind except `git-write`, so a bare hook does not refuse every commit.
+`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehest check command --agent <agent>` holds every kind except `git-write`, so a bare hook does not refuse every commit.
 
 #### Check of the workflow
 
-`beehave check workflow` refuses a kind that is not in the list, and shows its position. It reads each string literal of a list literal. A list that is not a literal (a variable, or `A + B`) and an element that is not a literal are left to the run, which refuses them when the step runs.
+`beehest check workflow` refuses a kind that is not in the list, and shows its position. It reads each string literal of a list literal. A list that is not a literal (a variable, or `A + B`) and an element that is not a literal are left to the run, which refuses them when the step runs.
 
 ### The hook
 
 The Claude adapter passes `--settings` with inline JSON. The JSON adds a `PreToolUse` hook with matcher `Bash` for that run (https://code.claude.com/docs/en/hooks). The adapter never edits a settings file of the user.
 
-The hook runs `beehave check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 0 only for a shell call that has a command and breaks no rule. It exits 2 for every other input: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read, an event longer than 1 MiB, an event of another tool, an event in the format of another agent, and a shell call with no command. The hook of each agent runs for the shell tool only, so a call of another tool never reaches the command, and an event that is not a shell call is a fault, not a call to allow.
+The hook runs `beehest check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 0 only for a shell call that has a command and breaks no rule. It exits 2 for every other input: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read, an event longer than 1 MiB, an event of another tool, an event in the format of another agent, and a shell call with no command. The hook of each agent runs for the shell tool only, so a call of another tool never reaches the command, and an event that is not a shell call is a fault, not a call to allow.
 
-An agent session that keeps running across an upgrade of beehave carries the old hook, which has no `--agent`. The command refuses every call of that session until the session restarts. Each new run builds the hook again, so only a session that started before the upgrade is affected.
+An agent session that keeps running across an upgrade of beehest carries the old hook, which has no `--agent`. The command refuses every call of that session until the session restarts. Each new run builds the hook again, so only a session that started before the upgrade is affected.
 
 The shell rules are the same for each agent. Each adapter supplies only the reader of its hook format: `agent/claude` reads the `PreToolUse` event of Claude Code, and `agent/opencode` reads the call that its plugin forwards (`directory`, `tool` and `args`). A new agent CLI needs a reader and a name in the table of `--agent`, and no copy of the rules.
 
-The hook also sets `"onFailure": "block"`. With it, a hook that cannot start (for example, the program of beehave moved during the run), exits with another code or times out blocks the call too. Without the key, those failures let the call go ahead. The hooks page says of the key: "Requires Claude Code v2.1.295 or later." An older Claude Code ignores the key and fails open on those failures.
+The hook also sets `"onFailure": "block"`. With it, a hook that cannot start (for example, the program of beehest moved during the run), exits with another code or times out blocks the call too. Without the key, those failures let the call go ahead. The hooks page says of the key: "Requires Claude Code v2.1.295 or later." An older Claude Code ignores the key and fails open on those failures.
 
 A step that sets `forbid_commands` does not start (outcome `not-started`, with a note) when:
 
-- beehave cannot find the path of its own program, or
+- beehest cannot find the path of its own program, or
 - the agent CLI of the runner has no hook.
 
 Hooks run in the shell of Claude Code. The quoting of the command is for a POSIX shell. A Windows shell (PowerShell or cmd) is not supported.
@@ -250,7 +250,7 @@ Not verified against a real Claude Code: whether the hook of `--settings` adds t
 
 The hook does not see a command that does not go through the Bash tool, so the check after the run stays as the second line.
 
-After the run, `cmd/beehave` scans each Bash call of the stream with `check/shell`. It records one line for each hit of a listed kind, as `<kind>: <command>`, in the output `violations`.
+After the run, `cmd/beehest` scans each Bash call of the stream with `check/shell`. It records one line for each hit of a listed kind, as `<kind>: <command>`, in the output `violations`.
 
 - The output holds at most 20 lines, which include the lines for an incomplete check. Then one line gives the number left out.
 - The output is empty when the run is clean.
@@ -333,7 +333,7 @@ The setting `data` of an `agent` step is a dict of values that the agent reads f
 - The call encodes the dict once to JSON, with the encoder of the Starlark JSON library. The `/render` step records the text and the path `<state>/inputs/<item>.<step>/data.json`, a folder of its own in the inputs folder.
 - The phase writes the file, mode 0600, from the recorded text before each start of the agent. The phase derives the path from the state folder of the engine, the item and the step, and the phase input carries no path. A replay writes the same bytes to the same path. The value is as fresh as the step that read it, never a read at the start of the agent.
 - The prompt names the file as `{{ .data_file }}`. A step with no `data` gets no file and an empty `data_file`.
-- A value that is not a dict is refused, by the run and by `beehave check workflow`.
+- A value that is not a dict is refused, by the run and by `beehest check workflow`.
 
 The prompt tells the agent to read the file with the shell and to refuse when the file is missing. The sandbox reads this one file: see [the sandbox](sandbox.md#the-data-file).
 
@@ -374,7 +374,7 @@ The engine has one check package: `check/shell`, for the shell scan. The other c
 
 | Check | Run by |
 |---|---|
-| The gate list derive | `beehave check gate-list` |
+| The gate list derive | `beehest check gate-list` |
 | The report check | `remedy report` |
 | The handoff check | `remedy handoff` |
 | The author check | `remedy authors` |
@@ -424,7 +424,7 @@ The author check compares the address of a commit with the address of the accoun
 
 The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step.
 
-`beehave check gate-list [--steps <name>]... [--map <json>] <ci-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
+`beehest check gate-list [--steps <name>]... [--map <json>] <ci-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
 
 #### The guard is the gate, not the label
 

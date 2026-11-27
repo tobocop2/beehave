@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/review"
-	"github.com/tobocop2/beehave/internal/step"
+	"github.com/tobocop2/beehest/internal/review"
+	"github.com/tobocop2/beehest/internal/step"
 )
 
 // gateFlow calls gate, waits for the owner, then calls gate again. Each gate starts a child workflow.

@@ -3,10 +3,10 @@ package flow
 import (
 	"go.starlark.net/starlark"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // errNoMerger is returned when a merge call runs in an engine that has no merger.

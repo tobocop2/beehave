@@ -14,13 +14,13 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/atomicfile"
+	"github.com/tobocop2/beehest/internal/atomicfile"
 )
 
 const cancelsDir = "canceled"
 
 // A cancel marker is a file named for a run, in the canceled folder of the state folder. It holds the item and the project of the run, and the claim token the run held at the cancel.
-// beehave cancel writes it before it cancels the run. The marker ends when the release of the worktree and the claim ends.
+// beehest cancel writes it before it cancels the run. The marker ends when the release of the worktree and the claim ends.
 // A marker that is still there at the next start shows a release that no process finished.
 
 func cancelPath(dir, id string) string {
@@ -200,7 +200,7 @@ func (e *Engine) warnOn(err error, id string) {
 	}
 }
 
-// sweepCancels gives back every run that beehave cancel canceled while an engine ran, when that engine stopped before its release ended.
+// sweepCancels gives back every run that beehest cancel canceled while an engine ran, when that engine stopped before its release ended.
 // Launch calls it before the tick starts, so all the markers share one release timeout: a tracker that hangs delays the start once, not once for each marker.
 // A marker whose run is no longer canceled belongs to a run that was resumed, deleted or never canceled.
 // A marker whose item has a newer run is dropped: the give-back would stop the agents of the newer run.
@@ -231,7 +231,7 @@ func (e *Engine) sweepOne(ctx context.Context, a *attempt, atStart bool) {
 	case state.superseded || (!state.canceled && (atStart || !state.open)):
 		e.warnOn(underOwners(e.dir, func() error { return removeOwnedMarker(e.dir, a.id, a.owner) }), a.id)
 	case !state.canceled:
-		// beehave cancel writes the marker before it cancels the run, so the cancel may still come.
+		// beehest cancel writes the marker before it cancels the run, so the cancel may still come.
 	default:
 		// The engine stopped after the cancel and before the run woke, so no live wait turned off the queued merge.
 		if err := disarmCanceled(ctx, e.store().List, e.deps.Merge, a.id); err != nil {

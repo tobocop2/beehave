@@ -14,10 +14,10 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/ownprogram"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/ownprogram"
 )
 
 const ownProgramFlag = "own-program"
@@ -37,7 +37,7 @@ func processConsole() (io.Reader, bool) {
 	return os.Stdin, isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
 }
 
-const gateLong = "Run the gate of one pull request with the gate program of its own head, and post the result as the status beehave/gate on the head.\n" +
+const gateLong = "Run the gate of one pull request with the gate program of its own head, and post the result as the status beehest/gate on the head.\n" +
 	"Use it for a pull request that changes the files that gate_program lists, which the normal gate refuses. The command runs only on a terminal.\n" +
 	"It prints the diff of the pull request and runs the gate after you type the number of the pull request.\n" +
 	"The command refuses a pull request on the branch of an item, a pull request into a branch that is not the base branch of the project,\n" +
@@ -47,7 +47,7 @@ const gateLong = "Run the gate of one pull request with the gate program of its 
 // pullNumber reads the number of the pull request from the arguments: the first, with an optional project after it.
 func pullNumber(args []string) (int, error) {
 	if len(args) < 1 || len(args) > maxGateArgs {
-		return 0, errors.New("give the number of the pull request, and the project when the config holds more than one: beehave gate --" + ownProgramFlag + " <pull request> [project]")
+		return 0, errors.New("give the number of the pull request, and the project when the config holds more than one: beehest gate --" + ownProgramFlag + " <pull request> [project]")
 	}
 
 	number, err := strconv.Atoi(args[0])
@@ -244,12 +244,12 @@ func branchesOf(ids []string) []string {
 func sayGate(stdout, stderr io.Writer, number int, out ownprogram.Outcome) error {
 	if out.Passed {
 		// A failed write to stdout has no recovery.
-		_, _ = fmt.Fprintf(stdout, "pull request %d: the gate passed on %s with its own gate program. Posted beehave/gate.\n", number, out.Head)
+		_, _ = fmt.Fprintf(stdout, "pull request %d: the gate passed on %s with its own gate program. Posted beehest/gate.\n", number, out.Head)
 
 		return nil
 	}
 
-	_, _ = fmt.Fprintf(stderr, "pull request %d: the gate failed on %s. Posted beehave/gate as failure.\n%s\n", number, out.Head, out.Report)
+	_, _ = fmt.Fprintf(stderr, "pull request %d: the gate failed on %s. Posted beehest/gate as failure.\n%s\n", number, out.Head, out.Report)
 
 	return &ExitError{Code: exitError}
 }

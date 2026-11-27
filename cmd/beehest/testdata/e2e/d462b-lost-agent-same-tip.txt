@@ -1,0 +1,64 @@
+# Acceptance d462b R4 (N2). The process dies while the agent step of a round item runs, and the agent left the worktree clean.
+# The base branch moves on the remote. The next run recovers the agent step: the recovered agent and the later command step
+# run at the commit that the lost agent saw.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+subst flow/round.star
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started
+kill -KILL
+wait
+
+exec git -C origin checkout -q integration/r1
+exec git -C origin add MOVED_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m moved
+exec git -C origin checkout -q main
+
+exec beehestreal run round/integration/r1 local --workflow flow/round.star
+stdout 'item round/integration/r1 finished'
+
+# CELL R4a: the recovered agent ran at the commit of the lost agent.
+cmp agent.head.1 agent.head.2
+# CELL R4b: the later command step ran at the same commit.
+cmp agent.head.1 last.head
+
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- origin/MOVED_MARKER --
+moved
+-- flow/round.star --
+def main(item):
+    agent(name = "probe", prompt = "prompts/probe.md", model = "m")
+    command(name = "last", run = ["sh", "-c", "git rev-parse HEAD > @WORK@/last.head"])
+-- flow/prompts/probe.md --
+Probe the folder.
+-- fake/claude --
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then echo 1.0.0; exit 0; fi
+n=$(cat "@WORK@/starts" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "@WORK@/starts"
+cat > "@WORK@/prompt.$n"
+git rev-parse HEAD > "@WORK@/agent.head.$n"
+if [ "$n" -eq 1 ]; then echo x > "@WORK@/started"; sleep 30; fi
+echo '{"type":"result","session_id":"s1","result":"done"}'

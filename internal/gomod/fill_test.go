@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/gomod"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/gomod"
 )
 
 // rig is a filler over a fake go command, an item worktree and a cache root, all in temporary folders.
@@ -110,7 +110,7 @@ func TestFill_ProjectWithDependenciesFillsTheCacheAndGoSum(t *testing.T) {
 	require.Len(t, r.downloads(t), 1)
 	assert.NotEqual(t, r.work, r.downloads(t)[0]["DIR"], "go never runs in the files the agent wrote")
 	assert.Equal(t, "tree", filepath.Base(r.downloads(t)[0]["DIR"]), "the download runs in the copy of the engine")
-	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehave"), "the new go.sum replaced the old one")
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehest"), "the new go.sum replaced the old one")
 }
 
 func TestFill_AProjectNameIsOnePathElementOfTheCache(t *testing.T) {
@@ -356,7 +356,7 @@ func TestFill_AWriteBackThatFailsAfterTheCreateLeavesNoTemporaryFile(t *testing.
 
 	assert.NotEmpty(t, cache, "the step starts with the cache")
 	assert.Contains(t, note, "cannot be written to "+filepath.Join(r.work, "go.sum"))
-	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehave"), "the engine removes the file it made")
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehest"), "the engine removes the file it made")
 	assert.DirExists(t, filepath.Join(r.work, "go.sum", "x"))
 }
 
@@ -365,12 +365,12 @@ func TestFill_AFolderAtTheTemporaryNameIsInTheWay(t *testing.T) {
 
 	r := newRig(t, fillsCache)
 	write(t, filepath.Join(r.work, "go.mod"), module)
-	require.NoError(t, os.MkdirAll(filepath.Join(r.work, "go.sum.beehave"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(r.work, "go.sum.beehest"), 0o700))
 
 	cache, note := r.filler.Fill(t.Context(), "proj", r.work)
 
 	assert.NotEmpty(t, cache, "the step starts with the cache")
-	assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehave")+" is in the way")
+	assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehest")+" is in the way")
 	assert.NoFileExists(t, filepath.Join(r.work, "go.sum"))
 }
 
@@ -413,12 +413,12 @@ func TestFill_ALinkAtTheTemporaryNameIsRefusedAndNothingIsWrittenThroughIt(t *te
 			write(t, victim, "keep\n")
 		}
 
-		require.NoError(t, os.Symlink(link, filepath.Join(r.work, "go.sum.beehave")))
+		require.NoError(t, os.Symlink(link, filepath.Join(r.work, "go.sum.beehest")))
 
 		cache, note := r.filler.Fill(t.Context(), "proj", r.work)
 
 		assert.NotEmpty(t, cache, "%s: the step starts with the cache", name)
-		assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehave")+" is in the way", name)
+		assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehest")+" is in the way", name)
 		assert.NoFileExists(t, filepath.Join(r.work, "go.sum"), name)
 
 		kept, err := os.ReadFile(victim) //nolint:gosec // a path inside the test folder

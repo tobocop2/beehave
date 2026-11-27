@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const pageSize = 10
@@ -682,8 +682,8 @@ func syncerCalls(target forge.Syncer) []call {
 // What the fake behind a Statuses serves: the branch that requires a pull request and the statuses StatusGate and StatusReview, and the commit that a status is posted on.
 const (
 	StatusBranch = "integration/round"
-	StatusGate   = "beehave/gate"
-	StatusReview = "beehave/review"
+	StatusGate   = "beehest/gate"
+	StatusReview = "beehest/review"
 	StatusCommit = "fedcba9876543210fedcba9876543210fedcba98"
 )
 

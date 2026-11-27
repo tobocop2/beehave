@@ -19,7 +19,7 @@ unset UPKEEP_TICK_LOCKED
 wk=$(week)
 tab=$(printf '\t')
 
-# The list goes in on descriptor 3. beehave reads standard input, and a read from the list would swallow the next rows.
+# The list goes in on descriptor 3. beehest reads standard input, and a read from the list would swallow the next rows.
 while IFS="$tab" read -r name slug base _gate <&3; do
     case "$name" in "" | \#*) continue ;; esac
     valid "$name" || { echo "tick: skip bad name $name" >&2; continue; }
@@ -43,20 +43,20 @@ while IFS="$tab" read -r name slug base _gate <&3; do
     jq -n --arg repo "$name" --arg week "$wk" --arg base "$base" --arg fingerprint "$fp" --arg table "$table" \
         '{repo: $repo, week: $week, base: $base, fingerprint: $fingerprint, table: $table}' > "$H/tmp/$id.json"
     # An item left from an earlier try of this week makes item add fail. The run below continues it, so the failure is not fatal.
-    child beehave item add "$name" "$id" --title "Bump dependencies in $name ($wk)" --body-file "$H/tmp/$id.json" < /dev/null > /dev/null 2>&1
-    child beehave run "$id" "$name" --workflow "$H/bump.star" < /dev/null
+    child beehest item add "$name" "$id" --title "Bump dependencies in $name ($wk)" --body-file "$H/tmp/$id.json" < /dev/null > /dev/null 2>&1
+    child beehest run "$id" "$name" --workflow "$H/bump.star" < /dev/null
     rc=$?
     if [ "$rc" -ne 0 ] && ! logged "$wk" "$name"; then
-        # Exit 3 is the usage cap: no agent login is under its cap, and beehave refuses to start.
+        # Exit 3 is the usage cap: no agent login is under its cap, and beehest refuses to start.
         if [ "$rc" -eq 3 ]; then
             sh "$H/scripts/log.sh" "$wk" "$name" deferred "no agent login under its usage cap"
         else
-            sh "$H/scripts/log.sh" "$wk" "$name" error "beehave run exited $rc"
+            sh "$H/scripts/log.sh" "$wk" "$name" error "beehest run exited $rc"
         fi
     fi
 done 3< "$H/repos.tsv"
 
 rid="report-$wk"
 printf '{"week":"%s"}\n' "$wk" > "$H/tmp/$rid.json"
-child beehave item add upkeep "$rid" --title "Weekly report $wk" --body-file "$H/tmp/$rid.json" < /dev/null > /dev/null 2>&1
-child beehave run "$rid" upkeep --workflow "$H/report.star" < /dev/null
+child beehest item add upkeep "$rid" --title "Weekly report $wk" --body-file "$H/tmp/$rid.json" < /dev/null > /dev/null 2>&1
+child beehest run "$rid" upkeep --workflow "$H/report.star" < /dev/null

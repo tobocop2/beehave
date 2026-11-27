@@ -9,8 +9,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/atomicfile"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/atomicfile"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	// pollScheduleFileName holds the cause when the last launch could not set the poll schedule. It is empty when the launch set it.
 	pollScheduleFileName = "poll-schedule-error"
 	// pollOff is the status text when the interval is 0.
-	pollOff = "agents.review_poll_minutes is 0, so no review poll runs. Set it to a number of minutes to turn the poll on. Under beehave serve, set 60."
+	pollOff = "agents.review_poll_minutes is 0, so no review poll runs. Set it to a number of minutes to turn the poll on. Under beehest serve, set 60."
 )
 
 // ErrNoPollSource is returned by the poll reader for a project that has no forge. The poll skips that project.
@@ -136,7 +136,7 @@ func pollScheduleFile(stateDir string) string {
 	return filepath.Join(stateDir, pollScheduleFileName)
 }
 
-// recordSchedule keeps the outcome of the schedule at launch for beehave status, which runs in another process.
+// recordSchedule keeps the outcome of the schedule at launch for beehest status, which runs in another process.
 // A failure is logged and the engine goes on: the poll is optional. A nil err records that the poll is scheduled.
 func (e *Engine) recordSchedule(err error) {
 	var text string

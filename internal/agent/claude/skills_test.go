@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 // toolResult is a user line that holds the result of one tool call.
@@ -56,11 +56,11 @@ func TestCalls_TheSkillOfThePluginOfTheEngineIsRecordedByItsPlainName(t *testing
 	adapter := claude.New(nil)
 
 	for line, want := range map[string]string{
-		"beehave-skills:review":  "review",
+		"beehest-skills:review":  "review",
 		"review":                 "review",
 		"other-plugin:review":    "other-plugin:review",
-		"xbeehave-skills:review": "xbeehave-skills:review",
-		"beehave-skills-review":  "beehave-skills-review",
+		"xbeehest-skills:review": "xbeehest-skills:review",
+		"beehest-skills-review":  "beehest-skills-review",
 	} {
 		seen := adapter.Calls(skillCall(t, "toolu_1", line))
 		require.Len(t, seen.Skills, 1, line)
@@ -86,7 +86,7 @@ func TestSandbox_ARunWithSkillsPassesAPluginFolderThatHoldsOnlyThoseSkills(t *te
 	}
 
 	require.NoError(t, json.Unmarshal([]byte(launch.Files["skills-plugin/.claude-plugin/plugin.json"]), &manifest))
-	assert.Equal(t, "beehave-skills", manifest.Name)
+	assert.Equal(t, "beehest-skills", manifest.Name)
 
 	box, isBox := settings["sandbox"].(map[string]any) // the settings decode as untyped JSON
 	require.True(t, isBox)

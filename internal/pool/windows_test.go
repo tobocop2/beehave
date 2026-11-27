@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/pool"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/pool"
 )
 
 // threeWindows is a reading of an agent with the windows hourly, daily and monthly, from the shortest to the longest.

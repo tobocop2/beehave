@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // call runs the words on the machine as the link does: options, "--", the target, then each word quoted.
@@ -171,8 +171,8 @@ func TestMachine_ARecordedResultIsPrintedByThePoll(t *testing.T) {
 	submit(m, "u1", hosttest.PassingCommand)
 	m.Files["/b/u1.timed_out"] = true
 
-	assert.Contains(t, observe(m, "u1"), "beehave-result timed_out\n")
-	assert.NotContains(t, observe(m, "u1"), "beehave-result succeeded")
+	assert.Contains(t, observe(m, "u1"), "beehest-result timed_out\n")
+	assert.NotContains(t, observe(m, "u1"), "beehest-result succeeded")
 }
 
 func TestMachine_AHostileCommandThatTravelsAsBase64ArrivesWhole(t *testing.T) {
@@ -206,9 +206,9 @@ func TestMachine_ANeverStartedUnitIsNotFoundAndCarriesTheMarkerAndSize(t *testin
 
 	out := observe(m, "ghost")
 
-	assert.Contains(t, out, "beehave-canceled")
+	assert.Contains(t, out, "beehest-canceled")
 	assert.Contains(t, out, "LoadState=not-found")
-	assert.True(t, strings.HasSuffix(out, "beehave-size -1\n"))
+	assert.True(t, strings.HasSuffix(out, "beehest-size -1\n"))
 }
 
 func TestMachine_PlannedReadsSizesAndStops(t *testing.T) {
@@ -219,9 +219,9 @@ func TestMachine_PlannedReadsSizesAndStops(t *testing.T) {
 	m.Units["r"].Raw = []string{"first\n", "second\n"}
 	m.Units["r"].LogSizes = []int{4, 9}
 
-	assert.Equal(t, "first\nbeehave-size 4\n", observe(m, "r"))
-	assert.Equal(t, "second\nbeehave-size 9\n", observe(m, "r"))
-	assert.Equal(t, "second\nbeehave-size 9\n", observe(m, "r"), "the last read repeats")
+	assert.Equal(t, "first\nbeehest-size 4\n", observe(m, "r"))
+	assert.Equal(t, "second\nbeehest-size 9\n", observe(m, "r"))
+	assert.Equal(t, "second\nbeehest-size 9\n", observe(m, "r"), "the last read repeats")
 
 	submit(m, "s", "x")
 	m.Units["s"].Live = 9
@@ -269,8 +269,8 @@ func TestNew_AnUnreadableLogFailsOnlyTheTailOfTheLog(t *testing.T) {
 
 	m := sshtest.New(hosttest.UnreadableLog)
 
-	assert.Equal(t, 1, call(m, "tail", "-c", "5", "/work/.beehave/beehave-n1.log").ExitCode)
-	assert.Empty(t, call(m, "tail", "-c", "5", "/work/.beehave/beehave-n1.log").Stdout)
+	assert.Equal(t, 1, call(m, "tail", "-c", "5", "/work/.beehest/beehest-n1.log").ExitCode)
+	assert.Empty(t, call(m, "tail", "-c", "5", "/work/.beehest/beehest-n1.log").Stdout)
 	assert.Equal(t, sshtest.User+"\n", call(m, "id", "-un").Stdout)
 	assert.Equal(t, hosttest.DF, call(m, "df", "-P", "-k", "/x").Stdout)
 	assert.Contains(t, call(m, "systemd-run", "--version").Stdout, "systemd 255")
@@ -280,13 +280,13 @@ func TestMachine_TailAnswersTheLastBytesOfTheScriptedLogOfTheUnitAndTheDefaultFo
 	t.Parallel()
 
 	m := sshtest.New(hosttest.Working)
-	m.Units["beehave-n1"] = &sshtest.Unit{Log: "0123456789\n"}
-	m.Units["beehave-n2"] = &sshtest.Unit{}
+	m.Units["beehest-n1"] = &sshtest.Unit{Log: "0123456789\n"}
+	m.Units["beehest-n2"] = &sshtest.Unit{}
 
-	assert.Equal(t, "6789\n", call(m, "tail", "-c", "5", "/work/.beehave/beehave-n1.log").Stdout)
-	assert.Equal(t, "0123456789\n", call(m, "tail", "-c", "100", "/work/.beehave/beehave-n1.log").Stdout)
-	assert.Empty(t, call(m, "tail", "-c", "0", "/work/.beehave/beehave-n1.log").Stdout)
-	assert.Equal(t, "0123456789\n", call(m, "tail", "-c", "11", "/work/.beehave/beehave-n1.log").Stdout)
-	assert.Equal(t, "log text\n", call(m, "tail", "-c", "5", "/work/.beehave/beehave-n2.log").Stdout)
-	assert.Equal(t, "log text\n", call(m, "tail", "-c", "5", "/work/.beehave/beehave-n9.log").Stdout)
+	assert.Equal(t, "6789\n", call(m, "tail", "-c", "5", "/work/.beehest/beehest-n1.log").Stdout)
+	assert.Equal(t, "0123456789\n", call(m, "tail", "-c", "100", "/work/.beehest/beehest-n1.log").Stdout)
+	assert.Empty(t, call(m, "tail", "-c", "0", "/work/.beehest/beehest-n1.log").Stdout)
+	assert.Equal(t, "0123456789\n", call(m, "tail", "-c", "11", "/work/.beehest/beehest-n1.log").Stdout)
+	assert.Equal(t, "log text\n", call(m, "tail", "-c", "5", "/work/.beehest/beehest-n2.log").Stdout)
+	assert.Equal(t, "log text\n", call(m, "tail", "-c", "5", "/work/.beehest/beehest-n9.log").Stdout)
 }

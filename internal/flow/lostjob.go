@@ -10,9 +10,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/config"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (

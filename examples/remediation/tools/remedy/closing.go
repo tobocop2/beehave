@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/examples/remediation/tools/check"
+	"github.com/tobocop2/beehest/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // bodyReader is the read of a forge that cannot list closing references. It gives the body of a pull request.

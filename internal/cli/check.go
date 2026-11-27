@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/ci"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/flow"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/ci"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/flow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
@@ -80,8 +80,8 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"The default file is " + defaultWorkflowFile + " in the current folder. " +
 	"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed. " +
 	"A line that starts with note: is a fact for the author, such as an agent step with sandbox = None. It is no problem and changes no exit code.\n\n" +
-	"With --" + dryRunFlag + ", beehave then runs the file for one item over fakes and prints each step with its fake result. " +
-	"The run uses a temporary state folder that beehave deletes at the end. It calls no forge, agent, tracker or host. " +
+	"With --" + dryRunFlag + ", beehest then runs the file for one item over fakes and prints each step with its fake result. " +
+	"The run uses a temporary state folder that beehest deletes at the end. It calls no forge, agent, tracker or host. " +
 	"Every gate in the run passes, and every review approves. " +
 	"A dry run takes no real time: a sleep reports 0 seconds, and a wait or a recv with no entry in the fixture times out at once. A wait with no timeout and no entry is refused, because a real run would wait for ever. " +
 	"With --" + fixtureFlag + " <file.json>, the file scripts the result of each agent, gate, wait and recv call by key, so a review can reject twice and then approve, or a gate can be red once. " +
@@ -204,7 +204,7 @@ func newCheckWorkflowCommand(ctx context.Context, env map[string]string, registr
 // flags adds --project and --config to the command.
 func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
 	command.Flags().StringVar(&p.project, projectFlag, "", "a project of the config: refuse each call of gate, merge, preflight, pr_read or issue_assignees when the project has no repository")
-	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
+	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/beehest)")
 
 	return command
 }

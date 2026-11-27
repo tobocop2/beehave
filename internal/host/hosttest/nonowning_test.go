@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // keptHost is a machine that the owner provides: it is up before Up and after Down, and Up and Down send nothing.

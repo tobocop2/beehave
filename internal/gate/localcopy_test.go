@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // localWriteThroughTheClone is head code that writes every place that a gate copy could share with the item or the source: the loose objects of the clone that are hard

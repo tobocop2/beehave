@@ -1,11 +1,11 @@
 package gitexec
 
-import "github.com/tobocop2/beehave/internal/credential"
+import "github.com/tobocop2/beehest/internal/credential"
 
 // tokenVariable carries the token of one call to the credential helper of that call. hostVariable carries the one host that the helper answers for.
 const (
-	tokenVariable = "BEEHAVE_FORGE_TOKEN"
-	hostVariable  = "BEEHAVE_FORGE_HOST"
+	tokenVariable = "BEEHEST_FORGE_TOKEN"
+	hostVariable  = "BEEHEST_FORGE_HOST"
 )
 
 // helper is a credential helper of the call. A leading ! makes git run it as a shell function. It reads protocol= and host= from the input that git gives

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/credential"
+	"github.com/tobocop2/beehest/internal/credential"
 )
 
 func TestRoleEnv_HoldsTheNetworkNamesAndTheGivenPairsAndNothingElse(t *testing.T) {

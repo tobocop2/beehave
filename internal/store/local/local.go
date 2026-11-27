@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 // The names the local adapter is chosen by: the tracker and the claim store that need no other tool.
@@ -135,7 +135,7 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 
 	err := s.db.QueryRowContext(ctx, `SELECT title, body FROM items WHERE project = ? AND id = ?`, s.project, id).Scan(&title, &body)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, store.Refuse("no item %s in project %s. Add it: beehave item add", id, s.project)
+		return nil, store.Refuse("no item %s in project %s. Add it: beehest item add", id, s.project)
 	}
 
 	if err != nil {

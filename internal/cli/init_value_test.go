@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehest/internal/config"
 )
 
 func TestInit_AQuoteAndANewlineInTheGateComeBackAsTheSameGate(t *testing.T) {

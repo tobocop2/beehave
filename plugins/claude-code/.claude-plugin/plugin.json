@@ -1,11 +1,11 @@
 {
-  "name": "beehave",
+  "name": "beehest",
   "version": "0.1.0",
-  "description": "Drive the beehave command line from a Claude Code chat: queue an item, run it, show status, answer a question, cancel a run.",
+  "description": "Drive the beehest command line from a Claude Code chat: queue an item, run it, show status, answer a question, cancel a run.",
   "author": {
     "name": "tobocop2"
   },
   "icon": "./logo.svg",
-  "repository": "https://github.com/tobocop2/beehave",
-  "keywords": ["beehave", "backlog", "runs"]
+  "repository": "https://github.com/tobocop2/beehest",
+  "keywords": ["beehest", "backlog", "runs"]
 }

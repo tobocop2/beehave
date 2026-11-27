@@ -155,7 +155,7 @@ func TestNewEngine_ASecondEngineOnOneStateFolderIsRefusedUntilTheFirstStops(t *t
 
 	_, err = NewEngine(t.Context(), harness.opts, harness.deps())
 	require.ErrorIs(t, err, ErrStateBusy)
-	require.EqualError(t, err, "another beehave run owns this state folder; wait for it, or see beehave status")
+	require.EqualError(t, err, "another beehest run owns this state folder; wait for it, or see beehest status")
 
 	client := harness.client(t, testVersion)
 	_, err = client.Status()

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/agenttest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/agenttest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // recorder is a Reporter that keeps the failures instead of failing the test.
@@ -235,13 +235,13 @@ func TestCheckRun(t *testing.T) {
 		t.Parallel()
 
 		a := good()
-		a.profile.ConfigVars = []string{"BEEHAVE_SUITE_LEAK"}
+		a.profile.ConfigVars = []string{"BEEHEST_SUITE_LEAK"}
 
 		var r recorder
 
 		agenttest.CheckRun(&r, a, t.TempDir())
 
-		assert.Contains(t, r.failures, "the CLI saw BEEHAVE_SUITE_LEAK, a variable of the caller")
+		assert.Contains(t, r.failures, "the CLI saw BEEHEST_SUITE_LEAK, a variable of the caller")
 	})
 
 	t.Run("a_stray_launch_argument_that_nobody_declared_is_a_failure", func(t *testing.T) {

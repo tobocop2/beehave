@@ -14,14 +14,14 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const (
 	// inboxTopic is the one DBOS topic that every message to a run arrives on. The topic of the workflow is a field of the envelope.
-	inboxTopic = "beehave.inbox"
-	// answerTopic is the reserved topic of an answer to a wait. beehave answer sends it, and wait receives it, so no workflow file sends or receives it.
-	answerTopic = "beehave.answer"
+	inboxTopic = "beehest.inbox"
+	// answerTopic is the reserved topic of an answer to a wait. beehest answer sends it, and wait receives it, so no workflow file sends or receives it.
+	answerTopic = "beehest.answer"
 	// answerSender is the sender of an answer that names no person.
 	answerSender = "cli"
 	// recvKind and sendKind are the step kinds of the inbox builtins.
@@ -297,7 +297,7 @@ func (s *script) itemDestination(item, label string) (spawnedRun, error) {
 type noOpenRunError struct{ item string }
 
 func (e *noOpenRunError) Error() string {
-	return fmt.Sprintf("item %s has no open run. Run beehave status to see the runs, or beehave run %s to start one", e.item, e.item)
+	return fmt.Sprintf("item %s has no open run. Run beehest status to see the runs, or beehest run %s to start one", e.item, e.item)
 }
 
 // openRunInProject finds the open run of an item and refuses a run of another project. A dry run has no other item, so it ends clean where the run is absent.
@@ -367,7 +367,7 @@ func (s *script) parentRun(text string) (string, error) {
 	return s.in.Parent, nil
 }
 
-// Outgoing is a message that beehave send puts on the inbox of the open run of an item. An empty Key gets a fresh one.
+// Outgoing is a message that beehest send puts on the inbox of the open run of an item. An empty Key gets a fresh one.
 type Outgoing struct {
 	Topic  string
 	Key    string
@@ -392,7 +392,7 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 	return id, dbos.Send(c.flow, last.Status.ID, env, inboxTopic, dbos.WithIdempotencyKey(id))
 }
 
-// openRunOf returns the open run of an item that a build of this version can finish. beehave send and the to keyword of send share it.
+// openRunOf returns the open run of an item that a build of this version can finish. beehest send and the to keyword of send share it.
 func openRunOf(client storeView, version, item string) (run, error) {
 	last, err := latestOf(client, version, item)
 	if errors.Is(err, errNoRun) || err == nil && last.terminal() {
@@ -402,7 +402,7 @@ func openRunOf(client storeView, version, item string) (run, error) {
 	return last, err
 }
 
-// checkOutgoing applies the rules of a message to the topic, the key and the value that beehave send got.
+// checkOutgoing applies the rules of a message to the topic, the key and the value that beehest send got.
 func checkOutgoing(msg Outgoing) error {
 	if err := workflow.MessageName(topicKeyword, msg.Topic); err != nil {
 		return err

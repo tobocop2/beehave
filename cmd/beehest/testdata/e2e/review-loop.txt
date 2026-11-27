@@ -1,0 +1,41 @@
+# The review loop of examples/review-loop on the real composition root, with a fake claude and no tracker, forge or network.
+# The author spawns the reviewer and sends the first draft. The reviewer asks for changes, the author sends the revised draft, and the reviewer approves it.
+# Each review gets the draft that the author sent, and the revise step gets the notes that the reviewer sent back.
+isolate
+! exec bd version
+! exec gh version
+
+example review-loop/workflow.star
+example review-loop/project.star config/projects/review.star
+example review-loop/prompts/draft.md
+example review-loop/prompts/review.md
+example review-loop/prompts/revise.md
+reviewfakes
+
+exec beehestreal check workflow review-loop/workflow.star
+! stdout .
+! stderr .
+
+exec beehestreal item add review note-1 --title 'Release note' --body-file body.txt
+exec beehestreal run note-1 review --workflow review-loop/workflow.star
+stdout 'item note-1 finished'
+
+exec beehestreal status
+stdout 'note-1-r1\tdone'
+
+cmp calls.log expected-calls.log
+
+# Each of the four agent calls started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep -count=4 '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
+
+-- body.txt --
+Write the release note.
+-- verdicts --
+changes
+approve
+-- expected-calls.log --
+draft
+review Draft 1.
+revise Fix round 1.
+review Draft 2.

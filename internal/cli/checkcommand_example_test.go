@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // forbidKinds returns every kind of the engine that a step lists in forbid_commands, except git-write, which a step turns on by itself.

@@ -11,18 +11,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/cli"
-	"github.com/tobocop2/beehave/internal/config"
-	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store/beads"
-	storegithub "github.com/tobocop2/beehave/internal/store/github"
-	"github.com/tobocop2/beehave/internal/store/local"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/config"
+	forgegithub "github.com/tobocop2/beehest/internal/forge/github"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store/beads"
+	storegithub "github.com/tobocop2/beehest/internal/store/github"
+	"github.com/tobocop2/beehest/internal/store/local"
 )
 
 // registry is the adapter registry of the cli tests: the names that the adapters declare, with the keys and tools that the real adapters register.
@@ -294,7 +294,7 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 func TestCheckConfig_ReportsAnOverlayProblem(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": "0"}, "--config", t.TempDir())
+	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHEST_AGENTS_MAX_CONCURRENT": "0"}, "--config", t.TempDir())
 
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, "agents.max_concurrent must be 1 or more")
@@ -315,7 +315,7 @@ func TestCheckConfig_TakesTheFolderFromTheEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, "projects/p.star", "shade()\n")
 
-	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHAVE_CONFIG": dir})
+	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHEST_CONFIG": dir})
 
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, filepath.Join(dir, "projects", "p.star"))
@@ -327,7 +327,7 @@ func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 	bad := t.TempDir()
 	writeConfig(t, bad, "projects/p.star", "shade()\n")
 
-	code, _, _ := runCheckConfig(t, map[string]string{"BEEHAVE_CONFIG": bad}, "--config", t.TempDir())
+	code, _, _ := runCheckConfig(t, map[string]string{"BEEHEST_CONFIG": bad}, "--config", t.TempDir())
 
 	require.Equal(t, 0, code)
 }
@@ -335,12 +335,12 @@ func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 func TestCheckConfig_UsesTheHomeFolderByDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	writeConfig(t, home, ".config/beehave/projects/p.star", "shade()\n")
+	writeConfig(t, home, ".config/beehest/projects/p.star", "shade()\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{})
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, filepath.Join(home, ".config", "beehave", "projects", "p.star"))
+	require.Contains(t, stderr, filepath.Join(home, ".config", "beehest", "projects", "p.star"))
 }
 
 func TestCheckConfig_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
@@ -349,7 +349,7 @@ func TestCheckConfig_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 	code, _, stderr := runCheckConfig(t, map[string]string{})
 
 	require.Equal(t, 1, code)
-	require.Contains(t, stderr, "beehave: cannot find the home folder")
+	require.Contains(t, stderr, "beehest: cannot find the home folder")
 }
 
 func TestCheckConfig_RejectsAnArgument(t *testing.T) {

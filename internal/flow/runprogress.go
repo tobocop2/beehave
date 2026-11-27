@@ -8,7 +8,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // GateSeen is the last gate result of a run and the head that the gate judged.

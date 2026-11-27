@@ -11,8 +11,8 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // Module is a named set of builtins and the step kinds that it records.

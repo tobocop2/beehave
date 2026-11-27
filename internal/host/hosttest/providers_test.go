@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // hostImportRoot is the import path of the folder that holds the host packages.
-const hostImportRoot = "github.com/tobocop2/beehave/internal/host/"
+const hostImportRoot = "github.com/tobocop2/beehest/internal/host/"
 
 // suiteRuns lists the test functions in the test files of one package directory that call hosttest.TestHost.
 func suiteRuns(t *testing.T, dir string) []string {

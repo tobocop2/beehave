@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/credential"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/credential"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestCIStart_YesRefusesWhateverCILockedSaysAndUnknownStartsOnlyWithIt(t *testing.T) {

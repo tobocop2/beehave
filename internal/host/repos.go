@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // FindRepos lists every repository under root, at any depth. find is the command line of find on the host.

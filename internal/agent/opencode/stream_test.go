@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
 )
 
 // fixtureLines returns the lines of a file in testdata.
@@ -115,7 +115,7 @@ func TestCalls_The2xCallIdIsTheIdOfThePart(t *testing.T) {
 func TestCalls_ARefusalOn2xNamesTheCallThatTheGuardRefused(t *testing.T) {
 	t.Parallel()
 
-	line := strings.Replace(fixtureLines(t, "ok-2x.jsonl")[1], `"status":"completed"`, `"status":"error","error":"beehave refused: no"`, 1)
+	line := strings.Replace(fixtureLines(t, "ok-2x.jsonl")[1], `"status":"completed"`, `"status":"error","error":"beehest refused: no"`, 1)
 
 	assert.Equal(t, []string{"call_995b1dc40d65458b85e7f4ab"}, opencode.New().Calls(line).Refused)
 }

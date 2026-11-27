@@ -26,7 +26,7 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"wait timeout zero", `wait(question = "q", timeout = "0s")`, `wait: timeout is "0s", which must be above zero`},
 		{"wait timeout bare zero", `wait(question = "q", timeout = "0")`, `wait: timeout is "0", which must be above zero`},
 		{"recv topic", `recv("Bad Topic", timeout = "1m")`, `recv: topic "Bad Topic" is not allowed`},
-		{"recv topic reserved", `recv("beehave.answer", timeout = "1m")`, `recv: topic "beehave.answer" is reserved for beehave`},
+		{"recv topic reserved", `recv("beehest.answer", timeout = "1m")`, `recv: topic "beehest.answer" is reserved for beehest`},
 		{"recv timeout zero", `recv("go", timeout = "0s")`, `recv: timeout is "0s", which must be above zero`},
 		{"send topic", `send(to = "parent", topic = "A", value = 1)`, `send: topic "A" is not allowed`},
 		{"send to other text", `send(to = "boss", topic = "t", value = 1)`, `send: to is "boss". Give "parent", "item:<id>" with the id of an item, or a run that spawn returned`},

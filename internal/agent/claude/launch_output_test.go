@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 const outputFile = "/state/outputs/7.review/output.json"
@@ -28,7 +28,7 @@ func allowRules(t *testing.T, args []string) []string {
 func TestLaunch_AStepWithNoSandboxOpensItsOutputFileToTheFileTools(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Guard("/bin/beehave check command", "/run", []string{outputFile}, nil).Args
+	args := claude.New(nil).Guard("/bin/beehest check command", "/run", []string{outputFile}, nil).Args
 
 	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[2:4], "the folder of the one output file is a working directory")
 	assert.Equal(t, "--settings", args[4])

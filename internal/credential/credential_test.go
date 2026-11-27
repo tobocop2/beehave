@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/credential"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/credential"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // home makes a home folder with a credential folder of mode 0700 and returns the home and an environment that names it.
@@ -19,7 +19,7 @@ func home(t *testing.T) (string, map[string]string) {
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 
-	folder := filepath.Join(dir, ".config", "beehave", "credentials")
+	folder := filepath.Join(dir, ".config", "beehest", "credentials")
 	require.NoError(t, os.MkdirAll(folder, 0o700))
 	require.NoError(t, exectest.ChmodFolder(folder, 0o700))
 
@@ -29,7 +29,7 @@ func home(t *testing.T) (string, map[string]string) {
 func tokenFile(t *testing.T, dir, text string, loose bool) string {
 	t.Helper()
 
-	path := filepath.Join(dir, ".config", "beehave", "credentials", "w.token")
+	path := filepath.Join(dir, ".config", "beehest", "credentials", "w.token")
 	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
 
 	if loose {
@@ -45,11 +45,11 @@ func TestLoad_AFileInTheCredentialFolderGivesItsTrimmedText(t *testing.T) {
 	dir, env := home(t)
 	tokenFile(t, dir, "tok-1\n", false)
 
-	got, err := credential.Load(t.Context(), model.Credential{File: "~/.config/beehave/credentials/w.token"}, env)
+	got, err := credential.Load(t.Context(), model.Credential{File: "~/.config/beehest/credentials/w.token"}, env)
 	require.NoError(t, err)
 	require.Equal(t, "tok-1", got)
 
-	got, err = credential.Load(t.Context(), model.Credential{File: filepath.Join(dir, ".config/beehave/credentials/w.token")}, env)
+	got, err = credential.Load(t.Context(), model.Credential{File: filepath.Join(dir, ".config/beehest/credentials/w.token")}, env)
 	require.NoError(t, err)
 	require.Equal(t, "tok-1", got)
 }
@@ -95,9 +95,9 @@ func TestLoad_AFileIsRefusedForItsModeItsPlaceItsOwnerItsKindOrItsText(t *testin
 
 func TestLoad_ACommandGivesItsOutputAndSeesOnlyPathHomeAndUser(t *testing.T) {
 	_, env := home(t)
-	t.Setenv("BEEHAVE_PLANTED", "leak")
+	t.Setenv("BEEHEST_PLANTED", "leak")
 
-	got, err := credential.Load(t.Context(), model.Credential{Command: []string{"sh", "-c", `echo "$USER-${BEEHAVE_PLANTED:-none}"`}}, env)
+	got, err := credential.Load(t.Context(), model.Credential{Command: []string{"sh", "-c", `echo "$USER-${BEEHEST_PLANTED:-none}"`}}, env)
 	require.NoError(t, err)
 	require.Equal(t, "u-none", got)
 

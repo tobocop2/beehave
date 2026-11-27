@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // pinnedVersion is the OpenCode version that the recorded output in testdata comes from, and the oldest version that the adapter supports.

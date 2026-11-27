@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // poster is a fake Poster that writes its statuses into the writes of the world, so a test sees the post and the merge call in one order.
@@ -31,7 +31,7 @@ func (p *poster) Post(context.Context) (string, error) {
 	return "", nil
 }
 
-var gateStatus = model.CommitStatus{SHA: sha, Context: "beehave/gate", State: model.StatusSuccess, Description: "d"}
+var gateStatus = model.CommitStatus{SHA: sha, Context: "beehest/gate", State: model.StatusSuccess, Description: "d"}
 
 // posting is a request whose run posts the gate status through a fake poster over w.
 func posting(w *world) (merge.Request, *poster) {
@@ -51,7 +51,7 @@ func TestRun_TheStatusesArePostedAfterEveryGuardAndRightBeforeTheMergeCall(t *te
 	result := w.run(req)
 
 	assert.Equal(t, merge.Done, result.Stop, all(result))
-	assert.Equal(t, []string{"Post beehave/gate success " + sha, "MergePR 5 " + sha}, w.writes)
+	assert.Equal(t, []string{"Post beehest/gate success " + sha, "MergePR 5 " + sha}, w.writes)
 }
 
 func TestRun_APullRequestThatAGuardRefusesGetsNoStatus(t *testing.T) {
@@ -136,6 +136,6 @@ func TestRun_AResumeAfterAPostThatWorkedAndAMergeThatFailedPostsTheSameStatusAga
 	second := w.run(req)
 
 	assert.Equal(t, merge.Done, second.Stop, all(second))
-	post := "Post beehave/gate success " + sha
+	post := "Post beehest/gate success " + sha
 	assert.Equal(t, []string{post, "MergePR 5 " + sha, post, "MergePR 5 " + sha}, w.writes, "the second post carries the same context, state and commit")
 }

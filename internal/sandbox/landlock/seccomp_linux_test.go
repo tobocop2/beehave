@@ -18,7 +18,7 @@ import (
 )
 
 // childMarker is the argument that makes the helper test below act as the child that loads the filter.
-const childMarker = "beehave-filter-child"
+const childMarker = "beehest-filter-child"
 
 func TestRawCall_ReturnsTheErrorNumberOfTheKernel(t *testing.T) {
 	t.Parallel()

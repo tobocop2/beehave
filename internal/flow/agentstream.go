@@ -7,7 +7,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // agentStream is the key of the stream in which a phase writes what its agent says. maxStreamBytes caps the text of one phase.

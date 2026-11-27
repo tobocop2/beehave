@@ -1,0 +1,46 @@
+# The process dies while a command step of a round item runs. Someone removes the worktree. The next run resumes the item and makes the worktree again at the commit that the run started on, here the tip of the base, before the step runs again.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+exec git -C origin rev-parse integration/r1
+cp stdout base-tip
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+subst flow/round.star
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started
+kill -KILL
+wait
+
+# The worktree is gone while no run is alive.
+exists state/trees/local/round_2Fintegration_2Fr1
+rm state/trees/local/round_2Fintegration_2Fr1
+! exists state/trees/local/round_2Fintegration_2Fr1
+cp base-tip second
+
+exec beehestreal run round/integration/r1 local --workflow flow/round.star
+stdout 'item round/integration/r1 finished'
+
+# The step ran again in a worktree that holds the tip of the base, detached.
+cmp second.head base-tip
+grep '^base marker$' second.marker
+grep '^detached$' second.mode
+
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- flow/round.star --
+def main(item):
+    command(name = "work", run = ["sh", "-c", "if [ -e @WORK@/second ]; then git rev-parse HEAD > @WORK@/second.head; cat BASE_MARKER > @WORK@/second.marker; git symbolic-ref -q HEAD > /dev/null && echo branch > @WORK@/second.mode || echo detached > @WORK@/second.mode; else echo x > @WORK@/started; sleep 20; fi"])

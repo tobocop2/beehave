@@ -1,4 +1,4 @@
-// Package sandbox is the contract between beehave and the mechanisms that confine one command: a plan of what the command may read, write and reach,
+// Package sandbox is the contract between beehest and the mechanisms that confine one command: a plan of what the command may read, write and reach,
 // an enforcer that runs the command under the plan, and the one allow-list proxy that every enforcer shares.
 package sandbox
 
@@ -87,7 +87,7 @@ func isProxyVariable(name string) bool {
 	return false
 }
 
-// withProxy removes every proxy variable from env and adds the proxy of beehave, in both cases that programs read.
+// withProxy removes every proxy variable from env and adds the proxy of beehest, in both cases that programs read.
 func withProxy(env []string, port int) []string {
 	out := make([]string, 0, len(env)+proxyLines)
 

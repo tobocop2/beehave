@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 var errBank = errors.New("bank failed")
@@ -52,7 +52,7 @@ func TestSubmit_HoldsTheSkyPilotSlotUntilTheWorkIsBanked(t *testing.T) {
 	assert.Equal(t, model.JobID("77-n"), id, "the id holds the Slurm job id and the nonce")
 	assert.Equal(t, [][]string{{
 		"exec", "lane-host", "-d",
-		"cd ~ && timeout 43200 sh -c 'until test -e .beehave-banked-lane-host-77-n; do sleep 5; done'",
+		"cd ~ && timeout 43200 sh -c 'until test -e .beehest-banked-lane-host-77-n; do sleep 5; done'",
 	}}, sky.Calls, "the slot lasts for at most max_run")
 }
 
@@ -188,7 +188,7 @@ func TestWait_MarksTheJobBankedAfterTheBank(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, got)
-	assert.True(t, ssh.Called("lane-host", "touch", ".beehave-banked-lane-host-5-n"))
+	assert.True(t, ssh.Called("lane-host", "touch", ".beehest-banked-lane-host-5-n"))
 }
 
 func TestWait_WritesNoMarkerWhenTheBankFails(t *testing.T) {

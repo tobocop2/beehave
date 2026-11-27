@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const token = "tok-secret-value"
@@ -103,13 +103,13 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 
 func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "")
-	f.spec.Guard = "beehave check command"
+	f.spec.Guard = "beehest check command"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
 	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --setting-sources  --settings `+
-		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`,
+		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehest check command","onFailure":"block"}]}]}}`,
 		record(t, f.records, "args"))
 
 	f.spec.Guard = ""

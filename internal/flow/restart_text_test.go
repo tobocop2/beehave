@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // restartSteps is the order that starts a stopped item again: a resume replays the recorded stop, so the resume comes first, then the cancel, then the run.
 func restartSteps(item string) string {
-	return "run beehave resume " + item + ", then beehave cancel " + item + ", then beehave run " + item
+	return "run beehest resume " + item + ", then beehest cancel " + item + ", then beehest run " + item
 }
 
 func assertNamesTheRestartSteps(t *testing.T, err error) {
@@ -26,7 +26,7 @@ func assertNamesTheRestartSteps(t *testing.T, err error) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "REFUSE")
 	assert.Contains(t, err.Error(), restartSteps(testItem), "the text names resume, then cancel, then run")
-	assert.Contains(t, err.Error(), "A plain beehave resume replays this stop", "the text says why a plain resume is not the instruction")
+	assert.Contains(t, err.Error(), "A plain beehest resume replays this stop", "the text says why a plain resume is not the instruction")
 }
 
 func TestRestartText_ACapStopOfALocalQueueOrResearchExampleNamesResumeThenCancelThenRun(t *testing.T) {
@@ -96,7 +96,7 @@ func TestRestartText_ACappedSettleOfTheRemediationExampleNamesResumeThenCancelTh
 }
 
 // restartSentence is the sentence that ends a replayed stop text. ITEM stands for each item id.
-const restartSentence = "A plain beehave resume replays this stop. To start the item again, run beehave resume ITEM, then beehave cancel ITEM, then beehave run ITEM."
+const restartSentence = "A plain beehest resume replays this stop. To start the item again, run beehest resume ITEM, then beehest cancel ITEM, then beehest run ITEM."
 
 // restartSites are the workflow files of the examples and of the library that the scan reads.
 var restartSites = []string{"../../examples", "../workflow/lib"}
@@ -210,7 +210,7 @@ func stopTextsOf(t *testing.T, name, source string) []stopText {
 		}
 
 		text := renderText(call.Args[0])
-		if strings.Contains(strings.ToLower(text), "beehave resume") {
+		if strings.Contains(strings.ToLower(text), "beehest resume") {
 			found = append(found, stopText{line: int(call.Lparen.Line), text: text, waitTimeout: inTimedOutBranch(stack, received)})
 		}
 
@@ -274,16 +274,16 @@ func receivedNames(parsed *syntax.File) map[string]bool {
 func TestRestartText_AStopTextInASourceFileIsReadFromTheSyntaxTreeNotFromItsLines(t *testing.T) {
 	t.Parallel()
 
-	comment := "# REFUSE texts say: run beehave resume %s, then run again.\ndef main(item):\n    pass\n"
+	comment := "# REFUSE texts say: run beehest resume %s, then run again.\ndef main(item):\n    pass\n"
 	assert.Empty(t, stopTextsOf(t, "comment.star", comment), "a comment is not a stop text")
 
-	split := "def main(item):\n    fail(\"REFUSE: the step stopped. \" +\n         \"Run beehave resume %s.\" % item.id)\n"
+	split := "def main(item):\n    fail(\"REFUSE: the step stopped. \" +\n         \"Run beehest resume %s.\" % item.id)\n"
 	stops := stopTextsOf(t, "split.star", split)
 	require.Len(t, stops, 1, "a text that is split over two lines is one stop text")
-	assert.Equal(t, "REFUSE: the step stopped. Run beehave resume ITEM.", stops[0].text)
+	assert.Equal(t, "REFUSE: the step stopped. Run beehest resume ITEM.", stops[0].text)
 	assert.NotContains(t, stops[0].text, restartSentence)
 
-	whole := "def main(item):\n    fail((\"REFUSE: x. \" +\n         \"A plain beehave resume replays this stop. To start the item again, run beehave resume %s, \" +\n         \"then beehave cancel %s, then beehave run %s.\") % (item.id, item.id, item.id))\n"
+	whole := "def main(item):\n    fail((\"REFUSE: x. \" +\n         \"A plain beehest resume replays this stop. To start the item again, run beehest resume %s, \" +\n         \"then beehest cancel %s, then beehest run %s.\") % (item.id, item.id, item.id))\n"
 	stops = stopTextsOf(t, "whole.star", whole)
 	require.Len(t, stops, 1)
 	assert.Contains(t, stops[0].text, restartSentence, "the sentence is found across the split")
@@ -297,14 +297,14 @@ func TestRestartText_AStopTextInASourceFileIsReadFromTheSyntaxTreeNotFromItsLine
 func TestRestartText_OnlyAStopRaisedOnTheTimedOutFieldOfAWaitResultIsLeftAlone(t *testing.T) {
 	t.Parallel()
 
-	waited := "def main(item):\n    ruling = wait(\"q\", name = \"n\", timeout = \"1s\")\n    if ruling.timed_out:\n        fail(\"REFUSE: no answer. Run beehave resume.\")\n    fail(\"REFUSE: other. Run beehave resume.\")\n"
+	waited := "def main(item):\n    ruling = wait(\"q\", name = \"n\", timeout = \"1s\")\n    if ruling.timed_out:\n        fail(\"REFUSE: no answer. Run beehest resume.\")\n    fail(\"REFUSE: other. Run beehest resume.\")\n"
 	stops := stopTextsOf(t, "wait.star", waited)
 
 	require.Len(t, stops, 2)
 	assert.True(t, stops[0].waitTimeout, "the stop in the timed_out branch is the wait timeout")
 	assert.False(t, stops[1].waitTimeout, "a stop outside the branch is not")
 
-	received := "def main(item):\n    got = recv(\"t\", timeout = \"1s\")\n    if got.timed_out:\n        fail(\"REFUSE: late. Run beehave resume.\")\n"
+	received := "def main(item):\n    got = recv(\"t\", timeout = \"1s\")\n    if got.timed_out:\n        fail(\"REFUSE: late. Run beehest resume.\")\n"
 	stops = stopTextsOf(t, "recv.star", received)
 
 	require.Len(t, stops, 1)

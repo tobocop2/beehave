@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // The helpers in this file start a private dolt server for the contract tests that run against a real bd.
@@ -43,7 +43,7 @@ func check(tb testing.TB, ok bool, format string, args ...any) {
 }
 
 // BinaryVariable names the variable that holds the path of the bd 1.3.2 binary for the contract tests against a real bd.
-const BinaryVariable = "BEEHAVE_BD_132"
+const BinaryVariable = "BEEHEST_BD_132"
 
 // RealBd returns the path of the bd 1.3.2 binary that a contract test against a real bd runs, and checks that dolt is on PATH.
 // Without the binary the test skips on a developer machine. In CI (the CI variable is set) it stops instead,

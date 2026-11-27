@@ -48,7 +48,7 @@ func TestInitTemplate_HoldsTheWorkflowAndPromptsOfThisFolderByteForByte(t *testi
 	}))
 	sort.Strings(copied)
 
-	assert.Equal(t, exampleFiles(t), copied, "the template of beehave init holds the same files as examples/local")
+	assert.Equal(t, exampleFiles(t), copied, "the template of beehest init holds the same files as examples/local")
 
 	for _, file := range copied {
 		original, err := os.ReadFile(file) //nolint:gosec // a test reads files of its own folder

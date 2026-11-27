@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/cli"
-	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/config"
 )
 
 func runDry(t *testing.T, env map[string]string, args ...string) (int, string, string) {
@@ -28,7 +28,7 @@ func runDry(t *testing.T, env map[string]string, args ...string) (int, string, s
 // roundProject is a project file whose vars hold the round settings of the remediation example. It sets sandbox = "off" because the test build
 // has no sandbox enforcer, which refuses every local gate of a sandboxed project; check_workflow_sandbox_test.go pins that refusal.
 const roundProject = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", sandbox = \"off\", vars = {\"round\": " +
-	"{\"base\": \"integration\", \"owner\": \"owner\", \"owner_email\": \"owner@example.com\", \"lane_cap\": 3, \"fix_rounds\": 5, \"label\": \"beehave-round\"}})\n"
+	"{\"base\": \"integration\", \"owner\": \"owner\", \"owner_email\": \"owner@example.com\", \"lane_cap\": 3, \"fix_rounds\": 5, \"label\": \"beehest-round\"}})\n"
 
 func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheReadOfTheQueueWithNoEnvironment(t *testing.T) {
 	t.Parallel()

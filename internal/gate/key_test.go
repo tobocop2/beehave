@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func keyOf(t *testing.T, state gate.State, shell *fakeShell, p model.Project) gate.Key {

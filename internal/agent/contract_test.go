@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 // editAdapter is a CLI that edits by default and has its own way to turn edits off.
@@ -55,7 +55,7 @@ func TestRunner_ALaunchCannotUndoTheNoEditVariables(t *testing.T) { //nolint:par
 	}
 	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Adapter = launchAdapter{Adapter: editAdapter{claude.New(nil)}, launch: launch}
-	f.spec.Guard = "beehave check command"
+	f.spec.Guard = "beehest check command"
 	f.spec.NoEdits = true
 
 	agent.Runner{}.Run(context.Background(), f.spec)

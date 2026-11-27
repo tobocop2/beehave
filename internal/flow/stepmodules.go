@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // The builtins of this package belong to eight modules that move out of it one by one. Each module has a version of its recorded steps.
@@ -47,7 +47,7 @@ const (
 // Version 12 adds the cancel step, the deadline step of a gather, the deadline that each wait of a gather records and the open field of a gather result.
 // Version 13 replaces the reports_skills field of each entry of the runners field of facts with the loads_skills field.
 // Version 14 adds the first_of step with its deadline step and its look steps, which record every run that ended in the read, and a child run sends an end notice to its parent.
-// Version 15 moves the answers of wait onto the inbox as messages of the topic beehave.answer, and a wait with a timeout and no people records its deadline step.
+// Version 15 moves the answers of wait onto the inbox as messages of the topic beehest.answer, and a wait with a timeout and no people records its deadline step.
 // Version 16 records the topic of a recv call with its deadline, in the deadline step.
 // Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.

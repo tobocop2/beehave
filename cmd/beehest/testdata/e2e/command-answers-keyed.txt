@@ -1,0 +1,22 @@
+# The command fake answers by command, not by call position. A step added before the mutation step moves no answer.
+# The workflow fails unless the first mutation run is the lived answer and the second is clean, with a git step before each.
+exec beehest run 7 --workflow flow/probe.star
+stdout 'item 7 finished'
+
+grep -count=2 '^build mutation sh mutation.sh origin/integration$' mutation.log
+grep -count=2 '^  git rev-parse HEAD$' mutation.log
+
+-- mutations --
+sh mutation.sh origin/integration => lived
+sh mutation.sh origin/integration => clean
+-- flow/probe.star --
+def main(item):
+    first = True
+    for _ in range(2):
+        command(name = "head", run = ["git", "rev-parse", "HEAD"], stop_on_rc = [2])
+        mutation = command(name = "mutation", run = ["sh", "mutation.sh", "origin/integration"], host = "build", slots = "mutation")
+        if first and mutation.rc != 1:
+            fail("the first mutation run got rc %d, want the lived answer" % mutation.rc)
+        if not first and mutation.rc != 0:
+            fail("the second mutation run got rc %d, want the clean answer" % mutation.rc)
+        first = False

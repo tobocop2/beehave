@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/local"
-	"github.com/tobocop2/beehave/internal/store/storetest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/local"
+	"github.com/tobocop2/beehest/internal/store/storetest"
 )
 
 const (
@@ -231,7 +231,7 @@ func TestItem_NamesTheMissingItem(t *testing.T) {
 	s := open(t, t.TempDir(), project, newClock())
 
 	_, err := s.Item(t.Context(), "9")
-	require.EqualError(t, err, "no item 9 in project alpha. Add it: beehave item add")
+	require.EqualError(t, err, "no item 9 in project alpha. Add it: beehest item add")
 
 	var refusal *store.Error
 	require.ErrorAs(t, err, &refusal)

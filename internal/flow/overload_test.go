@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // overloaded is a run that the provider stopped with an overload, as the runner reports it: the outcome limited and a limit with no reset time.
@@ -60,7 +60,7 @@ func TestOverload_AnOverloadThatStaysPastTheCeilingFailsTheStepAndNamesTheLimit(
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "the agent step of item "+testItem+" stopped at the overload of login "+testLogin+", and neither the agent nor the usage read gives a reset time")
-	require.ErrorContains(t, err, "Run beehave resume "+testItem+" when the limit is gone")
+	require.ErrorContains(t, err, "Run beehest resume "+testItem+" when the limit is gone")
 	assert.Len(t, h.agents.seen(), overloadWaits+1, "the first run and one rerun after each wait of the backoff")
 	assert.Equal(t, overloadWaits, sleepsIn(recordsOfTestRun(t, engine)), "one sleep for each wait of the backoff")
 }

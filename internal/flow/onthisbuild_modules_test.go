@@ -282,7 +282,7 @@ func TestClient_ResumeOnThisBuildRefusesARoundRunOfABuildWithAnOlderRoundModuleA
 	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, fmt.Sprintf("round module at version 1, and this build has version %d", roundVersion))
 	require.ErrorContains(t, err, `the step "make worktree"`)
-	require.ErrorContains(t, err, "Finish the run on the build that started it, or start the item again: beehave run "+testRound)
+	require.ErrorContains(t, err, "Finish the run on the build that started it, or start the item again: beehest run "+testRound)
 	require.NotContains(t, err.Error(), "UnexpectedStep")
 
 	row, rowErr := other.row(runID(testRound, 1))
@@ -301,7 +301,7 @@ func TestClient_ResumeOnThisBuildRefusesARunOfABuildWithAnOlderForgeModuleAndNam
 		require.ErrorIs(t, err, errStranded, item)
 		require.ErrorContains(t, err, fmt.Sprintf("forge module at version %d, and this build has version %d", forgeVersion-1, forgeVersion), item)
 		require.ErrorContains(t, err, `the step "origin"`, item)
-		require.ErrorContains(t, err, "start the item again: beehave run "+item, item)
+		require.ErrorContains(t, err, "start the item again: beehest run "+item, item)
 	}
 }
 
@@ -378,7 +378,7 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfTheSingleMergeAnd
 
 			require.ErrorIs(t, err, errStranded)
 			require.ErrorContains(t, err, fmt.Sprintf("the step %q, and an older build recorded it for the %s module, and this build does not record it", test.steps[0], test.module))
-			require.ErrorContains(t, err, "Start the item again: beehave run "+testItem)
+			require.ErrorContains(t, err, "Start the item again: beehest run "+testItem)
 
 			row, rowErr := other.row(runID(testItem, 1))
 			require.NoError(t, rowErr)
@@ -468,7 +468,7 @@ func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAStepOfNoModuleAndNamesT
 
 			require.ErrorIs(t, err, errStranded)
 			require.ErrorContains(t, err, `the step "unknown_kind:u#1", and no module of this build records that step`)
-			require.ErrorContains(t, err, "Start the item again: beehave run "+testItem)
+			require.ErrorContains(t, err, "Start the item again: beehest run "+testItem)
 
 			row, rowErr := other.row(runID(testItem, 1))
 			require.NoError(t, rowErr)

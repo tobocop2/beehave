@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Two commits that the engine could read for a base branch, and one that holds no pin file.

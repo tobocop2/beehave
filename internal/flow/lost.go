@@ -20,7 +20,7 @@ const (
 	// noRecord is the cause of a loss. The engine that died took its child processes with it, and nothing it left shows an exit status or a signal.
 	noRecord = "the process ended with no record"
 	// callStartRef is the per-worktree ref that the render step of an agent call writes at the start commit. Git deletes it with the worktree.
-	callStartRef = "refs/worktree/beehave/call-start"
+	callStartRef = "refs/worktree/beehest/call-start"
 	// continueStep ends the prompt of a resumed session of a step.
 	continueStep = "Continue the step from where you stopped. Your brief and the output file are earlier in this session."
 )

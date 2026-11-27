@@ -13,8 +13,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // jsonModule is the one name of workflow.Builtins that is a module of the Starlark library, not a step.
@@ -58,7 +58,7 @@ func (e *Engine) openPinned(ctx dbos.Context, in *ItemInput) (*workflow.Sources,
 
 	sources, err := workflow.Open(in.File, in.Files)
 	if err != nil {
-		return nil, fmt.Errorf("%w. To keep the finished steps and run the changed file, run beehave resume %s --on-this-file", err, in.Item)
+		return nil, fmt.Errorf("%w. To keep the finished steps and run the changed file, run beehest resume %s --on-this-file", err, in.Item)
 	}
 
 	return sources, nil

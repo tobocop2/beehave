@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/forge/forgetest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/forge/forgetest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // failedReads is a fake that answers every optional read with an error. It tests the suite checks only; it does not run any adapter.

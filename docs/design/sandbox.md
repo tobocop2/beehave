@@ -1,10 +1,10 @@
 # The sandbox of an agent step
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 The `forbid_commands` hook reads the text of a command. It is not a sandbox (see [Agent runs](agent-runs.md#the-setting-forbid_commands)). The setting `sandbox` of an `agent` step runs the Claude Code sandbox on the shell of the step, and the operating system enforces it (Seatbelt on macOS, bubblewrap on Linux). With the sandbox on, a gate on this machine runs under a sandbox enforcer too.
 
-The default is on. A project with no `sandbox` key runs its agent steps in the sandbox, and `beehave check config` prints one note for each such project. A project opts out with `sandbox = "off"` in its project file. A step with `sandbox = None` in a project with the sandbox on is refused (see [The trust boundary](trust.md#the-sandbox-is-on-by-default)).
+The default is on. A project with no `sandbox` key runs its agent steps in the sandbox, and `beehest check config` prints one note for each such project. A project opts out with `sandbox = "off"` in its project file. A step with `sandbox = None` in a project with the sandbox on is refused (see [The trust boundary](trust.md#the-sandbox-is-on-by-default)).
 
 A run stores its sandbox mode when it starts, so a change of the project file never changes a run in flight. A run recorded before the mode was stored runs with the mode off.
 
@@ -26,14 +26,14 @@ The sandbox loads no settings file, so the agent sees no skill of the runner. Th
 
 - The engine finds each skill at `<config folder of the runner>/skills/<name>`. A runner with no config folder gets the default folder of its CLI under the home folder, `~/.claude` for Claude Code. If that folder holds no `SKILL.md`, or the CLI has no default folder, the step does not start, and the message names the skill and the folder.
 - If a skill folder holds a symbolic link, the step does not start, and the message names the skill and the link. A copy keeps a link as a link, and its target can be a file of the config folder. The skill folder itself can be a link: the copy reads through it.
-- The Claude adapter copies each declared skill into a plugin folder in the run folder, `skills-plugin`, beside a manifest with the name `beehave-skills`. It passes the folder with `--plugin-dir`, which loads the skills. The setting sources stay empty in every launch, sandboxed or not, so no other user skill, plugin or hook loads, and a step that declares no skill gets none.
+- The Claude adapter copies each declared skill into a plugin folder in the run folder, `skills-plugin`, beside a manifest with the name `beehest-skills`. It passes the folder with `--plugin-dir`, which loads the skills. The setting sources stay empty in every launch, sandboxed or not, so no other user skill, plugin or hook loads, and a step that declares no skill gets none.
 - The adapter also passes the plugin folder with `--add-dir`, as it does the folder of the data file. The flag loads no skill from the folder; it makes the folder a working directory, so `blockReadsOutsideWorkingDirectories` lets the Read tool and the shell read the files of a skill. The sandbox and the permission rules deny the write of the folder. The config folder of the runner stays denied.
-- The CLI names a plugin skill `beehave-skills:<name>`. The adapter records it as `<name>`. A skill of any other plugin keeps its prefix, so it never counts as the named skill.
+- The CLI names a plugin skill `beehest-skills:<name>`. The adapter records it as `<name>`. A skill of any other plugin keeps its prefix, so it never counts as the named skill.
 - A skill counts as called only when the CLI answers its Skill call with no error. A call that the CLI answers with `Unknown skill` does not count.
 
 The work folder, the temporary folder and the shared git directory of a linked work tree are writable. No other path is. A step has no keyword that opens one.
 
-- `sandbox = None` turns the sandbox off for the step. `beehave check workflow` prints a note for each such step, and in a project with the sandbox on it is a problem.
+- `sandbox = None` turns the sandbox off for the step. `beehest check workflow` prints a note for each such step, and in a project with the sandbox on it is a problem.
 - A step that leaves out `sandbox` takes the default of the project.
 - A step that needs `docker`, or another tool that the sandbox blocks, runs as a `command` step. A project whose agent steps all need such a tool sets `sandbox = "off"`.
 - Each example under `examples/` states its `sandbox` in its project file. The example gives each agent step `sandbox(network = [...])` with the hosts that the step calls, or `sandbox()` for a step that calls none. A project that sets `sandbox = "off"` says why in a comment.
@@ -55,7 +55,7 @@ A step with the `data` keyword gets one file in the state folder (see [Agent run
 
 ### The output file
 
-A step that declares `outputs`, or that has `edits = True` in a project with a repository, writes them to one file in the state folder. A step with `edits = True` may write `commit_subject` and `commit_body` there. The file is the only file of a folder of its own, `<state>/outputs/<item>.<step>/output.json`. The file belongs to the run, not to the sandbox plan: every launch opens it, with a sandbox, with a guard only, and with neither. For Claude Code, the launch passes its folder with `--add-dir`, which makes it a working directory, and one function writes the allow rules in every mode. In a sandbox the file is also in the read paths. The Write tool of Claude Code refuses to overwrite a file that the session has not read, and `blockReadsOutsideWorkingDirectories` refuses the Read of a file outside the working directories, so the output file must be in one. The folder holds no other file, so the CLI still blocks the read of the output of every other call, and the plan never adds the outputs folder. A phase that declares outputs and names an output file other than the one the engine derives for the item and the step, such as the file of a run recorded at an older build, starts no agent, makes no file at the old path, and says to run `beehave cancel` and then start a new run. A call that declares no outputs and does not edit, or has no repository, gets no folder. The launch opens that one file for read and write, by its exact path, and nothing else outside the work folder. The adapter writes the path as one `Read` and one `Edit` allow rule with no `/**` tail. The Write tool obeys the rule, and Claude Code merges its path into the write paths of the sandbox, so the shell can write the file too. The adapter sets no `allowWrite` list. A step with `edits = False` runs in the default permission mode, which refuses every other write of the file tools, so the agent still edits no file of the work folder. The outputs folder and the state folder stay closed, so a step cannot write the output of another step or the state of the engine. An output file inside a credential path stops the step.
+A step that declares `outputs`, or that has `edits = True` in a project with a repository, writes them to one file in the state folder. A step with `edits = True` may write `commit_subject` and `commit_body` there. The file is the only file of a folder of its own, `<state>/outputs/<item>.<step>/output.json`. The file belongs to the run, not to the sandbox plan: every launch opens it, with a sandbox, with a guard only, and with neither. For Claude Code, the launch passes its folder with `--add-dir`, which makes it a working directory, and one function writes the allow rules in every mode. In a sandbox the file is also in the read paths. The Write tool of Claude Code refuses to overwrite a file that the session has not read, and `blockReadsOutsideWorkingDirectories` refuses the Read of a file outside the working directories, so the output file must be in one. The folder holds no other file, so the CLI still blocks the read of the output of every other call, and the plan never adds the outputs folder. A phase that declares outputs and names an output file other than the one the engine derives for the item and the step, such as the file of a run recorded at an older build, starts no agent, makes no file at the old path, and says to run `beehest cancel` and then start a new run. A call that declares no outputs and does not edit, or has no repository, gets no folder. The launch opens that one file for read and write, by its exact path, and nothing else outside the work folder. The adapter writes the path as one `Read` and one `Edit` allow rule with no `/**` tail. The Write tool obeys the rule, and Claude Code merges its path into the write paths of the sandbox, so the shell can write the file too. The adapter sets no `allowWrite` list. A step with `edits = False` runs in the default permission mode, which refuses every other write of the file tools, so the agent still edits no file of the work folder. The outputs folder and the state folder stay closed, so a step cannot write the output of another step or the state of the engine. An output file inside a credential path stops the step.
 
 Claude Code does not escape the paths of its rules. So a data file or an output file whose path holds a glob character (`*`, `?`, `[` or `\`) stops the step, because its rule would open more than the one file.
 
@@ -99,7 +99,7 @@ The adapter does not set `excludedCommands`, `allowLocalBinding`, `allowAllUnixS
 
 The engine owns the credential list:
 
-`~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials`, `~/.docker`, `~/.kube`, `~/.cargo/credentials*`, `~/.terraform.d`, `~/.config/op`, `~/.config/beehave`, `~/.claude*`, `~/Library/Keychains`, `~/.local/share/keyrings`, and the login folder of the runner.
+`~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials`, `~/.docker`, `~/.kube`, `~/.cargo/credentials*`, `~/.terraform.d`, `~/.config/op`, `~/.config/beehest`, `~/.claude*`, `~/Library/Keychains`, `~/.local/share/keyrings`, and the login folder of the runner.
 
 A step cannot remove an entry. `sandbox_deny` adds to the list.
 
@@ -119,7 +119,7 @@ A project whose `gate_allow_write` overlaps a credential path does not start its
 - `.git`, `.claude`, `.husky`, `.githooks`;
 - the folder that `core.hooksPath` names.
 
-`beehave check workflow` refuses a literal path with one of these names at any depth. A `gate_allow_write` path that is a link to a place that does not exist yet is checked at the place it points to.
+`beehest check workflow` refuses a literal path with one of these names at any depth. A `gate_allow_write` path that is a link to a place that does not exist yet is checked at the place it points to.
 
 `.claude` is refused in `gate_allow_write` and is not denied as a whole, because Claude Code writes its own state there. Only its settings files and hooks are closed.
 
@@ -175,9 +175,9 @@ Not proven: a real `claude` run that prints `env` in the shell must show that th
 
 The child environment holds no proxy variable. No step gets `SSH_AUTH_SOCK` (see [Agent runs](agent-runs.md)), and the plan denies the socket path that the engine holds in `SSH_AUTH_SOCK`, because a socket is a file. It sets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, because the base denies `~/.gitconfig`. A step that needs a proxy of the owner sets `sandbox = None`.
 
-The CLI process keeps the `HOME` of the owner, so that its login works. The shell gets its own `HOME`: a new, empty folder `beehave-home-<run folder name>` in the temporary folder of the sandbox, made by the env file before the first command. Each step has its own folder, so no file of one step reaches the next. The Go command keeps its telemetry token and its build cache under the home folder, and the base denies the home folder of the owner, so `go test` fails there. The Go command has no environment variable that turns telemetry off: it reads the telemetry mode from a file in the config folder under the home folder. The env file writes the mode `off` at `.config/go/telemetry/mode` and at `Library/Application Support/go/telemetry/mode` in the new home, and sets `XDG_CONFIG_HOME` to `.config` there, so no `go` call of the shell starts a telemetry child that outlives the step. The build cache of the Go command starts empty in each step. A step whose worktree holds a `go.mod` reads the module cache that the engine filled (see [The Go module cache](#the-go-module-cache)); another step starts with an empty module cache. The env file sets `HOME` with the git variables.
+The CLI process keeps the `HOME` of the owner, so that its login works. The shell gets its own `HOME`: a new, empty folder `beehest-home-<run folder name>` in the temporary folder of the sandbox, made by the env file before the first command. Each step has its own folder, so no file of one step reaches the next. The Go command keeps its telemetry token and its build cache under the home folder, and the base denies the home folder of the owner, so `go test` fails there. The Go command has no environment variable that turns telemetry off: it reads the telemetry mode from a file in the config folder under the home folder. The env file writes the mode `off` at `.config/go/telemetry/mode` and at `Library/Application Support/go/telemetry/mode` in the new home, and sets `XDG_CONFIG_HOME` to `.config` there, so no `go` call of the shell starts a telemetry child that outlives the step. The build cache of the Go command starts empty in each step. A step whose worktree holds a `go.mod` reads the module cache that the engine filled (see [The Go module cache](#the-go-module-cache)); another step starts with an empty module cache. The env file sets `HOME` with the git variables.
 
-The engine makes a temporary folder for each sandboxed step, `/tmp/b<uid>/<pid>-<n>` (mode 0700), where `<uid>` is written in base 36, `<pid>` is the process id of the engine and `<n>` counts from 0, and names it in `CLAUDE_CODE_TMPDIR`. The CLI keeps its temporary files in `<that folder>/claude-<uid>/` and gives the shell that path as `TMPDIR`, so the home folder of the shell is `/tmp/b<uid>/<pid>-<n>/claude-<uid>/beehave-home-<run folder name>`. The CLI gives the shell a fallback `TMPDIR` of its own when `<that folder>/claude-<uid>` is longer than 44 bytes, so the folder is short: the longest path, with the largest uid and pid, is 42 bytes. A test pins the limit. When the step ends, whatever its exit, the engine removes the folder with the run folder. When a plain removal fails, it makes each folder in it writable and tries again, because the Go command leaves its module cache read-only. When the engine is killed, the removal does not run. The next sandboxed step removes each folder of the user whose process id names a process that is gone, and keeps the folder of a running engine. A folder that has the pid of the engine itself, but that the engine did not make, is the leftover of a killed engine with the same pid, and the engine removes it. The gate sandbox uses the same pass for its copies. A step with no sandbox gets no such folder and no `CLAUDE_CODE_TMPDIR`.
+The engine makes a temporary folder for each sandboxed step, `/tmp/b<uid>/<pid>-<n>` (mode 0700), where `<uid>` is written in base 36, `<pid>` is the process id of the engine and `<n>` counts from 0, and names it in `CLAUDE_CODE_TMPDIR`. The CLI keeps its temporary files in `<that folder>/claude-<uid>/` and gives the shell that path as `TMPDIR`, so the home folder of the shell is `/tmp/b<uid>/<pid>-<n>/claude-<uid>/beehest-home-<run folder name>`. The CLI gives the shell a fallback `TMPDIR` of its own when `<that folder>/claude-<uid>` is longer than 44 bytes, so the folder is short: the longest path, with the largest uid and pid, is 42 bytes. A test pins the limit. When the step ends, whatever its exit, the engine removes the folder with the run folder. When a plain removal fails, it makes each folder in it writable and tries again, because the Go command leaves its module cache read-only. When the engine is killed, the removal does not run. The next sandboxed step removes each folder of the user whose process id names a process that is gone, and keeps the folder of a running engine. A folder that has the pid of the engine itself, but that the engine did not make, is the leftover of a killed engine with the same pid, and the engine removes it. The gate sandbox uses the same pass for its copies. A step with no sandbox gets no such folder and no `CLAUDE_CODE_TMPDIR`.
 
 The scrub drops `GIT_CONFIG_GLOBAL` by name. The engine writes the git variables to a file `sandbox-env.sh` in the run folder and names it in `CLAUDE_ENV_FILE`; the CLI sources the file in its shell after the scrub. The run folder holds only that file. The run folder is in the temporary folder of the engine, which the sandbox reads by default; the `allowRead` entry for the file matters only when the run folder is under the home folder.
 
@@ -187,7 +187,7 @@ With no global config, the clone has no `user.name` or `user.email`. The engine 
 
 The shell of a step has no network, so the go command cannot download a module. The engine runs `go mod download all` outside the sandbox, with its own network, after every check that can refuse the step and just before the CLI starts. A step with no sandbox, or a step that the engine or the runner refuses (an adapter with no sandbox, Windows, a CLI that is missing or too old), runs no download. The download fills the module cache of the project, `<state folder>/gomodcache/<project>/`, and writes the missing `go.sum` lines, which the go command checks against the checksum database. The items of a project share one cache; two projects never share one.
 
-The go command never runs in the files that the agent wrote. The engine copies `go.mod`, `go.sum`, `go.work` and `go.work.sum`, and the `go.mod` (and `go.sum`) of each `use` folder and local `replace` folder, into a folder in the empty `HOME` of the download. It reads them through a handle on the worktree that no path leaves, and it copies regular files only. The download runs in that copy. After it, the engine writes each checksum file that the download changed back into the worktree: it writes a new file beside the old one and renames it over the old one, so the write never follows a link. The new file is `<name>.beehave`. The engine makes it with an exclusive create, which never follows or reuses an entry at that name, and with the mode of the old file less its execute bits. When any entry, a link included, is at that name, the engine writes nothing back: the step starts with the checksum file as it was, and the note names the entry.
+The go command never runs in the files that the agent wrote. The engine copies `go.mod`, `go.sum`, `go.work` and `go.work.sum`, and the `go.mod` (and `go.sum`) of each `use` folder and local `replace` folder, into a folder in the empty `HOME` of the download. It reads them through a handle on the worktree that no path leaves, and it copies regular files only. The download runs in that copy. After it, the engine writes each checksum file that the download changed back into the worktree: it writes a new file beside the old one and renames it over the old one, so the write never follows a link. The new file is `<name>.beehest`. The engine makes it with an exclusive create, which never follows or reuses an entry at that name, and with the mode of the old file less its execute bits. When any entry, a link included, is at that name, the engine writes nothing back: the step starts with the checksum file as it was, and the note names the entry.
 
 The time of the download does not count against the time limit of the step. The total timer of the step stops while the download runs and starts again with the whole limit after it. The download has its own limit of 10 minutes.
 
@@ -228,7 +228,7 @@ A Claude Code that does not know a sandbox key ignores it and exits with code 0,
 
 No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = "off"` in the project on purpose. The OpenCode adapter has no sandbox yet, so a project that runs an OpenCode step sets `sandbox = "off"`.
 
-On Linux, the Claude Code sandbox needs `bwrap` and `socat`. beehave sets `failIfUnavailable`, so Claude Code exits at start when either is missing, and the step fails with no unsandboxed run. Until the Linux smoke run passes, a project on Linux sets `sandbox = "off"`. beehave installs no package.
+On Linux, the Claude Code sandbox needs `bwrap` and `socat`. beehest sets `failIfUnavailable`, so Claude Code exits at start when either is missing, and the step fails with no unsandboxed run. Until the Linux smoke run passes, a project on Linux sets `sandbox = "off"`. beehest installs no package.
 
 ## The gate under the sandbox
 
@@ -250,11 +250,11 @@ The first line of the output of the gate is the plan. The report of the gate ste
 
 ### The test report
 
-The command of the project gate writes its `test_report` files in the copy of the work folder. When the command exits 0, `beehave` copies each file that the `test_report` glob matches and that did not exist in the copy before the command to the same name in the real work folder, where the gate reads it. A file that the copy already held, for example a tracked file, is never carried, so the gate never rewrites a file of the repository. `beehave` carries only a plain file with one name. A link, a folder, or a file with a second name (a hard link) fails the gate, and the output names the file. The command gets no extra right to write. `beehave` reads only inside the copy and writes only inside the real folder, through `os.Root`. A `test_report` that is absolute or leaves the work folder with `..` is refused, and the gate does not run. Only the project gate does this. A command call, and a program gate, run as before. A gate in a folder with no `.git` writes its report in that folder, so it needs the folder in `gate_allow_write`.
+The command of the project gate writes its `test_report` files in the copy of the work folder. When the command exits 0, `beehest` copies each file that the `test_report` glob matches and that did not exist in the copy before the command to the same name in the real work folder, where the gate reads it. A file that the copy already held, for example a tracked file, is never carried, so the gate never rewrites a file of the repository. `beehest` carries only a plain file with one name. A link, a folder, or a file with a second name (a hard link) fails the gate, and the output names the file. The command gets no extra right to write. `beehest` reads only inside the copy and writes only inside the real folder, through `os.Root`. A `test_report` that is absolute or leaves the work folder with `..` is refused, and the gate does not run. Only the project gate does this. A command call, and a program gate, run as before. A gate in a folder with no `.git` writes its report in that folder, so it needs the folder in `gate_allow_write`.
 
 ### The gate lists
 
-The project file keeps two lists for the gate, and `beehave` records them. The enforcer applies them to a gate that runs on this machine.
+The project file keeps two lists for the gate, and `beehest` records them. The enforcer applies them to a gate that runs on this machine.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -274,13 +274,13 @@ The project key `sandbox_enforcer` names the enforcer. It holds for the enforcer
 Platform support:
 
 - Linux: `landlock` needs Linux 6.7 or later (Landlock ABI 4), because older kernels cannot limit TCP connections.
-- WSL2 runs a real Linux kernel, so it can use `landlock` when the kernel is 6.7 or later. beehave does not detect WSL. A kernel below 6.7 makes the check fail.
+- WSL2 runs a real Linux kernel, so it can use `landlock` when the kernel is 6.7 or later. beehest does not detect WSL. A kernel below 6.7 makes the check fail.
 - WSL1 has no Landlock, so its check fails and the gate is refused.
 - Windows without WSL is refused.
 
 ### The seatbelt enforcer
 
-The `seatbelt` enforcer runs the command under `sandbox-exec` with a Seatbelt profile that beehave generates from the plan. The profile:
+The `seatbelt` enforcer runs the command under `sandbox-exec` with a Seatbelt profile that beehest generates from the plan. The profile:
 
 - denies everything by default;
 - allows reads and writes by the paths of the plan, and reads of the folders of macOS that every program loads from (`/System`, `/Library/Apple` and the shared cache of the libraries). It adds no other folder: a plan that needs `/usr`, `/etc` or `/opt` names them, as the plan of a gate does;
@@ -288,7 +288,7 @@ The `seatbelt` enforcer runs the command under `sandbox-exec` with a Seatbelt pr
 - grants no unix socket;
 - allows a Mach service lookup by name only, for the few services that the system libraries need (user and group names, logging, preferences, notifications). A command cannot reach launchd or any other service to start a job.
 
-The profile text holds no path. beehave passes each path to `sandbox-exec` as a `-D` parameter, so a path cannot add a rule. A command can stat any path, but it cannot read a file that the plan does not list.
+The profile text holds no path. beehest passes each path to `sandbox-exec` as a `-D` parameter, so a path cannot add a rule. A command can stat any path, but it cannot read a file that the plan does not list.
 
 Apple deprecated `sandbox-exec`, and every macOS still has it. The check of the enforcer fails, `auto` finds no enforcer, and the gate is refused, if:
 
@@ -310,7 +310,7 @@ A change under `internal/sandbox/seatbelt` must pass `make check-darwin` on a Ma
 
 Landlock rights inherit down a folder, so a rule cannot close `.git` below a writable work folder. For this reason the gate command never works in the real work folder.
 
-When the work folder is a git work tree, `beehave` makes a detached worktree of its head in the temporary folder of the gate. It grants that copy whole, and removes it when the gate ends. The command can make, move and remove any file or folder at the top of the copy, such as `coverage.out`, `bin` or `node_modules`.
+When the work folder is a git work tree, `beehest` makes a detached worktree of its head in the temporary folder of the gate. It grants that copy whole, and removes it when the gate ends. The command can make, move and remove any file or folder at the top of the copy, such as `coverage.out`, `bin` or `node_modules`.
 
 The real work folder is not in the plan. The real git folder is read-only in it; the copy needs it to read the history, so the command can read its config and hooks. The command cannot write:
 
@@ -333,7 +333,7 @@ A work folder with no `.git`, such as the folder of a project with no repository
 
 - The gate writes its temporary folder and the `gate_allow_write` paths.
 - A `gate_allow_write` path that overlaps a closed name of that folder, or the folder itself, is refused, so the gate does not start.
-- Exception: the folder that `beehave` makes for an item with no work folder. `beehave` made it for the gate alone, and the gate may write it.
+- Exception: the folder that `beehest` makes for an item with no work folder. `beehest` made it for the gate alone, and the gate may write it.
 
 This rule covers the project gate (the `gate` key of the project) and the program gate alike. If a gate in a folder with no `.git` writes a report or build output into that folder, the write fails with "Permission denied". List the folder for that output in `gate_allow_write`, for example `gate_allow_write = ["reports"]`.
 
@@ -341,7 +341,7 @@ Known limit: the enforcer has no right for `chmod`, so a gate can still change t
 
 ### The program gate
 
-A program gate (a `gate` call with `run`, such as the gate of `batch_merge` with `gate_run`) runs under the same enforcer, the same copy and the same plan as the project gate. `gate_network` and `gate_allow_write` apply to it. `beehave check` prints no note for it, because it is not outside the sandbox.
+A program gate (a `gate` call with `run`, such as the gate of `batch_merge` with `gate_run`) runs under the same enforcer, the same copy and the same plan as the project gate. `gate_network` and `gate_allow_write` apply to it. `beehest check` prints no note for it, because it is not outside the sandbox.
 
 The sandbox does not limit stdin or `max_new_processes` of a program gate.
 
@@ -352,9 +352,9 @@ The plan closes `~/.gitconfig`, so git would fail on it. The engine gives the pr
 
 ### The folder of the gate copies
 
-Every copy lives in one folder that beehave owns in the temporary folder, `beehave-gate-<uid>`. The name of a copy holds the process id of beehave. Each copy is a unique folder (mode 0700) inside it.
+Every copy lives in one folder that beehest owns in the temporary folder, `beehest-gate-<uid>`. The name of a copy holds the process id of beehest. Each copy is a unique folder (mode 0700) inside it.
 
-The folder `beehave-gate-<uid>` must be a real folder, not a link, owned by the user, with no write right for the group or others. Otherwise the gate does not run, because another user could have made the name first on a shared temporary folder.
+The folder `beehest-gate-<uid>` must be a real folder, not a link, owned by the user, with no write right for the group or others. Otherwise the gate does not run, because another user could have made the name first on a shared temporary folder.
 
 Removal:
 
@@ -374,7 +374,7 @@ Removal:
 
 ### When no enforcer can run
 
-When no enforcer can run here, `beehave` runs no gate command outside a sandbox that the project asked for, and the gate does not run. The refusal text ends with the reason of the enforcer. The engine push is refused too, in every project, because its copy of the head always runs under an enforcer.
+When no enforcer can run here, `beehest` runs no gate command outside a sandbox that the project asked for, and the gate does not run. The refusal text ends with the reason of the enforcer. The engine push is refused too, in every project, because its copy of the head always runs under an enforcer.
 
 The same holds, even in a project that builds on a host, for:
 
@@ -387,13 +387,13 @@ Each of these refuses in the step that starts the gate, with a note that says so
 
 A run that recorded a gate pass while the sandbox was off keeps that pass when it resumes with the sandbox on. The replay reads the record and is not refused.
 
-To run the gate on this machine, set `sandbox = "off"` in the project file. `beehave check config` prints the same note for each such project, and `beehave check workflow --project` lists each such call with its position.
+To run the gate on this machine, set `sandbox = "off"` in the project file. `beehest check config` prints the same note for each such project, and `beehest check workflow --project` lists each such call with its position.
 
-When an enforcer runs on this machine, the gate of a project with no `sandbox` key runs in the sandbox. The gate reads nothing under the home folder except the `sandbox_read` paths, so a gate tool under it, such as a mise or asdf shim or `~/go/bin`, fails. `beehave check config` prints one note for each such project. To fix it, add the folders of those tools to `sandbox_read`, or set `sandbox = "off"`.
+When an enforcer runs on this machine, the gate of a project with no `sandbox` key runs in the sandbox. The gate reads nothing under the home folder except the `sandbox_read` paths, so a gate tool under it, such as a mise or asdf shim or `~/go/bin`, fails. `beehest check config` prints one note for each such project. To fix it, add the folders of those tools to `sandbox_read`, or set `sandbox = "off"`.
 
 ### A gate on a build host
 
-A gate on a build host (a `build_host` other than `local`) runs outside the sandbox. The sandbox covers only a command that `beehave` starts on this machine. `beehave check config` prints a note for each such project that has the sandbox on.
+A gate on a build host (a `build_host` other than `local`) runs outside the sandbox. The sandbox covers only a command that `beehest` starts on this machine. `beehest check config` prints a note for each such project that has the sandbox on.
 
 ### The key of a gate verdict
 

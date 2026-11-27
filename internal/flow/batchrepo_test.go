@@ -16,11 +16,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/landing"
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/landing"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // repoGit runs the real git in one repository with a fixed identity and no user configuration.

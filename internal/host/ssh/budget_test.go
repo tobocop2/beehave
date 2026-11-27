@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
 )
 
 func TestTeardown_TheBankScanHonoursTheConfiguredBudget(t *testing.T) {

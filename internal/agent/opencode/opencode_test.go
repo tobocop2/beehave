@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/agenttest"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/agenttest"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestAdapter_PassesTheConformanceSuite(t *testing.T) {
@@ -216,7 +216,7 @@ func TestRun_AStreamedCostAboveTheCapEndsTheRunAsABudgetCap(t *testing.T) {
 func guarded(fixture, version string, load bool) string {
 	script := "#!/bin/sh\n" + answersVersion(version) + "cat > /dev/null\n"
 	if load {
-		script += "echo loaded > \"$OPENCODE_CONFIG_DIR/beehave-guard-loaded\"\n"
+		script += "echo loaded > \"$OPENCODE_CONFIG_DIR/beehest-guard-loaded\"\n"
 	}
 
 	return script + "cat '" + fixture + "'\n"
@@ -230,7 +230,7 @@ func guardedRun(t *testing.T, script string, change func(*agent.Spec)) agent.Res
 
 	spec := agent.Spec{
 		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
-		Dir: dir, Prompt: "go", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Guard: "beehave check command",
+		Dir: dir, Prompt: "go", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Guard: "beehest check command",
 	}
 	change(&spec)
 
@@ -285,7 +285,7 @@ func TestRun_ARunNeedsAnOpenCodeVersionFrom1_19_5UpToBut3_0_0OnEveryPath(t *test
 		{"1.19.4", false}, {"1.19.5", true}, {"1.19.6", true}, {"1.99.99", true}, {"2.0.0", true}, {"2.2.5", true}, {"2.99.99", true}, {"3.0.0", false}, {"3.0.1", false},
 	}
 
-	for _, guard := range []string{"", "beehave check command"} {
+	for _, guard := range []string{"", "beehest check command"} {
 		for _, tc := range versions {
 			t.Run(tc.version+" guard="+guard, func(t *testing.T) {
 				t.Parallel()

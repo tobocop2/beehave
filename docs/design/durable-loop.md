@@ -1,6 +1,6 @@
 # The durable loop
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
 `flow` runs each item as a DBOS workflow, and each agent step as a child workflow. For a first read, start at the diagram in [One item, end to end](#one-item-end-to-end).
 
@@ -14,28 +14,28 @@ DBOS stores the state of every workflow in SQLite (`dbos.db`) in the state folde
 
 An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. Because of this ID, a second start of the same attempt joins the first.
 
-A start can ask to replace the open run in place of joining it: `beehave run <item> --on-open replace`, the `RunOnOpen` option of the library, or `on_open="replace"` in a `spawn` call. The default is `join`. A replace takes `probe.lock`, reads the newest run of the item again, and cancels it with its children, as `beehave cancel` does. A canceled run is terminal, so the existing attempt rule then starts attempt `k+1`: a replace adds no second way to number attempts. The read goes through the store view, so a run under a move reads as open. The lock makes the replace wait for the mover, and then it cancels the rewound run. A run that ended since the first read is not canceled. For `beehave run` and the library, the replace holds `probe.lock` until attempt `k+1` is open, so a reader that holds the lock never sees the item with no open run. The cancel of a `spawn` call is one recorded step, and the child starts after it: a start of that item in between plans the same attempt id, and the store keeps one run. A failed run and an open run of another project are refused as for a start with no option, before any cancel. The option is an instruction of the start: the store never holds it, so a resume and a replay read it empty. Each claim has its own owner token, so the release of attempt `k` frees only its own claim. A running engine releases the claim of `k` at its next tick, after the function of `k` returns, and the cancel marker of `k` stays until then. The claim step of `k+1` waits until no other run of its item has a cancel marker, for at most the release time of the clock. A run that replays its claim step, as a resumed or forked run does, makes no take and does not wait. If the marker stays longer, because the engine stopped, the claim ends with its refusal, which names the holder. The release of `k` removes the worktree of the item only when no newer run of the item exists, because attempt `k+1` uses the same worktree. A `spawn` call that replaces an item that a run above it executes is refused, because the cancel would stop the run that spawns it. When a `beehave run` that joined an engine replaces the run and then takes over after the engine stops, the takeover joins the new run and cancels nothing.
+A start can ask to replace the open run in place of joining it: `beehest run <item> --on-open replace`, the `RunOnOpen` option of the library, or `on_open="replace"` in a `spawn` call. The default is `join`. A replace takes `probe.lock`, reads the newest run of the item again, and cancels it with its children, as `beehest cancel` does. A canceled run is terminal, so the existing attempt rule then starts attempt `k+1`: a replace adds no second way to number attempts. The read goes through the store view, so a run under a move reads as open. The lock makes the replace wait for the mover, and then it cancels the rewound run. A run that ended since the first read is not canceled. For `beehest run` and the library, the replace holds `probe.lock` until attempt `k+1` is open, so a reader that holds the lock never sees the item with no open run. The cancel of a `spawn` call is one recorded step, and the child starts after it: a start of that item in between plans the same attempt id, and the store keeps one run. A failed run and an open run of another project are refused as for a start with no option, before any cancel. The option is an instruction of the start: the store never holds it, so a resume and a replay read it empty. Each claim has its own owner token, so the release of attempt `k` frees only its own claim. A running engine releases the claim of `k` at its next tick, after the function of `k` returns, and the cancel marker of `k` stays until then. The claim step of `k+1` waits until no other run of its item has a cancel marker, for at most the release time of the clock. A run that replays its claim step, as a resumed or forked run does, makes no take and does not wait. If the marker stays longer, because the engine stopped, the claim ends with its refusal, which names the holder. The release of `k` removes the worktree of the item only when no newer run of the item exists, because attempt `k+1` uses the same worktree. A `spawn` call that replaces an item that a run above it executes is refused, because the cancel would stop the run that spawns it. When a `beehest run` that joined an engine replaces the run and then takes over after the engine stops, the takeover joins the new run and cancels nothing.
 
 #### A start can wait for later starts
 
-A start can hold itself back for a window: `beehave run <item> --debounce 30s` or the `RunDebounce` option of the library. A later start of the item in the window takes the place of the earlier start. One run starts when the window ends, with the input of the last start, and it keeps the ID `item-<n>-r<k>` of the first start. A start after the window makes a new run. The default is no window.
+A start can hold itself back for a window: `beehest run <item> --debounce 30s` or the `RunDebounce` option of the library. A later start of the item in the window takes the place of the earlier start. One run starts when the window ends, with the input of the last start, and it keeps the ID `item-<n>-r<k>` of the first start. A start after the window makes a new run. The default is no window.
 
-The DBOS `Debouncer` owns the window. The item is the key, and the run is a delayed run on the `roots` queue, so it survives a crash of the engine and a second process can bounce it. A bounce moves the delay and replaces the stored input of the delayed run, and the store never holds the option itself. A hold ends 10 windows after the first start, so a stream of starts cannot keep a run from starting for ever. DBOS fixes this cap when it stores the first start, so a later start with a longer window does not move it. If the window ends between the check of the start and the call to DBOS, the call finds the key free and answers with the run that now exists, so the input of that start is dropped and the start joins the run, as a start after the window does. A debounced start has no priority, because DBOS refuses one. `spawn` has no debounce: `beehave check workflow` says it is an option of `beehave run`.
+The DBOS `Debouncer` owns the window. The item is the key, and the run is a delayed run on the `roots` queue, so it survives a crash of the engine and a second process can bounce it. A bounce moves the delay and replaces the stored input of the delayed run, and the store never holds the option itself. A hold ends 10 windows after the first start, so a stream of starts cannot keep a run from starting for ever. DBOS fixes this cap when it stores the first start, so a later start with a longer window does not move it. If the window ends between the check of the start and the call to DBOS, the call finds the key free and answers with the run that now exists, so the input of that start is dropped and the start joins the run, as a start after the window does. A debounced start has no priority, because DBOS refuses one. `spawn` has no debounce: `beehest check workflow` says it is an option of `beehest run`.
 
-With a window, an open run that has started is joined, as with no window. With `--on-open replace`, the first start cancels the open run at once and enqueues the delayed run. Later starts bounce that delayed run and never cancel it. A start for another project than the delayed run is refused, with or without `replace`. A delayed run has not started, so it never moves to another build: a debounced start from a build with another version is refused, and the delayed run keeps its input and its version. Run `beehave cancel <item>` to end it.
+With a window, an open run that has started is joined, as with no window. With `--on-open replace`, the first start cancels the open run at once and enqueues the delayed run. Later starts bounce that delayed run and never cancel it. A start for another project than the delayed run is refused, with or without `replace`. A delayed run has not started, so it never moves to another build: a debounced start from a build with another version is refused, and the delayed run keeps its input and its version. Run `beehest cancel <item>` to end it.
 
 #### Who runs the item workflow
 
-The engine that `beehave run` starts runs the item workflow at once, outside any queue. With a debounce window, the engine enqueues the run on the `roots` queue as a delayed run, and the same engine dequeues it when the window ends.
+The engine that `beehest run` starts runs the item workflow at once, outside any queue. With a debounce window, the engine enqueues the run on the `roots` queue as a delayed run, and the same engine dequeues it when the window ends.
 
-When an engine already holds the state folder (`beehave serve` or another `beehave run`), `beehave run` joins it:
+When an engine already holds the state folder (`beehest serve` or another `beehest run`), `beehest run` joins it:
 
 - It enqueues the item workflow on the queue `items` with the same ID.
 - `agents.max_concurrent` applies, so a full queue delays the run.
 - The join refuses a build that differs from the version the live engine wrote into the file `engine.version` of the state folder.
 - The joined run gets the default place, because the client sets no severity.
 - Progress lines print in the log of the engine, not in the terminal of the joiner.
-- If the engine stops before the run ends, the run stays open in the store. After the grace time of 10 seconds, the joined `beehave run` starts its own engine for the item, and the launch of that engine recovers the run. When two joined commands do this at once, one takes the state folder and the other joins it.
+- If the engine stops before the run ends, the run stays open in the store. After the grace time of 10 seconds, the joined `beehest run` starts its own engine for the item, and the launch of that engine recovers the run. When two joined commands do this at once, one takes the state folder and the other joins it.
 
 #### The steps of the item workflow
 
@@ -52,7 +52,7 @@ The workflow runs these steps in order:
 An `agent` step that names no `runner` uses the login of the run.
 
 - A run that a spawn or the queue started has its login in its input.
-- A run that `beehave run` started picks the login at its first such step, from the pool (see [Runner pool](runtime-checks.md#runner-pool)). The step waits when the usage caps leave no room.
+- A run that `beehest run` started picks the login at its first such step, from the pool (see [Runner pool](runtime-checks.md#runner-pool)). The step waits when the usage caps leave no room.
 - A run with no such step picks no login.
 
 The pick is a recorded step, so a resume keeps that login. A step that resumes a session runs on the login that owns the session. An empty pick fails the step.
@@ -118,7 +118,7 @@ The queue holds only phases. Phases run on the queue `agents`, or on the queue `
 
 - The partition key of a phase is the login. Each partition of a queue runs at most `agents.per_login` phases at once. The default is 1.
 - Each queue has a global limit: `agents.max_concurrent` for `agents` and `agents.max_review_concurrent` for `reviews`.
-- With `agents.concurrency = "adaptive"`, `agents.max_concurrent` is the ceiling of the queue `agents`, and the limit moves at run time between `agents.per_login` and that ceiling. One controller in the engine writes the limit to the queue row once each minute. It adds one when every login has room under its usage caps and a phase waits. It halves the limit, never below `agents.per_login`, when a phase ends at a provider limit, and it adds nothing until the reset time of that limit. A lower limit stops no running phase and starts no new one. `beehave status` shows the limit.
+- With `agents.concurrency = "adaptive"`, `agents.max_concurrent` is the ceiling of the queue `agents`, and the limit moves at run time between `agents.per_login` and that ceiling. One controller in the engine writes the limit to the queue row once each minute. It adds one when every login has room under its usage caps and a phase waits. It halves the limit, never below `agents.per_login`, when a phase ends at a provider limit, and it adds nothing until the reset time of that limit. A lower limit stops no running phase and starts no new one. `beehest status` shows the limit.
 - The queues do not lend slots. The host never runs more than the sum of the two limits.
 - One login can run one review phase and one implement phase at once.
 
@@ -132,7 +132,7 @@ One rule gives the place of a phase, a gate and a run of the queue `items`. The 
 
 | Place | Who gets it |
 |---|---|
-| 0 | A run that `beehave resume` rewinds. |
+| 0 | A run that `beehest resume` rewinds. |
 | 1 | An item of severity P0. |
 | 2 | A gate whose pull request has a person who waits (an open change request or an unresolved review thread). |
 | 3 | An item of severity P1. |
@@ -152,11 +152,11 @@ The severity is the field `severity` of the item (`P0` to `P3`, or `P?`). The ru
 - The step `spawn` reads the severity of each item it starts, so a tracker that cannot be read fails that step.
 - The runs that `spawn` starts get their place from the tracker, in the recorded spawn step, so a replay queues the run with the same place.
 - A phase and a run of `items` have no standing at hand, so they take the place of the severity alone.
-- A run that `beehave resume` continues keeps the place that its row holds.
-- A run that `beehave resume` rewinds keeps every message that was sent to it. A message that a dropped step took is unread again, an unread message stays unread, and a message that a step below the cut took stays taken. The replay takes the oldest message first, by the millisecond that it was sent. Messages sent in the same millisecond have no defined order. A wait that the replay runs again takes the answer that it took before and does not ask again.
-- A run that `beehave resume --on-this-build` moves reads as open from the first moment of the move. The mover marks the run in its DBOS row (the attribute `move`) and holds the file `move.lock` from before the cancel to after the rewind. Every read of a run status goes through one store view. The view reads a canceled run that carries the mark as open while `move.lock` is held. If the lock is free, the view reads the row again: a finished move shows the open run, and a mover that died shows the canceled run. A real cancel carries no mark and reads as ended at once. A message that arrives during the move waits in the inbox and survives the rewind.
-- A run whose store refused a step record and its failure record has two step ids in a row with no record. `beehave resume` rewinds to the first of them. One step id with no record is no refusal: a receive or an event read that finds its message waiting leaves one.
-- A run that `beehave resume` rewinds is queued with place 0. The rewind of the library takes no priority, and the queue gives a run with no priority the value 0. Place 0 starts before every place from 1 to 6, so a rewound run starts first, ahead of a P0 item.
+- A run that `beehest resume` continues keeps the place that its row holds.
+- A run that `beehest resume` rewinds keeps every message that was sent to it. A message that a dropped step took is unread again, an unread message stays unread, and a message that a step below the cut took stays taken. The replay takes the oldest message first, by the millisecond that it was sent. Messages sent in the same millisecond have no defined order. A wait that the replay runs again takes the answer that it took before and does not ask again.
+- A run that `beehest resume --on-this-build` moves reads as open from the first moment of the move. The mover marks the run in its DBOS row (the attribute `move`) and holds the file `move.lock` from before the cancel to after the rewind. Every read of a run status goes through one store view. The view reads a canceled run that carries the mark as open while `move.lock` is held. If the lock is free, the view reads the row again: a finished move shows the open run, and a mover that died shows the canceled run. A real cancel carries no mark and reads as ended at once. A message that arrives during the move waits in the inbox and survives the rewind.
+- A run whose store refused a step record and its failure record has two step ids in a row with no record. `beehest resume` rewinds to the first of them. One step id with no record is no refusal: a receive or an event read that finds its message waiting leaves one.
+- A run that `beehest resume` rewinds is queued with place 0. The rewind of the library takes no priority, and the queue gives a run with no priority the value 0. Place 0 starts before every place from 1 to 6, so a rewound run starts first, ahead of a P0 item.
 
 #### Turn and budget stops
 
@@ -170,9 +170,9 @@ The keyword `max_context_percent` of the `agent` call takes a whole number from 
 - The window is `agents.context_window_tokens`, which defaults to 200000. A model with a larger window needs that key set, or the limit fires at a smaller share of the real window.
 - The check runs when a line arrives, so a run can pass the limit by one turn. The first turn at or past the limit stops the run, even if a later turn would shrink the context.
 - An agent CLI that reports no such figure never reaches the limit. Claude Code reports it. OpenCode does not, so the limit has no effect on it.
-- The workflow decides what follows. beehave does not start a replacement lane or write a hand-off note: the library does not give a workflow a hand-off.
+- The workflow decides what follows. beehest does not start a replacement lane or write a hand-off note: the library does not give a workflow a hand-off.
 
-`beehave resume` starts a new agent run with the same cap for each run. The cap of one agent run does not count across resumes. For the cap of an item run, see [Cost budgets](#cost-budgets).
+`beehest resume` starts a new agent run with the same cap for each run. The cap of one agent run does not count across resumes. For the cap of an item run, see [Cost budgets](#cost-budgets).
 
 #### Provider limits
 
@@ -200,12 +200,12 @@ For try `t` and run `k` (from 0) inside the try, the call records these steps:
 | The reset time has passed | Sleeps the least wait (one minute), then runs again. |
 | The next run is limited again and its reset time has passed too | Fails. The error names the limit and the login. The reset time is wrong, and a loop on it has no end. |
 | The agent gives no reset time, and the usage read of the pool gives one for the login | The phase takes the read time as the reset time of the limit and records it. The step then waits as for any dated limit. A replay never reads the usage again. |
-| The agent gives no reset time, and the usage read gives none | Fails. The error names the limit and the login, and says to run `beehave resume <item>` when the limit is gone. |
+| The agent gives no reset time, and the usage read gives none | Fails. The error names the limit and the login, and says to run `beehest resume <item>` when the limit is gone. |
 | The provider is overloaded (limit kind `overload`) | The pool read is not asked. The limit step sets `wait_until` to the wall clock plus a backoff of 1, 2, 4, 8 and 16 minutes, one for each overload in a row. The status shows the overload and the time of the next try. |
 | The overload goes on past the fifth wait | Fails with the error of the case with no reset time, in the limit step. A limit with a reset time between two overloads starts the backoff again. |
 | The provider refuses for a reason that no wait cures (usage credits, a pause of the organization) | Fails at once, with no limit step. |
 
-The usage read is the one that the login pick uses, over the login of the run. It dates a limit only while the login is over a usage cap of the pool. A failed read fails the phase, and the error says to run `beehave resume <item>`. In the cases that fail, the phase is the failed step, and the run records no limit step. The phase input of a rerun after a past reset holds `reset_passed`, so the phase knows that a second past reset fails. `beehave resume <item>` reopens the failed phase, as it reopens any failed agent run, and the agent runs again. The cost of the failed run counts once, in the cost record of a failed run.
+The usage read is the one that the login pick uses, over the login of the run. It dates a limit only while the login is over a usage cap of the pool. A failed read fails the phase, and the error says to run `beehest resume <item>`. In the cases that fail, the phase is the failed step, and the run records no limit step. The phase input of a rerun after a past reset holds `reset_passed`, so the phase knows that a second past reset fails. `beehest resume <item>` reopens the failed phase, as it reopens any failed agent run, and the agent runs again. The cost of the failed run counts once, in the cost record of a failed run.
 
 ### The `rewrote` output
 
@@ -214,7 +214,7 @@ Every agent call returns `rewrote`. It is true when the commit of the item folde
 - The render step records that first commit once for the whole call. A replay keeps it, and every try of `output_tries` compares with it.
 - A try that amends a commit of an earlier try of the same call is not a rewrite, because that history did not exist before the step.
 - The render step fails when the item folder has no git commit, before the agent starts.
-- `beehave status <run id>` shows `rewrote=yes` on the line of such a step.
+- `beehest status <run id>` shows `rewrote=yes` on the line of such a step.
 - A record made before the render step kept the commit gives false.
 
 ### The `committed` output
@@ -233,7 +233,7 @@ Every agent call returns `cost_usd`: the total cost in dollars that the agent CL
 | Case | Result |
 |---|---|
 | The CLI reports no cost, or a dry run | `cost_usd` is 0. |
-| The CLI reports tokens and no dollars | beehave multiplies the tokens by the price of the model in the table `internal/agent/prices.json`. `cost_estimated` is true. |
+| The CLI reports tokens and no dollars | beehest multiplies the tokens by the price of the model in the table `internal/agent/prices.json`. `cost_estimated` is true. |
 | The model is not in the price table | No estimate. `cost_unknown` is true, which is not the same as a cost of 0. |
 
 The three outputs `cost_usd`, `cost_estimated` and `cost_unknown` form one cost. Every place that shows, records or sums a cost carries all three: the step lines, the cost record of a failed run and the sum of the run. A sum that holds an estimate shows `(estimate)`. A sum that holds an unknown cost shows `(some cost unknown)`.
@@ -248,11 +248,11 @@ Three caps use the cost.
 
 **The cap of one agent run: `max_budget_usd`.** This keyword of the `agent` call takes a number of dollars, 0 or more. 0 means no cap.
 
-- The engine passes it to the budget option of the agent CLI (`--max-budget-usd` for `claude`), and the CLI stops the run. beehave runs no timer to stop it.
+- The engine passes it to the budget option of the agent CLI (`--max-budget-usd` for `claude`), and the CLI stops the run. beehest runs no timer to stop it.
 - When `agents.max_budget_usd` is also set, the lower value goes to the CLI.
 - A run that the cap stops ends with the output `stop` set to `budget`.
 
-A CLI with no budget option refuses the run, unless it reports the dollars of each step on its output. Then beehave adds them up and stops the run when the sum passes the cap. The run can pass the cap by the cost of one step. For this sum:
+A CLI with no budget option refuses the run, unless it reports the dollars of each step on its output. Then beehest adds them up and stops the run when the sum passes the cap. The run can pass the cap by the cost of one step. For this sum:
 
 - A line that reports a dollar amount of 0 or less adds nothing.
 - The dollars of a line past the line length limit are lost.
@@ -260,7 +260,7 @@ A CLI with no budget option refuses the run, unless it reports the dollars of ea
 - A run that crashed and reported no cost stays a failed exit, not a budget stop.
 - A budget stop keeps the session, the last message and the forbidden-command violations of the run.
 
-**The cap of one item run: `agents.max_run_budget_usd`** (or `BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD`). It caps the sum for one item run.
+**The cap of one item run: `agents.max_run_budget_usd`** (or `BEEHEST_AGENTS_MAX_RUN_BUDGET_USD`). It caps the sum for one item run.
 
 - A child workflow that the run spawns starts its own sum at 0. The cap applies to each sum alone.
 - Before an agent step starts, the engine adds the `cost_usd` that the earlier agent steps of the item run recorded, the cost of each run that a provider limit stopped, and the cost of each run that failed.
@@ -270,27 +270,27 @@ A CLI with no budget option refuses the run, unless it reports the dollars of ea
 - While a cap holds a step, the item run queues one phase with no agent run for each look: at most one a minute. The phase holds a slot of the agents queue only for the look.
 - The check reads the cap from the config of the engine that runs it. To resume a held round, raise the cap (or set it to 0) and restart the engine.
 - A cost that is unknown for an earlier step still fails the step: the cap cannot be checked against it.
-- The sum comes from recorded costs, so a replay gives the same answer. The cost of a failed run goes to the DBOS stream `failed_runs` of the item run. A rewind keeps the entries of a stream, so after `beehave resume` the sum still holds the cost of the failed run. The resume rewinds a failed phase to its look, so the rerun of the agent step looks at the caps first and counts the cost.
+- The sum comes from recorded costs, so a replay gives the same answer. The cost of a failed run goes to the DBOS stream `failed_runs` of the item run. A rewind keeps the entries of a stream, so after `beehest resume` the sum still holds the cost of the failed run. The resume rewinds a failed phase to its look, so the rerun of the agent step looks at the caps first and counts the cost.
 
-**The cap of an item tree: `agents.max_tree_budget_usd`** (or `BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD`). It caps the sum for the root run and every run it spawns.
+**The cap of an item tree: `agents.max_tree_budget_usd`** (or `BEEHEST_AGENTS_MAX_TREE_BUDGET_USD`). It caps the sum for the root run and every run it spawns.
 
 - The sum is read from the step records of the root run and of each run below it, so a restart keeps it.
 - A spawned run uses the cap of its root. It does not start a new sum and cannot raise the cap.
 - The rule and the wait are the same as for the run cap. Both caps apply when both are set.
 
-**The cap of a week: `agents.max_week_budget_usd`** (or `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD`). It caps the sum for all items of the store in the last seven days.
+**The cap of a week: `agents.max_week_budget_usd`** (or `BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD`). It caps the sum for all items of the store in the last seven days.
 
 - The sum reads the step records of the item runs of the store that finished in the last seven days, and of every item run that has not finished. It reads no run that finished before the window, so the cost of a check does not grow with the history of the store.
 - A cost counts when its agent step ended at or after the time of the check minus seven days. A step that ended exactly seven days ago counts. A step that runs has no recorded cost yet and adds 0 until it ends.
 - A cost with no time, such as the cost of a failed run whose call has no step record, counts. The cap errs toward stopping.
 - The rule and the wait are the same as for the run cap. The stop has the scope `week`. All set caps apply.
 - A cost is recorded when its step ends, and nothing reserves it before. Two agent steps that start at the same time both read the same sum, so both can start under the cap. The overshoot is at most the cost of the steps that run at once.
-- A finished run that `agents.retention_days` deleted is not in the sum, so beehave refuses a config with a week cap and a `retention_days` from 1 to 6. Set `retention_days` to 7 or more, or to 0.
-- The sum covers beehave recorded costs only. The usage windows of a subscription are not read.
+- A finished run that `agents.retention_days` deleted is not in the sum, so beehest refuses a config with a week cap and a `retention_days` from 1 to 6. Set `retention_days` to 7 or more, or to 0.
+- The sum covers beehest recorded costs only. The usage windows of a subscription are not read.
 
-**The stop in the status.** `beehave status <run id> --json` shows `cap_stop` with `scope` (`run`, `tree` or `week`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
+**The stop in the status.** `beehest status <run id> --json` shows `cap_stop` with `scope` (`run`, `tree` or `week`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
 
-**The wait for a provider limit in the status.** While an agent step waits for a provider limit to reset, `beehave status <run id> --json` shows `limit_wait` with `limit`, `login` and `wait_until` on the run and on the line of the step. The run reads `running`.
+**The wait for a provider limit in the status.** While an agent step waits for a provider limit to reset, `beehest status <run id> --json` shows `limit_wait` with `limit`, `login` and `wait_until` on the run and on the line of the step. The run reads `running`.
 
 #### Not covered
 
@@ -355,7 +355,7 @@ The four limits are arguments of `review_fix`. The constants of the same names i
 | `void_asks` | `VOID_ASKS`, 3 | The questions to the owner about a void gate. |
 | `escalate_after` | `FIX_ESCALATE_AFTER`, 3 | The last fix round on the step `fix`. |
 
-`examples/remediation/workflow.star` reads both from the project file. The table `STEP_DEFAULTS` of the example is the one place that names a model: plan `opus`, implement `sonnet`, review `opus`, fix `sonnet`, fix_late `opus`, design `opus`, take_review `opus`, sync_review `opus`, sync_resolve `opus`, queue_audit `sonnet` and settle `sonnet`. `vars.round.steps` overrides the model, the runner or both of any step. `vars.round.design_after`, `void_reruns`, `void_asks` and `escalate_after` set the limits, each a whole number from its least value to 100. The example refuses an unknown step, an unknown field, a model that is not non-blank text, a runner that is not text and a limit out of range, each with the path of the key. It also refuses a review on the model of the implementer when at least two models are in use. A project on one model for every step is accepted. `beehave check workflow <file> --project <name> --dry-run` shows each refusal.
+`examples/remediation/workflow.star` reads both from the project file. The table `STEP_DEFAULTS` of the example is the one place that names a model: plan `opus`, implement `sonnet`, review `opus`, fix `sonnet`, fix_late `opus`, design `opus`, take_review `opus`, sync_review `opus`, sync_resolve `opus`, queue_audit `sonnet` and settle `sonnet`. `vars.round.steps` overrides the model, the runner or both of any step. `vars.round.design_after`, `void_reruns`, `void_asks` and `escalate_after` set the limits, each a whole number from its least value to 100. The example refuses an unknown step, an unknown field, a model that is not non-blank text, a runner that is not text and a limit out of range, each with the path of the key. It also refuses a review on the model of the implementer when at least two models are in use. A project on one model for every step is accepted. `beehest check workflow <file> --project <name> --dry-run` shows each refusal.
 
 The status caps follow from `rounds`: the review cap is `rounds * (MAX_INNER + 1)` and the fix cap is `rounds * MAX_INNER`.
 
@@ -444,7 +444,7 @@ The argument `review_outputs` of `review_fix` (default: an empty list) names mor
 
 - The returned `review` holds each one as a field. A workflow reads a field of the review, such as a count, and does not parse the text of the report.
 - The review prompt must ask for each one. A review that leaves one out fails like a review that leaves out the verdict.
-- A dry run writes the text `0` for each output that is not the verdict, unless the fixture of the run sets it (see `beehave check workflow`).
+- A dry run writes the text `0` for each output that is not the verdict, unless the fixture of the run sets it (see `beehest check workflow`).
 
 #### The `fix_outputs` and `lane_check` arguments
 
@@ -466,21 +466,21 @@ The loop also gates on the violations of the lane runs. The latest violations ar
 
 #### The wait for the owner
 
-If the loop used all its rounds, the `exhausted` field of its result is true. The `wait` call in the example then sets a question for the owner and waits for a durable receive. `beehave status` shows the question. `beehave answer <item> <text>` sends the answer. The `settle` agent step applies the answer, and the run continues.
+If the loop used all its rounds, the `exhausted` field of its result is true. The `wait` call in the example then sets a question for the owner and waits for a durable receive. `beehest status` shows the question. `beehest answer <item> <text>` sends the answer. The `settle` agent step applies the answer, and the run continues.
 
 **Deadline.**
 
 - With no `timeout` argument, the wait keeps waiting until someone answers. It has no deadline. The engine renews the receive every seven days, and that renewal ends nothing.
 - The `timeout` argument sets the deadline of a wait. To bound the owner wait of a `wait` step, set `timeout` in that step. It does not bound the owner wait for a lost job, which `docs/design/hosts.md` describes.
 - With `timeout = "48h"`, the wait ends at the deadline. The `timed_out` field of its result is true, and the `answer` field is empty.
-- `beehave check workflow` and the run refuse a `timeout` of zero or below, because it would read as no deadline. For a wait with no deadline, leave the argument out.
+- `beehest check workflow` and the run refuse a `timeout` of zero or below, because it would read as no deadline. For a wait with no deadline, leave the argument out.
 - A dry run waits no time. A wait with a `timeout` and no entry in the fixture ends at once with `timed_out` true. A wait with no `timeout` and no entry is refused, because a run would wait for ever.
 - DBOS records the deadline of the wait. A run that stops and resumes after the deadline times out at once. A run that resumes before it waits for the time left.
-- If a wait timed out and the run failed, `beehave resume` reopens the wait at its deadline step when only receives and their sleeps lie between the deadline step and the receive that timed out. That means the wait counted nothing. It records a new deadline and waits its whole `timeout` again. This holds for a plain wait, for a wait with people and no voice, and for a wait with choices and no answer.
-- A wait that counted a voice, and a wait with reminders, record a step between the deadline and the receive. `beehave resume` reopens such a wait at the receive that timed out. The wait keeps its old deadline and times out again at once.
+- If a wait timed out and the run failed, `beehest resume` reopens the wait at its deadline step when only receives and their sleeps lie between the deadline step and the receive that timed out. That means the wait counted nothing. It records a new deadline and waits its whole `timeout` again. This holds for a plain wait, for a wait with people and no voice, and for a wait with choices and no answer.
+- A wait that counted a voice, and a wait with reminders, record a step between the deadline and the receive. `beehest resume` reopens such a wait at the receive that timed out. The wait keeps its old deadline and times out again at once.
 - An answer that arrives after the deadline and before the engine clears the question is kept for the next `wait` of the same run.
 
-**Who answers.** A plain wait takes the first answer from anyone who can run `beehave answer` on the run. A wait can instead set these keywords:
+**Who answers.** A plain wait takes the first answer from anyone who can run `beehest answer` on the run. A wait can instead set these keywords:
 
 | Keyword | Meaning |
 |---|---|
@@ -489,18 +489,18 @@ If the loop used all its rounds, the `exhausted` field of its result is true. Th
 | `choices = ["yes", "no"]` | The closed set of answers. |
 | `remind = [0.5, 0.9]` | Only with `to` and `timeout`. Shares of the window, each above 0 and below 1, from the smallest to the largest, with no share twice. |
 
-A person answers with `beehave answer <item> --as ana <text>`. The command refuses these, and the refusal lists what is allowed:
+A person answers with `beehest answer <item> --as ana <text>`. The command refuses these, and the refusal lists what is allowed:
 
 - A name that `to` does not list.
 - A missing name when `to` is set.
 - A name when the wait sets no `to`.
 - A text that is not in `choices`.
 
-The engine does not prove the name. It keeps no key store, so anyone who can run `beehave answer` on the run can give any listed name.
+The engine does not prove the name. It keeps no key store, so anyone who can run `beehest answer` on the run can give any listed name.
 
-**Where answers arrive.** An answer is a message of the reserved topic `beehave.answer` on the inbox of the run, the same inbox that `recv` reads. A `wait` takes the oldest answer of its own. An answer that comes while a `recv` waits for another topic stays in the buffer of the run until a `wait` reads it. A wait with no `to` ignores an answer that names a wait.
+**Where answers arrive.** An answer is a message of the reserved topic `beehest.answer` on the inbox of the run, the same inbox that `recv` reads. A `wait` takes the oldest answer of its own. An answer that comes while a `recv` waits for another topic stays in the buffer of the run until a `wait` reads it. A wait with no `to` ignores an answer that names a wait.
 
-**Retry an answer.** Add `--key <key>` to `beehave answer`. The key is the idempotency key of the message. If the run already got an answer with that key, the command sends nothing again. The key of an answer and the key of `beehave send` are separate: the same text on both sends both messages. With no key, each answer gets a new one.
+**Retry an answer.** Add `--key <key>` to `beehest answer`. The key is the idempotency key of the message. If the run already got an answer with that key, the command sends nothing again. The key of an answer and the key of `beehest send` are separate: the same text on both sends both messages. With no key, each answer gets a new one.
 
 **Counting.**
 
@@ -512,24 +512,24 @@ The engine does not prove the name. It keeps no key store, so anyone who can run
 - A restart replays each recorded answer and reads the deadline from one recorded step, so the count is the same.
 - A record from before `answers` existed reads it as an empty dict.
 
-**Reminders.** When a share of `remind` falls due, the engine records one step (`wait:remind-1`, `wait:remind-2`). It moves the sent count and the next moment in the same ask event that people read with `beehave status`. A wake that comes late sends each owed reminder once, in order, before the wait ends on its deadline. A restart repeats none, because each look at the clock is a recorded step.
+**Reminders.** When a share of `remind` falls due, the engine records one step (`wait:remind-1`, `wait:remind-2`). It moves the sent count and the next moment in the same ask event that people read with `beehest status`. A wake that comes late sends each owed reminder once, in order, before the wait ends on its deadline. A restart repeats none, because each look at the clock is a recorded step.
 
-**Checks.** `beehave check workflow` refuses:
+**Checks.** `beehest check workflow` refuses:
 
 - An empty or repeated `to` or `choices`.
 - A quorum below 1.
 - A quorum above the number of names, where `to` is a literal.
 
-`beehave check workflow` and the run refuse:
+`beehest check workflow` and the run refuse:
 
 - `remind` with no `timeout` or no `to`.
 - A share outside the range, out of order or twice.
 
-`beehave status` shows the people, how many of the quorum answered and who, and the choices.
+`beehest status` shows the people, how many of the quorum answered and who, and the choices.
 
-#### Answer many waits: `beehave answer --all`
+#### Answer many waits: `beehest answer --all`
 
-`beehave answer --all <text>` reads the same list as `beehave status` and picks every run that is open and shows a question. The command keeps no state of its own.
+`beehest answer --all <text>` reads the same list as `beehest status` and picks every run that is open and shows a question. The command keeps no state of its own.
 
 These flags narrow the list. A run must fit every flag that is set.
 
@@ -539,7 +539,7 @@ These flags narrow the list. A run must fit every flag that is set.
 | `--question` | A text that the question holds. |
 | `--items` | A comma-separated list of item ids. |
 
-For each picked run, the command makes the same call as `beehave answer <item> <text>` (with `--as` when given). So each answer is the same recorded message, and each refusal rule holds for each run: a wrong name, a text outside `choices`, a stranded run or a run that ended.
+For each picked run, the command makes the same call as `beehest answer <item> <text>` (with `--as` when given). So each answer is the same recorded message, and each refusal rule holds for each run: a wrong name, a text outside `choices`, a stranded run or a run that ended.
 
 - The command prints one line for each run: `<item>	answered` or `<item>	refused: <reason>`.
 - A refusal does not stop the other runs.
@@ -550,7 +550,7 @@ For each picked run, the command makes the same call as `beehave answer <item> <
 
 #### The tick
 
-A tick runs every 2 seconds in each running `beehave run` process. Each tick reads only the runs that the process executes, then renews each claim that the process holds.
+A tick runs every 2 seconds in each running `beehest run` process. Each tick reads only the runs that the process executes, then renews each claim that the process holds.
 
 Each renewal has its own timeout of 30 seconds, and never more than the time left before the engine stops trusting the claim. So a hung tracker call delays no other claim.
 
@@ -576,7 +576,7 @@ If the first renewal of a run that continues or resumes fails, the run tries it 
 
 The claim is lost when the time passes. It is lost at once when the tracker says that another holder has the row or that no claim row exists. Then the run records the reason, the engine cancels the run, and the claim ends its context. The run ends with an error that names the reason. It does not release a claim it lost.
 
-After a loss by time, the old session still holds the row until its lease ends. Until then, `beehave resume <item>` refuses with code 3, which is up to 5 minutes. Run it again after that time.
+After a loss by time, the old session still holds the row until its lease ends. Until then, `beehest resume <item>` refuses with code 3, which is up to 5 minutes. Run it again after that time.
 
 #### The claim context
 
@@ -595,11 +595,11 @@ A phase asks, by the id of the run that queued it, whether that run holds a trus
 
 The phase asks before it renders its prompt. The prompt is keyed by the run id, so the prompt of a lost run never replaces the prompt of a new run.
 
-A phase that `beehave resume` reopened waits for its run to take the claim again. It waits while the run is open, and for 3 seconds when the run is not open yet. A phase whose run ended stops after those 3 seconds. So no second `beehave run` can reclaim the item while the first run still works on it.
+A phase that `beehest resume` reopened waits for its run to take the claim again. It waits while the run is open, and for 3 seconds when the run is not open yet. A phase whose run ended stops after those 3 seconds. So no second `beehest run` can reclaim the item while the first run still works on it.
 
 #### The check before a write
 
-A write that the engine makes for an item happens only while the run that ordered it holds a trusted claim. The writes are a pull request comment, the opening of a pull request, a push, the ready mark of a hand-off, the tracker writes (create, status and comment), a merge, and the start of the program of a `command` or a `write` step. A program can write to the forge, so its start counts as a write. Each write reads the claim once, at the call, and runs under a context that the loss of the claim ends. The read checks the wall clock as well as the monotonic clock, so it also refuses a write after a sleep of the machine, before any tick has marked the claim lost. Two callers make this read. An item run makes it for each of its writes, through one write handle for the run. A child that a run queued (the merge of a member, or the host job of a command with a slot class) makes it when its call starts. The child names the run and its item in its input, and it waits for that run, as a phase does, when `beehave resume` reopens the child before the run. A child that names no run is refused. The writes that reduce what a lost run exposes run with no claim: the return of a pull request to draft, the disarm of a queued merge, the notice to the owner, and the release of the claim. The undo of a `write` step runs only while the context of the run is live. After a loss that a renewal found, it does not run. After a lease that lapsed before any renewal noticed, it runs with no claim. A gate writes nothing, and its program needs no claim. A program that is already running when the claim is lost, and that ignores the end of its context, can still write until the lease ends.
+A write that the engine makes for an item happens only while the run that ordered it holds a trusted claim. The writes are a pull request comment, the opening of a pull request, a push, the ready mark of a hand-off, the tracker writes (create, status and comment), a merge, and the start of the program of a `command` or a `write` step. A program can write to the forge, so its start counts as a write. Each write reads the claim once, at the call, and runs under a context that the loss of the claim ends. The read checks the wall clock as well as the monotonic clock, so it also refuses a write after a sleep of the machine, before any tick has marked the claim lost. Two callers make this read. An item run makes it for each of its writes, through one write handle for the run. A child that a run queued (the merge of a member, or the host job of a command with a slot class) makes it when its call starts. The child names the run and its item in its input, and it waits for that run, as a phase does, when `beehest resume` reopens the child before the run. A child that names no run is refused. The writes that reduce what a lost run exposes run with no claim: the return of a pull request to draft, the disarm of a queued merge, the notice to the owner, and the release of the claim. The undo of a `write` step runs only while the context of the run is live. After a loss that a renewal found, it does not run. After a lease that lapsed before any renewal noticed, it runs with no claim. A gate writes nothing, and its program needs no claim. A program that is already running when the claim is lost, and that ignores the end of its context, can still write until the lease ends.
 
 ### Process control
 
@@ -607,11 +607,11 @@ A write that the engine makes for an item happens only while the run that ordere
 
 Each agent process group is a row in the file `agents.pgid` in the state folder (mode 0600). A row holds the group ID and the start time of its leader.
 
-A group dies when its phase ends, times out or is canceled, when its run loses the claim, and when `beehave run` shuts down. The file does not carry the kill of a lost claim: the context of the claim does. The file serves the end of a phase, the cancel of a run, and the next start after a crash.
+A group dies when its phase ends, times out or is canceled, when its run loses the claim, and when `beehest run` shuts down. The file does not carry the kill of a lost claim: the context of the claim does. The file serves the end of a phase, the cancel of a run, and the next start after a crash.
 
 #### After a crash
 
-DBOS does not kill child processes, so a crash leaves them. At the next start, `beehave run` kills each recorded group whose start time still matches the live process. A reused process ID has a different start time, and the check leaves it alone.
+DBOS does not kill child processes, so a crash leaves them. At the next start, `beehest run` kills each recorded group whose start time still matches the live process. A reused process ID has a different start time, and the check leaves it alone.
 
 #### Cancel from another process
 
@@ -621,9 +621,9 @@ The release runs beside the tick, so a slow tracker delays no renewal and no sca
 
 #### Cancel markers
 
-`beehave cancel` writes a marker file for the run in the `canceled` folder of the state folder before it cancels the run. The release removes the marker.
+`beehest cancel` writes a marker file for the run in the `canceled` folder of the state folder before it cancels the run. The release removes the marker.
 
-- If an engine stops before it finishes the release, the marker stays. The next `beehave run` gives the item back when it starts.
+- If an engine stops before it finishes the release, the marker stays. The next `beehest run` gives the item back when it starts.
 - A marker for a run that is no longer cancelled, or whose item has a newer run, is dropped. On a tick, the marker of a run that is still open stays, because the cancel may still come. The tick drops it when the run ends.
 - A marker that cannot be read is logged and skipped. The other markers still give back.
 - The marker is written to a temporary file and renamed, so a crash leaves no half marker.
@@ -635,7 +635,7 @@ The release runs beside the tick, so a slow tracker delays no renewal and no sca
 
 DBOS records a step when it ends, so a step that is lost in the middle leaves no record. The phase writes its own start mark, the step `agent/start<n>`, before it starts the agent. A recovered phase finds the marks of the earlier starts. Each earlier start that has no end was lost.
 
-Every rewind that beehave does goes back to the look at the caps that opens the phase, before the start marks, so the rewind drops the marks with the step. This covers a failed step and a canceled one. So a start with no end exists only after the process was lost, and a cancel followed by `beehave resume` is not a loss.
+Every rewind that beehest does goes back to the look at the caps that opens the phase, before the start marks, so the rewind drops the marks with the step. This covers a failed step and a canceled one. So a start with no end exists only after the process was lost, and a cancel followed by `beehest resume` is not a loss.
 
 A rewind of the phase, after a failure or a cancel, goes back to the first look or start mark that has no agent step after it. It drops the look and every mark and loss record of that sequence, so a resumed phase looks at the caps again and starts clean.
 
@@ -652,17 +652,17 @@ The phase records the loss in the step `agent/lost<n>`, a recorded step in the r
 
 The agent step saves the session id of the agent while the agent runs. The tap of the output gives each new id to the engine at the line that holds it, which is the `init` line, before any tool call. The engine writes the id as the DBOS event `session` of the phase, with `SetEvent` from the context of the agent step. That write takes no step id, so the step count stays the same. A saver goroutine does the write, and the tap only gives it the newest id, so a slow write never stops the reading of the output. While the store is down, DBOS retries the write until the step ends: the agent runs on, and the idle timer still sees its output. The step waits for the saver before it records its output, so the event comes first. A saved id adds the line "saved the session of the agent" with the item and the session to `flow.log`. A refused write logs a warning and the run goes on. No side file holds the id.
 
-The `agent/lost<n>` step reads the event of the phase with the context of the engine, because DBOS refuses a read of an event inside a step. The record holds the id as `session`, so a second replay resumes the same session. A rewind of the phase drops the event with the agent step that wrote it, so a rerun after `beehave resume` starts a fresh session.
+The `agent/lost<n>` step reads the event of the phase with the context of the engine, because DBOS refuses a read of an event inside a step. The record holds the id as `session`, so a second replay resumes the same session. A rewind of the phase drops the event with the agent step that wrote it, so a rerun after `beehest resume` starts a fresh session.
 
 The record also holds `diff_stat`: the output of `git diff --stat --stat-count=50 <start commit>` in the item folder. The start commit is the head that the render step of the call read. The summary covers the commits of the lost agent and its edits to tracked files, for any history of the folder (amend, rebase, reset). A plain folder has no start commit and no summary.
 
-The render step also writes the start commit to the per-worktree ref `refs/worktree/beehave/call-start` of the item folder. Git keeps a per-worktree ref in the admin folder of that worktree, so `git worktree remove` and `git worktree prune` delete it with the worktree. The engine reads the diff only when the folder holds the ref at the start commit. A missing ref, or a ref at another commit, means that the folder is not the one that the call started in: it was made again or removed, or someone removed the mark. The record then holds no summary. The ref also keeps the start commit reachable, so `git gc` does not remove it. Only the note uses the summary. If the engine cannot find the folder or read the diff, the step logs a warning with the reason, the note says that the engine could not read the summary, and the session still resumes. A failed read of the event fails the step.
+The render step also writes the start commit to the per-worktree ref `refs/worktree/beehest/call-start` of the item folder. Git keeps a per-worktree ref in the admin folder of that worktree, so `git worktree remove` and `git worktree prune` delete it with the worktree. The engine reads the diff only when the folder holds the ref at the start commit. A missing ref, or a ref at another commit, means that the folder is not the one that the call started in: it was made again or removed, or someone removed the mark. The record then holds no summary. The ref also keeps the start commit reachable, so `git gc` does not remove it. Only the note uses the summary. If the engine cannot find the folder or read the diff, the step logs a warning with the reason, the note says that the engine could not read the summary, and the session still resumes. A failed read of the event fails the step.
 
 #### Resume or start again
 
 When the loss record holds a session, the agents layer decides once, before the start, whether the session can resume. It cannot resume when the CLI of the runner has no resume option, or when the transcript file of the session is missing (a moved worktree, a cleaned login folder, another login). A session that can resume starts with `--resume <id>` and a short prompt: the engine stopped after N minutes, continue the step, the brief and the output file are earlier in the session. The phase output records `resumed`. The saved session wins over the `resume` keyword of the call.
 
-The rerun after a provider limit uses the same decision. The phase input of the rerun holds `limited`: the session of the limit record, the note of the limit and the prompt of the resumed session (the limit of the login stopped you, it has reset, continue the step). The note of the limit says that the limit of the login stopped the step, then holds the same diff summary and the same request to read `git status` and `git diff` as the note of a lost step. Each rerun of a try starts from the input of the try, so two limits in a row give one note. If the rerun itself is lost after it named a session, that newer session wins. If it is lost before it named one, the note of the loss goes into the prompt and the rerun resumes the limited session. `beehave resume` of a rerun that failed keeps the phase input, so it resumes the limited session again. A run that recorded an agent step under an earlier agent module does not move to this build: `resume --on-this-build` refuses it, as it refuses any run that recorded a step of a module whose version changed. Start such an item again.
+The rerun after a provider limit uses the same decision. The phase input of the rerun holds `limited`: the session of the limit record, the note of the limit and the prompt of the resumed session (the limit of the login stopped you, it has reset, continue the step). The note of the limit says that the limit of the login stopped the step, then holds the same diff summary and the same request to read `git status` and `git diff` as the note of a lost step. Each rerun of a try starts from the input of the try, so two limits in a row give one note. If the rerun itself is lost after it named a session, that newer session wins. If it is lost before it named one, the note of the loss goes into the prompt and the rerun resumes the limited session. `beehest resume` of a rerun that failed keeps the phase input, so it resumes the limited session again. A run that recorded an agent step under an earlier agent module does not move to this build: `resume --on-this-build` refuses it, as it refuses any run that recorded a step of a module whose version changed. Start such an item again.
 
 A session that cannot resume, and a loss before the agent named a session, start the agent again with the prompt and the note. OpenCode never resumes a lost run: it keeps no file for one session, so the check finds none. A start that the CLI refuses at run time fails the step as any failed run does.
 
@@ -696,20 +696,20 @@ In every other case the tree stays, and the log says why. One timeout covers all
 
 #### Run states and stranded runs
 
-Each run pins the build version that started it. `beehave status` lists every run with its state: running, queued, done, stopped, failed or cancelled. Each line of the list starts with the run id.
+Each run pins the build version that started it. `beehest status` lists every run with its state: running, queued, done, stopped, failed or cancelled. Each line of the list starts with the run id.
 
 - A run that a `stop_on_rc` code ended is `stopped`, and the line names the step and the code.
-- A run that another version started shows as stranded and names that version. Every command except `beehave run` and `beehave serve` refuses to change a stranded run, and the refusal names `beehave resume <item> --on-this-build`. `beehave run` and `beehave serve` move an open run of another build when the modules agree, as the next section says.
+- A run that another version started shows as stranded and names that version. Every command except `beehest run` and `beehest serve` refuses to change a stranded run, and the refusal names `beehest resume <item> --on-this-build`. `beehest run` and `beehest serve` move an open run of another build when the modules agree, as the next section says.
 
 #### Join of an open run of another build
 
-`beehave run <item>` and `beehave serve` join the open run of an item. When that run is stored under another build, they compare the module versions, as `beehave resume <item> --on-this-build` does, and not the whole build string. A new release with the same module versions needs no command: the run moves and the call joins it.
+`beehest run <item>` and `beehest serve` join the open run of an item. When that run is stored under another build, they compare the module versions, as `beehest resume <item> --on-this-build` does, and not the whole build string. A new release with the same module versions needs no command: the run moves and the call joins it.
 
 - The move is the one of `--on-this-build`: the same checks, the same cancel and the same restamp of the run and its phases.
 - If a module that the run used has another version here, the call refuses and names the module, as the table below does. If the claim lease of the run has not ended, the call refuses and names the holder.
 - A run of another project is refused as before.
 
-#### `beehave resume <item> --on-this-build`
+#### `beehest resume <item> --on-this-build`
 
 DBOS recovers only the runs of its own application version. So this command uses the DBOS rewind with the version of this build.
 
@@ -731,7 +731,7 @@ The command refuses in these cases:
 
 A stored version that ends in `+star30` stands for every module at version 1. A change to the recorded steps of one builtin bumps the version of its module and no other module, so a run that never used that module still moves. The first build with module versions has a new application version, so an open run of an older build moves only with this command.
 
-#### `beehave resume <item> --on-this-file`
+#### `beehest resume <item> --on-this-file`
 
 A run replays the files that it pinned when it started. This command puts the run on the files as they are now, and keeps the finished steps. The same move as `--on-this-build` does the work: under `probe.lock` it cancels an open run, writes the pin, and rewinds the run and the phases that the cancel reached. The pin comes after the cancel, so a cancel that fails leaves no pin on a run that did not move. A pin that cannot be written leaves the run canceled, and the error names the command to run again.
 
@@ -740,7 +740,7 @@ A run replays the files that it pinned when it started. This command puts the ru
 - DBOS checks the name of each recorded step at replay. A replay that meets another name raises `UnexpectedStep` before the step body runs, so no step runs on a history that does not fit the file. The engine does not write a replay check of its own.
 - A change after the step that the run reached finds no recorded step to differ from, so the run goes on.
 - A replay mismatch ends the run as failed with the error of DBOS. The run runs no undo of its recorded writes, no `finish` function and no release step. A step recorded after the mismatch would stand in the way of the next replay. The claim and the worktree go back without a step, as a cancel gives them back.
-- A run of another build is refused with the text of `--on-this-build`. With both flags, one cancel and one rewind do both. A file that did not change is no error: a run that ended resumes as `beehave resume` does, and an open run is reopened with no pin written.
+- A run of another build is refused with the text of `--on-this-build`. With both flags, one cancel and one rewind do both. A file that did not change is no error: a run that ended resumes as `beehest resume` does, and an open run is reopened with no pin written.
 - The refusals are those of `--on-this-build`, except that the pin check is replaced by a read of the file now: a file that cannot be read stops the command before the cancel.
 
 #### Change a builtin that old runs replay
@@ -752,9 +752,9 @@ A run replays its recorded steps, so a change to the steps of a builtin breaks e
 3. The old code and the new code must be safe in one run, because a run that has not reached the builtin takes the new code.
 4. Raise the module version only for a retirement (a builtin or step kind that no build records), or a change to the input or the output of a step that a replay reads again.
 5. Add one replay test for each patch, in the shape of `internal/flow/patch_test.go`: the old build starts a run and the new build finishes it. A builtin that starts a child workflow has its own test in that shape.
-6. Keep the old branch while any run that predates the patch can replay: an open run, and a failed or cancelled run that `beehave resume` can rewind, because the rewind keeps the steps before the failed one. Retention deletes only finished runs, so a failed or cancelled run stays, and with `agents.retention_days = 0` every run stays. Delete the old branch and call `dbos.DeprecatePatch` only when no such run is left. `DeprecatePatch` records no marker, so a run that survives fails with an unexpected step.
+6. Keep the old branch while any run that predates the patch can replay: an open run, and a failed or cancelled run that `beehest resume` can rewind, because the rewind keeps the steps before the failed one. Retention deletes only finished runs, so a failed or cancelled run stays, and with `agents.retention_days = 0` every run stays. Delete the old branch and call `dbos.DeprecatePatch` only when no such run is left. `DeprecatePatch` records no marker, so a run that survives fails with an unexpected step.
 
-A patch adds a step named `DBOS.patch-<name>` to each run that calls the builtin. It is a step of the engine, so the move of a run to another build never refuses it. The per-run view of `beehave status` folds it into the call. The dry run lists it as a row, as it lists the other `DBOS.` rows. Every golden step list shows the marker, and a test refuses a change to a step sequence that has no marker. A second test keeps a digest of the golden lists for each set of module versions in `internal/flow/goldenbump_test.go`: a changed list under the same module versions breaks it. A bump adds a new digest. A developer can still rewrite the digest of the current versions, but the diff shows that.
+A patch adds a step named `DBOS.patch-<name>` to each run that calls the builtin. It is a step of the engine, so the move of a run to another build never refuses it. The per-run view of `beehest status` folds it into the call. The dry run lists it as a row, as it lists the other `DBOS.` rows. Every golden step list shows the marker, and a test refuses a change to a step sequence that has no marker. A second test keeps a digest of the golden lists for each set of module versions in `internal/flow/goldenbump_test.go`: a changed list under the same module versions breaks it. A bump adds a new digest. A developer can still rewrite the digest of the current versions, but the diff shows that.
 
 #### Progress notes on a run line
 
@@ -763,7 +763,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | Note | Meaning |
 |---|---|
 | `spent $S of $C` | The cost so far against `agents.max_run_budget_usd`: the sum of the `cost_usd` of the read steps, of the limited runs, and of the failed runs in the stream `failed_runs`, which a resume keeps. It is the same sum that the run cap checks. `spent $S` when no cap is set. |
-| `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run`, `tree` or `week`. The step waits until the cap is raised and beehave restarts. |
+| `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run`, `tree` or `week`. The step waits until the cap is raised and beehest restarts. |
 | `waits for the <kind> limit <window> of login <login> until <time>` | A provider limit holds an agent step of the open run. The step runs again after that time. |
 | `now <step>` | The step that an open run is in. A run that asks a question shows the question in place of the step and, when the `wait` has a `timeout`, `answer by <time>`. |
 | `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |
@@ -774,7 +774,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 
 Every value is read from the step records, the events and the options of the client. The store has no table for it. The deadline of a `wait` with a `timeout` is the output of the `DBOS.sleep` record that the receive of the wait writes before it waits. Status shows it only while the question is open.
 
-`beehave status <run id> --json` carries the same figures as these fields:
+`beehest status <run id> --json` carries the same figures as these fields:
 
 - `spent` (`cost_usd`, `cost_estimated`, `cost_unknown`)
 - `cap_usd`
@@ -800,9 +800,9 @@ The line of a run that waits shows:
 
 A finished run shows the fields of its result: `sent back to draft`, `ended`, `merge` or `stopped at <step> rc <n>`.
 
-#### `beehave status --json`
+#### `beehest status --json`
 
-`beehave status --json` prints one JSON object with the same data.
+`beehest status --json` prints one JSON object with the same data.
 
 - The `runs` array has one object for each run.
 - `schedules`, `days`, `agents_concurrency` (the limit of the agents queue, only with `agents.concurrency = "adaptive"`), `poll` and `poll_not_scheduled` hold the sections that follow the runs. A section with no content is left out.
@@ -832,7 +832,7 @@ A day shows the runs that started, the runs that ended as done, failed or cancel
 - A run that started before the window counts only on the day it ended, if that day is in the window.
 - A run that started before the window and is still open is not read, so its spend so far is not in the window.
 - A run that a store wrote before the completion time existed (DBOS migration 36) has no completion time, so it counts only by its start.
-- A run that failed and then ended as done after `beehave resume` counts once, as done, on its last end day.
+- A run that failed and then ended as done after `beehest resume` counts once, as done, on its last end day.
 - A stopped result counts as done.
 - A day with no run is left out, and a window with no run shows no section.
 
@@ -840,9 +840,9 @@ The JSON object holds the same figures in `days`: one object for each day with `
 
 The figures come from the run records that DBOS keeps (the creation time, the completion time and the status) and from the `spent` of the step records and of the stream `failed_runs` of each run. The read lists only the runs that started or ended since the start of the window.
 
-#### `beehave status <run id>`: the steps of one run
+#### `beehest status <run id>`: the steps of one run
 
-`beehave status <run id>` lists the steps of one run, one line each, in the order the run recorded them. The command reads the step listing of the workflow library from the state folder, decodes the stored outputs, and copies nothing. A builtin call is one line, however many records it left.
+`beehest status <run id>` lists the steps of one run, one line each, in the order the run recorded them. The command reads the step listing of the workflow library from the state folder, decodes the stored outputs, and copies nothing. A builtin call is one line, however many records it left.
 
 A line shows the step name, the start time, the duration and the outcome: done, failed or running. A step that the run did not finish takes the state of the run, so it can also show cancelled or stopped.
 
@@ -862,7 +862,7 @@ Each field is decoded into the type that the engine records for the step: the ga
 
 A failed step shows its error. The last line is `run`: the state of the run (running, queued, done, failed or cancelled) and, for a failed run, its `error`, which the workflow library keeps for the run. A run that fails outside a step, for example by `fail()` in the workflow file, has no failed step, so this line holds the cause. The `error` text, on a step and on the run, is the raw recorded error and is not redacted. Only the progress lines are redacted.
 
-- A run whose process was killed shows `running` until `beehave run` or `beehave resume` continues it.
+- A run whose process was killed shows `running` until `beehest run` or `beehest resume` continues it.
 - A step that runs shows as running with its elapsed time.
 - A command records its row when it ends. While a command runs, the last line is `step in progress`, with the time since the last row.
 - While the run waits for a spawned child, the last line is `step in progress` with no start time and no duration, and the field `waits_on` names the runs of the children that have not ended.
@@ -870,9 +870,9 @@ A failed step shows its error. The last line is `run`: the state of the run (run
 
 `--json` prints one object for scripts. Its fields are `run`, `state`, `error` (left out when empty) and `steps`. Each step has `name`, `state` and, when it has them, `duration_seconds`, `waits_on`, `started`, `ended`, `error`, `exit_code`, `label`, `login`, `model`, `scope_off`, `stop`, `verdict`, `head`, `passed` and `gate` (a list of `name` and `status`).
 
-#### `beehave status --item <item>`: the lanes of one item
+#### `beehest status --item <item>`: the lanes of one item
 
-`beehave status --item <item>` lists the lanes of one item across all its runs, oldest attempt first. It shows one line for each agent step, which is one row for each lane of the pull request of the item. A line is the run id, then the step line of the run view.
+`beehest status --item <item>` lists the lanes of one item across all its runs, oldest attempt first. It shows one line for each agent step, which is one row for each lane of the pull request of the item. A line is the run id, then the step line of the run view.
 
 `--json` prints `item` and `lanes`, where each lane has `run` and the fields of a step. The view reads the run view of each run and keeps no table of its own.
 
@@ -883,15 +883,15 @@ The label of a lane is the `label` argument of the `agent` call. A label is free
 - The run status shows the latest label.
 - A record that an older version wrote has no label.
 
-#### `beehave status <run id or item> --follow`: the output of the agents
+#### `beehest status <run id or item> --follow`: the output of the agents
 
-`beehave status <run id or item> --follow` prints the text and the tool calls of each agent phase of one run, in order, as they arrive. An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output of its phases again and ends. `--json` and `--item` do not combine with it, and it needs one run.
+`beehest status <run id or item> --follow` prints the text and the tool calls of each agent phase of one run, in order, as they arrive. An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output of its phases again and ends. `--json` and `--item` do not combine with it, and it needs one run.
 
 **The stream.** The phase writes each message text and each tool call of its agent to the DBOS stream `agent` of the phase workflow, from inside the agent step. The runner reads each output line once. The adapter reports the texts and the calls of the line (`Seen.Said`), the tap of the run gives them to the engine, and a goroutine of the step writes them in order, so a slow store never stops the reading of the agent output. A tool call reads `<tool>: <target>`, for example `Bash: ls`.
 
 **The entry.** An entry holds `seq`, `try`, `kind` (`text` or `call`) and `text`. The text passes the redactor before the write, so a token shaped like an Anthropic key is stored as `[redacted]`. The redactor of the engine also holds the value of each environment variable that the `env` builtin treats as a secret. A name marks a secret when it ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, is `PAT`, `AUTH` or `DSN`, holds `_PAT_` (as in `GH_PAT_OLD`), or holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. A value marks a secret when it holds `scheme://user:password@` with a password that is not empty, anywhere in the text. The engine redacts the whole value. The config has no field that marks a secret, so the name and the value decide. The redactor removes each value in plain, JSON-escaped and URL-escaped form, each line of a value of several lines, and the longest value first. A value shorter than 8 bytes stays in the output, and the engine logs a warning at start that names its variable. A secret in a variable that neither the name nor the value marks is not redacted. The tokens of the forge and agent logins are not passed to the redactor yet.
 
-The engine builds the redactor once at start. These writers use it: the agent stream, the phase text and shell calls that the tap keeps, published and progress values, messages that `send` and `beehave send` store, the question of a wait, the answer that `beehave answer` stores, the stdout and stderr of a `command`, step errors, the progress lines of the terminal and the log file. The client builds the same redactor from the same variables. The runner applies it to the output of the agent after the account token, before the tap reads it. `seq` counts the entries of the phase from 1.
+The engine builds the redactor once at start. These writers use it: the agent stream, the phase text and shell calls that the tap keeps, published and progress values, messages that `send` and `beehest send` store, the question of a wait, the answer that `beehest answer` stores, the stdout and stderr of a `command`, step errors, the progress lines of the terminal and the log file. The client builds the same redactor from the same variables. The runner applies it to the output of the agent after the account token, before the tap reads it. `seq` counts the entries of the phase from 1.
 
 **The cap.** A phase stores at most 4 MiB of text. The entry that passes the cap is replaced by one entry that says the stream was cut, and the phase stores nothing after it.
 
@@ -901,71 +901,71 @@ The engine builds the redactor once at start. These writers use it: the agent st
 
 A workflow file has no reader of the stream. The `transcript` field of the agent result holds the text of a finished run.
 
-#### Progress lines of `beehave run`
+#### Progress lines of `beehest run`
 
-`beehave run` writes progress lines to the terminal and to `flow.log`:
+`beehest run` writes progress lines to the terminal and to `flow.log`:
 
 - One line when a run starts: the run id, the workflow file and the item.
 - Two lines for each builtin call of the workflow file: `<run id> step <name> started`, then `done in <time>`, `failed after <time>: <error>` or `stopped the item after <time>`.
 
 A resumed run writes these lines again for the steps it replays from the record. The progress lines go to stderr, so stdout keeps the result lines.
 
-#### The review poll in `beehave status`
+#### The review poll in `beehest status`
 
-When `agents.review_poll_minutes` is set, `beehave run` schedules a review poll. Each tick reads the open pull requests of every project with a forge, in read-only calls. The interval is at most 10080 minutes (one week). The search for replies looks back `agents.review_lookback_days` days, 3 by default and 365 at most. Under `beehave serve`, set `agents.review_poll_minutes` to 60.
+When `agents.review_poll_minutes` is set, `beehest run` schedules a review poll. Each tick reads the open pull requests of every project with a forge, in read-only calls. The interval is at most 10080 minutes (one week). The search for replies looks back `agents.review_lookback_days` days, 3 by default and 365 at most. Under `beehest serve`, set `agents.review_poll_minutes` to 60.
 
-`beehave status` lists each schedule of the store after the runs, with its last tick and whether it fires. The workflow library records the last tick, and beehave adds no record.
+`beehest status` lists each schedule of the store after the runs, with its last tick and whether it fires. The workflow library records the last tick, and beehest adds no record.
 
 | Schedule line | Meaning |
 |---|---|
 | `no tick yet` | The schedule never fired. |
 | `paused` | The schedule is paused. |
-| `not firing, no engine runs` | No engine runs. A schedule fires only while an engine runs; the check is the engine lock that `beehave run` takes. |
+| `not firing, no engine runs` | No engine runs. A schedule fires only while an engine runs; the check is the engine lock that `beehest run` takes. |
 
-The line shows no next due time. The library counts the first tick of a fixed delay from the launch of the engine, and beehave records no launch time. In JSON, the field `firing` is true while an engine runs and the schedule is not paused.
+The line shows no next due time. The library counts the first tick of a fixed delay from the launch of the engine, and beehest records no launch time. In JSON, the field `firing` is true while an engine runs and the schedule is not paused.
 
-`beehave status` then ends with the newest poll that finished: its time and its rows for each project.
+`beehest status` then ends with the newest poll that finished: its time and its rows for each project.
 
 - A project that the poll could not read shows the cause.
 - A project with no forge shows `<project>: no forge, not polled`.
 - A poll that failed, was cancelled or gave up recovering shows `the review poll failed at <time>: <cause or status>`, so an older poll never shows as current.
-- If `beehave run` cannot set the schedule, it logs the cause and goes on. `beehave status` shows `the review poll is not scheduled: <cause>`.
-- When the interval is 0, `beehave status` shows the same line and names `agents.review_poll_minutes`.
+- If `beehest run` cannot set the schedule, it logs the cause and goes on. `beehest status` shows `the review poll is not scheduled: <cause>`.
+- When the interval is 0, `beehest status` shows the same line and names `agents.review_poll_minutes`.
 
-#### `beehave cancel <item>`
+#### `beehest cancel <item>`
 
-`beehave cancel <item>` cancels the open run and the phases it started. The release of the worktree and the claim runs outside the cancelled workflow.
+`beehest cancel <item>` cancels the open run and the phases it started. The release of the worktree and the claim runs outside the cancelled workflow.
 
-- If an engine runs, it does the release on its next tick, after the agent groups of the run are dead. This holds also for a run that the engine does not execute, such as a run that `beehave resume --on-this-build` moved to another build: the engine reads the cancel markers on each tick.
-- If no engine runs, `beehave cancel` does the release itself.
-- The cancel marker records the claim token that the run holds at the cancel. The release gives back that token. It removes the token file and the marker of the run only while they still name that token, under a lock on the owners folder that every write of a token file or a marker also takes. So a `beehave resume` that takes the item inside the release keeps its token, and the marker of a later cancel stays.
-- A failed run is cancelled too, in one store write: the DBOS cancel takes an option that also ends a failed run, so the run goes from failed to cancelled with no state between. No step runs and no workflow file is read, so a run that another build recorded, or whose workflow file changed, can be closed. The recorded error and steps stay. A failed child stays failed. If the store refuses the write, the run stays failed and a second `beehave cancel` ends it. A done run has nothing to cancel, and a cancelled run with no open child has nothing to cancel.
+- If an engine runs, it does the release on its next tick, after the agent groups of the run are dead. This holds also for a run that the engine does not execute, such as a run that `beehest resume --on-this-build` moved to another build: the engine reads the cancel markers on each tick.
+- If no engine runs, `beehest cancel` does the release itself.
+- The cancel marker records the claim token that the run holds at the cancel. The release gives back that token. It removes the token file and the marker of the run only while they still name that token, under a lock on the owners folder that every write of a token file or a marker also takes. So a `beehest resume` that takes the item inside the release keeps its token, and the marker of a later cancel stays.
+- A failed run is cancelled too, in one store write: the DBOS cancel takes an option that also ends a failed run, so the run goes from failed to cancelled with no state between. No step runs and no workflow file is read, so a run that another build recorded, or whose workflow file changed, can be closed. The recorded error and steps stay. A failed child stays failed. If the store refuses the write, the run stays failed and a second `beehest cancel` ends it. A done run has nothing to cancel, and a cancelled run with no open child has nothing to cancel.
 
-#### `beehave gate hold <item>`, `beehave gate release <item>` and `beehave gate priority <item> <level>`
+#### `beehest gate hold <item>`, `beehest gate release <item>` and `beehest gate priority <item> <level>`
 
 These commands change the place of a gate and stop a running gate for a person. The rules are in the Queues section of `gate.md`. Each command refuses an item with no open gate. `priority` takes P0, P1, P2 or P3 and refuses a gate that runs. `hold` refuses a gate that waits, a gate that is held and a gate on this machine. `release` refuses a gate that is not held.
 
-#### `beehave resume <item>`
+#### `beehest resume <item>`
 
-`resume` reopens the cancelled or the failed run. Then `beehave run <item>` continues it from the last finished step. To reopen every failed run after an outage, see [Resume many runs](#resume-many-runs-beehave-resume---failed).
+`resume` reopens the cancelled or the failed run. Then `beehest run <item>` continues it from the last finished step. To reopen every failed run after an outage, see [Resume many runs](#resume-many-runs-beehest-resume---failed).
 
-When the store refuses the record of a step, the step records its failure at once, under the same name at the next step id. The resume goes back to the first failed record, so the refused step runs again and no record after it stays. `beehave status <run id>` shows such a step as failed. A canceled run records no failure, and a step whose error DBOS has already recorded, also after its retries, records nothing more. If the store refuses the failure record too, the engine logs a warning. The records that DBOS writes itself (the start of a child run, `DBOS.sleep`) are outside this rule.
+When the store refuses the record of a step, the step records its failure at once, under the same name at the next step id. The resume goes back to the first failed record, so the refused step runs again and no record after it stays. `beehest status <run id>` shows such a step as failed. A canceled run records no failure, and a step whose error DBOS has already recorded, also after its retries, records nothing more. If the store refuses the failure record too, the engine logs a warning. The records that DBOS writes itself (the start of a child run, `DBOS.sleep`) are outside this rule.
 
-`beehave resume <item>` first takes a fresh claim on the item, because the release of the old run gave the old claim back.
+`beehest resume <item>` first takes a fresh claim on the item, because the release of the old run gave the old claim back.
 
 - If the claim is held, `resume` refuses and names the holder.
-- A cancelled run that left its claim gives it back at the next `beehave run`. So run that first, then run `resume` again.
+- A cancelled run that left its claim gives it back at the next `beehest run`. So run that first, then run `resume` again.
 - The run uses the fresh claim for its beat and its release.
 - The token of the fresh claim is in `owners/<run id>` in the state folder. The file ends with the run: a release that works, or the deletion of the run by the retention, removes it.
 - A run whose claim step never finished takes no claim at `resume`. The step claims when the run continues.
 
-No engine renews the fresh claim between `beehave resume` and the next `beehave run`. So run the item within 5 minutes after the resume. When the lease of the fresh claim ends, any other `beehave run` can take the item.
+No engine renews the fresh claim between `beehest resume` and the next `beehest run`. So run the item within 5 minutes after the resume. When the lease of the fresh claim ends, any other `beehest run` can take the item.
 
-#### Resume many runs: `beehave resume --failed`
+#### Resume many runs: `beehest resume --failed`
 
-After an outage, `beehave resume --failed` reopens each run that failed, with no item. It reads the store through the one store view and keeps no state of its own. A run that a move has canceled is not failed, so the list never meets it.
+After an outage, `beehest resume --failed` reopens each run that failed, with no item. It reads the store through the one store view and keeps no state of its own. A run that a move has canceled is not failed, so the list never meets it.
 
-A run is picked when it is the newest attempt of its item and its status is `ERROR` or `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. A cancelled run is not picked: resume it by its item. The end time of a run is the time that `beehave status` shows: the completion time, or the last update when the run has no completion time. The command filters on that time, because a run that ended before the store recorded completion times has none.
+A run is picked when it is the newest attempt of its item and its status is `ERROR` or `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. A cancelled run is not picked: resume it by its item. The end time of a run is the time that `beehest status` shows: the completion time, or the last update when the run has no completion time. The command filters on that time, because a run that ended before the store recorded completion times has none.
 
 These flags narrow the list. A run must fit every flag that is set.
 
@@ -976,12 +976,12 @@ These flags narrow the list. A run must fit every flag that is set.
 | `--project` | The project of the run. An empty value is refused. |
 | `--limit` | At most this many runs, the ones that ended first. 0 sets no limit. A negative value is refused. |
 | `--dry-run` | Print the runs and change nothing: no claim, no rewind. |
-| `--on-this-build` | Move each run that another build started to this build, as `beehave resume <item> --on-this-build` does. |
-| `--on-this-file` | Put each run on the workflow file as it is now, as `beehave resume <item> --on-this-file` does. |
+| `--on-this-build` | Move each run that another build started to this build, as `beehest resume <item> --on-this-build` does. |
+| `--on-this-file` | Put each run on the workflow file as it is now, as `beehest resume <item> --on-this-file` does. |
 
 Every flag except `--failed` needs `--failed`, and `--failed` takes no item.
 
-For each picked run, in the order of the list (end time, then run id), the command makes the same call as `beehave resume <item>`. So each run takes its own fresh claim and keeps each refusal rule: a claim that another holder has, a run that another build started, a run that is no longer failed. The command does not use the DBOS bulk resume: that call cannot rewind a failed run and takes no claim.
+For each picked run, in the order of the list (end time, then run id), the command makes the same call as `beehest resume <item>`. So each run takes its own fresh claim and keeps each refusal rule: a claim that another holder has, a run that another build started, a run that is no longer failed. The command does not use the DBOS bulk resume: that call cannot rewind a failed run and takes no claim.
 
 - The command prints one line for each run: `<item>	<run id>	<end time>	<outcome>`. The outcome is `would resume` (dry run), `resumed`, `skipped: <reason>` or `refused: <reason>`.
 - The run id of a `resumed` line is the run that the resume reopened. It is the newest attempt of the item when the resume read it, so it differs from the listed run when a new attempt started after the list. The end time of the listed run does not belong to that newer run, so the line shows `-` in its place.
@@ -991,30 +991,30 @@ For each picked run, in the order of the list (end time, then run id), the comma
 - The last line counts the outcomes: `3 resumed, 1 skipped, 1 refused`.
 - The exit code is 0 when no run refused and every input could be read. It is 1 when a run refused, when a run has an input that cannot be read, or when no failed run fits the filter. A dry run exits 1 when the list is empty or holds such a run.
 
-After a crash, or after Ctrl-C of `beehave run`, the run stays open. `beehave run <item>` continues it without `resume`. A second Ctrl-C during the stop exits at once with code 130.
+After a crash, or after Ctrl-C of `beehest run`, the run stays open. `beehest run <item>` continues it without `resume`. A second Ctrl-C during the stop exits at once with code 130.
 
 If the run has already ended when the stop begins, the next Ctrl-C exits at once with the exit code of the run: 0 for a finished run, 1 for a failed or stopped run. The line on stderr says the run had ended before the stop.
 
 The shutdown of the engine and the start of a run do not overlap. The shutdown waits for a start in flight to hand its run to DBOS, and only then stops DBOS. A start that comes after the shutdown began stores no run and fails with `the engine has shut down`. DBOS v1.8.0 does not give this order itself: its wait for the open runs races with a direct `RunWorkflow`.
 
-#### When `beehave run` starts a new run
+#### When `beehest run` starts a new run
 
-`beehave run <item>` starts a new run only after a finished or a cancelled run. If the last run failed, `beehave run` refuses, names the step that failed, and tells the owner to run `beehave resume <item>`. If the resume refuses the run, because another build made it, the refusal names `beehave cancel <item>`: the cancel ends the failed run, and the next `beehave run` starts a new attempt.
+`beehest run <item>` starts a new run only after a finished or a cancelled run. If the last run failed, `beehest run` refuses, names the step that failed, and tells the owner to run `beehest resume <item>`. If the resume refuses the run, because another build made it, the refusal names `beehest cancel <item>`: the cancel ends the failed run, and the next `beehest run` starts a new attempt.
 
-A resume replays the recorded steps of the run. If the run failed in the workflow file on a recorded result, for example a missing skill call, the run fails again at the same point. To start a failed item again from the first step, run `beehave cancel <item>`, then `beehave run <item>`. `beehave cancel` ends a failed run (see below), so no resume comes first. To start again from a later step, or with other vars, fork the run (see below).
+A resume replays the recorded steps of the run. If the run failed in the workflow file on a recorded result, for example a missing skill call, the run fails again at the same point. To start a failed item again from the first step, run `beehest cancel <item>`, then `beehest run <item>`. `beehest cancel` ends a failed run (see below), so no resume comes first. To start again from a later step, or with other vars, fork the run (see below).
 
-#### `beehave fork <run id> --from <step> [--vars <file>]`
+#### `beehest fork <run id> --from <step> [--vars <file>]`
 
-A fork starts a new run of the item from a step of a run that ended: finished, failed or canceled. The old run does not change. The new run is the next attempt of the item (`item-<item>-r<k+1>`), so `beehave status`, `beehave cancel` and the next `beehave run` work on it. It waits in the `roots` queue. Run `beehave run <item>` to continue it.
+A fork starts a new run of the item from a step of a run that ended: finished, failed or canceled. The old run does not change. The new run is the next attempt of the item (`item-<item>-r<k+1>`), so `beehest status`, `beehest cancel` and the next `beehest run` work on it. It waits in the `roots` queue. Run `beehest run <item>` to continue it.
 
-- The step is a call as `beehave status` shows it, such as `command:review#2`. The new run keeps the recorded outputs of every call before it and runs the call and every later call again. An unknown step is refused, and the error lists the steps of the run.
-- DBOS `ForkWorkflow` copies the records before the step in one transaction. beehave writes no replay of its own. The new run reads the same input as the source run, so it runs the workflow file that the source run pinned.
+- The step is a call as `beehest status` shows it, such as `command:review#2`. The new run keeps the recorded outputs of every call before it and runs the call and every later call again. An unknown step is refused, and the error lists the steps of the run.
+- DBOS `ForkWorkflow` copies the records before the step in one transaction. beehest writes no replay of its own. The new run reads the same input as the source run, so it runs the workflow file that the source run pinned.
 - `--vars` names a file that holds one JSON object. Each top-level key replaces the same key of the `vars` of the source run, and every other key stays. A key that names a fact of the project (`gate`, `repo` and the rest) is refused: a fork changes `vars` only.
 - The overlay is stored as the attribute `fork:<new run id>` on the row of the source run, and the fork copies it to the new run in the same transaction that creates it. `facts()` merges the overlay of its own run over the recorded vars on every read, a replay included. The steps before the chosen step are recorded and do not run again, so the overlay reaches only the steps that run. A fork of a fork starts with the overlay of its parent, and the new `--vars` go over it.
 - A workflow that takes another path on a changed var before the chosen step fails the replay with the unexpected-step error of DBOS. The old run stays unchanged.
 - The fork takes a fresh claim on the item and saves its token under the new run id, as a resume does. A source run that has no recorded claim before the chosen step takes none: the new run claims by itself. A fork that fails gives the claim back.
-- A fork refuses a run of another build, a pass run, a child run, and an item that has an open run: run `beehave cancel <item>` first. It reads the runs under `probe.lock` and through the one store view, so a move in flight ends first.
-- The call that `--from` names can be a finished call or the call that the run failed in, as `beehave status` shows them. A run that failed before it recorded a step of the call has no such call to name.
+- A fork refuses a run of another build, a pass run, a child run, and an item that has an open run: run `beehest cancel <item>` first. It reads the runs under `probe.lock` and through the one store view, so a move in flight ends first.
+- The call that `--from` names can be a finished call or the call that the run failed in, as `beehest status` shows them. A run that failed before it recorded a step of the call has no such call to name.
 - The worktree starts at the head that the copied steps recorded: the head after the last agent call before the step, else the commit that the worktree of a round item was made at, else the head that the first agent call found. A round item gets a detached worktree at that commit. Any other item gets the branch `<item>-r<k+1>` cut at that commit, so the branch of the old run keeps its commits. A fork refuses, and names the commit, when the clone does not hold it. It also refuses a worktree with changes, and a round worktree that holds commits that no remote branch holds and the head does not hold. Nothing is stored or claimed then.
 - A fork never pushes to a branch of an earlier run. A `push` step in the new run refuses a branch that the source run, or a run before it, pushed to. Name the branch in a var and pass the new name with `--vars`. The engine reads the branches from the `push` records. A push with `expect` guards only against a branch that moved between its read and its push.
 - A fork stores the keys `fork:<new run id>` and `fork-pushed:<new run id>` on the row of the source run. A fork that fails removes them. Setting an attribute moves `updated_at` of the old row. Its status, output and `completed_at` stay as they were.
@@ -1025,7 +1025,7 @@ A fork starts a new run of the item from a step of a run that ended: finished, f
 
 #### The engine lock
 
-`beehave run` and `beehave serve` take an exclusive lock on `engine.lock` in the state folder and hold it until the command ends. `beehave serve` runs in the foreground until SIGINT or SIGTERM. It starts no daemon and writes no pid file (see `docs/serve.md`). A second engine on the same state folder (`beehave serve` or `beehave run`) refuses at once and tells the owner to wait or to run `beehave status`.
+`beehest run` and `beehest serve` take an exclusive lock on `engine.lock` in the state folder and hold it until the command ends. `beehest serve` runs in the foreground until SIGINT or SIGTERM. It starts no daemon and writes no pid file (see `docs/serve.md`). A second engine on the same state folder (`beehest serve` or `beehest run`) refuses at once and tells the owner to wait or to run `beehest status`.
 
 #### The probe lock
 
@@ -1034,11 +1034,11 @@ A second file, `probe.lock`, serializes every check of `engine.lock` and every e
 So a held `engine.lock` is always one of these:
 
 - An engine.
-- A `beehave cancel` that gives back a run when no engine runs. It holds both locks for the release, so a check waits for it.
+- A `beehest cancel` that gives back a run when no engine runs. It holds both locks for the release, so a check waits for it.
 
 The client commands that join a run, show the schedules, or cancel a run take these locks for the check only. The other client commands take none.
 
-`beehave cancel` holds `probe.lock` from the cancel of the run to the end of its release. `beehave resume`, with or without `--on-this-build` or `--on-this-file`, holds it while it reads and reopens the tree of the run. DBOS commits each level of a cancel in its own transaction. Without the lock, a resume that reads the tree between two levels skips a child that is still open, and the cancel then cancels that child under the reopened run. With the lock, a resume reads the tree only before or after a cancel. A child that a resume finds open under a canceled parent belongs to a cancel that stopped, and the resume leaves it running. `beehave cancel` of the canceled run cancels it. `beehave resume --on-this-build` of an open run holds the lock from its cancel to its rewind, as a move at join does, so no reader sees the run canceled in between.
+`beehest cancel` holds `probe.lock` from the cancel of the run to the end of its release. `beehest resume`, with or without `--on-this-build` or `--on-this-file`, holds it while it reads and reopens the tree of the run. DBOS commits each level of a cancel in its own transaction. Without the lock, a resume that reads the tree between two levels skips a child that is still open, and the cancel then cancels that child under the reopened run. With the lock, a resume reads the tree only before or after a cancel. A child that a resume finds open under a canceled parent belongs to a cancel that stopped, and the resume leaves it running. `beehest cancel` of the canceled run cancels it. `beehest resume --on-this-build` of an open run holds the lock from its cancel to its rewind, as a move at join does, so no reader sees the run canceled in between.
 
 #### The file `engine.version`
 
@@ -1049,7 +1049,7 @@ The client commands that join a run, show the schedules, or cancel a run take th
 #### The file `engine.info`
 
 - The engine writes `engine.info` the same way, under the same `probe.lock` rule. It holds the mode (`run` or `serve`), the pid and the start time in UTC.
-- `beehave status` reads `engine.info` only while `engine.lock` is held. It prints `engine: serve, pid N, since T`, `engine: run, pid N` or `no engine runs`.
+- `beehest status` reads `engine.info` only while `engine.lock` is held. It prints `engine: serve, pid N, since T`, `engine: run, pid N` or `no engine runs`.
 - The lock decides whether an engine runs. The file only describes the engine.
 - A client that finds `engine.lock` free removes the version and the info that a crashed engine left.
 

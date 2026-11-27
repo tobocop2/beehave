@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/roundintegration"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/roundintegration"
 )
 
 const (
@@ -74,7 +74,7 @@ func item(number int, title, branch string) model.PullRequest {
 }
 
 func request() roundintegration.Request {
-	return roundintegration.Request{Base: round, Into: trunk, Label: "made-by-beehave"}
+	return roundintegration.Request{Base: round, Into: trunk, Label: "made-by-beehest"}
 }
 
 func TestRun_FindsTheOpenPullRequestBeforeAMergedOneAndWritesItsBody(t *testing.T) {
@@ -145,7 +145,7 @@ func TestRun_OpensTheDraftWithTheLabelAndTheMergedRowsWhenNoneExists(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, roundintegration.Result{PR: 21, State: "OPEN"}, got)
 	require.Len(t, w.created, 1)
-	assert.Equal(t, model.NewPull{Head: round, Base: trunk, Title: "Integration round s1", Body: w.created[0].Body, Label: "made-by-beehave"}, w.created[0])
+	assert.Equal(t, model.NewPull{Head: round, Base: trunk, Title: "Integration round s1", Body: w.created[0].Body, Label: "made-by-beehest"}, w.created[0])
 	assert.Contains(t, w.created[0].Body, "| #7 | Fix it |")
 }
 

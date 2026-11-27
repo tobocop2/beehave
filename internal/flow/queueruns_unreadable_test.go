@@ -34,7 +34,7 @@ func TestQueue_ARunWhoseResultCannotBeReadFailsClosedAndIsNotDone(t *testing.T) 
 			view, err := settledView("21", succeededRun(`{"item": "21", "project": "`+testProject+`"}`, output))
 
 			require.ErrorContains(t, err, "read the result of "+runID("21", 1))
-			require.ErrorContains(t, err, "Run beehave run 21 to start a new attempt")
+			require.ErrorContains(t, err, "Run beehest run 21 to start a new attempt")
 			assert.Equal(t, runNone, view.State, "status reads the result the same way, so a result that status cannot read gives no state")
 		})
 	}

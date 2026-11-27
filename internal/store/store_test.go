@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 func TestDecodeRows_ReadsAListOrRefusesNamingTheCommand(t *testing.T) {

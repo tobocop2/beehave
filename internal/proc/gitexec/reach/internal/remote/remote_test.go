@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/proc/gitexec/reach/internal/remote"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/reach/internal/remote"
 )
 
 func TestRunner_ReachesTheRemoteOverTheTransportOfItsAddressWithTheHooksOff(t *testing.T) {

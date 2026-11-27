@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/check/shell"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/check/shell"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -251,7 +251,7 @@ func kindsOf(names, protect []string) ([]model.FindingKind, error) {
 // refuse prints the reason on stderr, where the agent CLI reads it, and ends with exit code 2, which blocks the call.
 func refuse(stderr io.Writer, reason string) error {
 	// A failed write to stderr has no recovery.
-	_, _ = fmt.Fprintln(stderr, "beehave refused the command: "+reason)
+	_, _ = fmt.Fprintln(stderr, "beehest refused the command: "+reason)
 
 	return &ExitError{Code: exitRefused}
 }

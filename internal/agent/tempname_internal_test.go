@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/fstree"
+	"github.com/tobocop2/beehest/internal/fstree"
 )
 
 // maxPid is the largest process id of Linux (pid_max of a 64-bit kernel is 4194304).

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
-	"github.com/tobocop2/beehave/internal/sandbox/landlock"
+	"github.com/tobocop2/beehest/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox/landlock"
 )
 
 func TestEnforcer_CannotRunOutsideLinux(t *testing.T) {
@@ -29,7 +29,7 @@ func TestRunHelper_IsNeverTheHelperOutsideLinux(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	code, helper := landlock.RunHelper([]string{"beehave"}, &stderr)
+	code, helper := landlock.RunHelper([]string{"beehest"}, &stderr)
 	assert.False(t, helper)
 	assert.Zero(t, code)
 	assert.Empty(t, stderr.String())

@@ -9,9 +9,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // runRedactor returns the one redactor of an engine or a client. It holds the value of every variable of env whose name marks a secret.
@@ -45,7 +45,7 @@ func secretNames(env map[string]string) []string {
 func warnShortSecrets(logger *slog.Logger, env map[string]string) {
 	for _, name := range secretNames(env) {
 		if len(env[name]) < agent.MinSecretLen {
-			logger.Warn("the value of a secret variable is shorter than the minimum, so beehave does not remove it from the output", "variable", name, "minimum_bytes", agent.MinSecretLen)
+			logger.Warn("the value of a secret variable is shorter than the minimum, so beehest does not remove it from the output", "variable", name, "minimum_bytes", agent.MinSecretLen)
 		}
 	}
 }
@@ -137,6 +137,6 @@ func (e *Engine) recordRefusedStep(ctx dbos.Context, name string, refused error)
 
 	_, err := dbos.RunAsStep(ctx, func(context.Context) (struct{}, error) { return struct{}{}, failure }, dbos.WithStepName(name))
 	if err != failure { //nolint:errorlint // a DBOS error matches any error of its code under errors.Is, and only the recorded failure itself is a success
-		e.logger.Warn("cannot record the failure of a step whose record the store refused; beehave resume of this run can fail at this step", "step", name, "error", err)
+		e.logger.Warn("cannot record the failure of a step whose record the store refused; beehest resume of this run can fail at this step", "step", name, "error", err)
 	}
 }

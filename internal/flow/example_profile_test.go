@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // implementPrompt runs the example with the given project, whose round is that of the example rig with the settings of `round` set, and returns the text that the implement agent received.

@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	beehavecheck "github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehest/examples/remediation/tools/brief"
+	beehestcheck "github.com/tobocop2/beehest/examples/remediation/tools/check"
+	"github.com/tobocop2/beehest/examples/remediation/tools/ledger"
 )
 
 var when = time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
@@ -357,12 +357,12 @@ func TestAdmit_AHandoffCheckThatCannotRunIsItsOwnError(t *testing.T) {
 	lane := implLane()
 	lane.Handoff = writeFile(t, "prev.md", "x")
 	broken := func(string, string, string, int) ([]string, bool, error) {
-		return nil, false, &beehavecheck.Refusal{Message: "the context cap is not a number"}
+		return nil, false, &beehestcheck.Refusal{Message: "the context cap is not a number"}
 	}
 
 	_, err := admit(brief.KindImpl, lane, book, broken)
 
-	var refusal *beehavecheck.Refusal
+	var refusal *beehestcheck.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	assert.Equal(t, "the context cap is not a number", refusal.Message)

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install the tools of the contract tests against a real bd (dolt and bd 1.3.2) into a folder, after checking each archive against a pinned sha256.
-# `make contract-tools-install` runs it, so CI and the build host get the same two binaries. CI sets BEEHAVE_BD_132 to the bd in the folder.
+# `make contract-tools-install` runs it, so CI and the build host get the same two binaries. CI sets BEEHEST_BD_132 to the bd in the folder.
 # A new version needs a new sha256: take it from the digest of the asset in the release (`gh release view <tag> -R <repo> --json assets`).
 #
 # Usage: install-contract-tools.sh <folder>

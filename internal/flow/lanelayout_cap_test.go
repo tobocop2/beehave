@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // aLiveRunAsks is the fact that the latest run asks a question and has not been canceled. It names no run: an earlier run of the item has ended or is canceled.
@@ -55,7 +55,7 @@ func TestLaneLayout_ACancelledFirstRunStillCountsAgainstTheCapOfThePullRequest(t
 	assert.Equal(t, fixes, countFix(rig), "the second run starts no fix lane")
 }
 
-// A run that failed after it spent candidates still counts. An engine starts no new attempt after a failed one (the run continues with beehave resume),
+// A run that failed after it spent candidates still counts. An engine starts no new attempt after a failed one (the run continues with beehest resume),
 // so the count is read from a script that is not part of that run.
 func TestLaneLayout_AFailedRunStillCountsItsCandidates(t *testing.T) {
 	t.Parallel()

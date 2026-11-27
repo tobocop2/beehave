@@ -1,12 +1,12 @@
 # Runtime checks
 
-Part of the [beehave architecture](../architecture.md).
+Part of the [beehest architecture](../architecture.md).
 
-This part covers the lane ledger, the pick of a runner, the machine check (`beehave doctor`), the pull request check before an action, the review poll and the closing issues of a first review. The ledger is a tool of the remediation example. The others are part of the engine.
+This part covers the lane ledger, the pick of a runner, the machine check (`beehest doctor`), the pull request check before an action, the review poll and the closing issues of a first review. The ledger is a tool of the remediation example. The others are part of the engine.
 
 ## Ledger
 
-`ledger` is a tool of the remediation example, in `examples/remediation/tools/ledger`. It is not part of the engine: no file under `internal/` or `cmd/beehave/` names it. The command is `remedy ledger`.
+`ledger` is a tool of the remediation example, in `examples/remediation/tools/ledger`. It is not part of the engine: no file under `internal/` or `cmd/beehest/` names it. The command is `remedy ledger`.
 
 ### Storage
 
@@ -83,7 +83,7 @@ A runner whose usage is unknown is never picked.
 
 The engine gives `Select` the logins that have an agent step running or queued. The pick prefers a runner that is not among them. When every runner with room is busy, the pick is the same as without the list.
 
-The engine reads those logins from the open phases of the `agents` queue and from the open runs that a spawn or the queue started. Those runs hold their login from the start. A run that `beehave run` started holds its login only while one of its phases is open. Between phases its login reads free, and a second step on it waits for the per-login limit.
+The engine reads those logins from the open phases of the `agents` queue and from the open runs that a spawn or the queue started. Those runs hold their login from the start. A run that `beehest run` started holds its login only while one of its phases is open. Between phases its login reads free, and a second step on it waits for the per-login limit.
 
 ### No runner has room
 
@@ -93,20 +93,20 @@ The refusal ends with "Wait for it." only when a reset time is known or no runne
 
 A reset time prints with its offset and, when it has a fraction, six digits of it (`05:00:00.500000+00:00`).
 
-### The caps and `beehave run`
+### The caps and `beehest run`
 
-`beehave run` never refuses a run because of the caps, and it exits with no code for them. The run starts. A run with no agent step never reads the usage.
+`beehest run` never refuses a run because of the caps, and it exits with no code for them. The run starts. A run with no agent step never reads the usage.
 
 The first `agent` step that names no `runner` picks the login, as a recorded step named `login#<n>`.
 
 | `Select` result | What the step does |
 |---|---|
 | `NoneQualifiesError` with a reset time | Sleeps with the durable sleep of DBOS until that time, then picks again as a new recorded step. A reset time in the past waits one minute. |
-| `NoneQualifiesError` with no reset time | Fails with the same text as before. `beehave resume` picks again. |
+| `NoneQualifiesError` with no reset time | Fails with the same text as before. `beehest resume` picks again. |
 
 A provider limit that stops a run after the pick is not a new pick. The step waits for the reset that the agent reported and runs again with the same login. See "Provider limits" in `durable-loop.md`.
 
-`beehave run --over-cap` changes only the case where no runner has room. Then the step takes the runner with the lowest use, from `SelectOverCap`, and its record holds `over_cap` true. A runner under the caps is taken as usual. A runner with unknown usage is never taken.
+`beehest run --over-cap` changes only the case where no runner has room. Then the step takes the runner with the lowest use, from `SelectOverCap`, and its record holds `over_cap` true. A runner under the caps is taken as usual. A runner with unknown usage is never taken.
 
 ### Reading usage
 
@@ -140,7 +140,7 @@ A success reply with `rate_limits_available` false has no Claude plan limits: th
 
 ## Doctor
 
-`beehave doctor` checks that the machine can run beehave. It prints one line for each check: `ok`, or `FAIL` with the fix. It exits 1 when any check fails.
+`beehest doctor` checks that the machine can run beehest. It prints one line for each check: `ok`, or `FAIL` with the fix. It exits 1 when any check fails.
 
 ### Checks
 
@@ -162,7 +162,7 @@ The checks run in this order:
 
 ### Wiring
 
-The doctor command lives in `cli`. `cli` does not import a backend. `BuildInfo.Doctor` holds two function values that `cmd/beehave` fills:
+The doctor command lives in `cli`. `cli` does not import a backend. `BuildInfo.Doctor` holds two function values that `cmd/beehest` fills:
 
 - the Keychain reader, which runs `security` and never returns the token. A call of `security` stops after 10 seconds.
 - the bd version check of the beads adapter.

@@ -1,0 +1,70 @@
+# A command step of a round item commits a file in the worktree. The agent step after it is lost with a clean worktree.
+# Someone removes the worktree while no run is alive. The next run recovers the agent step. The commit of the earlier step went with the
+# removed worktree. The worktree made again holds no start mark, so the note claims no change and names no file: it says the worktree is
+# not the one that the step started in.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+exec git -C origin checkout -q -b integration/r1
+exec git -C origin add BASE_MARKER
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m base
+exec git -C origin checkout -q main
+
+fixture project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off, though the fixture project file sets it on.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+subst flow/round.star
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehestreal item add local round/integration/r1 --title 'The round' --body-file body.txt
+! exec beehestreal run round/integration/r1 local --workflow flow/round.star &
+waitfile started
+kill -KILL
+wait
+
+# The first start of the agent ran at the commit of the earlier step.
+cmp pre.head agent.head.1
+
+rm state/trees/local/round_2Fintegration_2Fr1
+
+exec sh any.sh run run round/integration/r1 local --workflow flow/round.star
+grep 'item round/integration/r1 finished' run.out
+
+exists prompt.2
+! grep EARLIER_STEP prompt.2
+! grep 'could not read the diff summary' prompt.2
+! grep 'The engine found no change to tracked files since the step started' prompt.2
+! grep 'The engine read this summary of the changes' prompt.2
+grep 'The work tree is not the one that the step started in' prompt.2
+
+-- any.sh --
+label=$1
+shift
+beehestreal "$@" > "$label.out" 2> "$label.err"
+echo $? > "$label.rc"
+-- body.txt --
+The round of the base.
+-- origin/readme.txt --
+The source repository.
+-- origin/BASE_MARKER --
+base marker
+-- flow/round.star --
+def main(item):
+    command(name = "pre", run = ["sh", "-c", "echo x > EARLIER_STEP && git add EARLIER_STEP && git -c user.name=e2e -c user.email=e2e@example.com commit -q -m earlier && git rev-parse HEAD > @WORK@/pre.head"])
+    agent(name = "probe", prompt = "prompts/probe.md", model = "m")
+-- flow/prompts/probe.md --
+Probe the folder.
+-- fake/claude --
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then echo 1.0.0; exit 0; fi
+n=$(cat "@WORK@/starts" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "@WORK@/starts"
+cat > "@WORK@/prompt.$n"
+git rev-parse HEAD > "@WORK@/agent.head.$n"
+if [ "$n" -eq 1 ]; then echo x > "@WORK@/started"; sleep 30; fi
+echo '{"type":"result","session_id":"s1","result":"done"}'

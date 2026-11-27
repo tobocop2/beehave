@@ -1,5 +1,5 @@
 # The item that lands first. When its pull request is merged, it tells the item that waits on it.
-# Add the two items with `beehave item add`, then run each one with `beehave run <item> <project> --workflow <file>`.
+# Add the two items with `beehest item add`, then run each one with `beehest run <item> <project> --workflow <file>`.
 # Set WAITER to the id of the item that waits, and run this file for the dependency.
 
 WAITER = env("WAITER")

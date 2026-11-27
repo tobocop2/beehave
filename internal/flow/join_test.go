@@ -229,7 +229,7 @@ func TestJoinRun_ABuildThatTheEngineDoesNotRunIsRefusedAndEnqueuesNothing(t *tes
 	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)), modeOff())
 
 	require.ErrorIs(t, err, errOtherBuild)
-	require.ErrorContains(t, err, "restart beehave serve")
+	require.ErrorContains(t, err, "restart beehest serve")
 	assert.Empty(t, rowsOf(t, client, testItem))
 }
 
@@ -300,7 +300,7 @@ func TestJoinRun_AnEngineOfAnotherBuildThatTakesTheFolderDuringTheGraceRefusesTh
 	err := receive(t, done)
 
 	require.ErrorIs(t, err, errOtherBuild)
-	require.ErrorContains(t, err, "restart beehave serve")
+	require.ErrorContains(t, err, "restart beehest serve")
 	assert.Len(t, rowsOf(t, client, testItem), 1)
 }
 

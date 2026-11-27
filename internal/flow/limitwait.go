@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 // LimitWait is a provider limit that holds an agent step until it resets. The step sleeps until WaitUntil, then runs the agent call again with the same login.
@@ -158,7 +158,7 @@ func (e *Engine) dateLimit(ctx context.Context, in PhaseInput, out *PhaseOutput)
 
 	reset, known, err := e.deps.Logins.Reset(ctx, in.Project, in.Login)
 	if err != nil {
-		return fmt.Errorf("read the usage of login %s for the reset of the %s: %w. Run beehave resume %s when the usage read works", in.Login, out.Limit.Name(), err, in.Item)
+		return fmt.Errorf("read the usage of login %s for the reset of the %s: %w. Run beehest resume %s when the usage read works", in.Login, out.Limit.Name(), err, in.Item)
 	}
 
 	if known {
@@ -172,12 +172,12 @@ func (e *Engine) dateLimit(ctx context.Context, in PhaseInput, out *PhaseOutput)
 
 // undated is the error of a limit that no reset time ends: the agent gives none, and the usage read of the pool gives none or is not asked. An overload past the ceiling of its backoff ends here too.
 func undated(in PhaseInput, limit agent.Limit) error {
-	return fmt.Errorf("the agent step of item %s stopped at the %s of login %s, and neither the agent nor the usage read gives a reset time. Run beehave resume %s when the limit is gone",
+	return fmt.Errorf("the agent step of item %s stopped at the %s of login %s, and neither the agent nor the usage read gives a reset time. Run beehest resume %s when the limit is gone",
 		in.Item, limit.Name(), in.Login, in.Item)
 }
 
 // limitEnd fails the phase of a run that a provider limit stopped when no wait has an end: the limit gives no reset time, or it is the second limit
-// in a row whose reset time has passed. An overload has no reset time, and its wait is the backoff of the limit step. The failed phase is the failed step, so beehave resume reopens the phase and runs the agent again.
+// in a row whose reset time has passed. An overload has no reset time, and its wait is the backoff of the limit step. The failed phase is the failed step, so beehest resume reopens the phase and runs the agent again.
 func limitEnd(in PhaseInput, limit agent.Limit, now time.Time) error {
 	switch {
 	case limit.Kind == agent.LimitOverload:
@@ -186,7 +186,7 @@ func limitEnd(in PhaseInput, limit agent.Limit, now time.Time) error {
 		return undated(in, limit)
 	case in.ResetPassed && !limit.ResetsAt.After(now):
 		return fmt.Errorf("the agent step of item %s stopped at the %s of login %s twice in a row with a reset time that has passed (%s), so the reset time is wrong. "+
-			"Run beehave resume %s when the limit is gone", in.Item, limit.Name(), in.Login, limit.ResetsAt.Format(time.RFC3339), in.Item)
+			"Run beehest resume %s when the limit is gone", in.Item, limit.Name(), in.Login, limit.ResetsAt.Format(time.RFC3339), in.Item)
 	}
 
 	return nil

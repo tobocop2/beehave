@@ -1,5 +1,5 @@
 # A supervisor and one worker. The supervisor reads what the worker agent says while it works, and cancels the worker when it runs a forbidden command.
-# Run: TASK=21 beehave run <item> <project> --workflow workflow.star
+# Run: TASK=21 beehest run <item> <project> --workflow workflow.star
 # TASK is the item id of the worker. FORBIDDEN is the text that stops the worker. WATCH is how long one read waits for a new entry, such as "5s".
 
 MODEL = "sonnet"

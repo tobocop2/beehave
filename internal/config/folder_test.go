@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // goodProject is the argument list of a project call that loads. A test adds arguments after it.
@@ -85,7 +85,7 @@ func TestLoadFolder_AMissingFolderIsAProblem(t *testing.T) {
 	require.Len(t, problems, 1)
 	require.ErrorIs(t, problems[0], config.ErrRefused)
 	require.ErrorContains(t, problems[0], missing)
-	require.ErrorContains(t, problems[0], "BEEHAVE_CONFIG")
+	require.ErrorContains(t, problems[0], "BEEHEST_CONFIG")
 
 	file := writeFile(t, filepath.Join(t.TempDir(), "f"), "")
 	_, problems = loadFolder(file, nil)
@@ -131,7 +131,7 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 func TestLoadFolder_BuildHostAcceptsAnSSHAliasWithDots(t *testing.T) {
 	t.Parallel()
 
-	const alias = "beehave-rig.us-central1-a.lance-bench-8389"
+	const alias = "beehest-rig.us-central1-a.lance-bench-8389"
 
 	project, problems := loadProjectText(t, call(hostProject+`, build_host = "`+alias+`", host = `+hostCall("")))
 	require.Empty(t, problems)
@@ -521,7 +521,7 @@ func TestLoadFolder_AgentsMaxConcurrent(t *testing.T) {
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_concurrent must be 1 or more")
 	require.ErrorContains(t, problems[0], "runners.star")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_CONCURRENT")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_CONCURRENT")
 
 	_, problems = loadRunnersText(t, "agents(max_concurrent = 1)\n")
 	require.Empty(t, problems)
@@ -550,19 +550,19 @@ func TestLoadFolder_AgentsMaxReviewConcurrentIsItsOwnLimit(t *testing.T) {
 	_, problems = loadRunnersText(t, "agents(max_review_concurrent = 0)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_review_concurrent must be 1 or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_review_concurrent = 2)\n")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
 	require.Empty(t, problems)
 	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "many"})
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number")
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "many"})
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "0"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "0"})
 	require.ErrorContains(t, problems[0], "agents.max_review_concurrent must be 1 or more")
 }
 
@@ -582,12 +582,12 @@ func TestLoadFolder_AgentsMaxTurnsAndBudgetDefaultToNoCapAndRefuseANegative(t *t
 	_, problems = loadRunnersText(t, "agents(max_turns = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_turns must be 0 (no cap) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_TURNS")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_TURNS")
 
 	_, problems = loadRunnersText(t, "agents(max_budget_usd = -0.5)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_budget_usd must be 0 (no cap) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_BUDGET_USD")
 }
 
 func TestLoadFolder_AgentsContextWindowDefaultsToTheDefaultWindowTakesAValueAndRefusesANegative(t *testing.T) {
@@ -624,18 +624,18 @@ func TestLoadFolder_AgentsMaxRunBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadVa
 	_, problems = loadRunnersText(t, "agents(max_run_budget_usd = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_run_budget_usd must be 0 (no cap) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_RUN_BUDGET_USD")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_run_budget_usd = 1)\n")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "7.5"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_RUN_BUDGET_USD": "7.5"})
 	require.Empty(t, problems)
 	require.InDelta(t, 7.5, cfg.Agents.MaxRunBudgetUSD, 0)
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "lots"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_RUN_BUDGET_USD": "lots"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD=lots is not a number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_RUN_BUDGET_USD=lots is not a number")
 }
 
 func TestLoadFolder_AgentsMaxWeekBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadValue(t *testing.T) {
@@ -653,18 +653,18 @@ func TestLoadFolder_AgentsMaxWeekBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadV
 	_, problems = loadRunnersText(t, "agents(max_week_budget_usd = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_week_budget_usd must be 0 (no cap) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_week_budget_usd = 1)\n")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD": "75"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD": "75"})
 	require.Empty(t, problems)
 	require.InDelta(t, 75.0, cfg.Agents.MaxWeekBudgetUSD, 0)
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD": "lots"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD": "lots"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD=lots is not a number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_WEEK_BUDGET_USD=lots is not a number")
 }
 
 func TestLoadFolder_AWeekCapWithARetentionUnderSevenDaysIsRefusedAndNamesBothKeys(t *testing.T) {
@@ -675,7 +675,7 @@ func TestLoadFolder_AWeekCapWithARetentionUnderSevenDaysIsRefusedAndNamesBothKey
 		require.Len(t, problems, 1, "retention_days %s", days)
 		require.ErrorContains(t, problems[0], "agents.retention_days is "+days)
 		require.ErrorContains(t, problems[0], "agents.max_week_budget_usd")
-		require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_RETENTION_DAYS")
+		require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_RETENTION_DAYS")
 	}
 
 	for name, text := range map[string]string{
@@ -705,18 +705,18 @@ func TestLoadFolder_AgentsMaxTreeBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadV
 	_, problems = loadRunnersText(t, "agents(max_tree_budget_usd = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_tree_budget_usd must be 0 (no cap) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_TREE_BUDGET_USD")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_tree_budget_usd = 1)\n")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD": "75"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_TREE_BUDGET_USD": "75"})
 	require.Empty(t, problems)
 	require.InDelta(t, 75.0, cfg.Agents.MaxTreeBudgetUSD, 0)
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD": "lots"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_TREE_BUDGET_USD": "lots"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD=lots is not a number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_TREE_BUDGET_USD=lots is not a number")
 }
 
 func TestLoadFolder_TheCapVariablesOverlayTheFileAndABadValueIsRefused(t *testing.T) {
@@ -725,28 +725,28 @@ func TestLoadFolder_TheCapVariablesOverlayTheFileAndABadValueIsRefused(t *testin
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_turns = 10, max_budget_usd = 1)\n")
 
-	cfg, problems := loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "25", "BEEHAVE_AGENTS_MAX_BUDGET_USD": "3.25"})
+	cfg, problems := loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_TURNS": "25", "BEEHEST_AGENTS_MAX_BUDGET_USD": "3.25"})
 	require.Empty(t, problems)
 	require.Equal(t, 25, cfg.Agents.MaxTurns)
 	require.InDelta(t, 3.25, cfg.Agents.MaxBudgetUSD, 0)
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "many"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_TURNS": "many"})
 	require.NotEmpty(t, problems)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_TURNS=many is not a whole number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_TURNS=many is not a whole number")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": "lots"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_BUDGET_USD": "lots"})
 	require.NotEmpty(t, problems)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD=lots is not a number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_BUDGET_USD=lots is not a number")
 }
 
 func TestLoadFolder_ABudgetThatIsNotFiniteIsRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, value := range []string{"Inf", "+Inf", "-Inf", "NaN", "1e999"} {
-		_, problems := loadFolder(t.TempDir(), map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": value})
+		_, problems := loadFolder(t.TempDir(), map[string]string{"BEEHEST_AGENTS_MAX_BUDGET_USD": value})
 
 		require.NotEmpty(t, problems, value)
-		require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD", value)
+		require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_MAX_BUDGET_USD", value)
 	}
 
 	_, problems := loadRunnersText(t, "agents(max_budget_usd = float(\"inf\"))\n")
@@ -761,17 +761,17 @@ func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_concurrent = 2)\npool(five_hour = 50)\n")
 
 	cfg, problems := loadFolder(dir, map[string]string{
-		"BEEHAVE_AGENTS_MAX_CONCURRENT": "6", "BEEHAVE_POOL_FIVE_HOUR_MAX": "70", "BEEHAVE_POOL_SEVEN_DAY_MAX": "80.5", "REPO": "ignored",
+		"BEEHEST_AGENTS_MAX_CONCURRENT": "6", "BEEHEST_POOL_FIVE_HOUR_MAX": "70", "BEEHEST_POOL_SEVEN_DAY_MAX": "80.5", "REPO": "ignored",
 	})
 	require.Empty(t, problems)
 	require.Equal(t, 6, cfg.Agents.MaxConcurrent)
 	require.Equal(t, config.Pool{"five_hour": 70, "seven_day": 80.5}, cfg.Pools["claude"])
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": ""})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_CONCURRENT": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "an empty variable leaves the file value")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
 	require.Empty(t, problems)
 	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "the review limit is its own variable")
@@ -785,13 +785,13 @@ func TestLoadFolder_AnOverlayValueIsValidated(t *testing.T) {
 		env   map[string]string
 		words string
 	}{
-		{"text_for_max_concurrent", map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": "many"}, "BEEHAVE_AGENTS_MAX_CONCURRENT=many is not a whole number"},
-		{"zero_for_max_concurrent", map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": "0"}, "agents.max_concurrent must be 1 or more"},
-		{"text_for_max_review_concurrent", map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "many"}, "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number"},
-		{"zero_for_max_review_concurrent", map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "0"}, "agents.max_review_concurrent must be 1 or more"},
-		{"text_for_five_hour_cap", map[string]string{"BEEHAVE_POOL_FIVE_HOUR_MAX": "lots"}, "BEEHAVE_POOL_FIVE_HOUR_MAX=lots is not a number"},
-		{"text_for_seven_day_cap", map[string]string{"BEEHAVE_POOL_SEVEN_DAY_MAX": "lots"}, "BEEHAVE_POOL_SEVEN_DAY_MAX=lots is not a number"},
-		{"cap_over_one_hundred", map[string]string{"BEEHAVE_POOL_SEVEN_DAY_MAX": "101"}, "`seven_day` in the pool block"},
+		{"text_for_max_concurrent", map[string]string{"BEEHEST_AGENTS_MAX_CONCURRENT": "many"}, "BEEHEST_AGENTS_MAX_CONCURRENT=many is not a whole number"},
+		{"zero_for_max_concurrent", map[string]string{"BEEHEST_AGENTS_MAX_CONCURRENT": "0"}, "agents.max_concurrent must be 1 or more"},
+		{"text_for_max_review_concurrent", map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "many"}, "BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number"},
+		{"zero_for_max_review_concurrent", map[string]string{"BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "0"}, "agents.max_review_concurrent must be 1 or more"},
+		{"text_for_five_hour_cap", map[string]string{"BEEHEST_POOL_FIVE_HOUR_MAX": "lots"}, "BEEHEST_POOL_FIVE_HOUR_MAX=lots is not a number"},
+		{"text_for_seven_day_cap", map[string]string{"BEEHEST_POOL_SEVEN_DAY_MAX": "lots"}, "BEEHEST_POOL_SEVEN_DAY_MAX=lots is not a number"},
+		{"cap_over_one_hundred", map[string]string{"BEEHEST_POOL_SEVEN_DAY_MAX": "101"}, "`seven_day` in the pool block"},
 	}
 
 	for _, tc := range tests {
@@ -861,7 +861,7 @@ func TestLoadFolder_RecursionIsRefused(t *testing.T) {
 func TestLoadFolder_ANotANumberPoolCapIsRefused(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"BEEHAVE_POOL_FIVE_HOUR_MAX", "BEEHAVE_POOL_SEVEN_DAY_MAX"} {
+	for _, name := range []string{"BEEHEST_POOL_FIVE_HOUR_MAX", "BEEHEST_POOL_SEVEN_DAY_MAX"} {
 		_, problems := loadFolder(t.TempDir(), map[string]string{name: "NaN"})
 
 		require.Len(t, problems, 1, name)
@@ -873,13 +873,13 @@ func TestLoadFolder_ABadPoolCapNamesTheFileAndTheVariable(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	_, problems := loadFolder(dir, map[string]string{"BEEHAVE_POOL_FIVE_HOUR_MAX": "101", "BEEHAVE_POOL_SEVEN_DAY_MAX": "0"})
+	_, problems := loadFolder(dir, map[string]string{"BEEHEST_POOL_FIVE_HOUR_MAX": "101", "BEEHEST_POOL_SEVEN_DAY_MAX": "0"})
 
 	require.Len(t, problems, 2)
 
 	text := problems.Error()
-	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in BEEHAVE_POOL_FIVE_HOUR_MAX.")
-	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in BEEHAVE_POOL_SEVEN_DAY_MAX.")
+	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in BEEHEST_POOL_FIVE_HOUR_MAX.")
+	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in BEEHEST_POOL_SEVEN_DAY_MAX.")
 }
 
 func TestLoadFolder_AgentsReviewPollMinutesDefaultsToNoPollAndRefusesANegative(t *testing.T) {
@@ -896,7 +896,7 @@ func TestLoadFolder_AgentsReviewPollMinutesDefaultsToNoPollAndRefusesANegative(t
 	_, problems = loadRunnersText(t, "agents(review_poll_minutes = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.review_poll_minutes must be 0 (no poll) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_REVIEW_POLL_MINUTES")
+	require.ErrorContains(t, problems[0], "BEEHEST_REVIEW_POLL_MINUTES")
 }
 
 func TestLoadFolder_AgentsRetentionDaysDefaultsToSevenKeepsForeverAtZeroAndRefusesANegative(t *testing.T) {
@@ -917,7 +917,7 @@ func TestLoadFolder_AgentsRetentionDaysDefaultsToSevenKeepsForeverAtZeroAndRefus
 	_, problems = loadRunnersText(t, "agents(retention_days = -1)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.retention_days must be 0 (keep for ever) or more")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_RETENTION_DAYS")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_RETENTION_DAYS")
 }
 
 func TestLoadFolder_AgentsPerLoginDefaultsToOneAndRefusesAValueBelowOne(t *testing.T) {
@@ -962,7 +962,7 @@ func TestLoadFolder_AgentsRetentionDaysHasAnUpperBoundThatKeepsTheDurationInRang
 	_, problems = loadRunnersText(t, "agents(retention_days = 36501)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.retention_days is 36501: set it to 36500 (100 years) or less")
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_RETENTION_DAYS")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_RETENTION_DAYS")
 }
 
 func TestLoadFolder_TheRetentionVariableOverlaysTheFileAndIsValidated(t *testing.T) {
@@ -971,20 +971,20 @@ func TestLoadFolder_TheRetentionVariableOverlaysTheFileAndIsValidated(t *testing
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(retention_days = 30)\n")
 
-	cfg, problems := loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "14"})
+	cfg, problems := loadFolder(dir, map[string]string{"BEEHEST_AGENTS_RETENTION_DAYS": "14"})
 	require.Empty(t, problems)
 	require.Equal(t, 14, cfg.Agents.RetentionDays)
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "0"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_RETENTION_DAYS": "0"})
 	require.Empty(t, problems)
 	require.Equal(t, 0, cfg.Agents.RetentionDays, "0 in the variable keeps the runs for ever")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": ""})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_RETENTION_DAYS": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 30, cfg.Agents.RetentionDays, "an empty variable leaves the file value")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "a week"})
-	require.ErrorContains(t, problems, "BEEHAVE_AGENTS_RETENTION_DAYS=a week is not a whole number")
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_RETENTION_DAYS": "a week"})
+	require.ErrorContains(t, problems, "BEEHEST_AGENTS_RETENTION_DAYS=a week is not a whole number")
 }
 
 func TestLoadFolder_TheReviewPollVariableOverlaysTheFileAndIsValidated(t *testing.T) {
@@ -993,16 +993,16 @@ func TestLoadFolder_TheReviewPollVariableOverlaysTheFileAndIsValidated(t *testin
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(review_poll_minutes = 30)\n")
 
-	cfg, problems := loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "15"})
+	cfg, problems := loadFolder(dir, map[string]string{"BEEHEST_REVIEW_POLL_MINUTES": "15"})
 	require.Empty(t, problems)
 	require.Equal(t, 15, cfg.Agents.ReviewPollMinutes)
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": ""})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_POLL_MINUTES": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 30, cfg.Agents.ReviewPollMinutes, "an empty variable leaves the file value")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "hourly"})
-	require.ErrorContains(t, problems, "BEEHAVE_REVIEW_POLL_MINUTES=hourly is not a whole number")
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_POLL_MINUTES": "hourly"})
+	require.ErrorContains(t, problems, "BEEHEST_REVIEW_POLL_MINUTES=hourly is not a whole number")
 }
 
 func TestLoadFolder_TheReviewPollIntervalHasAnUpperBoundOfOneWeek(t *testing.T) {
@@ -1015,12 +1015,12 @@ func TestLoadFolder_TheReviewPollIntervalHasAnUpperBoundOfOneWeek(t *testing.T) 
 	_, problems = loadRunnersText(t, "agents(review_poll_minutes = 10081)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.review_poll_minutes is 10081: set it to 10080 (one week) or less")
-	require.ErrorContains(t, problems[0], "BEEHAVE_REVIEW_POLL_MINUTES")
+	require.ErrorContains(t, problems[0], "BEEHEST_REVIEW_POLL_MINUTES")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents()\n")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "307445735"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_POLL_MINUTES": "307445735"})
 	require.ErrorContains(t, problems, "agents.review_poll_minutes is 307445735: set it to 10080 (one week) or less")
 }
 
@@ -1045,32 +1045,32 @@ func TestAgentsConfig_ReviewLookbackDaysIsReadFromFileAndEnv(t *testing.T) {
 		_, problems = loadRunnersText(t, "agents(review_lookback_days = "+text+")\n")
 		require.Len(t, problems, 1, text)
 		require.ErrorContains(t, problems[0], "agents.review_lookback_days must be 1 or more", text)
-		require.ErrorContains(t, problems[0], "BEEHAVE_REVIEW_LOOKBACK_DAYS", text)
+		require.ErrorContains(t, problems[0], "BEEHEST_REVIEW_LOOKBACK_DAYS", text)
 	}
 
 	_, problems = loadRunnersText(t, "agents(review_lookback_days = 366)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.review_lookback_days is 366: set it to 365 (one year) or less")
-	require.ErrorContains(t, problems[0], "BEEHAVE_REVIEW_LOOKBACK_DAYS")
+	require.ErrorContains(t, problems[0], "BEEHEST_REVIEW_LOOKBACK_DAYS")
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(review_lookback_days = 5, max_turns = 9)\n")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_LOOKBACK_DAYS": "30"})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_LOOKBACK_DAYS": "30"})
 	require.Empty(t, problems)
 	require.Equal(t, 30, cfg.Agents.ReviewLookbackDays, "the variable wins over the file")
 	require.Equal(t, 9, cfg.Agents.MaxTurns, "the variable sets only the look-back")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_LOOKBACK_DAYS": ""})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_LOOKBACK_DAYS": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 5, cfg.Agents.ReviewLookbackDays, "an empty variable leaves the file value")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_LOOKBACK_DAYS": "some"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_LOOKBACK_DAYS": "some"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_REVIEW_LOOKBACK_DAYS=some is not a whole number")
+	require.ErrorContains(t, problems[0], "BEEHEST_REVIEW_LOOKBACK_DAYS=some is not a whole number")
 
 	for value, want := range map[string]string{"0": "must be 1 or more", "366": "is 366: set it to 365 (one year) or less"} {
-		_, problems = loadFolder(dir, map[string]string{"BEEHAVE_REVIEW_LOOKBACK_DAYS": value})
+		_, problems = loadFolder(dir, map[string]string{"BEEHEST_REVIEW_LOOKBACK_DAYS": value})
 		require.Len(t, problems, 1, value)
 		require.ErrorContains(t, problems[0], want, value)
 	}
@@ -1082,31 +1082,31 @@ func TestLoadFolder_ThePerLoginVariableOverlaysTheFileAndIsValidated(t *testing.
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_concurrent = 4, max_review_concurrent = 3, per_login = 2, max_turns = 9)\n")
 
-	cfg, problems := loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": "3"})
+	cfg, problems := loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": "3"})
 	require.Empty(t, problems)
 	require.Equal(t, 3, cfg.Agents.PerLogin)
 	require.Equal(t, 9, cfg.Agents.MaxTurns, "the variable sets only per_login")
 
-	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": ""})
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 2, cfg.Agents.PerLogin, "an empty variable leaves the file value")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": "some"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": "some"})
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_PER_LOGIN=some is not a whole number")
+	require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_PER_LOGIN=some is not a whole number")
 
 	for _, value := range []string{"-1", "0"} {
-		_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": value})
+		_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": value})
 		require.Len(t, problems, 1, value)
 		require.ErrorContains(t, problems[0], "agents.per_login must be 1 or more", value)
-		require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_PER_LOGIN", value)
+		require.ErrorContains(t, problems[0], "BEEHEST_AGENTS_PER_LOGIN", value)
 	}
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": "4"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": "4"})
 	require.Len(t, problems, 1, "4 is above the cap of the review queue")
 	require.ErrorContains(t, problems[0], "agents.per_login is 4")
 
-	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": "5", "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "9"})
+	_, problems = loadFolder(dir, map[string]string{"BEEHEST_AGENTS_PER_LOGIN": "5", "BEEHEST_AGENTS_MAX_REVIEW_CONCURRENT": "9"})
 	require.Len(t, problems, 1, "5 is above the cap of the agents queue")
 	require.ErrorContains(t, problems[0], "agents.max_concurrent (4)")
 }
@@ -1127,12 +1127,12 @@ func TestLoadFolder_TheMaxSpawnDepthKeyDefaultsToThreeAndOneBelowOneIsRefused(t 
 	require.Contains(t, problems[0].Error(), "max_spawn_depth is 0: set it to 1 or more")
 }
 
-func TestLoadFolder_ThePRLabelKeyDefaultsToMadeByBeehaveAndAnEmptyOneIsRefused(t *testing.T) {
+func TestLoadFolder_ThePRLabelKeyDefaultsToMadeByBeehestAndAnEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()
 
 	project, problems := loadProjectText(t, call(goodProject))
 	require.Empty(t, problems)
-	require.Equal(t, "made-by-beehave", project.PRLabel)
+	require.Equal(t, "made-by-beehest", project.PRLabel)
 
 	project, problems = loadProjectText(t, call(goodProject+`, pr_label = "by-the-engine"`))
 	require.Empty(t, problems)

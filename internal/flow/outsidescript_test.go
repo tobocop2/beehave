@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // outsideScriptHarness starts a run whose workflow names a script outside the repository, and leaves the run open at the question of the owner.
@@ -38,7 +38,7 @@ func TestClient_ResumeOnThisBuildRefusesARunWhoseOutsideScriptChangedAndNamesIt(
 
 	require.ErrorContains(t, err, script+" changed since the run started")
 	require.NotContains(t, err.Error(), "outside:", "the refusal shows the plain path")
-	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build --on-this-file", "the refusal says how to go on")
+	require.ErrorContains(t, err, "beehest resume "+testItem+" --on-this-build --on-this-file", "the refusal says how to go on")
 }
 
 func TestClient_ResumeOnThisBuildMovesARunWhoseOutsideScriptDidNotChange(t *testing.T) {

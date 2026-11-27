@@ -1,0 +1,33 @@
+# The first mutation run fails with a lived mutant. Candidate 1 gets no full review: the fix lane of candidate 2 gets the finding first.
+# The fixed head gets a scoped review, a clean mutation run, then its full review.
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehest status
+stdout '^item-7-r1\tdone\tgate pass at [0-9a-f]+\treview 3/24\t'
+
+# The job runs on the build host in the slot class, with the base ref of the round as its last word.
+grep -count=2 '^build mutation sh mutation.sh origin/integration$' mutation.log
+
+# The first fix takes the hit of the implementer and is clean, so the lived mutant is the first finding of the second fix.
+# The fixes inside candidate 1 and the fixes after it are both fix round 1.
+grep -count=1 '^implement ' calls.log
+grep -count=2 '^fix 1 ' calls.log
+! grep '^fix 2 ' calls.log
+grep -count=3 '^review ' calls.log
+grep -count=1 '^found=The mutation run failed. Each line is one finding:$' findings.log
+grep -count=1 '^- internal/a.go:12: a mutant lived: CONDITIONALS_NEGATION$' findings.log
+! grep 'KILLED' findings.log
+
+cmp events.log expected-events.log
+
+-- mutations --
+sh mutation.sh origin/integration => lived
+sh mutation.sh origin/integration => clean
+-- verdicts --
+approve
+approve
+approve
+-- expected-events.log --
+claim 7
+release 7

@@ -1,15 +1,15 @@
 version: 2
 
-project_name: beehave
+project_name: beehest
 
 before:
   hooks:
     - go mod verify
 
 builds:
-  - id: beehave
-    main: ./cmd/beehave
-    binary: beehave
+  - id: beehest
+    main: ./cmd/beehest
+    binary: beehest
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
@@ -21,7 +21,7 @@ builds:
       - -X main.version={{.Version}}
 
 archives:
-  - id: beehave
+  - id: beehest
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -33,7 +33,7 @@ release:
 
 # The binary is not signed, so the cask removes its quarantine attribute.
 homebrew_casks:
-  - name: beehave
+  - name: beehest
     repository:
       owner: tobocop2
       name: homebrew-tap
@@ -42,10 +42,10 @@ homebrew_casks:
         url: git@github.com:tobocop2/homebrew-tap.git
         private_key: "{{ .Env.HOMEBREW_TAP_SSH_KEY }}"
     binaries:
-      - beehave
+      - beehest
     hooks:
       post:
         install_steps: |
           on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/beehave"]
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/beehest"]
           end

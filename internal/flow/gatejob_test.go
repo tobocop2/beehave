@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/merge"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/merge"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 // hostGate is a gate with a host job. It counts its submits and keeps the job of each wait. Its first wait blocks until the run is canceled,

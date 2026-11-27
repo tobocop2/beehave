@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/ci"
-	"github.com/tobocop2/beehave/internal/ci/githubactions"
+	"github.com/tobocop2/beehest/internal/ci"
+	"github.com/tobocop2/beehest/internal/ci/githubactions"
 )
 
 const (

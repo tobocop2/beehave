@@ -8,15 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 func TestHost_ConformsToHost(t *testing.T) {
@@ -35,7 +35,7 @@ func hostConfig() model.HostConfig {
 	}
 }
 
-// newHost builds the SkyPilot host over the real Slurm queue, as cmd/beehave does.
+// newHost builds the SkyPilot host over the real Slurm queue, as cmd/beehest does.
 func newHost(cluster string, cfg model.HostConfig, sky, ssh proc.Runner, opts ...slurm.Option) (*skypilot.Host, error) {
 	queue := func(l *link.Link, config model.HostConfig, slot skypilot.Slot) skypilot.Queue {
 		return slurm.New(l, config, slot, append([]slurm.Option{slurm.WithLimit(config.MaxRun)}, opts...)...)
@@ -101,7 +101,7 @@ func TestWait_BanksTheWorkOfTheHeadNodeBeforeItReturnsAFinalState(t *testing.T) 
 	assert.Equal(t, model.JobSucceeded, got)
 	assert.True(t, ssh.Called("-o", "BatchMode=yes", "lane-host", "find", "-H", "/home/lane"), "find runs on the head node, from the login folder")
 	assert.True(t, ssh.Called("lane-host", "git", "-C", "/home/lane/repo", "worktree", "list", "--porcelain"), "git runs on the head node")
-	assert.True(t, ssh.Called("touch", ".beehave-banked-lane-host-5-n"))
+	assert.True(t, ssh.Called("touch", ".beehest-banked-lane-host-5-n"))
 }
 
 func TestWait_RefusesAFinalStateWhileTheHostHoldsUnbankedWork(t *testing.T) {
@@ -236,7 +236,7 @@ func TestCancel_WritesTheMarkerOfTheSlotJobAfterScancel(t *testing.T) {
 	require.NoError(t, h.Cancel(deadline(t), "5-n"))
 	require.Len(t, ssh.Calls, 3)
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "scancel", "5"}, ssh.Calls[0])
-	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".beehave-banked-lane-host-5-n"}, ssh.Calls[2])
+	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".beehest-banked-lane-host-5-n"}, ssh.Calls[2])
 }
 
 func TestCancel_BanksTheWorkOfTheCanceledJobBeforeTheSlotEnds(t *testing.T) {

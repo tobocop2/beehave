@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/store"
 )
 
 const testFile = "test.db"
@@ -183,7 +183,7 @@ func TestOpenSQLite_RefusesANewFileThatHoldsATableOfAnotherOwnerAndNamesTheFix(t
 	rawExec(t, filepath.Join(dir, testFile), `CREATE TABLE other (x INTEGER)`)
 
 	_, err := store.OpenSQLite(t.Context(), dir, testSpec())
-	require.ErrorContains(t, err, `holds "other", which beehave does not own`)
+	require.ErrorContains(t, err, `holds "other", which beehest does not own`)
 	require.ErrorContains(t, err, "Move test.db away")
 }
 

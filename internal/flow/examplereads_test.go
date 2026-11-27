@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // These tests hold the arguments that the shipped examples pass to the reads of the queue. A call that leaves one out reads every item or every pull request, and the rows stay right,
@@ -31,5 +31,5 @@ func TestExampleReads_TheRemediationRoundPassesItsLabelToTheTracker(t *testing.T
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Contains(t, rig.q.labelsAsked, "beehave-round", "the remediation round reads the items of the label of vars.round.label")
+	assert.Contains(t, rig.q.labelsAsked, "beehest-round", "the remediation round reads the items of the label of vars.round.label")
 }

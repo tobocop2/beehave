@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // The outputs that an editing step adds to the ones it declares: the subject and the body of the commit the engine makes for the step.
@@ -242,10 +242,10 @@ func (a agentArgs) engineCommit(ctx context.Context, outputs map[string]any, sub
 }
 
 // EngineName and EngineEmail are the author and the committer of every commit that the engine makes for a step, and of the union commits of merge.
-// They are the identity of beehave and never the user.name and user.email of a clone, which an agent can change.
+// They are the identity of beehest and never the user.name and user.email of a clone, which an agent can change.
 const (
-	EngineName  = "beehave"
-	EngineEmail = "beehave@localhost"
+	EngineName  = "beehest"
+	EngineEmail = "beehest@localhost"
 )
 
 // earlierCommit returns HEAD when an earlier run of this step made it and no record followed, and "" otherwise.

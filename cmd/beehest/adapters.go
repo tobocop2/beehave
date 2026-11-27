@@ -1,0 +1,739 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"maps"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/claim"
+	"github.com/tobocop2/beehest/internal/cli"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/forge"
+	forgegithub "github.com/tobocop2/beehest/internal/forge/github"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/slurm"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/pool"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/beads"
+	storegithub "github.com/tobocop2/beehest/internal/store/github"
+	"github.com/tobocop2/beehest/internal/store/local"
+)
+
+// adapters is the one place that maps an adapter name to its registration: its constructor, the project keys and programs it needs, and its doctor checks.
+// No other package dispatches on a name. state returns the state folder, which holds local.db. A build that needs no local store may pass nil.
+type adapters struct {
+	trackers map[model.TrackerName]trackerAdapter
+	claims   map[model.ClaimsName]claimsAdapter
+	forges   map[model.ForgeName]forgeAdapter
+	agents   map[model.Agent]agentAdapter
+	hosts    map[model.HostProvider]hostAdapter
+	bd       proc.Runner
+	state    func() (string, error)
+	// writers holds the writer credential of each project. The engine start fills it.
+	writers *writers
+	// diskPoll is how often a job that waits for disk space reads the disk again.
+	diskPoll time.Duration
+	// fleets holds the jobs of each build host, so the guards of one host see each other's jobs.
+	fleets *hostFleets
+}
+
+// hostFleets is the fleet of each build host, by provider and cluster name.
+type hostFleets struct {
+	mu    sync.Mutex
+	hosts map[string]*host.Fleet
+}
+
+// of returns the fleet of the host, and makes it the first time.
+func (h *hostFleets) of(provider model.HostProvider, cluster string) *host.Fleet {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	key := string(provider) + "/" + cluster
+	if h.hosts[key] == nil {
+		h.hosts[key] = host.NewFleet()
+	}
+
+	return h.hosts[key]
+}
+
+// registration is what the entries of one kind share: what the config reads, and the version check of each program the adapter needs, by tool name.
+type registration struct {
+	config.Entry
+	versions map[string]func(context.Context) error
+}
+
+// trackerAdapter is the registration of a tracker: the constructor, and the opener of the item list when the tracker holds one locally.
+type trackerAdapter struct {
+	registration
+	build trackerBuilder
+	// check says why the tracker cannot be built. A nil check builds the tracker.
+	check func(ctx context.Context, project model.Project) error
+	// items opens the item list of the tracker. It is nil for a tracker that keeps its items elsewhere.
+	items cli.ItemOpener
+}
+
+// claimsAdapter is the registration of a claim store: the opener, and the check that opens no file.
+type claimsAdapter struct {
+	registration
+	open  func(ctx context.Context, project model.Project) (claimStore, error)
+	check func(project model.Project) error
+}
+
+// forgeAdapter is the registration of a forge: the constructor.
+type forgeAdapter struct {
+	registration
+	build func(model.Project) (forge.Forge, error)
+}
+
+// agentAdapter is the registration of an agent: its constructor and its doctor fix texts. The usage read is a method of the adapter that build returns.
+// An agent with no constructor has no adapter: its runners are valid in the config and do not start.
+// reportsUsage is true when the CLI reports the plan limits of a login, so the doctor checks them for a runner of the agent.
+type agentAdapter struct {
+	registration
+	build func() agent.Adapter
+	// hook reads the hook input of the CLI for the command guard.
+	hook         agent.HookDecoder
+	reportsUsage bool
+	configFix    func(string) string
+	tokenFix     func(string) string
+}
+
+// hostAdapter is the registration of a host provider: the constructor and the sentinel errors of a failed run.
+type hostAdapter struct {
+	registration
+	build     func(model.Project) (host.Host, error)
+	sentinels []error
+}
+
+// defaultDiskPoll is the gap between two disk readings of a job that waits for space.
+const defaultDiskPoll = 30 * time.Second
+
+// claimStore is the claim rows of one project and the way to end its use. closer is nil for a store that holds no file.
+type claimStore struct {
+	claim.Rows
+
+	closer io.Closer
+}
+
+// Close ends the use of the store.
+func (c claimStore) Close() error {
+	if c.closer == nil {
+		return nil
+	}
+
+	return c.closer.Close()
+}
+
+// skyTimeout is the longest one sky call may run. A launch creates a machine, which takes minutes.
+const skyTimeout = 30 * time.Minute
+
+// stepAgent is the agent kind of every agent step. A step names no agent yet, so the pool pick takes runners of this kind only.
+const stepAgent = claude.Name
+
+// agentEntries returns the agent entries. env is the environment of the caller, which the usage read of an agent passes to its CLI.
+// The opencode entry has no doctor fix text.
+func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
+	return map[model.Agent]agentAdapter{
+		claude.Name: {
+			build:        func() agent.Adapter { return claude.New(env) },
+			hook:         claude.DecodeHook,
+			reportsUsage: true,
+			configFix:    claude.ConfigFix,
+			tokenFix:     claude.TokenFix,
+		},
+		opencode.Name: {build: func() agent.Adapter { return opencode.New() }, hook: opencode.DecodeHook},
+	}
+}
+
+// hooks returns the hook reader of each agent, for the command guard.
+func (a adapters) hooks() map[model.Agent]agent.HookDecoder {
+	readers := make(map[model.Agent]agent.HookDecoder, len(a.agents))
+
+	for name, entry := range a.agents {
+		readers[name] = entry.hook
+	}
+
+	return readers
+}
+
+// beadsRegistration is what the beads tracker and the beads claim store share: the block they declare, the program they need and its version check.
+func beadsRegistration(bd proc.Runner) registration {
+	return registration{
+		Entry:    config.Entry{Block: blockOf(beads.Block()), Tools: []string{beads.Tool}},
+		versions: map[string]func(context.Context) error{beads.Tool: func(ctx context.Context) error { return beads.RequireBd(ctx, bd) }},
+	}
+}
+
+// githubRegistration is what the GitHub tracker and the GitHub forge share: the repo key, and the program that the adapter names.
+func githubRegistration(tool string) registration {
+	return registration{Entry: config.Entry{Keys: []string{repoKey}, Tools: []string{tool}}}
+}
+
+// repoKey is the project key that the GitHub tracker and the GitHub forge require.
+const repoKey = "repo"
+
+// newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
+// state returns the state folder, for the local tracker and the local claim store. env is the environment of the caller, for the usage read of the agents.
+func newAdapters(bd proc.Runner, state func() (string, error), env map[string]string) adapters {
+	roles := &writers{}
+
+	table := adapters{
+		trackers: trackerEntries(bd, state, roles),
+		claims:   claimsEntries(bd, state),
+		forges: map[model.ForgeName]forgeAdapter{
+			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) }},
+		},
+		agents:   agentEntries(env),
+		bd:       bd,
+		state:    state,
+		writers:  roles,
+		diskPoll: defaultDiskPoll,
+		fleets:   &hostFleets{hosts: map[string]*host.Fleet{}},
+	}
+
+	// A host that creates its machine clones the project for its set-up, so it asks the forge table for the clone URL.
+	table.hosts = hostEntries(table.forge)
+	// The start check asks the forge of each project with a writer whether its token can change CI.
+	roles.forges = table.forge
+
+	return table
+}
+
+// trackerEntries returns the tracker entries.
+func trackerEntries(bd proc.Runner, state func() (string, error), roles *writers) map[model.TrackerName]trackerAdapter {
+	return map[model.TrackerName]trackerAdapter{
+		local.Tracker: localTracker(state),
+		beads.Tracker: {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
+		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) {
+			return newIssues(roles, project)
+		}},
+	}
+}
+
+// localTracker is the entry of the local tracker: it builds and lists over local.db, and a check opens no file.
+func localTracker(state func() (string, error)) trackerAdapter {
+	return trackerAdapter{
+		build: func(ctx context.Context, project model.Project) (store.Tracker, error) {
+			return openLocalTracker(ctx, state, project)
+		},
+		check: func(context.Context, model.Project) error { return nil },
+		items: func(ctx context.Context, project model.Project) (cli.ItemStore, error) {
+			return openLocalItems(ctx, state, project)
+		},
+	}
+}
+
+// openLocalTracker opens local.db as the tracker of the project. A failed open gives a nil interface, not a nil pointer inside one.
+func openLocalTracker(ctx context.Context, state func() (string, error), project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	opened, err := openLocal(ctx, state, project)
+	if err != nil {
+		return nil, err
+	}
+
+	return opened, nil
+}
+
+// openLocalItems opens local.db as the item list of the project. A failed open gives a nil interface, not a nil pointer inside one.
+func openLocalItems(ctx context.Context, state func() (string, error), project model.Project) (cli.ItemStore, error) { //nolint:ireturn // the opener returns the list through the interface of the command line
+	opened, err := openLocal(ctx, state, project)
+	if err != nil {
+		return nil, err
+	}
+
+	return opened, nil
+}
+
+// claimsEntries returns the claim store entries.
+func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.ClaimsName]claimsAdapter {
+	return map[model.ClaimsName]claimsAdapter{
+		local.Claims: {
+			open: func(ctx context.Context, project model.Project) (claimStore, error) {
+				return openLocalClaims(ctx, state, project)
+			},
+			check: func(model.Project) error { return nil },
+		},
+		beads.Claims: {
+			registration: beadsRegistration(bd),
+			open:         func(_ context.Context, project model.Project) (claimStore, error) { return newBeadsClaims(bd, project) },
+			check: func(project model.Project) error {
+				_, err := newBeadsClaims(bd, project)
+
+				return err
+			},
+		},
+	}
+}
+
+// hostEntries returns the host provider entries. forges finds the forge of a project, for the clone URL of a set-up.
+func hostEntries(forges func(model.Project) (forge.Forge, error)) map[model.HostProvider]hostAdapter {
+	return map[model.HostProvider]hostAdapter{
+		skypilot.Name: {
+			registration: registration{Entry: config.Entry{Block: blockOf(skypilot.Block()), Idle: true, StartsWithOwnerCredentials: true}},
+			build:        func(project model.Project) (host.Host, error) { return newSkyPilotHost(project, forges) },
+			sentinels:    []error{skypilot.ErrConfig, link.ErrConfig},
+		},
+		ssh.Name: {
+			registration: registration{Entry: config.Entry{Block: blockOf(ssh.Block())}},
+			build:        newSSHHost,
+			sentinels:    []error{link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining},
+		},
+		slurm.Name: {
+			registration: registration{Entry: config.Entry{Block: blockOf(slurm.Block())}},
+			build:        newSlurmHost,
+			sentinels:    []error{link.ErrConfig},
+		},
+	}
+}
+
+// blockOf returns the address of a declared block, for the registry entry that holds it.
+func blockOf(declared config.Block) *config.Block { return &declared }
+
+// registry returns the names, keys and tools of the table as the config reads them.
+func (a adapters) registry() config.Adapters {
+	agents := configEntries(a.agents, agentAdapter.entryOf)
+
+	for name, entry := range agents {
+		if built := a.agent(name); built != nil {
+			loading := *entry
+			loading.LoadsSkills = built.Profile().SkillLine != nil
+			loading.Windows = built.Profile().Windows
+			agents[name] = &loading
+		}
+	}
+
+	return config.Adapters{
+		Trackers: configEntries(a.trackers, trackerAdapter.entryOf),
+		Claims:   configEntries(a.claims, claimsAdapter.entryOf),
+		Forges:   configEntries(a.forges, forgeAdapter.entryOf),
+		Hosts:    configEntries(a.hosts, hostAdapter.entryOf),
+		Agents:   agents,
+	}
+}
+
+// entryOf returns the config entry of the registration.
+func (r registration) entryOf() *config.Entry { return &r.Entry }
+
+// configEntries returns the config entry of each adapter of one kind, by name.
+func configEntries[K comparable, A any](table map[K]A, entry func(A) *config.Entry) map[K]*config.Entry {
+	entries := make(map[K]*config.Entry, len(table))
+
+	for name, adapter := range table {
+		entries[name] = entry(adapter)
+	}
+
+	return entries
+}
+
+// trackerBuilder builds the tracker of a project. The context is for the adapter that opens a file.
+type trackerBuilder func(context.Context, model.Project) (store.Tracker, error)
+
+// openLocalClaims opens local.db in the state folder for the claim rows of the project.
+func openLocalClaims(ctx context.Context, state func() (string, error), project model.Project) (claimStore, error) {
+	rows, err := openLocal(ctx, state, project)
+	if err != nil {
+		return claimStore{}, err
+	}
+
+	return claimStore{Rows: rows, closer: rows}, nil
+}
+
+// newBeadsClaims builds the beads claim store of the project. It holds no file, so the store has no closer. A check builds the store and drops it.
+func newBeadsClaims(bd proc.Runner, project model.Project) (claimStore, error) {
+	rows, err := beads.New(bd, project.Blocks[beads.BlockName])
+	if err != nil {
+		return claimStore{}, err
+	}
+
+	return claimStore{Rows: rows}, nil
+}
+
+// openLocal opens local.db in the state folder for the project.
+func openLocal(ctx context.Context, state func() (string, error), project model.Project) (*local.Store, error) {
+	dir, err := state()
+	if err != nil {
+		return nil, err
+	}
+
+	return local.Open(ctx, dir, project.Name, time.Now)
+}
+
+// newSkyPilotHost builds the host of a SkyPilot cluster. A project with a set-up command gets a checkout: the clone source of the project (its source, else the URL of its forge) at its base branch.
+func newSkyPilotHost(project model.Project, forges func(model.Project) (forge.Forge, error)) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+	sky := proc.ExecRunner{Binary: "sky", Timeout: skyTimeout}
+
+	var options []skypilot.Option
+
+	if project.Host.SetupCommand != "" {
+		url, err := cloneSource(project, forges)
+		if err != nil {
+			return nil, fmt.Errorf("find the repository of project %s for its set-up command: %w", project.Name, err)
+		}
+
+		options = append(options, skypilot.WithCheckout(project.Name, project.BaseBranch, url))
+	}
+
+	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""), slurmQueue, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+// slurmQueue builds the Slurm queue that SkyPilot runs its jobs on. Every job it submits ends at `host.max_run`, as on the Slurm host.
+func slurmQueue(l *link.Link, config model.HostConfig, slot skypilot.Slot) skypilot.Queue { //nolint:ireturn // SkyPilot takes the queue as a builder that returns the interface it owns
+	return slurm.New(l, config, slot, slurm.WithLimit(config.MaxRun))
+}
+
+// newSSHHost builds the host of a machine that the owner provides. It runs no ssh: the first call to the machine is Up.
+func newSSHHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+	h, err := ssh.New(project.BuildHost, *project.Host, proc.NewExecRunner("ssh", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+// newSlurmHost builds the host of a Slurm cluster that the owner provides, reached at its head node over ssh. It runs no ssh: the first call is Up.
+func newSlurmHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+	h, err := slurm.NewHost(project.BuildHost, *project.Host, proc.NewExecRunner("ssh", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+func newBeads(bd proc.Runner, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	tracker, err := beads.New(bd, project.Blocks[beads.BlockName])
+	if err != nil {
+		return nil, err
+	}
+
+	return tracker, nil
+}
+
+func newIssues(roles *writers, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	runner, err := roles.runner(project)
+	if err != nil {
+		return nil, err
+	}
+
+	issues, err := storegithub.New(project.Repo, runner)
+	if err != nil {
+		return nil, err
+	}
+
+	return issues, nil
+}
+
+func newGithubForge(roles *writers, project model.Project) (forge.Forge, error) { //nolint:ireturn // the table stores constructors of the contract
+	runner, err := roles.runner(project)
+	if err != nil {
+		return nil, err
+	}
+
+	gh, err := forgegithub.New(project.Repo, runner)
+	if err != nil {
+		return nil, err
+	}
+
+	return gh, nil
+}
+
+// tracker builds the tracker the project names.
+func (a adapters) tracker(ctx context.Context, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
+	entry, found := a.trackers[project.Tracker]
+	if !found {
+		return nil, fmt.Errorf("project %s: no tracker adapter named %q", project.Name, project.Tracker)
+	}
+
+	return entry.build(ctx, project)
+}
+
+// issueReads builds the GitHub access that the GitHub tracker of the project uses: its repository and the runner of its role. The read of who wrote an
+// issue goes through it, so it needs no forge key.
+func (a adapters) issueReads(project model.Project) (forge.Forge, error) { //nolint:ireturn // the same constructor as the forge entry
+	return newGithubForge(a.writers, project)
+}
+
+// forge builds the forge the project names. A project with no forge gets an error that matches forge.ErrNoForge.
+func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
+	if project.Forge == "" {
+		return nil, fmt.Errorf("project %s: %w; set forge = \"github\" in the project file", project.Name, forge.ErrNoForge)
+	}
+
+	entry, found := a.forges[project.Forge]
+	if !found {
+		return nil, fmt.Errorf("project %s: no forge adapter named %q", project.Name, project.Forge)
+	}
+
+	return entry.build(project)
+}
+
+// host builds the build host the project names, with the disk floor. A project with no host block builds locally and has none.
+func (a adapters) host(project model.Project) (host.Host, error) { //nolint:ireturn // the host block names the adapter to build
+	built, err := a.buildHost(project)
+	if err != nil {
+		return nil, err
+	}
+
+	wait := time.Duration(project.Host.DiskWaitMinutes) * time.Minute
+
+	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll, a.fleets.of(project.Host.Provider, project.BuildHost)), nil
+}
+
+// buildHost builds the host of the adapter that the host block names, with no wrapper.
+func (a adapters) buildHost(project model.Project) (host.Host, error) { //nolint:ireturn // the host block names the adapter to build
+	if project.Host == nil {
+		return nil, fmt.Errorf("project %s: no host block, so no build host", project.Name)
+	}
+
+	entry, found := a.hosts[project.Host.Provider]
+	if !found {
+		return nil, fmt.Errorf("project %s: no host adapter named %q", project.Name, project.Host.Provider)
+	}
+
+	return entry.build(project)
+}
+
+// credentialCheck is a build host that checks what ssh would give it of the credentials of the owner.
+type credentialCheck interface {
+	CheckCredentials(ctx context.Context) error
+}
+
+// checkHosts builds the host of each cluster that the project declares, and runs the credential check of each one for a host declared credentials = "none".
+func (a adapters) checkHosts(ctx context.Context, project model.Project) error {
+	clusters := project.BuildHosts
+	if len(clusters) == 0 {
+		clusters = []string{project.BuildHost}
+	}
+
+	for _, cluster := range clusters {
+		project.BuildHost = cluster
+
+		built, err := a.buildHost(project)
+		if err != nil {
+			return err
+		}
+
+		if err = checkCredentials(ctx, project, built); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkCredentials runs the credential check of a host declared credentials = "none". A provider without the check is refused, never skipped.
+func checkCredentials(ctx context.Context, project model.Project, built host.Host) error {
+	if project.Host.Credentials != model.HostCredentialsNone {
+		return nil
+	}
+
+	// The host contract holds no credential check; each provider of the table adds its own.
+	checker, ok := built.(credentialCheck)
+	if !ok {
+		return fmt.Errorf("project %s: the host provider %q cannot check credentials = \"none\". Remove the key, or use the ssh or slurm provider", project.Name, project.Host.Provider)
+	}
+
+	return checker.CheckCredentials(ctx)
+}
+
+// agent builds the adapter of the agent. It returns nil for an agent that has no adapter, and a run with no adapter does not start.
+func (a adapters) agent(name model.Agent) agent.Adapter { //nolint:ireturn // the table builds whichever adapter the runner names
+	entry, found := a.agents[name]
+	if !found || entry.build == nil {
+		return nil
+	}
+
+	return entry.build()
+}
+
+// toolVersions returns the version check of each tool that an entry declares, by tool name.
+func (a adapters) toolVersions() map[string]func(context.Context) error {
+	checks := map[string]func(context.Context) error{}
+
+	for _, entry := range a.trackers {
+		maps.Copy(checks, entry.versions)
+	}
+
+	for _, entry := range a.claims {
+		maps.Copy(checks, entry.versions)
+	}
+
+	return checks
+}
+
+// logins returns the usage read of each agent that has an adapter and reports usage, by agent.
+func (a adapters) logins() map[model.Agent]func(context.Context, model.Runner) model.Reading {
+	logins := map[model.Agent]func(context.Context, model.Runner) model.Reading{}
+
+	for name, entry := range a.agents {
+		if entry.build != nil && entry.reportsUsage {
+			logins[name] = entry.build().ReadUsage
+		}
+	}
+
+	return logins
+}
+
+// configFixes returns the fix of the config folder of each agent that declares one, by agent.
+func (a adapters) configFixes() map[model.Agent]func(string) string {
+	fixes := map[model.Agent]func(string) string{}
+
+	for name, entry := range a.agents {
+		if entry.configFix != nil {
+			fixes[name] = entry.configFix
+		}
+	}
+
+	return fixes
+}
+
+// tokenFixes returns the fix of the Keychain entry of each agent that declares one, by agent.
+func (a adapters) tokenFixes() map[model.Agent]func(string) string {
+	fixes := map[model.Agent]func(string) string{}
+
+	for name, entry := range a.agents {
+		if entry.tokenFix != nil {
+			fixes[name] = entry.tokenFix
+		}
+	}
+
+	return fixes
+}
+
+// readUsage reads the usage of one runner through the adapter of its agent. A runner of an agent with no entry is unknown, so the pool pick never chooses it.
+func readUsage(entries map[model.Agent]agentAdapter) pool.Reader {
+	return func(ctx context.Context, runner model.Runner) model.Reading {
+		entry, found := entries[runner.Agent]
+		if !found || entry.build == nil {
+			return agent.NoUsage(runner.Agent)
+		}
+
+		return entry.build().ReadUsage(ctx, runner)
+	}
+}
+
+// hostErrors lists the sentinel errors that the host entries declare, each once, in the order of the provider names.
+func (a adapters) hostErrors() []error {
+	var sentinels []error
+
+	for _, name := range slices.Sorted(maps.Keys(a.hosts)) {
+		for _, sentinel := range a.hosts[name].sentinels {
+			if !slices.Contains(sentinels, sentinel) {
+				sentinels = append(sentinels, sentinel)
+			}
+		}
+	}
+
+	return sentinels
+}
+
+// leases opens the claim store the project names: the beads rows, or the claim rows of local.db. The caller closes it.
+func (a adapters) leases(ctx context.Context, project model.Project) (claimStore, error) {
+	entry, found := a.claims[project.Claims]
+	if !found {
+		return claimStore{}, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
+
+	return entry.open(ctx, project)
+}
+
+// itemOpener returns what the command line calls to open the item list of a project, by the tracker that owns the list. The caller closes the list.
+func (a adapters) itemOpener() map[model.TrackerName]cli.ItemOpener {
+	openers := map[model.TrackerName]cli.ItemOpener{}
+
+	for name, entry := range a.trackers {
+		if entry.items != nil {
+			openers[name] = entry.items
+		}
+	}
+
+	return openers
+}
+
+// checkTrackerAndForge says why the tracker or the forge of the project cannot be built. The local tracker needs no file, so a check leaves the state folder alone.
+func (a adapters) checkTrackerAndForge(ctx context.Context, project model.Project) error {
+	entry, found := a.trackers[project.Tracker]
+	if !found {
+		return fmt.Errorf("project %s: no tracker adapter named %q", project.Name, project.Tracker)
+	}
+
+	if entry.check != nil {
+		if err := entry.check(ctx, project); err != nil {
+			return err
+		}
+	} else if _, err := entry.build(ctx, project); err != nil {
+		return err
+	}
+
+	if project.Forge == "" {
+		return nil
+	}
+
+	_, err := a.forge(project)
+
+	return err
+}
+
+// checkClaims says why the claim store of the project cannot be built. It opens no file.
+func (a adapters) checkClaims(project model.Project) error {
+	entry, found := a.claims[project.Claims]
+	if !found {
+		return fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
+
+	return entry.check(project)
+}
+
+// check builds what the project names and reports why it cannot: the tracker, the forge, the build host and the claim store.
+// A host declared credentials = "none" also gets its credential check, which reads the ssh config and connects to nothing.
+// A local tracker and a local claim store open no file here. A project that names beads needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
+// A project that names no beads never calls bd. `beehest check config` calls check for each project.
+func (a adapters) check(ctx context.Context, project model.Project) error {
+	if err := a.checkTrackerAndForge(ctx, project); err != nil {
+		return err
+	}
+
+	if err := a.checkClaims(project); err != nil {
+		return err
+	}
+
+	if project.Host != nil {
+		if err := a.checkHosts(ctx, project); err != nil {
+			return err
+		}
+	}
+
+	return a.checkTools(ctx, project)
+}
+
+// checkTools runs the version check of each tool that the project needs, in the order of project.Tools. A tool with no version check passes.
+func (a adapters) checkTools(ctx context.Context, project model.Project) error {
+	versions := a.toolVersions()
+
+	for _, tool := range project.Tools {
+		if versionCheck := versions[tool]; versionCheck != nil {
+			if err := versionCheck(ctx); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

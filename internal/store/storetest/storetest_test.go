@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/ifacetest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/storetest"
+	"github.com/tobocop2/beehest/internal/ifacetest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/storetest"
 )
 
 var errDown = errors.New("down")

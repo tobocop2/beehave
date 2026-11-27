@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // shellTools is the name that each agent gives its shell tool.
@@ -35,7 +35,7 @@ func TestCheckCommand_TheSameRefusedCommandInTheHookFormatOfEachAgentExits2AndPr
 		code, stderr := hookOf(t, name, eventsOf(t, tool, "git add -A", "/work")[name])
 
 		assert.Equal(t, 2, code, name)
-		assert.Contains(t, stderr, "beehave refused the command: this command breaks the shell rules of the step.\nbulk-staging: git add -A", name)
+		assert.Contains(t, stderr, "beehest refused the command: this command breaks the shell rules of the step.\nbulk-staging: git add -A", name)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestCheckCommand_AMalformedInputExits2InTheHookFormatOfEachAgent(t *testing
 			code, stderr := hookOf(t, name, event)
 
 			assert.Equal(t, 2, code, "%s %q", name, event)
-			assert.Contains(t, stderr, "beehave refused the command", "%s %q", name, event)
+			assert.Contains(t, stderr, "beehest refused the command", "%s %q", name, event)
 		}
 	}
 }

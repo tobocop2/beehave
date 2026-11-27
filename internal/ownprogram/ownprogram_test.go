@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/ownprogram"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/ownprogram"
 )
 
 const (
@@ -157,7 +157,7 @@ func TestRun_PostsTheGateStatusOnTheHeadWithTheOwnerCommandText(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, out.Passed)
 	assert.Equal(t, head, out.Head)
-	assert.Equal(t, []model.CommitStatus{{SHA: head, Context: "beehave/gate", State: model.StatusSuccess, Description: "gate program changed, run by owner command, gate key k1"}}, r.posted)
+	assert.Equal(t, []model.CommitStatus{{SHA: head, Context: "beehest/gate", State: model.StatusSuccess, Description: "gate program changed, run by owner command, gate key k1"}}, r.posted)
 }
 
 func TestRun_AGateWithNoKeyPostsTheDescriptionAlone(t *testing.T) {

@@ -1,4 +1,4 @@
-// Package ssh is the host provider for a machine that the owner provides and beehave reaches over ssh. It creates and deletes nothing.
+// Package ssh is the host provider for a machine that the owner provides and beehest reaches over ssh. It creates and deletes nothing.
 // A job runs as a transient systemd user unit, so the cgroup of the unit gives the kill of every process of the job, the run limit and the record of the result.
 // The ssh command line is the link package; the wait for a job is the jobwait engine over the systemd reads.
 package ssh
@@ -15,14 +15,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
-// Name is the name the ssh host provider is chosen by. The host is a machine the owner provides and beehave reaches over ssh. beehave never creates or deletes it.
+// Name is the name the ssh host provider is chosen by. The host is a machine the owner provides and beehest reaches over ssh. beehest never creates or deletes it.
 const Name model.HostProvider = "ssh"
 
 var (
@@ -43,7 +43,7 @@ const (
 	stopNotLoaded  = 5  // the exit status of systemctl stop for a unit that is not loaded
 	loadedState    = "loaded"
 	logTailBytes   = 16384
-	stateFolder    = ".beehave"
+	stateFolder    = ".beehest"
 	drainMarker    = "drain"
 	canceledSuffix = ".canceled"
 	waitingSuffix  = ".waiting"
@@ -51,10 +51,10 @@ const (
 	logSuffix      = ".log"
 )
 
-// Host is a machine with systemd that beehave reaches over ssh.
+// Host is a machine with systemd that beehest reaches over ssh.
 //
 // Up is the first call; it checks the machine and makes the state folder in the work root, and changes nothing else on the machine.
-// Down sends nothing: beehave did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
+// Down sends nothing: beehest did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
 type Host struct {
 	config model.HostConfig
 	values block
@@ -155,7 +155,7 @@ func (h *Host) run(ctx context.Context, name string, words ...string) (string, e
 func (h *Host) CheckCredentials(ctx context.Context) error { return h.link.CheckCredentials(ctx) }
 
 // Up checks that the machine answers, that linger is on for the login user, that the user manager runs, that systemd is new enough,
-// and that the work root exists with the state folder in it. beehave never turns linger on: it is a setting of the owner of the machine.
+// and that the work root exists with the state folder in it. beehest never turns linger on: it is a setting of the owner of the machine.
 // A host declared credentials = "none" is checked first, before any call reaches it.
 func (h *Host) Up(ctx context.Context) error {
 	if err := h.CheckCredentials(ctx); err != nil {
@@ -204,7 +204,7 @@ func (h *Host) checkLinger(ctx context.Context, user string) error {
 	}
 
 	if !on {
-		return fmt.Errorf("%w. Ask the owner of the machine to run `loginctl enable-linger %s` there, then run this again. beehave does not change the setting", ErrLinger, user)
+		return fmt.Errorf("%w. Ask the owner of the machine to run `loginctl enable-linger %s` there, then run this again. beehest does not change the setting", ErrLinger, user)
 	}
 
 	return nil
@@ -242,7 +242,7 @@ func (h *Host) checkVersion(ctx context.Context) error {
 	return nil
 }
 
-// stateDir returns the folder under the work root where the logs and markers of beehave live, and makes it.
+// stateDir returns the folder under the work root where the logs and markers of beehest live, and makes it.
 func (h *Host) stateDir(ctx context.Context) (string, error) {
 	root, err := h.WorkRoot(ctx)
 	if err != nil {
@@ -313,10 +313,10 @@ func (h *Host) draining(ctx context.Context, root string) (bool, error) {
 	return false, link.Failure("test", result)
 }
 
-// Down sends nothing and stops no job. beehave did not create the machine, so it never deletes it.
+// Down sends nothing and stops no job. beehest did not create the machine, so it never deletes it.
 func (*Host) Down(context.Context) error { return nil }
 
-// Teardown banks the work of the machine to `host.private_remote` and leaves the machine up. It is the release of a host that beehave does not own:
+// Teardown banks the work of the machine to `host.private_remote` and leaves the machine up. It is the release of a host that beehest does not own:
 // host.Teardown cannot be used, as it ends with an audit that the host is gone.
 func (h *Host) Teardown(ctx context.Context) error {
 	if err := h.bank(ctx); err != nil {
@@ -487,10 +487,10 @@ func (h *Host) runUnit(ctx context.Context, root, dir, unit string, spec model.J
 // unitOf returns the unit name of a job and whether systemd already holds that unit. A job with no key gets a new name from the nonce and is never held.
 func (h *Host) unitOf(ctx context.Context, key string) (string, bool, error) {
 	if key == "" {
-		return "beehave-" + h.nonce(), false, nil
+		return "beehest-" + h.nonce(), false, nil
 	}
 
-	unit := "beehave-" + jobwait.KeyDigest(key)
+	unit := "beehest-" + jobwait.KeyDigest(key)
 	held, err := h.holds(ctx, unit)
 
 	return unit, held, err
@@ -579,7 +579,7 @@ func (h *Host) base(ctx context.Context, job jobwait.Job) (string, error) {
 }
 
 // Drain makes the host refuse new jobs by a marker file in the state folder. Running jobs finish.
-// It is a file, not a system setting, because beehave changes nothing on the machine beyond its own folder.
+// It is a file, not a system setting, because beehest changes nothing on the machine beyond its own folder.
 func (h *Host) Drain(ctx context.Context) error {
 	dir, err := h.stateDir(ctx)
 	if err != nil {
@@ -671,7 +671,7 @@ func (s scheduler) record(ctx context.Context, base string, r reading, state mod
 }
 
 // Stop writes the marker of the cancel and then stops the unit. The marker comes first, so a stopped unit is never read as a success.
-// It makes the state folder first: a machine that never ran a job of beehave has none, and the marker cannot be written without it.
+// It makes the state folder first: a machine that never ran a job of beehest has none, and the marker cannot be written without it.
 func (s scheduler) Stop(ctx context.Context, job jobwait.Job) error {
 	dir, err := s.h.stateDir(ctx)
 	if err != nil {

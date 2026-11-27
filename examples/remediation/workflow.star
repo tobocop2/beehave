@@ -1,11 +1,11 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
-load("@beehave//batch.star", "batch_merge")
-load("@beehave//claims.star", "claim_stop")
-load("@beehave//queue.star", "SEVERITIES", "queue", "rank")
-load("@beehave//scope.star", "fix_scope", "hold_scope")
-load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
+load("@beehest//batch.star", "batch_merge")
+load("@beehest//claims.star", "claim_stop")
+load("@beehest//queue.star", "SEVERITIES", "queue", "rank")
+load("@beehest//scope.star", "fix_scope", "hold_scope")
+load("@beehest//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix", "stopped_before")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
 # fix runs the fix rounds up to vars.round.escalate_after, and fix_late runs the rounds after them.
@@ -250,7 +250,7 @@ def settings(project):
     The engine reads no setting. This function is the one check of them: it refuses project vars with no `round`, a missing key, a key of the wrong type, a value out of range and a key that is no setting,
     and it refuses a method setting of the vars (the lists, the dicts, the gate map, the changelog and the board) of the wrong type or form, each with a message that names the key and the fix. `project` is the value of facts(). Every entry of the file is a round or a child of one, so every entry reads them."""
     if "round" not in project.vars:
-        fail("REFUSE: the project vars hold no round. Add the settings of the round to the project file: vars = {\"round\": {\"base\": \"integration/r2\", \"owner\": \"your-login\", \"lane_cap\": 4, \"fix_rounds\": 5, \"label\": \"beehave-round\"}}.")
+        fail("REFUSE: the project vars hold no round. Add the settings of the round to the project file: vars = {\"round\": {\"base\": \"integration/r2\", \"owner\": \"your-login\", \"lane_cap\": 4, \"fix_rounds\": 5, \"label\": \"beehest-round\"}}.")
 
     block = project.vars["round"]
     if type(block) != "dict":
@@ -857,7 +857,7 @@ SYNC_REASONS = {
     "sync-conflict": "The agent did not resolve the conflict on the sync branch. Merge the branch that the sync step names into the sync branch, resolve and push.",
     "sync-refused": "The forge refused the merge for the workflow permission. Merge the trunk into the round branch by hand.",
     "sync-red": "The gate failed on the head of the sync branch. Read the gate of the sync pull request.",
-    "sync-review": "The review did not approve the sync pull request. Its findings are in the reply of the step sync-review of the last pass: beehave status with the run id of the round lists the steps.",
+    "sync-review": "The review did not approve the sync pull request. Its findings are in the reply of the step sync-review of the last pass: beehest status with the run id of the round lists the steps.",
     "host-loss": "The build host lost gate jobs, and no gate gave a verdict about the code. Check the host and its link.",
 }
 
@@ -1028,7 +1028,7 @@ def record_base_reds(round_settings):
 
 def derive_gate_list(project):
     """Derives the gate list of the round from the CI workflow files of vars.gate_files, and holds gate_steps to it by vars.gate_map. A project with no gate_files derives nothing.
-    `beehave check gate-list` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
+    `beehest check gate-list` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
     See the gate list section of docs/design/agent-runs.md."""
     files = project.vars.get("gate_files", [])
 
@@ -1042,7 +1042,7 @@ def derive_gate_list(project):
     for name in project.gate_steps:
         steps += ["--steps", name]
 
-    command(name = "gate-list", run = ["beehave", "check", "gate-list"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
+    command(name = "gate-list", run = ["beehest", "check", "gate-list"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
 
 # A bound for the loop of the round, because Starlark has no while. A pass ends one run or starts one, so the bound is far above the work of any real round.
 MAX_PASSES = 500
@@ -1074,7 +1074,7 @@ def listed_rows(q, round_settings):
 
 def approved_runs(q, round_settings):
     """Returns the runs to land from the queue `q`: a done row of the round whose last run approved a head. The last run of a row is the one record, so a run that a child of the round
-    made and a run that the owner started with `beehave run` land the same way. A row on hold is not done, so an item that a rejected landing held is offered once. It returns nothing when the round lands nothing."""
+    made and a run that the owner started with `beehest run` land the same way. A row on hold is not done, so an item that a rejected landing held is offered once. It returns nothing when the round lands nothing."""
     if not round_settings["merge"]:
         return []
 
@@ -1088,11 +1088,11 @@ def approved_runs(q, round_settings):
 
 # Each reason that a listed item does not move, by the state of its row, with the step of the owner. missing is an item with no row. A ready row shows here only when the items queue has no free slot.
 ITEM_CLAUSES = {
-    "failed": "Listed item {item} is failed: run beehave resume {item}. If the resume refuses the run, run beehave cancel {item}, and the next pass starts a new attempt.",
+    "failed": "Listed item {item} is failed: run beehest resume {item}. If the resume refuses the run, run beehest cancel {item}, and the next pass starts a new attempt.",
     "hold": "Listed item {item} is on hold: take the hold off the item or its pull request.",
-    "stopped": "Listed item {item} stopped at {step} with the output \"{reason}\". Fix the cause and run beehave run {item}: it starts a new attempt. beehave cancel does not reach a stopped run.",
+    "stopped": "Listed item {item} stopped at {step} with the output \"{reason}\". Fix the cause and run beehest run {item}: it starts a new attempt. beehest cancel does not reach a stopped run.",
     "done": "Listed item {item} is done.",
-    "running": "Listed item {item} has an open run outside this round: beehave status shows it.",
+    "running": "Listed item {item} has an open run outside this round: beehest status shows it.",
     "ready": "Listed item {item} is ready, and the items queue has no free slot.",
     "missing": "Listed item {item} is not in the queue: it is closed, or it does not carry vars.round.label.",
 }
@@ -1107,9 +1107,9 @@ def idle_reason(q, round_settings):
 
         head = "The queue has no ready row." if counts.get("ready", 0) == 0 else "The items queue has no free slot."
         failed = [r.item for r in q.rows if r.state == "failed"]
-        steps = " Failed: %s. Run beehave resume for each, or beehave cancel when the resume refuses the run." % ", ".join(failed) if len(failed) > 0 else ""
+        steps = " Failed: %s. Run beehest resume for each, or beehest cancel when the resume refuses the run." % ", ".join(failed) if len(failed) > 0 else ""
         stopped = ["%s at %s with the output \"%s\"" % (r.item, r.stop_step, r.stop_reason) for r in q.rows if r.state == "stopped"]
-        steps += " Stopped: %s. Fix each cause, then run beehave run for each item: it starts a new attempt." % "; ".join(stopped) if len(stopped) > 0 else ""
+        steps += " Stopped: %s. Fix each cause, then run beehest run for each item: it starts a new attempt." % "; ".join(stopped) if len(stopped) > 0 else ""
         return "%s Rows: %d ready, %d failed, %d stopped, %d on hold, %d done, %d running.%s" % (head, counts.get("ready", 0), counts.get("failed", 0), counts.get("stopped", 0), counts.get("hold", 0), counts.get("done", 0), counts.get("running", 0), steps)
 
     rows = {r.item: r for r in q.rows}
@@ -1205,7 +1205,7 @@ def round(item):
     return {"state": "waiting", "base": round_settings["base"], "pr": 0, "reason": held}
 
 def main(item):
-    """The entry of a run that a user started. A round item has the field id only, and a tracker item has a title, so `beehave run <item>` on a stopped tracker item starts a new attempt of its pipeline."""
+    """The entry of a run that a user started. A round item has the field id only, and a tracker item has a title, so `beehest run <item>` on a stopped tracker item starts a new attempt of its pipeline."""
     if hasattr(item, "title"):
         return pipeline(item)
 

@@ -3,8 +3,8 @@ package gitexec
 import (
 	"os"
 
-	"github.com/tobocop2/beehave/internal/credential"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/credential"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // OwnerEnv returns the environment of an owner git call that takes no token: the network names of base, the pairs, and no config file of the owner.

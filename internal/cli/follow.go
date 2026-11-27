@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehest/internal/flow"
 )
 
 // follow prints the agent output of the run that the command names, as it arrives.

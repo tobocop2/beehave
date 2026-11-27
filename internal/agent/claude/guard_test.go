@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // fakeClaude does what Claude Code does with a PreToolUse hook. It reads the hook command and the matcher from the JSON after --settings,
@@ -87,12 +87,12 @@ func TestGuard_TheHookLetsACleanCommandThrough(t *testing.T) {
 func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil)
+	launch := claude.New(nil).Guard("/bin/beehest check command", "/run", nil, nil)
 	got := launch.Args
 
 	assert.Empty(t, launch.Env)
 	assert.Empty(t, launch.Files)
 	require.Len(t, got, 4)
 	assert.Equal(t, "--settings", got[2])
-	assert.JSONEq(t, `{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}}`, got[3])
+	assert.JSONEq(t, `{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehest check command","onFailure":"block"}]}]}}`, got[3])
 }

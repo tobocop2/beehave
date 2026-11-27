@@ -1,8 +1,8 @@
 package opencode
 
 import (
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // hookEvent is the call that the guard plugin forwards: the folder of the run, the tool of the call and its arguments, as OpenCode gives them to the hook.

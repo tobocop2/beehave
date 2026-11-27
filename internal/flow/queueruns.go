@@ -7,7 +7,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // The states of the last run of an item. none is the state of an item that has no run to settle: it never ran, or its last run was canceled.
@@ -108,11 +108,11 @@ func (e *Engine) runOf(item string) (runView, error) {
 }
 
 // settle reads the result of a run that ended with success: stopped when the result records a stop, else done with its value.
-// A result that cannot be read fails the read. A new run of the item replaces that run as the last one, so the error names beehave run.
+// A result that cannot be read fails the read. A new run of the item replaces that run as the last one, so the error names beehest run.
 func (v *runView) settle() error {
 	state, result, err := settledOf(v.last.Status)
 	if err != nil {
-		return fmt.Errorf("%w. Run beehave run %s to start a new attempt: the queue reads the new run in its place", err, v.Item)
+		return fmt.Errorf("%w. Run beehest run %s to start a new attempt: the queue reads the new run in its place", err, v.Item)
 	}
 
 	if state == runStopped {

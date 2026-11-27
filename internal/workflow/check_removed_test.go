@@ -35,9 +35,9 @@ func TestCheck_ACallOfTheQueueBuiltinIsRefusedAndNamesTheLibraryThatReplacesIt(t
 
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0], "undefined: queue")
-	assert.Contains(t, got[0], `load("@beehave//queue.star", "queue")`)
+	assert.Contains(t, got[0], `load("@beehest//queue.star", "queue")`)
 
-	loaded := checkText(t, "load(\"@beehave//queue.star\", \"queue\")\n\ndef main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
+	loaded := checkText(t, "load(\"@beehest//queue.star\", \"queue\")\n\ndef main(item):\n    queue(name = \"q\", hold = \"hold\")\n")
 
 	assert.Empty(t, loaded, "a file that loads the library function passes the check")
 }

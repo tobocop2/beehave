@@ -21,14 +21,14 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/config"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
-	"github.com/tobocop2/beehave/internal/review"
-	"github.com/tobocop2/beehave/internal/step"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/config"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/review"
+	"github.com/tobocop2/beehest/internal/step"
 )
 
 const (
@@ -734,7 +734,7 @@ const defaultFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prom
 // defaultFlowName is the name of the default workflow file, which sits beside the state folder of the harness.
 const defaultFlowName = "workflow.star"
 
-// waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for beehave answer after its agent ends.
+// waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for beehest answer after its agent ends.
 const waitFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prompts/work.md\", model = \"m\")\n    wait(name = \"ask\", question = \"What now?\")\n"
 
 // flowIs replaces the default workflow file of the harness. Call it before the first run.
@@ -1664,7 +1664,7 @@ func awaitInbox(ctx dbos.Context) (string, error) {
 	return "", err
 }
 
-// sendAnswerEnvelope puts an answer on the inbox of a run, as beehave answer does, with no checks.
+// sendAnswerEnvelope puts an answer on the inbox of a run, as beehest answer does, with no checks.
 func sendAnswerEnvelope(ctx dbos.Client, run string, v voice) error {
 	raw, err := json.Marshal(v)
 	if err != nil {

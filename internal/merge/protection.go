@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // ErrNoProtectionRead is the error of a forge that cannot read the protection of a branch.
@@ -25,7 +25,7 @@ func required() []string {
 }
 
 // protected refuses before any write when the protection of the base does not match the project. A project with credentials needs a base that requires
-// both beehave statuses and a pull request, because the forge, not beehave, enforces them. A project with no credentials posts no status, so a base that
+// both beehest statuses and a pull request, because the forge, not beehest, enforces them. A project with no credentials posts no status, so a base that
 // requires one would block every merge, and the merge says so. A read that fails for such a project does not refuse: the forge still enforces its own rules.
 func (a *attempt) protected() *refusal {
 	reads, ok := a.forge.(Protections)
@@ -77,7 +77,7 @@ func (a *attempt) unreadable(err error) *refusal {
 	)
 }
 
-// needsCredentials refuses a project with no credentials when the base requires a status that beehave posts. Nothing posts it, so no merge could pass.
+// needsCredentials refuses a project with no credentials when the base requires a status that beehest posts. Nothing posts it, so no merge could pass.
 func (a *attempt) needsCredentials(protection model.Protection) *refusal {
 	for _, name := range required() {
 		if !slices.Contains(protection.RequiredStatuses, name) {
@@ -85,7 +85,7 @@ func (a *attempt) needsCredentials(protection model.Protection) *refusal {
 		}
 
 		return refuse(
-			fmt.Sprintf("REFUSE: the base %s requires the status %s, and the project has no `credentials` key, so beehave cannot post it.", a.req.Base, name),
+			fmt.Sprintf("REFUSE: the base %s requires the status %s, and the project has no `credentials` key, so beehest cannot post it.", a.req.Base, name),
 			"        The project needs credentials: add a `writer` entry to `credentials` (docs/design/trust.md, section \"Credential config\"), then run the merge again.",
 		)
 	}

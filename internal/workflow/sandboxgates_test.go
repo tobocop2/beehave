@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 const refusal = `no sandbox can enforce a gate here. Set sandbox = "off"`
@@ -29,7 +29,7 @@ func TestCheckSandboxedGates_RefusesEachGateAndMergeCallThatRunsAGateHere(t *tes
 func TestCheckSandboxedGates_RefusesAFileThatLoadsTheBatchLibraryForItsGates(t *testing.T) {
 	t.Parallel()
 
-	file := folder(t, map[string]string{"workflow.star": "load(\"@beehave//batch.star\", \"batch_merge\")\n\ndef main(item):\n    batch_merge(prs = [], base = \"main\", repo = \"o/r\", name = \"c\")\n"}, "workflow.star")
+	file := folder(t, map[string]string{"workflow.star": "load(\"@beehest//batch.star\", \"batch_merge\")\n\ndef main(item):\n    batch_merge(prs = [], base = \"main\", repo = \"o/r\", name = \"c\")\n"}, "workflow.star")
 
 	found := workflow.CheckSandboxedGates(file, "far", refusal, false)
 

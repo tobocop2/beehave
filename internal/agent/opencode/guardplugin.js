@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs"
 const GUARD = __GUARD_COMMAND__
 const LOADED = __LOADED_PATH__
 
-// The marker proves to beehave that this plugin loaded. A plugin that fails to write it does not load.
+// The marker proves to beehest that this plugin loaded. A plugin that fails to write it does not load.
 const markLoaded = () => writeFileSync(LOADED, "loaded\n")
 
 // verdict returns why the call is refused, or "" when the guard command lets it through. Any failure to decide is a refusal.
@@ -25,11 +25,11 @@ const verdict = (directory, tool, args) => {
 const refuse = (directory, tool, args) => {
   if (tool !== "bash" && tool !== "shell") return
   const why = verdict(directory, tool, args)
-  if (why !== "") throw new Error("beehave refused: " + why)
+  if (why !== "") throw new Error("beehest refused: " + why)
 }
 
 export default {
-  id: "beehave-guard",
+  id: "beehest-guard",
   // OpenCode 1.x calls server and refuses the tool call when the hook that it returns throws.
   server: async ({ directory }) => {
     markLoaded()

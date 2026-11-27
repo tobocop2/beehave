@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/pool"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/pool"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // poolLogins is the real pick of the pool over the runners names: equal use everywhere, so the first runner in config order wins a tie.
@@ -304,7 +304,7 @@ func TestFreeLogin_PerLoginTwoKeepsALoginFreeWhileItHoldsOneRun(t *testing.T) {
 	assert.Empty(t, busy, "alice holds one agent and per_login allows two, so the pick may choose her again")
 }
 
-// A run that beehave run started holds its login only while one of its phases is open. Between phases its login reads free,
+// A run that beehest run started holds its login only while one of its phases is open. Between phases its login reads free,
 // and a second step on it waits for the per-login limit. This is a known gap: it is slow, not wrong.
 func TestFreeLogin_APlainRunHoldsNoLoginBetweenPhases(t *testing.T) {
 	t.Parallel()

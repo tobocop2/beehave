@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/closing"
+	"github.com/tobocop2/beehest/internal/closing"
 )
 
 func TestReferences_ListsEachClosingKeywordAndIgnoresAPlainNumber(t *testing.T) {

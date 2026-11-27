@@ -1,4 +1,4 @@
-// Package slurm is the job half of the host contract for a Slurm cluster that beehave reaches over ssh.
+// Package slurm is the job half of the host contract for a Slurm cluster that beehest reaches over ssh.
 // It runs sbatch, squeue, sacct, scancel, sinfo and scontrol on the head node through proc.Runner. It creates and deletes no machine:
 // an adapter that owns a cluster, such as skypilot, builds a Queue over the ssh runner of that cluster and adds its own Up, Down and Status.
 package slurm
@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 var (
@@ -28,19 +28,19 @@ var (
 )
 
 const (
-	drainReason   = "beehave"
+	drainReason   = "beehest"
 	defaultPoll   = 10 * time.Second
 	timeoutExit   = "124"       // the exit status of `timeout` for a command that it stopped
 	canceledState = "CANCELLED" //nolint:misspell // Slurm's spelling
 	lookback      = "7days"     // how far back sacct looks for the job of a key; it reads from midnight when it has no start time
 
 	// stateFolder is the folder in the login folder of the head node that holds the lock files of the slot classes and the markers of the jobs that wait.
-	stateFolder   = ".beehave"
+	stateFolder   = ".beehest"
 	slotsFolder   = "slots"
 	waitingPrefix = "waiting-"
 
 	// waitingLine is the line that runningShell prints for a job that waits for a slot.
-	waitingLine = "beehave-waiting"
+	waitingLine = "beehest-waiting"
 	// runningShell prints waitingLine when the marker $1 exists, then the size of the log $2, or -1 for a log with no size.
 	runningShell = `if test -e "$1"; then echo ` + waitingLine + `; fi
 stat -c %s "$2" 2>/dev/null || echo -1`
@@ -268,7 +268,7 @@ func (q *Queue) hold(ctx context.Context, job jobwait.Job) error {
 }
 
 // Wait polls Slurm until the job has a final state. It reads squeue while the controller knows the job and sacct afterwards.
-// A state that beehave does not know is an error, never a guess.
+// A state that beehest does not know is an error, never a guess.
 //
 // A job holds its slot until its work is banked, for at most max_run. Wait banks the work in every repository under the work root
 // (WorkRoot, to host.private_remote), then releases the slot of the job. A host with no repository has nothing to bank.

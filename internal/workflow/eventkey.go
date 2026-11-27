@@ -12,7 +12,7 @@ const (
 	publishName  = "publish"
 	progressName = "progress"
 	// reservedKeyPrefix starts the names of the events that the engine owns.
-	reservedKeyPrefix = "beehave."
+	reservedKeyPrefix = "beehest."
 	keyKeyword        = "key"
 )
 

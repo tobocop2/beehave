@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func selectorItems() []model.Item {
 	tagged := queueItem("21", model.SeverityP1)
-	tagged.Labels = []string{"beehave-round", "bug"}
+	tagged.Labels = []string{"beehest-round", "bug"}
 
 	other := queueItem("22", model.SeverityP1)
 	other.Labels = []string{"bug"}
@@ -24,7 +24,7 @@ func TestQueue_ALabelArgumentTakesOnlyTheReadyRowsWithTheLabel(t *testing.T) {
 
 	h, _ := queueHarness(t, selectorItems())
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", label = "beehave-round"`)), modeOff())
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", label = "beehest-round"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:0", "free=2"}, seenBy(t, h), "a ready row without the label stays out of the queue")

@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/store/beads/beadstest"
 )
 
 const (
@@ -257,9 +257,9 @@ func TestBeadsEnv_PointsBdAtThePrivateServerOnly(t *testing.T) {
 func TestEnvRunner_RunsTheBinaryUnderTheGivenVariables(t *testing.T) {
 	t.Parallel()
 
-	run := beadstest.EnvRunner{Inner: proc.NewExecRunner("env", t.TempDir()), Env: []string{"BEEHAVE_PROBE=yes"}, Binary: "printenv"}
+	run := beadstest.EnvRunner{Inner: proc.NewExecRunner("env", t.TempDir()), Env: []string{"BEEHEST_PROBE=yes"}, Binary: "printenv"}
 
-	done := run.Run(t.Context(), []string{"BEEHAVE_PROBE"})
+	done := run.Run(t.Context(), []string{"BEEHEST_PROBE"})
 
 	assert.Zero(t, done.ExitCode)
 	assert.Equal(t, "yes\n", done.Stdout)
@@ -365,7 +365,7 @@ func TestRealBd_SkipsOnAMachineWithoutTheBinary(t *testing.T) {
 	assert.Contains(t, failure(t, func(tb testing.TB) {
 		tb.Helper()
 		beadstest.RealBd(tb, map[string]string{})
-	}), "skipped: BEEHAVE_BD_132 is not set")
+	}), "skipped: BEEHEST_BD_132 is not set")
 }
 
 func TestRealBd_StopsTheTestInCIWithoutTheBinary(t *testing.T) {

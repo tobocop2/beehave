@@ -11,13 +11,13 @@ import (
 // It names the status ENQUEUED: a run that started keeps the place that it started with. The third value is true for a person: the write goes through. For the
 // restart of the engine it is false, and the write skips a run that a person marked, and a run whose parent (the fourth value) a person marked.
 const priorityQuery = `UPDATE workflow_status SET priority = ? WHERE workflow_uuid = ? AND status = 'ENQUEUED' AND (? OR (
-	workflow_uuid NOT IN (SELECT workflow_uuid FROM beehave_manual_place) AND ? NOT IN (SELECT workflow_uuid FROM beehave_manual_place)))`
+	workflow_uuid NOT IN (SELECT workflow_uuid FROM beehest_manual_place) AND ? NOT IN (SELECT workflow_uuid FROM beehest_manual_place)))`
 
 // manualTableQuery makes the table of the runs whose place a person set. The restart of the engine leaves these places alone.
-const manualTableQuery = `CREATE TABLE IF NOT EXISTS beehave_manual_place (workflow_uuid TEXT PRIMARY KEY)`
+const manualTableQuery = `CREATE TABLE IF NOT EXISTS beehest_manual_place (workflow_uuid TEXT PRIMARY KEY)`
 
 // manualMarkQuery records that a person set the place of a run.
-const manualMarkQuery = `INSERT OR IGNORE INTO beehave_manual_place (workflow_uuid) VALUES (?)`
+const manualMarkQuery = `INSERT OR IGNORE INTO beehest_manual_place (workflow_uuid) VALUES (?)`
 
 // placeWrite is the place for one run. The parent is the gate of a build job, or empty: a job under a gate that a person marked keeps the place that it took from
 // the gate.

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Name is the name the Claude Code agent is chosen by.

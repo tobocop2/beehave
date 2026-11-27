@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehest/internal/merge"
 )
 
 // boardVars is the key `board` of the vars of a project. An empty owner leaves the key out, as a project file does.

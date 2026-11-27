@@ -5,8 +5,8 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/closing"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/closing"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // pathsOutside returns the paths that no glob of allow matches, sorted. It reads allow as the allow_paths of an agent call does (the doublestar dialect)

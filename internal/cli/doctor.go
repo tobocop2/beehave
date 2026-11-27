@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/beehave/internal/config"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/config"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Every field is required.
@@ -70,7 +70,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor,
 
 	command := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check that this machine can run beehave, and name the fix for each failure",
+		Short: "Check that this machine can run beehest, and name the fix for each failure",
 		Long:  "Check the config folder, the login folder and the token of each runner, and the programs that the projects need: git always, bd for a project with beads, gh for a project with GitHub. Exit 0 when every check passes, 1 when one fails.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

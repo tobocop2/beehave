@@ -13,17 +13,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
-	clone = defaultRoot + "/beehave-gate-demo-a1b2c3"
-	sweep = `( for bh_d in ` + defaultRoot + `/beehave-gate-*/; do bh_d=${bh_d%/}; [ -d "$bh_d" ] && [ ! -L "$bh_d" ] && [ -f "$bh_d/.beehave-job" ] || continue; ` +
+	clone = defaultRoot + "/beehest-gate-demo-a1b2c3"
+	sweep = `( for bh_d in ` + defaultRoot + `/beehest-gate-*/; do bh_d=${bh_d%/}; [ -d "$bh_d" ] && [ ! -L "$bh_d" ] && [ -f "$bh_d/.beehest-job" ] || continue; ` +
 		`( flock -n 8 && rm -rf -- "$bh_d" ) 8<"$bh_d"; done; : )`
-	hostCommand = sweep + ` && trap 'echo beehave-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone +
-		` && exec 8<` + clone + ` && flock -n 8 && : > ` + clone + `/.beehave-job && cd ` + clone +
+	hostCommand = sweep + ` && trap 'echo beehest-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone +
+		` && exec 8<` + clone + ` && flock -n 8 && : > ` + clone + `/.beehest-job && cd ` + clone +
 		` && git clone -- https://github.com/owner/name.git tree && cd tree && ` +
 		`git checkout --detach a1b2c3 && [ "$(git rev-parse HEAD)" = a1b2c3 ] && sh -c 'make check'`
 )
@@ -107,10 +107,10 @@ func TestRun_AWorkRootWithASpaceAndADollarIsQuotedEverywhereThePathIsUsed(t *tes
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
 
-	path := `'/home/o b$x/beehave-gate-demo-a1b2c3'`
-	assert.Contains(t, remote.submitted[0].Command, `trap 'echo beehave-gate-done; rm -rf '\''/home/o b$x/beehave-gate-demo-a1b2c3'\''' EXIT`)
-	assert.Contains(t, remote.submitted[0].Command, ` && rm -rf `+path+` && mkdir `+path+` && exec 8<`+path+` && flock -n 8 && : > `+path+`/.beehave-job && cd `+path+` && git clone`)
-	assert.Contains(t, remote.submitted[0].Command, `for bh_d in '/home/o b$x'/beehave-gate-*/; do`)
+	path := `'/home/o b$x/beehest-gate-demo-a1b2c3'`
+	assert.Contains(t, remote.submitted[0].Command, `trap 'echo beehest-gate-done; rm -rf '\''/home/o b$x/beehest-gate-demo-a1b2c3'\''' EXIT`)
+	assert.Contains(t, remote.submitted[0].Command, ` && rm -rf `+path+` && mkdir `+path+` && exec 8<`+path+` && flock -n 8 && : > `+path+`/.beehest-job && cd `+path+` && git clone`)
+	assert.Contains(t, remote.submitted[0].Command, `for bh_d in '/home/o b$x'/beehest-gate-*/; do`)
 }
 
 func TestRun_ACloneFolderOutsideTheWorkRootIsRefusedAndNoJobStarts(t *testing.T) {
@@ -240,7 +240,7 @@ func TestHostCommand_TheCloneFolderIsRemovedWhenTheShellExitsAndAFailingGateKeep
 		code, home, _ := runGateCommand(t, gateCommand, "SHIM_HEAD="+headA)
 		assert.Equal(t, want, code, gateCommand)
 
-		left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
+		left, err := filepath.Glob(filepath.Join(home, "beehest-gate-*"))
 		require.NoError(t, err)
 		assert.Empty(t, left, gateCommand)
 	}
@@ -251,9 +251,9 @@ func TestHostCommand_TheMarkerLineIsWrittenBeforeTheCloneIsDeletedWhateverTheGat
 
 	for _, gateCommand := range []string{"exit 0", "exit 3", `kill -TERM $PPID; sleep 1`} {
 		code, home, _, out := runGateCommandWithOutput(t, gateCommand, "SHIM_HEAD="+headA)
-		assert.Contains(t, out, "beehave-gate-done\n", gateCommand)
+		assert.Contains(t, out, "beehest-gate-done\n", gateCommand)
 
-		left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
+		left, err := filepath.Glob(filepath.Join(home, "beehest-gate-*"))
 		require.NoError(t, err)
 		assert.Empty(t, left, gateCommand)
 
@@ -279,9 +279,9 @@ func TestHostCommand_AHungGateEndsWithExitStatus124UnderTheRunLimitAndTheCloneIs
 
 	assert.Equal(t, 124, code, "timeout ends a hung gate with status 124 and the trap keeps it")
 	assert.Less(t, time.Since(start), 20*time.Second, "the run limit ended the gate, not the sleep")
-	assert.Contains(t, out, "beehave-gate-done\n")
+	assert.Contains(t, out, "beehest-gate-done\n")
 
-	left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
+	left, err := filepath.Glob(filepath.Join(home, "beehest-gate-*"))
 	require.NoError(t, err)
 	assert.Empty(t, left)
 }
@@ -297,9 +297,9 @@ func TestHostCommand_TheMarkerIsInTheCommandBeforeTheDelete(t *testing.T) {
 	require.Len(t, remote.submitted, 1)
 
 	command := remote.submitted[0].Command
-	require.Contains(t, command, "echo beehave-gate-done")
-	require.Contains(t, command, "echo beehave-gate-done; rm -rf")
-	assert.Equal(t, strings.Index(command, "echo beehave-gate-done"), strings.Index(command, "echo beehave-gate-done; rm -rf"))
+	require.Contains(t, command, "echo beehest-gate-done")
+	require.Contains(t, command, "echo beehest-gate-done; rm -rf")
+	assert.Equal(t, strings.Index(command, "echo beehest-gate-done"), strings.Index(command, "echo beehest-gate-done; rm -rf"))
 }
 
 func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
@@ -308,7 +308,7 @@ func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
 	code, home, _ := runGateCommand(t, "exit 0", "SHIM_HEAD="+headA, "SHIM_CLONE_FAILS=1")
 	assert.NotZero(t, code)
 
-	left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
+	left, err := filepath.Glob(filepath.Join(home, "beehest-gate-*"))
 	require.NoError(t, err)
 	assert.Empty(t, left)
 }
@@ -331,7 +331,7 @@ func TestHostCommand_ARealShellFailsAGateThatPassedWithNoTestCaseInItsReportAndP
 		code, _, _, out := runProjectCommand(t, project, "SHIM_HEAD="+headA)
 
 		assert.Equal(t, test.wantCode, code == 0, name)
-		assert.Equal(t, test.wantMark, strings.Contains(out, "beehave-gate-no-tests"), name)
+		assert.Equal(t, test.wantMark, strings.Contains(out, "beehest-gate-no-tests"), name)
 	}
 }
 

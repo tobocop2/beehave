@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehest/examples/remediation/tools/check"
 )
 
 const (

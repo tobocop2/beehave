@@ -6,7 +6,7 @@ import (
 	"slices"
 	"text/template"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // skillFunction is the name of the template function that declares a skill of a prompt.

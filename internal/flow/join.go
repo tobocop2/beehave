@@ -20,7 +20,7 @@ const (
 // errOtherBuild is returned when the engine that runs is not this build. It dequeues only runs of its own version, so a run for another build would wait for ever.
 var errOtherBuild = errors.New("the engine that runs is another build")
 
-// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays open, and the next engine of the same build recovers it: beehave run takes over at once.
+// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays open, and the next engine of the same build recovers it: beehest run takes over at once.
 var ErrEngineGone = errors.New("the engine stopped before the run ended")
 
 // attemptPlan says what a run call does for an item: join the run with the id Join, or start attempt Attempt.
@@ -32,7 +32,7 @@ type attemptPlan struct {
 }
 
 // planOf decides what a run call does with the latest run of the item. The engine that runs the item and the client that joins it both ask here.
-// An open run is joined. A run that the launch of this engine resumed, and that ended since, answers the call. A failed run is refused: only beehave resume continues it.
+// An open run is joined. A run that the launch of this engine resumed, and that ended since, answers the call. A failed run is refused: only beehest resume continues it.
 // A finished or canceled run, or no run, starts the next attempt.
 func planOf(last run, found bool, in ItemInput, version string, resumed bool) (attemptPlan, error) {
 	switch {
@@ -58,7 +58,7 @@ func bouncePlan(delayed run, in ItemInput, version string) (attemptPlan, error) 
 	}
 
 	if delayed.Status.ApplicationVersion != version {
-		return attemptPlan{}, namedVersions(fmt.Errorf("%w: %s waits for its debounce window under the build that stored it. Run beehave cancel %s to end it, then start again", errStranded, delayed.Status.ID, in.Item), delayed, version)
+		return attemptPlan{}, namedVersions(fmt.Errorf("%w: %s waits for its debounce window under the build that stored it. Run beehest cancel %s to end it, then start again", errStranded, delayed.Status.ID, in.Item), delayed, version)
 	}
 
 	return attemptPlan{Attempt: delayed.Attempt}, nil
@@ -87,7 +87,7 @@ func startProject(open run, item, project string) error {
 	return nil
 }
 
-// moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
+// moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehest resume --on-this-build,
 // so the run moves only when every module that the run used has the same version here, and the refusal names the module.
 // The read of the run, the check and the move run under probe.lock, so a second mover waits, reads the run on this build and moves nothing.
 func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item string) error {
@@ -106,14 +106,14 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	if last.terminal() {
-		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", ErrWrongState, last.Status.ID, item)
+		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehest run %s again", ErrWrongState, last.Status.ID, item)
 	}
 
 	if err := c.requireMovable(ctx, item, last); err != nil {
 		return namedVersions(err, last, c.version)
 	}
 
-	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
+	// The cancel and the release bound their own work, as beehest resume --on-this-build does with no context.
 	return c.cancelAndReopenHeld(item, last, nil) //nolint:contextcheck // see the comment above
 }
 
@@ -126,7 +126,7 @@ func namedVersions(err error, stored run, version string) error {
 	return fmt.Errorf("%w. The run started under version %s and this is %s", err, stored.Status.ApplicationVersion, version)
 }
 
-// EngineRuns reports whether an engine holds the state folder, as beehave serve or another beehave run does.
+// EngineRuns reports whether an engine holds the state folder, as beehest serve or another beehest run does.
 func (c *Client) EngineRuns() (bool, error) {
 	return engineRuns(c.dir)
 }
@@ -141,7 +141,7 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
-// The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
+// The run picks its login at its first agent step, as a run that beehest run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
 func (c *Client) JoinRun(ctx context.Context, item, project, file string, options ...RunOption) (ItemResult, error) {
 	in, err := pinnedInput(item, project, file, options...)
 	if err != nil {
@@ -212,7 +212,7 @@ func (c *Client) sameBuildAsEngine() error {
 	}
 
 	if live != c.version {
-		return fmt.Errorf("%w: restart beehave serve (it runs %s and this is %s)", errOtherBuild, live, c.version)
+		return fmt.Errorf("%w: restart beehest serve (it runs %s and this is %s)", errOtherBuild, live, c.version)
 	}
 
 	return nil

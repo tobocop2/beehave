@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
 )
 
 // scriptedTree is a gate whose State gives the states in order, then the error. The other methods of the gate are not called.

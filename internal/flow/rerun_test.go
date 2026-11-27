@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	trackerstore "github.com/tobocop2/beehave/internal/store"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
 )
 
 // crashOnce stops the run of the test item the first time after is called. An effect calls it right after it applied itself and before its step is recorded,

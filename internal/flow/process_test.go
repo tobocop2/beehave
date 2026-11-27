@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/step"
+	"github.com/tobocop2/beehest/internal/step"
 )
 
 // The tests below run the flow in separate operating system processes. The test binary starts itself as the helper:
@@ -324,7 +324,7 @@ func TestRunHelpers_ADeadlineThatPassedBeforeTheHelpersStartedIsReportedAsNotRea
 	}
 }
 
-// This test is the guard for safe concurrent first opens: DBOS v1.8.0, not beehave, makes them safe, so a failure here
+// This test is the guard for safe concurrent first opens: DBOS v1.8.0, not beehest, makes them safe, so a failure here
 // means the DBOS version or its SQLite setup regressed.
 func TestOpen_ProcessesThatOpenOneNewStateFolderAtOnceAllSucceed(t *testing.T) {
 	t.Parallel()

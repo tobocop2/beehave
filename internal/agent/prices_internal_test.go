@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDefaultPrices_TheFileThatShipsWithBeehaveParses(t *testing.T) {
+func TestDefaultPrices_TheFileThatShipsWithBeehestParses(t *testing.T) {
 	t.Parallel()
 
 	_, err := ParsePrices(priceData)

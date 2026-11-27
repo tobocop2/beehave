@@ -18,10 +18,10 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
-	trackerstore "github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
+	trackerstore "github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // fakeCommands records each request. reply decides the output; it runs under the lock, so it needs no lock of its own.

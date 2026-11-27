@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Fleet is the jobs of one build host that a wait of its disk guard follows now, in the order their waits began. Every guard of one host shares one Fleet.
@@ -75,7 +75,7 @@ func (f *Fleet) wasStopped(id model.JobID) bool {
 // Wait is the Wait of the host. At each poll the wait of the youngest job of the fleet reads the free space with DiskFloor.
 // When the host is under its floor, that wait stops its job, and the state of the job is JobDiskFull: a problem of the host, not a result of the job.
 // A job joins the fleet when its wait starts and leaves it when the wait returns, so a job that is submitted and never waited, or a job that
-// a restarted beehave waits for again, counts like any other. A disk that cannot be read stops no job. A guard with no poll does not watch the disk.
+// a restarted beehest waits for again, counts like any other. A disk that cannot be read stops no job. A guard with no poll does not watch the disk.
 func (f floored) Wait(ctx context.Context, id model.JobID) (model.JobState, error) {
 	if f.poll <= 0 {
 		return f.Host.Wait(ctx, id)

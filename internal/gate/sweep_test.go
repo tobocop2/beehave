@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // sweepMachine is a fake host: a work root, and the shim git and the tools that the job command needs on its PATH.
@@ -98,7 +98,7 @@ func (m sweepMachine) runToEnd(name string) int {
 }
 
 func (m sweepMachine) clone(name string) string {
-	return filepath.Join(m.home, "beehave-gate-"+name+"-"+headA)
+	return filepath.Join(m.home, "beehest-gate-"+name+"-"+headA)
 }
 
 func exists(path string) bool {
@@ -130,7 +130,7 @@ func TestHostCommand_ALiveJobKeepsItsCloneWhenAnotherJobStarts(t *testing.T) {
 
 	assert.Equal(t, 0, m.runToEnd("next"))
 	assert.DirExists(t, m.clone("live"), "the sweep leaves the clone of a job that lives")
-	assert.FileExists(t, filepath.Join(m.clone("live"), ".beehave-job"))
+	assert.FileExists(t, filepath.Join(m.clone("live"), ".beehest-job"))
 
 	stop()
 }
@@ -140,30 +140,30 @@ func TestHostCommand_TheSweepKeepsAFolderWhoseJobCannotBeRead(t *testing.T) {
 
 	m := newSweepMachine(t)
 
-	noMarker := filepath.Join(m.home, "beehave-gate-nomarker-"+headA)
+	noMarker := filepath.Join(m.home, "beehest-gate-nomarker-"+headA)
 	require.NoError(t, os.Mkdir(noMarker, 0o750))
 
 	target := filepath.Join(t.TempDir(), "outside")
 	require.NoError(t, os.Mkdir(target, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(target, ".beehave-job"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(target, ".beehest-job"), nil, 0o600))
 
-	link := filepath.Join(m.home, "beehave-gate-link-"+headA)
+	link := filepath.Join(m.home, "beehest-gate-link-"+headA)
 	require.NoError(t, os.Symlink(target, link))
 
 	// The record of this job is a link to nothing, so the sweep cannot read it.
-	locked := filepath.Join(m.home, "beehave-gate-locked-"+headA)
+	locked := filepath.Join(m.home, "beehest-gate-locked-"+headA)
 	require.NoError(t, os.Mkdir(locked, 0o750))
-	require.NoError(t, os.Symlink(filepath.Join(target, "missing"), filepath.Join(locked, ".beehave-job")))
+	require.NoError(t, os.Symlink(filepath.Join(target, "missing"), filepath.Join(locked, ".beehest-job")))
 
-	dead := filepath.Join(m.home, "beehave-gate-dead-"+headA)
+	dead := filepath.Join(m.home, "beehest-gate-dead-"+headA)
 	require.NoError(t, os.Mkdir(dead, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dead, ".beehave-job"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dead, ".beehest-job"), nil, 0o600))
 
 	assert.Equal(t, 0, m.runToEnd("next"))
 
 	assert.NoDirExists(t, dead, "the control: a folder with the marker and a free lock is removed")
 	assert.DirExists(t, noMarker, "a folder with no marker stays")
-	assert.FileExists(t, filepath.Join(target, ".beehave-job"), "the target of a link stays")
+	assert.FileExists(t, filepath.Join(target, ".beehest-job"), "the target of a link stays")
 	assert.True(t, exists(link), "a link stays")
 	assert.True(t, exists(locked), "a folder that cannot be read stays")
 }

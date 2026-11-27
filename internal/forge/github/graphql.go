@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/closing"
-	"github.com/tobocop2/beehave/internal/forge"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/closing"
+	"github.com/tobocop2/beehest/internal/forge"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (

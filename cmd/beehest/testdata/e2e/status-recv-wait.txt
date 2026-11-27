@@ -1,0 +1,49 @@
+# A run that waits in recv shows the step that waits, the topic and the deadline, in the text and in the JSON. A message ends the wait and the status loses it.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+subst config/projects/local.star
+
+exec beehestreal item add local ship-it --title 'Ship it' --body-file body.txt
+exec beehestreal run ship-it local --workflow flow/recv.star &
+waitstatus 'waits for a message on topic findings'
+
+# The run waits in recv, with a 48 hour deadline. It names the call, not the record of its deadline.
+exec beehestreal status
+stdout 'now recv:findings#1\s'
+stdout 'waits for a message on topic findings until [0-9TZ:-]+, 1d23h left'
+! stdout 'deadline'
+
+exec beehestreal status --json
+stdout '"now":"recv:findings#1"'
+stdout '"receiving":"findings"'
+stdout '"deadline":"'
+stdout '"time_left_seconds":'
+
+exec beehestreal send ship-it --topic findings 'all fine'
+wait
+
+exec beehestreal status
+stdout 'done'
+! stdout 'waits for a message'
+exec beehestreal status --json
+stdout '"state":"done"'
+! stdout '"receiving"'
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Ship it.
+-- config/projects/local.star --
+project(
+    source      = "@WORK@/origin",
+    base_branch = "main",
+    gate        = "true",
+    test_report = "r.xml",
+)
+-- flow/recv.star --
+def main(item):
+    recv("findings", timeout = "48h", name = "findings")

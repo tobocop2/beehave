@@ -1,8 +1,8 @@
 package claude
 
 import (
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // hookEvent is the part of a PreToolUse event that the guard reads.

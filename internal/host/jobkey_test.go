@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehest/internal/host"
 )
 
 func TestJobKey_ReturnsTheKeyThatWithJobKeyPutInTheContextAndNoneForAPlainContext(t *testing.T) {

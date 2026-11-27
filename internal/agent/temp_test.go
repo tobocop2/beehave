@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/fstree"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/fstree"
 )
 
 // tempScript records the temporary folder that the CLI gets, fills it as the Go command fills its module cache (a read-only folder with a file in it),
@@ -23,9 +23,9 @@ here=$(dirname "$0")
 cat > /dev/null
 echo "${CLAUDE_CODE_TMPDIR-unset}" > "$here/temp"
 if [ -n "$CLAUDE_CODE_TMPDIR" ]; then
-  mkdir -p "$CLAUDE_CODE_TMPDIR/claude-1/beehave-home-x/go/pkg/mod/example.com/m@v1"
-  echo module > "$CLAUDE_CODE_TMPDIR/claude-1/beehave-home-x/go/pkg/mod/example.com/m@v1/go.mod"
-  chmod 0555 "$CLAUDE_CODE_TMPDIR/claude-1/beehave-home-x/go/pkg/mod/example.com/m@v1"
+  mkdir -p "$CLAUDE_CODE_TMPDIR/claude-1/beehest-home-x/go/pkg/mod/example.com/m@v1"
+  echo module > "$CLAUDE_CODE_TMPDIR/claude-1/beehest-home-x/go/pkg/mod/example.com/m@v1/go.mod"
+  chmod 0555 "$CLAUDE_CODE_TMPDIR/claude-1/beehest-home-x/go/pkg/mod/example.com/m@v1"
 fi
 exit "$(cat "$here/code")"
 `

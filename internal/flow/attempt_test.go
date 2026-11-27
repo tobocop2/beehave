@@ -191,7 +191,7 @@ func TestAttempt_AFailedRenewalOfTheEarlierAttemptLeavesTheResumedClaimWithoutAF
 	require.Empty(t, receive(t, next).failure, "the failed renewal of the earlier attempt wrote its failure into the claim of the resumed run")
 }
 
-// resumingLifecycle runs resume once, right after the first release frees the claim: beehave resume of another process takes the item in that window.
+// resumingLifecycle runs resume once, right after the first release frees the claim: beehest resume of another process takes the item in that window.
 type resumingLifecycle struct {
 	lifecycle
 
@@ -236,14 +236,14 @@ func TestAttempt_TheGiveBackOfTheEarlierAttemptKeepsTheTokenThatResumeSavedForTh
 
 	require.NoError(t, client.Cancel(testItem))
 	harness.tick(t)
-	require.NoError(t, receive(t, resumed), "beehave resume took the item once the give-back freed it")
+	require.NoError(t, receive(t, resumed), "beehest resume took the item once the give-back freed it")
 	require.Error(t, first.err, "the first attempt ended at its cancel")
 
 	// The give-back ends with the removal of the cancel marker.
 	soon(t, func() bool { return !fileExists(cancelPath(engine.dir, testRun)) }, "the give-back of the earlier attempt ends")
 
 	saved, err := os.ReadFile(ownerPath(engine.dir, testRun))
-	require.NoError(t, err, "the give-back of the earlier attempt removed the token that beehave resume saved for the resumed run")
+	require.NoError(t, err, "the give-back of the earlier attempt removed the token that beehest resume saved for the resumed run")
 	require.Equal(t, testOwner+testItem+"#2", string(saved))
 }
 
@@ -257,7 +257,7 @@ func TestAttempt_TheGiveBackOfACancelMarkerKeepsTheTokenAndTheMarkerOfTheResumed
 	require.NoError(t, saveOwner(engine.dir, testRun, "owner-1"))
 	require.NoError(t, markCancel(engine.dir, testRun, cancelMark{ItemInput: in, Owner: "owner-1"}))
 
-	// The sweep and the stray give-back make their attempt from the marker they read, and give it back. Inside the release, beehave resume saves a fresh token
+	// The sweep and the stray give-back make their attempt from the marker they read, and give it back. Inside the release, beehest resume saves a fresh token
 	// and a cancel of the resumed run writes its marker.
 	pending, err := pendingCancels(engine.dir, engine.logger)
 	require.NoError(t, err)
@@ -273,7 +273,7 @@ func TestAttempt_TheGiveBackOfACancelMarkerKeepsTheTokenAndTheMarkerOfTheResumed
 
 	saved, err := savedOwner(engine.dir, testRun)
 	require.NoError(t, err)
-	assert.Equal(t, "owner-2", saved, "the sweep removed the token that beehave resume saved for the resumed run")
+	assert.Equal(t, "owner-2", saved, "the sweep removed the token that beehest resume saved for the resumed run")
 
 	mark, err := readCancel(engine.dir, testRun)
 	require.NoError(t, err, "the sweep removed the cancel marker of the resumed run")

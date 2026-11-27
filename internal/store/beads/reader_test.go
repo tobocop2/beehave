@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/proc/proctest"
-	"github.com/tobocop2/beehave/internal/store"
-	"github.com/tobocop2/beehave/internal/store/beads"
-	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
-	"github.com/tobocop2/beehave/internal/store/storetest"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/store"
+	"github.com/tobocop2/beehest/internal/store/beads"
+	"github.com/tobocop2/beehest/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehest/internal/store/storetest"
 )
 
 var _ store.Reader = (*beads.Store)(nil)
@@ -28,7 +28,7 @@ func TestComments_ReadsTheTextAndDropsTheMarkerLine(t *testing.T) {
 	t.Parallel()
 
 	run := &proctest.Scripted{}
-	run.Plan(`[{"id":1,"text":"first"},{"id":2,"text":"second\n\nbeehave-key: run-1:note"}]`, "comments", "p-1", "--json")
+	run.Plan(`[{"id":1,"text":"first"},{"id":2,"text":"second\n\nbeehest-key: run-1:note"}]`, "comments", "p-1", "--json")
 
 	got, err := readerOver(t, run).Comments(t.Context(), "p-1")
 	require.NoError(t, err)

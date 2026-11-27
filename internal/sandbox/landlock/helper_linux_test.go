@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/exectest"
+	"github.com/tobocop2/beehest/internal/sandbox"
 )
 
 const (
@@ -129,7 +129,7 @@ func script(t *testing.T, dir, name string) string {
 	return path
 }
 
-func TestFindProgram_FollowsThePathOfTheCommandAndNeverThePathOfBeehave(t *testing.T) {
+func TestFindProgram_FollowsThePathOfTheCommandAndNeverThePathOfBeehest(t *testing.T) {
 	t.Parallel()
 
 	first, second := t.TempDir(), t.TempDir()
@@ -336,13 +336,13 @@ func TestRunHelper_APlanThatDoesNotReadWritesTheReasonToStderr(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	code, helper := RunHelper([]string{"beehave", helperArg, "not json"}, &stderr)
+	code, helper := RunHelper([]string{"beehest", helperArg, "not json"}, &stderr)
 	assert.True(t, helper)
 	assert.Equal(t, helperFailed, code)
-	assert.Contains(t, stderr.String(), "beehave sandbox: read the sandbox plan")
+	assert.Contains(t, stderr.String(), "beehest sandbox: read the sandbox plan")
 	assert.Contains(t, stderr.String(), "The command did not start.")
 
-	_, helper = RunHelper([]string{"beehave", helperArg}, &stderr)
+	_, helper = RunHelper([]string{"beehest", helperArg}, &stderr)
 	assert.False(t, helper, "the plan is the third argument")
 }
 
@@ -466,7 +466,7 @@ func TestRun_AHelperThatCannotStartIsAnErrorAndRunsNoCommand(t *testing.T) {
 
 	_, err := run(t, e, t.Context(), "exit 0", sandbox.Command{})
 	require.ErrorIs(t, err, missing)
-	require.ErrorContains(t, err, "find the beehave program")
+	require.ErrorContains(t, err, "find the beehest program")
 
 	e = New()
 	e.executable = func() (string, error) { return filepath.Join(t.TempDir(), "gone"), nil }

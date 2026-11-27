@@ -287,7 +287,7 @@ func TestRoundTree_ARoundItemOfAProjectWithNoRepositoryMakesNoWorktreeAndItsComm
 	defer harness.commands.mu.Unlock()
 
 	require.Len(t, harness.commands.requests, 1)
-	assert.Empty(t, harness.commands.requests[0].TreeStart, "the command runs in an empty folder that beehave removes, as at the base")
+	assert.Empty(t, harness.commands.requests[0].TreeStart, "the command runs in an empty folder that beehest removes, as at the base")
 }
 
 func TestRoundTree_TheProjectGateMakesARemovedWorktreeAgainAtItsTreeStartAndARequestWithNoneMakesNothing(t *testing.T) {

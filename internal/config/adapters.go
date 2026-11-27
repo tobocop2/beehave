@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // ArgKind is the kind of one argument of an adapter block.
@@ -66,7 +66,7 @@ func (b Block) required() bool {
 	return slices.ContainsFunc(b.Args, func(arg Arg) bool { return !arg.Optional })
 }
 
-// Entry is one adapter of the registry: the block it declares, the project keys it requires, the programs it needs on the path and, for a host provider, whether beehave deletes its machine.
+// Entry is one adapter of the registry: the block it declares, the project keys it requires, the programs it needs on the path and, for a host provider, whether beehest deletes its machine.
 type Entry struct {
 	// Block is the config block of the adapter. A nil Block declares none.
 	Block *Block
@@ -74,7 +74,7 @@ type Entry struct {
 	Keys []string
 	// Tools are the programs that the adapter needs on the path.
 	Tools []string
-	// Idle is true for a host provider that beehave deletes after idle_minutes.
+	// Idle is true for a host provider that beehest deletes after idle_minutes.
 	Idle bool
 	// StartsWithOwnerCredentials is true for a host provider whose own start tool can forward the agent of the owner or copy the cloud credentials of the owner to the machine. Such a provider refuses credentials = "none".
 	StartsWithOwnerCredentials bool

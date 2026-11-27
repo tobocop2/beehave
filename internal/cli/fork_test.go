@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehest/internal/flow"
 )
 
 func (s *fakeSteering) Fork(req flow.ForkRequest) (string, error) {
@@ -40,7 +40,7 @@ func TestForkCommand_AsksTheClientForTheForkAndPrintsTheNewRun(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 
 	assert.Equal(t, []string{"fork item-12-r1 command:two#2 map[mode:b]"}, rig.steering.calls)
-	assert.Contains(t, stdout, "as item-12-r2. Run beehave run for the item to continue it.")
+	assert.Contains(t, stdout, "as item-12-r2. Run beehest run for the item to continue it.")
 }
 
 func TestForkCommand_AForkWithNoVarsFilePassesNoVars(t *testing.T) {

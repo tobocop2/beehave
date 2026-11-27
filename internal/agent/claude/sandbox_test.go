@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 func plan() agent.SandboxPlan {
@@ -97,7 +97,7 @@ func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndTheHomeFolderAndNothingEl
 		"export GIT_COMMITTER_NAME=Ann\n" +
 		"export GIT_CONFIG_GLOBAL=/dev/null\n" +
 		"export GIT_CONFIG_NOSYSTEM=1\n" +
-		"export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n" +
+		"export HOME=\"${TMPDIR:-/tmp}\"/beehest-home-run\n" +
 		"mkdir -p \"$HOME\"\n" +
 		"export XDG_CONFIG_HOME=\"$HOME\"/.config\n" +
 		"mkdir -p \"$HOME\"/.config/go/telemetry\n" +
@@ -129,8 +129,8 @@ func TestSandbox_TheShellGetsANewEmptyHomeFolderOfItsOwnNotTheHomeOfTheOwner(t *
 	tmp := t.TempDir()
 	first, second := shellHome(t, filepath.Join(t.TempDir(), "run-one"), tmp), shellHome(t, filepath.Join(t.TempDir(), "run-two"), tmp)
 
-	assert.Equal(t, filepath.Join(tmp, "beehave-home-run-one"), first)
-	assert.Equal(t, filepath.Join(tmp, "beehave-home-run-two"), second, "each run has a home folder of its own")
+	assert.Equal(t, filepath.Join(tmp, "beehest-home-run-one"), first)
+	assert.Equal(t, filepath.Join(tmp, "beehest-home-run-two"), second, "each run has a home folder of its own")
 
 	for _, home := range []string{first, second} {
 		entries, err := os.ReadDir(home)
@@ -149,7 +149,7 @@ func TestSandbox_TheEnvFileFallsBackToSlashTmpWhenTheShellHasNoTemporaryFolder(t
 
 	file := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Files["sandbox-env.sh"]
 
-	assert.Contains(t, file, "export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n", "the fallback text is exactly ${TMPDIR:-/tmp}")
+	assert.Contains(t, file, "export HOME=\"${TMPDIR:-/tmp}\"/beehest-home-run\n", "the fallback text is exactly ${TMPDIR:-/tmp}")
 }
 
 func TestSandbox_TheCLIKeepsTheHomeOfTheOwnerForItsLogin(t *testing.T) {
@@ -163,7 +163,7 @@ func TestSandbox_TheCLIKeepsTheHomeOfTheOwnerForItsLogin(t *testing.T) {
 func TestGuard_ARunWithNoSandboxGetsNoEnvFileAndNoHomeFolder(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil)
+	launch := claude.New(nil).Guard("/bin/beehest check command", "/run", nil, nil)
 
 	assert.NotContains(t, launch.Files, "sandbox-env.sh")
 	assert.NotContains(t, launch.Env, "CLAUDE_ENV_FILE")
@@ -174,7 +174,7 @@ func TestGuard_ARunWithNoSandboxGetsNoEnvFileAndNoHomeFolder(t *testing.T) {
 func TestSandbox_TheSettingsAllowReadingTheEnvFileAndNotTheRunFolder(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run/folder", nil, nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehest check command", "/run/folder", nil, nil).Args
 
 	assert.Equal(t, 1, strings.Count(args[len(args)-1], "/run/folder"), "the settings name the run folder once")
 
@@ -327,7 +327,7 @@ func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil, nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehest check command", "/run", nil, nil).Args
 	text := args[len(args)-1]
 
 	for _, key := range []string{"excludedCommands", "allowLocalBinding", "allowAllUnixSockets", "allowAppleEvents"} {
@@ -352,7 +352,7 @@ func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil, nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehest check command", "/run", nil, nil).Args
 
 	assert.Equal(t, 1, countOf(args, "--settings"), "one settings object holds the hook and the sandbox")
 
@@ -362,7 +362,7 @@ func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 
 	hook, err := json.Marshal(settings["hooks"])
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}`, string(hook))
+	assert.JSONEq(t, `{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehest check command","onFailure":"block"}]}]}`, string(hook))
 }
 
 func TestSandbox_WithoutAGuardWritesNoHook(t *testing.T) {

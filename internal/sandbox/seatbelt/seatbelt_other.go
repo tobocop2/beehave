@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox"
 )
 
 // Enforcer cannot run on this system.

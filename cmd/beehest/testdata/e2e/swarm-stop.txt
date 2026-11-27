@@ -1,0 +1,17 @@
+# The file STOP of a swarm stops new runs: a swarm that finds it starts no agent, and the parent ends with its report.
+isolate
+swarmfakes
+
+exec beehestswarm item add swarm swarm-9 --title 'Again' --body-file backlog.txt
+mkdir home/.swarm/swarm-1
+cp stop home/.swarm/swarm-1/STOP
+exec beehestswarm run swarm-9 swarm --workflow swarm/workflow.star
+! exists calls.log
+exec grep -rhao '0 landed, 0 need a person, 4 not started. Stopped: no new runs: the file STOP exists' state
+
+-- stop --
+-- backlog.txt --
+P0	one	a.txt
+P1	two	b.txt
+P2	three	c.txt
+P3	four	d.txt

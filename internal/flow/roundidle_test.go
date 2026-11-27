@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // These tests run the round of the example to the question that it asks when no item can move: it names each listed item, its state and the step of the owner.
 
 const idleItem = "432"
 
-const idleLabel = "beehave-round"
+const idleLabel = "beehest-round"
 
 const idleFirstSentence = "The round has no item it can move."
 
@@ -154,8 +154,8 @@ func TestRoundIdle_AFailedListedItemIsNamedWithItsStateAndBothOwnerSteps(t *test
 	require.Len(t, rig.questions, 1)
 	question := rig.questions[0]
 	assert.True(t, strings.HasPrefix(question, idleFirstSentence), "the first sentence stays for the golden: %s", question)
-	assert.Contains(t, question, "item 432 is failed: run beehave resume 432")
-	assert.Contains(t, question, "run beehave cancel 432, and the next pass starts a new attempt")
+	assert.Contains(t, question, "item 432 is failed: run beehest resume 432")
+	assert.Contains(t, question, "run beehest cancel 432, and the next pass starts a new attempt")
 	assert.Contains(t, question, "Then answer CONTINUE to check the queue again, or STOP to end the round.")
 	assert.NotContains(t, question, "integration pull request", "the text does not send the owner to the pull request")
 }
@@ -246,7 +246,7 @@ func TestRoundIdle_AListedItemWithAnOpenRunOutsideTheRoundIsNamedAndAReadyOneWit
 	idleRun(t, rig, engine, nil)
 
 	require.Len(t, rig.questions, 1)
-	assert.Contains(t, rig.questions[0], "item 7 has an open run outside this round: beehave status shows it")
+	assert.Contains(t, rig.questions[0], "item 7 has an open run outside this round: beehest status shows it")
 	assert.Contains(t, rig.questions[0], "item 432 is ready, and the items queue has no free slot")
 	assert.Empty(t, startedChildren(rig), "the one slot is taken, so the ready item waits")
 }
@@ -275,7 +275,7 @@ func TestRoundIdle_AListedItemWhoseRunEndedWithAStopNamesTheStepAndTheReasonAndI
 	idleRun(t, rig, engine, nil)
 
 	require.Len(t, rig.questions, 1)
-	assert.Contains(t, rig.questions[0], `item 432 stopped at command:preflight#1 with the output "the pull request is a draft that this run did not open". Fix the cause and run beehave run 432: it starts a new attempt. beehave cancel does not reach a stopped run.`)
+	assert.Contains(t, rig.questions[0], `item 432 stopped at command:preflight#1 with the output "the pull request is a draft that this run did not open". Fix the cause and run beehest run 432: it starts a new attempt. beehest cancel does not reach a stopped run.`)
 	assert.NotContains(t, rig.questions[0], "is done", "a stopped item is not offered as done")
 }
 
@@ -291,7 +291,7 @@ func TestRoundIdle_ARoundWithNoItemListNamesTheStopOfEachStoppedRow(t *testing.T
 
 	require.Len(t, rig.questions, 1)
 	assert.Contains(t, rig.questions[0], "Rows: 0 ready, 0 failed, 1 stopped, 0 on hold, 0 done, 0 running.")
-	assert.Contains(t, rig.questions[0], `Stopped: 432 at command:preflight#1 with the output "the pull request is a draft that this run did not open". Fix each cause, then run beehave run for each item: it starts a new attempt.`)
+	assert.Contains(t, rig.questions[0], `Stopped: 432 at command:preflight#1 with the output "the pull request is a draft that this run did not open". Fix each cause, then run beehest run for each item: it starts a new attempt.`)
 }
 
 func TestRoundIdle_ARoundWithNoItemListOverAnEmptyQueueSaysNoRowIsReady(t *testing.T) {
@@ -321,7 +321,7 @@ func TestRoundIdle_ARoundWithNoItemListCountsTheRowsByStateAndNamesTheFailedIds(
 
 	require.Len(t, rig.questions, 1)
 	assert.Contains(t, rig.questions[0], "The queue has no ready row. Rows: 0 ready, 2 failed, 0 stopped, 1 on hold, 0 done, 0 running.")
-	assert.Contains(t, rig.questions[0], "Failed: 432, 433. Run beehave resume for each, or beehave cancel when the resume refuses the run.")
+	assert.Contains(t, rig.questions[0], "Failed: 432, 433. Run beehest resume for each, or beehest cancel when the resume refuses the run.")
 }
 
 func TestRoundIdle_ARoundWithNoItemListAndAReadyRowWithNoFreeSlotSaysSo(t *testing.T) {
@@ -348,7 +348,7 @@ func TestFailedError_NamesTheResumeAndTheCancel(t *testing.T) {
 	err := failedError(failed, "12")
 
 	require.ErrorIs(t, err, errRunFailed)
-	assert.ErrorContains(t, err, "Run beehave resume 12 to continue it from the last finished step. To start a new attempt instead, run beehave cancel 12")
+	assert.ErrorContains(t, err, "Run beehest resume 12 to continue it from the last finished step. To start a new attempt instead, run beehest cancel 12")
 }
 
 func TestEngine_RunRefusesANewRunAfterAFailedOneAndNamesTheCancel(t *testing.T) {
@@ -358,13 +358,13 @@ func TestEngine_RunRefusesANewRunAfterAFailedOneAndNamesTheCancel(t *testing.T) 
 
 	_, runErr := engine.Run(testItem, testProject)
 	require.ErrorIs(t, runErr, errRunFailed)
-	assert.ErrorContains(t, runErr, "beehave cancel "+testItem)
+	assert.ErrorContains(t, runErr, "beehest cancel "+testItem)
 }
 
 func TestClient_ResumeOnThisBuildRefusalOfAFailedRunNamesTheCancelAtEachSiteThatRefuses(t *testing.T) {
 	t.Parallel()
 
-	sentence := "End the failed run first: beehave cancel " + testItem + ". Start the item again: beehave run " + testItem
+	sentence := "End the failed run first: beehest cancel " + testItem + ". Start the item again: beehest run " + testItem
 	tests := map[string]func(t *testing.T) (*harness, *Client){
 		"a_step_list_that_is_not_valid": func(t *testing.T) (*harness, *Client) {
 			t.Helper()
@@ -431,7 +431,7 @@ func TestEndFailedFirst_NamesTheCancelOnlyForAFailedRun(t *testing.T) {
 		status dbos.WorkflowStatusType
 		want   string
 	}{
-		"a_failed_run_is_ended_first":    {dbos.WorkflowStatusError, "End the failed run first: beehave cancel 12. "},
+		"a_failed_run_is_ended_first":    {dbos.WorkflowStatusError, "End the failed run first: beehest cancel 12. "},
 		"a_canceled_run_needs_no_cancel": {dbos.WorkflowStatusCancelled, ""},
 		"an_open_run_needs_no_cancel":    {dbos.WorkflowStatusPending, ""},
 	} {

@@ -1,0 +1,25 @@
+# Cancel --run by id refuses an open run that another build started. The run keeps running, and the build that started it cancels it.
+! exec beehest run 7 --workflow flow/workflow.star &
+waitfile started
+
+env E2E_BUILD=other
+exitcode 1 beehest cancel --run item-7-r1
+! exec beehest cancel --run item-7-r1
+stderr '^beehest: the run belongs to another version of beehest: item-7-r1 started under version e2e\S* and this is other\S*\. Start version e2e to finish it, or run beehest resume 7 --on-this-build to move the run to this build from its last finished step$'
+! stdout .
+
+env E2E_BUILD=
+exec beehest status
+stdout '^item-7-r1\trunning\t'
+
+exec beehest cancel --run item-7-r1
+wait
+exec beehest status
+stdout '^item-7-r1\tcancelled\t'
+
+! grep '^implement' calls.log
+
+-- hang --
+plan
+-- verdicts --
+approve

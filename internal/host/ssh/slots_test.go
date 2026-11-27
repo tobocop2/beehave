@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // Two engines are two ssh.Host values with their own fake machine and their own nonces, over one real folder: the work root of the shared build host.
@@ -237,10 +237,10 @@ func TestSlots_AWaitingJobShowsAMarkerUntilItHoldsASlot(t *testing.T) {
 	eventually(t, "the first job starts", ja.started)
 
 	jb := b.submit("mutation", 1)
-	marker := filepath.Join(root, ".beehave", jb.unit+".waiting")
+	marker := filepath.Join(root, ".beehest", jb.unit+".waiting")
 
 	eventually(t, "the waiting job writes its marker", func() bool { return exists(marker) })
-	assert.False(t, exists(filepath.Join(root, ".beehave", ja.unit+".waiting")), "the holder never shows a marker")
+	assert.False(t, exists(filepath.Join(root, ".beehest", ja.unit+".waiting")), "the holder never shows a marker")
 	ja.release()
 	eventually(t, "the marker goes when the job holds a slot", func() bool { return jb.started() && !exists(marker) })
 }
@@ -326,7 +326,7 @@ func TestWait_AWaitingMarkerReadsPendingSoTheJobNeverGoesStale(t *testing.T) {
 			u := m.Units[string(id)]
 			u.Live = 300
 			u.LogSizes = []int{10}
-			m.Files[sshtest.Root+"/work/.beehave/beehave-n1.waiting"] = tc.marker
+			m.Files[sshtest.Root+"/work/.beehest/beehest-n1.waiting"] = tc.marker
 
 			state, err := h.Wait(t.Context(), id)
 
@@ -351,7 +351,7 @@ func TestSubmit_WrapsTheCommandInTheSlotLoopOnlyForAJobWithASlot(t *testing.T) {
 	text := m.Units[string(limited)].Command
 	assert.Contains(t, text, "flock -n 9")
 	assert.Contains(t, text, "-le 3")
-	assert.Contains(t, text, sshtest.Root+"/work/.beehave/slots/mutation")
+	assert.Contains(t, text, sshtest.Root+"/work/.beehest/slots/mutation")
 	assert.True(t, strings.HasSuffix(text, "echo hi"), "the command runs last, as a child of the script")
 	assert.Equal(t, "echo hi", m.Units[string(free)].Command)
 }

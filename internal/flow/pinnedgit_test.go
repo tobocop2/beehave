@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // The agent writes core.fsmonitor into the config of the item tree before it ends. The reads of the engine after the agent (the status, the diff, the
@@ -31,7 +31,7 @@ func TestAgentStep_EngineReadsStartNoProgramInTheItemTree(t *testing.T) {
 
 	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, agentFlow(`allow_paths = ["papers/**"], `), "x"), modeOff())
 
-	require.ErrorContains(t, err, "holds core.fsmonitor, which beehave does not allow")
+	require.ErrorContains(t, err, "holds core.fsmonitor, which beehest does not allow")
 	assert.NoFileExists(t, ran, "a read of the engine in the item tree ran the program that the tree config names")
 }
 

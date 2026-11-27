@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/config"
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/config"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/review"
 )
 
 func mustRead(t *testing.T, path string) []byte {
@@ -41,7 +41,7 @@ func exampleProject() model.Project {
 		Name: testProject, Repo: "o/r", BaseBranch: "main",
 		Vars: with(roundVars(map[string]any{
 			"base": "integration", "owner": "owner", "owner_email": "owner@example.com", "source_checkout": "/own/checkout",
-			"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehave-round", "steps": exampleSteps(),
+			"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehest-round", "steps": exampleSteps(),
 		}), map[string]any{"review_skill": exampleSkill}),
 	}
 }
@@ -383,7 +383,7 @@ func TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix
 
 // libraryLoop is a workflow that runs the review loop of the library on the base integration, with the implementer at head and the extra arguments.
 func libraryLoop(head, extra string) string {
-	return "load(\"@beehave//review_fix.star\", \"review_fix\")\n" +
+	return "load(\"@beehest//review_fix.star\", \"review_fix\")\n" +
 		"def main(item):\n" +
 		"    impl = struct(violations = \"\", session = \"\", rewrote = False, head_sha = \"" + head + "\")\n" +
 		"    review_fix(item, impl, \"prompts/review.md\", \"prompts/fix.md\", base = \"integration\", facts = facts(), steps = facts().vars[\"round\"][\"steps\"]" + extra + ")\n"

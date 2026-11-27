@@ -9,8 +9,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/config"
 )
 
 // adaptiveTick is the time between two looks of the controller. A usage read starts the agent CLI once for each login and may take 30 seconds, so the tick is longer.
@@ -205,7 +205,7 @@ func (e *Engine) signalLimit(out PhaseOutput) {
 	}
 }
 
-// AgentsCap is the limit of the agents queue that beehave status shows for an adaptive engine.
+// AgentsCap is the limit of the agents queue that beehest status shows for an adaptive engine.
 type AgentsCap struct {
 	Mode    config.Concurrency `json:"mode"`
 	Current int                `json:"current"`

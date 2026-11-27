@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehest/internal/exectest"
 )
 
 // fakeScript records its arguments, stdin, working folder and environment, then acts on the mode file beside it. The grandchild pid goes to a temporary

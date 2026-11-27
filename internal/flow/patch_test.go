@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/step"
+	"github.com/tobocop2/beehest/internal/step"
 )
 
 // probeFlow calls now, waits for the owner, then calls now again. The tests change the builtin now between two builds.

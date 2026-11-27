@@ -160,7 +160,7 @@ func TestStoreView_OpenRunReportsARunUnderAMoveAsOpen(t *testing.T) {
 		open, err := g.client.OpenRun(testItem)
 
 		require.NoError(t, err)
-		assert.True(t, open.Open, "beehave run prints no pinned file for a run under a move")
+		assert.True(t, open.Open, "beehest run prints no pinned file for a run under a move")
 	})
 }
 

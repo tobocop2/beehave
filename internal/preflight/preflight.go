@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // shaLength is the length of a full commit SHA. A shorter or longer text is never compared.

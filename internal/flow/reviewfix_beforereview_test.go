@@ -13,19 +13,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gatepkg "github.com/tobocop2/beehave/internal/gate"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/ssh"
-	"github.com/tobocop2/beehave/internal/host/sshtest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	gatepkg "github.com/tobocop2/beehest/internal/gate"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/ssh"
+	"github.com/tobocop2/beehest/internal/host/sshtest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // tailBytes is the size of the log tail that the ssh host reads.
 const tailBytes = 16384
 
 // revertClean is the end marker of a revert run in which every new test failed on the base code.
-const revertClean = "beehave-revert-end new=2 passed=0 cases=3"
+const revertClean = "beehest-revert-end new=2 passed=0 cases=3"
 
 // reviewTree is an item folder with a base commit, an unrelated commit on another branch, and a head one commit above the base.
 type reviewTree struct {
@@ -73,7 +73,7 @@ func reviewHarness(t *testing.T, tree reviewTree, checks *GateChecks) *harness {
 // jobLog is the log of a candidate job: a head gate that printed a lot, the two step markers, the name lines and marker lines of the check, and the end marker.
 func jobLog(noise int, secretsRC string, lines ...string) string {
 	return strings.Repeat("go test output line of the head gate\n", noise) +
-		"beehave-gate-step head-gate rc=0\n" + "beehave-gate-step secret-scan rc=" + secretsRC + "\n" + strings.Join(lines, "\n") + "\n"
+		"beehest-gate-step head-gate rc=0\n" + "beehest-gate-step secret-scan rc=" + secretsRC + "\n" + strings.Join(lines, "\n") + "\n"
 }
 
 // logChecks gives the log to the fake machine as the log of a submitted job, reads it back through the ssh host, and returns the length that the host read
@@ -138,7 +138,7 @@ func gitReply(t *testing.T, dir string) func(CommandRequest) (CommandOutput, err
 
 // libReviewFlow gates the head, judges it with the function of the library and shows ok and the findings.
 func libReviewFlow(base, extra string) string {
-	return "load(\"@beehave//review_fix.star\", \"before_review\")\n\n" + bodyFlow(
+	return "load(\"@beehest//review_fix.star\", \"before_review\")\n\n" + bodyFlow(
 		"g = gate(name = \"g\", base = \"main\")\n"+
 			"r = before_review(g, base = \""+base+"\", "+extra+"name = \"r\")\n"+
 			"command(run = [\"show\", str(r.ok), \"|\".join(r.findings)])\n")
@@ -326,7 +326,7 @@ func TestReviewFixBeforeReview_TheFunctionJudgesTheGateResultItGetsWhateverGateC
 	h.facts = func(string) model.Project { return model.Project{Source: tree.dir} }
 	h.commands.reply = gitReply(t, tree.dir)
 
-	_, err := walkText(t, h, "load(\"@beehave//review_fix.star\", \"before_review\")\n\n"+bodyFlow(
+	_, err := walkText(t, h, "load(\"@beehest//review_fix.star\", \"before_review\")\n\n"+bodyFlow(
 		"g1 = gate(name = \"g1\", base = \"main\")\n"+
 			"g2 = gate(name = \"g2\", base = \"main\")\n"+
 			"r = before_review(g1, base = \""+tree.base+"\", name = \"r\")\n"+
@@ -427,7 +427,7 @@ func TestReviewFixBeforeReview_AHeadWithNoNewTestGetsNoRevertFinding(t *testing.
 func TestReviewFixBeforeReview_ALogOverSixteenKiBBeforeTheEndMarkerPassesWithItsNewTestNames(t *testing.T) {
 	t.Parallel()
 
-	log := jobLog(1000, "0", "beehave-new-test pkg TestA", "beehave-new-test pkg TestA/case", "beehave-new-tests-end new=2 failed=0", revertClean)
+	log := jobLog(1000, "0", "beehest-new-test pkg TestA", "beehest-new-test pkg TestA/case", "beehest-new-tests-end new=2 failed=0", revertClean)
 	require.Greater(t, len(log), tailBytes, "the log is longer than the tail that the host reads")
 
 	read, checks := logChecks(t, log)
@@ -448,12 +448,12 @@ func TestReviewFixBeforeReview_TheChecksOfARealLogAreFindings(t *testing.T) {
 		log, finds string
 	}{
 		"skipped new test": {
-			jobLog(1000, "0", "beehave-new-test pkg TestA", "beehave-new-test-failed skipped pkg TestA", "beehave-new-tests-end new=1 failed=1", revertClean),
+			jobLog(1000, "0", "beehest-new-test pkg TestA", "beehest-new-test-failed skipped pkg TestA", "beehest-new-tests-end new=1 failed=1", revertClean),
 			"a new test failed a check: skipped pkg TestA",
 		},
-		"no end marker": {jobLog(1000, "0", "beehave-new-test pkg TestA"), "no end marker"},
-		"zero new":      {jobLog(1000, "0", "beehave-new-tests-end new=0 failed=0"), "adds no new test"},
-		"secret scan":   {jobLog(1000, "1", "beehave-new-test pkg TestA", "beehave-new-tests-end new=1 failed=0", revertClean), "secret scan of the head exited with code 1"},
+		"no end marker": {jobLog(1000, "0", "beehest-new-test pkg TestA"), "no end marker"},
+		"zero new":      {jobLog(1000, "0", "beehest-new-tests-end new=0 failed=0"), "adds no new test"},
+		"secret scan":   {jobLog(1000, "1", "beehest-new-test pkg TestA", "beehest-new-tests-end new=1 failed=0", revertClean), "secret scan of the head exited with code 1"},
 	}
 
 	for name, c := range cases {

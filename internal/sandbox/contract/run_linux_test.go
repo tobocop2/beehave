@@ -4,11 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/sandbox/contract"
-	"github.com/tobocop2/beehave/internal/sandbox/landlock"
+	"github.com/tobocop2/beehest/internal/sandbox/contract"
+	"github.com/tobocop2/beehest/internal/sandbox/landlock"
 )
 
-// TestMain lets the test binary act as the Landlock helper, as beehave does in main.
+// TestMain lets the test binary act as the Landlock helper, as beehest does in main.
 func TestMain(m *testing.M) {
 	if code, helper := landlock.RunHelper(os.Args, os.Stderr); helper {
 		os.Exit(code)

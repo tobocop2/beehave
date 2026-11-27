@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/lockfile"
+	"github.com/tobocop2/beehest/internal/lockfile"
 )
 
 // keyLockRetry is the wait between two tries to take the lock of a key.

@@ -1,0 +1,70 @@
+# The call budget is 5. The planner and the four agents of section 1 (two readers, the judge and the writer) use it up. The reader of the first source of section 2
+# does not run: its claims run, two levels below the question run, waits for a person.
+# The person adds 2 calls. The two readers of section 2 run, and the judge in the question run waits. The run is cancelled, as an upgrade would strand it,
+# and the item runs again with a larger cap. The new run keeps the plan and the finished section 1, so the planner and the agents of section 1 do not run twice.
+# Section 2 starts again from its source runs, so its readers run again.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+env MAX_AGENT_CALLS=5
+
+exec beehestreal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec beehestreal run cold-cost research-desk --workflow rd/workflow.star &
+
+waitstatus 'paused: The run used all 5 agent calls'
+grep -count=1 '^5$' store/cold-cost/calls
+grep 'done' store/cold-cost/s1.1/status
+! exists wiki.log
+
+# The answer goes to the claims run of the first source of section 2, whose id is the seventh run of the desk: research-desk-7.
+# The runs before it are two source runs and two claims runs for section 1, then the first source run of section 2.
+exec beehestreal answer research-desk-7 2
+waitstatus 'paused: The run used all 7 agent calls'
+grep -count=1 '^7$' store/cold-cost/calls
+exec beehestreal cancel cold-cost
+wait
+
+env MAX_AGENT_CALLS=40
+exec beehestreal run cold-cost research-desk --workflow rd/workflow.star &
+waitstatus 'paused: Review the draft report of cold-cost, round 1'
+exec beehestreal answer cold-cost approve
+wait
+stdout 'item cold-cost finished'
+
+# The planner ran once and section 1 ran once. Section 2 ran again from its start, because it was not done.
+cmp calls.log expected-calls.log
+grep -count=1 '^cold-cost-' wiki.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- expected-calls.log --
+plan
+read cold
+read cold
+judge
+write Output
+read cost
+read cost
+read cost
+read cost
+judge
+write Cost
+abstract
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

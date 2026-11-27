@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/credential"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
-	"github.com/tobocop2/beehave/internal/proc/gitexec/reach/internal/remote"
+	"github.com/tobocop2/beehest/internal/credential"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
+	"github.com/tobocop2/beehest/internal/proc/gitexec"
+	"github.com/tobocop2/beehest/internal/proc/gitexec/reach/internal/remote"
 )
 
 // ErrNotLoaded is the reason a call is refused when its project declares credentials and the process holds none.
-var ErrNotLoaded = errors.New("the credentials of the project are not loaded. Start the engine with beehave run")
+var ErrNotLoaded = errors.New("the credentials of the project are not loaded. Start the engine with beehest run")
 
 // ErrNoOwnerToken is the reason a call to an https remote of a project with no credentials is refused when the owner has no token for the host.
 var ErrNoOwnerToken = errors.New("the owner has no gh token")

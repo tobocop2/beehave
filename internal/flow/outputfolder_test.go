@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent"
 )
 
 func TestAgentStep_TheOutputFileOfACallIsTheOneFileOfAFolderOfItsOwn(t *testing.T) {
@@ -94,7 +94,7 @@ func TestPhase_AQueuedPhaseWhoseOutputFileIsNotTheFileOfItsCallStartsNoAgent(t *
 	err = queuePhase(t, engine, in)
 
 	require.ErrorContains(t, err, "the agent phase of item 12 names the output file "+flat)
-	require.ErrorContains(t, err, "Run beehave cancel 12, then start a new run")
+	require.ErrorContains(t, err, "Run beehest cancel 12, then start a new run")
 	assert.Empty(t, harness.agents.seen(), "the agent never gets the outputs folder as a working directory")
 }
 

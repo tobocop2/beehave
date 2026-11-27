@@ -11,9 +11,9 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/gofrs/flock"
 
-	"github.com/tobocop2/beehave/internal/claim"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/claim"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // ResumeOnThisBuild moves the canceled, failed or open run of an item that another build started to this build, from its last finished step.
@@ -27,7 +27,7 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 
 // ResumeOnThisFile reopens the open, canceled or failed run of an item on the workflow file as it is on disk now, from its last finished step.
 // The run replays its recorded steps over the new file, and the engine of the store refuses the replay at the first step that the file no longer makes.
-// The run must be of this build: a run of another build is refused, and ResumeOnThisBuildAndFile moves it. A file that did not change is no error: a run that ended resumes as `beehave resume` does, and an open run is reopened with no pin written.
+// The run must be of this build: a run of another build is refused, and ResumeOnThisBuildAndFile moves it. A file that did not change is no error: a run that ended resumes as `beehest resume` does, and an open run is reopened with no pin written.
 func (c *Client) ResumeOnThisFile(item string) error {
 	_, err := c.resumeMoved(item, false, true)
 
@@ -107,7 +107,7 @@ func (c *Client) requireUnchanged(item string, last run) error {
 	}
 
 	if now.Status.ID != last.Status.ID || now.Status.Status != last.Status.Status || now.Status.ApplicationVersion != last.Status.ApplicationVersion {
-		return fmt.Errorf("%w: %s is now %s on version %s, and the move read it as %s on version %s. Run beehave status to see the run",
+		return fmt.Errorf("%w: %s is now %s on version %s, and the move read it as %s on version %s. Run beehest status to see the run",
 			ErrWrongState, now.Status.ID, stateOf(now.Status.Status), buildVersion(now.Status.ApplicationVersion), stateOf(last.Status.Status), buildVersion(last.Status.ApplicationVersion))
 	}
 
@@ -167,7 +167,7 @@ func (c *Client) cancelAndReopenHeld(item string, last run, pin []workflow.Pinne
 	}
 
 	if err := c.setPin(last, pin); err != nil {
-		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehave resume %s --on-this-file again, with --on-this-build when another build started the run", last.Status.ID, err, item)
+		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehest resume %s --on-this-file again, with --on-this-build when another build started the run", last.Status.ID, err, item)
 	}
 
 	if err := c.reopenHeld(item, last); err != nil {
@@ -262,7 +262,7 @@ func (c *Client) clearMark(id string) error {
 
 // canceledNotMoved names a run that a move canceled and could not reopen, and how to try again.
 func canceledNotMoved(item string, last run, err error) error {
-	return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run beehave resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
+	return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run beehest resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
 }
 
 // requireMovable refuses a run that cannot move to this build: one recorded under another step list, a finished one, one whose holder is alive, and one whose files changed.
@@ -281,7 +281,7 @@ func (c *Client) requireMovableRun(ctx context.Context, item string, last run) e
 	}
 
 	if state := stateOf(last.Status.Status); last.terminal() && state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehest run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	return c.requireNoLiveHolder(ctx, item, last)
@@ -295,11 +295,11 @@ func (c *Client) requireSameSteps(item string, last run) error {
 
 	was, readErr := readVersions(stored)
 	if readErr != nil && looksLikeModuleList(stored) {
-		return fmt.Errorf("%w: %s was recorded under a step list that is not valid: %w. %sStart the item again: beehave run %s", errStranded, last.Status.ID, readErr, endFailedFirst(last, item), item)
+		return fmt.Errorf("%w: %s was recorded under a step list that is not valid: %w. %sStart the item again: beehest run %s", errStranded, last.Status.ID, readErr, endFailedFirst(last, item), item)
 	}
 
 	if readErr != nil {
-		return fmt.Errorf("%w: %s was recorded under %s and this build has %s. A run cannot replay under another step list. %sStart the item again: beehave run %s",
+		return fmt.Errorf("%w: %s was recorded under %s and this build has %s. A run cannot replay under another step list. %sStart the item again: beehest run %s",
 			errStranded, last.Status.ID, describeStepList(stored), describeStepList(now), endFailedFirst(last, item), item)
 	}
 
@@ -325,7 +325,7 @@ func (c *Client) requireUsedModulesSame(item string, last run, was, current map[
 	}
 
 	if module, changed := changedModule(modulesUsed(names), was, current); changed {
-		return fmt.Errorf("%w: %s recorded steps of the %s module at %s and this build has %s. A run cannot replay under another step list. %sStart the item again: beehave run %s",
+		return fmt.Errorf("%w: %s recorded steps of the %s module at %s and this build has %s. A run cannot replay under another step list. %sStart the item again: beehest run %s",
 			errStranded, last.Status.ID, module, describeModule(module, was), describeModule(module, current), endFailedFirst(last, item), item)
 	}
 
@@ -337,7 +337,7 @@ func (c *Client) requireUsedModulesSame(item string, last run, was, current map[
 func requireSameStartModules(item string, last run, was, current map[string]int) error {
 	if _, changed := changedModule([]string{moduleForge}, was, current); changed {
 		return fmt.Errorf("%w: %s was recorded with the forge module at %s, and this build has %s. This build reads who wrote the item in the step %q "+
-			"before the claim, so the run cannot replay here. Finish the run on the build that started it, or start the item again: beehave run %s",
+			"before the claim, so the run cannot replay here. Finish the run on the build that started it, or start the item again: beehest run %s",
 			errStranded, last.Status.ID, describeModule(moduleForge, was), describeModule(moduleForge, current), originStepName, item)
 	}
 
@@ -356,7 +356,7 @@ func requireReplayableSteps(item string, last run, names []string) error {
 		owner = fmt.Sprintf("an older build recorded it for the %s module, and this build does not record it", module)
 	}
 
-	return fmt.Errorf("%w: %s recorded the step %q, and %s. A run cannot replay under another step list. %sStart the item again: beehave run %s",
+	return fmt.Errorf("%w: %s recorded the step %q, and %s. A run cannot replay under another step list. %sStart the item again: beehest run %s",
 		errStranded, last.Status.ID, step, owner, endFailedFirst(last, item), item)
 }
 
@@ -372,7 +372,7 @@ func requireSameRoundModule(item string, last run, was, current map[string]int) 
 	}
 
 	return fmt.Errorf("%w: %s is a run of a round item, recorded with the round module at %s, and this build has %s. This build makes the worktree in the step %q "+
-		"before the workflow file runs, so the run cannot replay here. Finish the run on the build that started it, or start the item again: beehave run %s",
+		"before the workflow file runs, so the run cannot replay here. Finish the run on the build that started it, or start the item again: beehest run %s",
 		errStranded, last.Status.ID, describeModule(moduleRound, was), describeModule(moduleRound, current), treeMakeStepName, item)
 }
 
@@ -408,7 +408,7 @@ func (c *Client) requireNoLiveHolder(ctx context.Context, item string, last run)
 		holder = owner
 	}
 
-	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run beehave resume %s again with the same flags",
+	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run beehest resume %s again with the same flags",
 		errStranded, last.Status.ID, last.Status.ApplicationVersion, holder, ends.UTC().Format(time.RFC3339), item)
 }
 
@@ -443,7 +443,7 @@ func requirePinned(item string, last run) error {
 	_, openErr := workflow.Open(in.File, pin)
 
 	if err := errors.Join(readErr, pinErr, openErr); err != nil {
-		text := fmt.Sprintf("%s was not moved to this build: %v. To keep its finished steps and run the changed file, run beehave resume %s --on-this-build --on-this-file", last.Status.ID, err, item)
+		text := fmt.Sprintf("%s was not moved to this build: %v. To keep its finished steps and run the changed file, run beehest resume %s --on-this-build --on-this-file", last.Status.ID, err, item)
 
 		if dynamic := workflow.DynamicCommands(in.File); dynamic > 0 {
 			text += fmt.Sprintf(". %d command calls have a run list that is not a literal, so their scripts are not pinned", dynamic)

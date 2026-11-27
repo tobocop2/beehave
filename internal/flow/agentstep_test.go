@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // gitTree makes a folder with one commit and returns the folder and the commit.
@@ -1223,8 +1223,8 @@ func TestAgentStep_TheStartMarkIsTheHeadOfTheFolderAndAMarkThatGitCannotWriteIsA
 	require.ErrorContains(t, err, "read HEAD of the item folder")
 
 	// A lock file of the ref makes git refuse the write.
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "refs", "worktree", "beehave"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", "refs", "worktree", "beehave", "call-start.lock"), nil, 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "refs", "worktree", "beehest"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", "refs", "worktree", "beehest", "call-start.lock"), nil, 0o600))
 
 	_, err = agentArgs{dir: dir, git: engineGit(dir)}.writeStartMark(t.Context())
 	require.ErrorContains(t, err, "write the start mark of the item folder")

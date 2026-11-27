@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // nestedFlow spawns 21, whose run spawns 22 and waits for it. The run of 22 holds in its command. The parent stops the run of 21 with the call it is given,

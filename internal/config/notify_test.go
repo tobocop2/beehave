@@ -9,10 +9,10 @@ import (
 func TestNotify_AListLoadsIntoTheProject(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, call(localProject+`, notify = ["ntfy", "publish", "beehave"]`))
+	project, problems := loadProjectText(t, call(localProject+`, notify = ["ntfy", "publish", "beehest"]`))
 
 	require.Empty(t, problems)
-	require.Equal(t, []string{"ntfy", "publish", "beehave"}, project.Notify)
+	require.Equal(t, []string{"ntfy", "publish", "beehest"}, project.Notify)
 }
 
 func TestNotify_AnUnsetNotifyLoadsAsNone(t *testing.T) {
@@ -32,7 +32,7 @@ func TestNotify_ARefusedValueNamesTheKeyAndTheFix(t *testing.T) {
 		value string
 		want  string
 	}{
-		{"text", `"ntfy publish beehave"`, "list of strings"},
+		{"text", `"ntfy publish beehest"`, "list of strings"},
 		{"a list with a number", `["ntfy", 3]`, "list of strings"},
 		{"an empty list", `[]`, "`notify` is an empty list"},
 		{"an empty program", `["", "x"]`, "`notify` names an empty program"},

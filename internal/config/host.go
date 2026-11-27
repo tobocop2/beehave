@@ -10,7 +10,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -159,7 +159,7 @@ func startHost(raw rawHost, provider model.HostProvider, entry *Entry) model.Hos
 		host.Block = raw.Blocks[entry.Block.Name]
 	}
 
-	// Only a provider that beehave deletes gets a default for idle_minutes; fillCounts replaces it with a written value.
+	// Only a provider that beehest deletes gets a default for idle_minutes; fillCounts replaces it with a written value.
 	if entry.Idle {
 		host.IdleMinutes = defaultIdleMins
 	}
@@ -167,7 +167,7 @@ func startHost(raw rawHost, provider model.HostProvider, entry *Entry) model.Hos
 	return host
 }
 
-// checkBlocks refuses a block of another provider, idle_minutes and setup_command for a provider that beehave does not create the machine of, and credentials = "none" where the provider cannot keep it.
+// checkBlocks refuses a block of another provider, idle_minutes and setup_command for a provider that beehest does not create the machine of, and credentials = "none" where the provider cannot keep it.
 func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 	for _, name := range slices.Sorted(maps.Keys(raw.Blocks)) {
 		if entry.Block != nil && name == entry.Block.Name {
@@ -178,11 +178,11 @@ func checkBlocks(raw rawHost, provider model.HostProvider, entry *Entry) error {
 	}
 
 	if !entry.Idle && raw.IdleMinutes != idleUnset {
-		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", provider)
+		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehest does not delete the machine. Remove the key.", provider)
 	}
 
 	if !entry.Idle && raw.SetupCommand.Set {
-		return refuseAt(raw.At, "`host.setup_command` is not allowed for provider %q: beehave does not create the machine. Remove the key.", provider)
+		return refuseAt(raw.At, "`host.setup_command` is not allowed for provider %q: beehest does not create the machine. Remove the key.", provider)
 	}
 
 	return checkCredentialsKey(raw, provider, entry)
@@ -194,7 +194,7 @@ func checkCredentialsKey(raw rawHost, provider model.HostProvider, entry *Entry)
 		return nil
 	}
 
-	return refuseAt(raw.At, "`host.credentials` = \"none\" is not allowed for provider %q: the tool that starts the machine can forward your SSH agent and copies your cloud credentials to it, so beehave cannot keep that promise. Remove the key.", provider)
+	return refuseAt(raw.At, "`host.credentials` = \"none\" is not allowed for provider %q: the tool that starts the machine can forward your SSH agent and copies your cloud credentials to it, so beehest cannot keep that promise. Remove the key.", provider)
 }
 
 // fillKeys sets the keys of host that are not the provider name.

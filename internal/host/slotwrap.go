@@ -3,7 +3,7 @@ package host
 import (
 	"fmt"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // slotRetrySeconds is the wait between two tries to take a slot.

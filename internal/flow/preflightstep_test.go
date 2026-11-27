@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/preflight"
 )
 
 // fakePreflight answers each call with result and err, and records what it was asked.
@@ -107,7 +107,7 @@ func TestPreflight_ALeftOutKeywordChecksNothingOfThatKind(t *testing.T) {
 func TestPreflight_TheOldClaimArgumentsAreRefusedAndNameTheLibraryFunction(t *testing.T) {
 	t.Parallel()
 
-	const tail = ". The claim stops moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass "
+	const tail = ". The claim stops moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass "
 
 	for keyword, value := range map[string]string{"hold": `"hold"`, "own": `{"logins": ["owner"]}`, "own_draft": "7"} {
 		t.Run(keyword, func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestPreflight_TheOldClaimArgumentsAreRefusedAndNameTheLibraryFunction(t *te
 
 			want := "preflight takes no argument " + keyword + tail + keyword + " to it."
 			if keyword == "own_draft" {
-				want = "preflight takes no argument own_draft. The draft stop moved to the library function claim_stop: load(\"@beehave//claims.star\", \"claim_stop\") and pass own_draft to it."
+				want = "preflight takes no argument own_draft. The draft stop moved to the library function claim_stop: load(\"@beehest//claims.star\", \"claim_stop\") and pass own_draft to it."
 			}
 
 			h, fake, _ := preflightHarness(t, preflight.Result{})

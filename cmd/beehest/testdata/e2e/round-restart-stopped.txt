@@ -1,0 +1,191 @@
+# An item of a round ends stopped, and the owner starts it again with `beehest run <item>`, the command that the pause text names.
+# The run of a tracker item runs the pipeline of the example, not a round. The round's next pass reads the new run: the row was stopped and is done.
+# The first card call of the board reads the card back in another column (the file board-wrong of the forge folder), so the engine step board_card stops the item after its draft. The second call passes.
+isolate
+
+exec git init -q -b main seed
+exec git -C seed add Makefile .gitignore
+exec git -C seed -c user.name=seed -c user.email=seed@example.com commit -q -m start
+exec git clone -q --bare seed remote.git
+exec git --git-dir=remote.git branch integration/r1 main
+exec git --git-dir=remote.git branch integration/s1 main
+
+# The round branch is one commit ahead of the project base branch, so a worktree cut at the wrong branch shows.
+exec git clone -q remote.git s1clone
+exec git -C s1clone checkout -q -b integration/s1 origin/integration/s1
+cp s1.txt s1clone/s1.txt
+exec git -C s1clone add s1.txt
+exec git -C s1clone -c user.name=seed -c user.email=seed@example.com commit -q -m 's1 moved'
+exec git -C s1clone push -q origin integration/s1
+exec git --git-dir=remote.git rev-parse integration/s1
+cp stdout s1-tip
+
+example remediation/workflow.star flow/workflow.star
+
+mkdir forge
+mkdir home
+mkdir login
+mkdir login/skills/the-review-skill
+cp skill.md login/skills/the-review-skill/SKILL.md
+env SWARM_REMOTE=$WORK/remote.git
+env SWARM_FORGE=$WORK/forge
+env HOME=$WORK/home
+
+exec git config --file home/.gitconfig user.name e2e
+exec git config --file home/.gitconfig user.email e2e@example.com
+cp base forge/base
+cp base forge/open-on-create
+cp wrong forge/board-wrong
+
+cp runners.star config/runners.star
+subst fake/claude fake/remedy config/projects/round.star config/runners.star
+chmod 755 fake/claude
+chmod 755 fake/remedy
+
+exec beehestround item add round round/integration/s1 --title 'The round' --body-file round.txt
+exec beehestround item add round 432 --title 'The child' --body-file child.txt
+
+exec beehestround run round/integration/s1 round --workflow flow/workflow.star &
+waitstatus 'Listed item 432 stopped at board_card:board-started'
+
+# The round started the pipeline of item 432 once, and the board refused the card.
+exec beehestround status
+stdout 'item-432-r1	stopped'
+grep -count=1 '^plan$' calls.log
+cmp plan-head-1 s1-tip
+grep -count=1 '^PlaceCard$' forge/board-calls
+
+# The local branch of the item is gone (a stopped item has no worktree), and the remote branch is back at the tip of the base branch of the project.
+# The new attempt cuts the branch again at the base of the round, not at the base branch of the project.
+exec sh remove.sh
+
+# The documented command starts a new attempt of the item. It runs the pipeline: the plan agent runs again and the board call passes.
+# The script keeps the exit status of the run for the later checks, so a wrong base fails the comparison of the head first.
+exec sh restart.sh
+cmp plan-head-2 s1-tip
+grep 'item 432 finished' restart.out
+grep -count=2 '^plan$' calls.log
+grep -count=2 '^PlaceCard$' forge/board-calls
+exec beehestround status
+stdout 'item-432-r2	done'
+
+# The next pass of the round reads the new run: the row is done, not stopped, and the round lands the item. The pass after the landing finds the item closed.
+exec beehestround answer round/integration/s1 --as agent CONTINUE
+waitstatus 'Listed item 432 is not in the queue'
+exec beehestround answer round/integration/s1 --as agent STOP
+wait
+stdout 'finished'
+
+-- base --
+integration/s1
+-- round.txt --
+The round of the stage.
+-- child.txt --
+Change one thing.
+-- seed/Makefile --
+check: ; @mkdir -p reports && echo '<testsuite tests="1"><testcase name="t"/></testsuite>' > reports/r.xml
+-- seed/.gitignore --
+reports/
+-- s1.txt --
+s1
+-- wrong --
+Todo
+-- remove.sh --
+set -e
+git -C state/repos/round branch -D 432
+git --git-dir="$WORK/remote.git" update-ref refs/heads/432 refs/heads/integration/r1
+-- restart.sh --
+beehestround run 432 round --workflow flow/workflow.star > restart.out 2>&1 || true
+-- mutation.sh --
+exit 0
+-- skill.md --
+---
+name: the-review-skill
+---
+-- runners.star --
+agents(max_concurrent = 2)
+runner(name = "one", agent = "claude", config_dir = "@WORK@/login")
+runner(name = "two", agent = "claude", config_dir = "@WORK@/login")
+-- config/projects/round.star --
+# The sandbox is off because the gate runs here, and isolate puts the tool wrappers, sh among them, in a test folder on PATH that a sandboxed gate may not read.
+project(
+    sandbox = "off",
+    repo = "o/r",
+    source = "file://@WORK@/remote.git",
+    forge = "github",
+    base_branch = "integration/r1",
+    gate = "make check",
+    test_report = "reports/*.xml",
+    build_host = "build",
+    host = host(provider = "ssh", disk_floor_gb = 50, slots = {"mutation": 1}, ssh = ssh(address = "10.0.0.5")),
+    vars = {
+        "round": {"base": "integration/s1", "owner": "agent", "owner_email": "agent@example.com", "lane_cap": 1, "fix_rounds": 2, "items": ["432"], "merge": True, "wait_hours": 72, "source_checkout": "/own/checkout"},
+        "board": {"number": 3, "started": "In Progress", "merged": "Done"},
+        "mutation_command": ["sh", "mutation.sh"],
+        "review_skill": "the-review-skill",
+    },
+)
+-- flow/prompts/plan.md --
+step=plan
+write={{ .output_file }}
+-- flow/prompts/implement.md --
+step=implement
+write={{ .output_file }}
+item={{ .item.id }}
+-- flow/prompts/sweep.md --
+step=sweep
+write={{ .output_file }}
+-- flow/prompts/review.md --
+step=review
+write={{ .output_file }}
+-- flow/prompts/fix.md --
+step=fix
+round={{ .round }}
+found={{ .findings }}
+-- flow/prompts/design.md --
+step=design
+write={{ .output_file }}
+-- flow/prompts/settle.md --
+step=settle
+write={{ .output_file }}
+-- flow/prompts/queue.md --
+step=queue
+-- flow/prompts/sync.md --
+step=sync
+-- flow/prompts/sync_review.md --
+step=sync_review
+write={{ .output_file }}
+-- flow/prompts/take_review.md --
+step=take_review
+-- fake/claude --
+#!/bin/sh
+if [ "$1" = --version ]; then echo "2.1.290 (Claude Code)"; exit 0; fi
+prompt=$(cat)
+field() { printf '%s\n' "$prompt" | sed -n "s/^$1=//p"; }
+step=$(field step)
+echo "$step" >> @WORK@/calls.log
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_skill","name":"Skill","input":{"skill":"the-review-skill"}}]}}'
+echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","content":"Launching skill: the-review-skill"}]}}'
+case $step in
+  plan)
+    git rev-parse HEAD > "@WORK@/plan-head-$(grep -c '^plan$' @WORK@/calls.log)"
+    printf '{"regressions":"0"}\n' > "$(field write)"
+    ;;
+  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' > "$(field write)" ;;
+  sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
+  sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
+  implement)
+    id=$(basename "$(pwd)")
+    n=$(grep -c '^implement$' @WORK@/calls.log)
+    echo "$id" > "$id-$n.txt"
+    git add "$id-$n.txt"
+    git -c user.name=dev -c user.email=agent@example.com commit -q -m "task $id attempt $n"
+    git push -q origin "HEAD:refs/heads/$id"
+    printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
+    ;;
+esac
+echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
+-- fake/remedy --
+#!/bin/sh
+# The remedy tool of the round runs only the read-only report step, which passes. The gate list is `beehest check gate-list`, which these rounds do not call. The forge writes run in the engine, on the forge of the script.
+exit 0

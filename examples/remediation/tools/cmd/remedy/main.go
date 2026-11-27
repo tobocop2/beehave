@@ -4,8 +4,8 @@ package main
 import (
 	"os"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
-	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehest/examples/remediation/tools/remedy"
+	forgegithub "github.com/tobocop2/beehest/internal/forge/github"
 )
 
 // The GitHub forge gives the closing references; without this line a drift would fall back to the body parse.

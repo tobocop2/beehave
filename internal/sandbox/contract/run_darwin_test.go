@@ -5,8 +5,8 @@ package contract_test
 import (
 	"testing"
 
-	"github.com/tobocop2/beehave/internal/sandbox/contract"
-	"github.com/tobocop2/beehave/internal/sandbox/seatbelt"
+	"github.com/tobocop2/beehest/internal/sandbox/contract"
+	"github.com/tobocop2/beehest/internal/sandbox/seatbelt"
 )
 
 // TestRun_ARealEnforcerPassesEverySubtest proves that Run itself runs every check and that a confining enforcer passes them.

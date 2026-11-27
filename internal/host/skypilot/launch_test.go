@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc/proctest"
 )
 
 const runLimitWord = "gcp.managed_instance_group.run_duration=43200"
@@ -123,7 +123,7 @@ func TestUp_ASetupCommandGoesToATaskFileThatClonesTheProjectAndRunsTheCommandAnd
 	ssh.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
 
 	h, err := New(clusterName, cfg, sky, ssh, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} },
-		WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+		WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 	require.NoError(t, err)
 	require.NoError(t, h.Up(context.Background()))
 
@@ -132,7 +132,7 @@ func TestUp_ASetupCommandGoesToATaskFileThatClonesTheProjectAndRunsTheCommandAnd
 		"launch", "-y", "-c", "lane-host", "--down", "-i", "45", "--infra", "gcp/us-central1", "-t", "n2-standard-8", "--use-spot", "--disk-size", "100", sky.path,
 	}, sky.Calls[0])
 	assert.True(t, strings.HasSuffix(sky.path, ".yaml"), sky.path)
-	assert.Equal(t, `setup: "set -e\nmkdir -p \"$HOME/beehave-setup\"\ncd \"$HOME/beehave-setup\"\ngit clone --branch main https://example.test/o/n.git beehave\ncd beehave\nmake setup"`+"\n", sky.text)
+	assert.Equal(t, `setup: "set -e\nmkdir -p \"$HOME/beehest-setup\"\ncd \"$HOME/beehest-setup\"\ngit clone --branch main https://example.test/o/n.git beehest\ncd beehest\nmake setup"`+"\n", sky.text)
 
 	_, err = os.Stat(sky.path)
 	require.ErrorIs(t, err, os.ErrNotExist, "the task file is deleted after the launch")
@@ -144,7 +144,7 @@ func TestUp_ASetupCommandGoesToATaskFileThatClonesTheProjectAndRunsTheCommandAnd
 func TestUp_TheTaskFileIsReadableByTheOwnerOnly(t *testing.T) {
 	t.Parallel()
 
-	sky := launchWithSetup(t, "make setup", "beehave", "main", "https://example.test/o/n.git")
+	sky := launchWithSetup(t, "make setup", "beehest", "main", "https://example.test/o/n.git")
 
 	assert.Equal(t, os.FileMode(0o600), sky.mode, "a set-up command can hold a secret")
 }
@@ -186,14 +186,14 @@ func TestUp_AnyUserSetupCommandReachesTheTaskFileAsOneYAMLScalarThatReadsBackToT
 		"cat <<EOF\n${VAR} {{ x }}\tend\nEOF",
 		"echo \\ done # not: a comment\n---",
 	} {
-		text := setupText(t, command, "beehave", "main", "https://example.test/o/n.git")
+		text := setupText(t, command, "beehest", "main", "https://example.test/o/n.git")
 
 		require.True(t, strings.HasPrefix(text, "setup: \""), command)
 		require.True(t, strings.HasSuffix(text, "\"\n"), command)
 
 		script, err := strconv.Unquote(strings.TrimSuffix(strings.TrimPrefix(text, "setup: "), "\n"))
 		require.NoError(t, err, command)
-		assert.True(t, strings.HasSuffix(script, "\ncd beehave\n"+command), "the command is the last lines of the script, unchanged: %q", script)
+		assert.True(t, strings.HasSuffix(script, "\ncd beehest\n"+command), "the command is the last lines of the script, unchanged: %q", script)
 	}
 }
 
@@ -218,7 +218,7 @@ func TestUp_ASetupCommandWithAFailedLaunchStillDeletesTheTaskFile(t *testing.T) 
 	sky.PlanFail("boom", "launch")
 
 	h, err := New(clusterName, cfg, sky, &proctest.Scripted{}, func(*link.Link, model.HostConfig, Slot) Queue { return &fakeQueue{} },
-		WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+		WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 	require.NoError(t, err)
 	require.ErrorIs(t, h.Up(context.Background()), link.ErrCommand)
 
@@ -231,7 +231,7 @@ func TestUp_ATaskFileThatCannotBeWrittenFailsTheLaunchBeforeSkyRunsAndLeavesNoFo
 
 	cfg := hostConfig(nil)
 	cfg.SetupCommand = "make setup"
-	h, sky, _ := newOptionHost(t, cfg, WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+	h, sky, _ := newOptionHost(t, cfg, WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 
 	var written string
 
@@ -254,7 +254,7 @@ func TestUp_AFolderForTheTaskFileThatCannotBeMadeFailsTheLaunchBeforeSkyRuns(t *
 
 	cfg := hostConfig(nil)
 	cfg.SetupCommand = "make setup"
-	h, sky, _ := newOptionHost(t, cfg, WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+	h, sky, _ := newOptionHost(t, cfg, WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 
 	require.ErrorContains(t, h.Up(context.Background()), "write the SkyPilot task file")
 	assert.Empty(t, sky.Calls)
@@ -263,7 +263,7 @@ func TestUp_AFolderForTheTaskFileThatCannotBeMadeFailsTheLaunchBeforeSkyRuns(t *
 func TestUp_ALaunchWithNoSetupCommandWritesNoTaskFile(t *testing.T) {
 	t.Parallel()
 
-	got := upCall(t, hostConfig(nil), WithCheckout("beehave", "main", "https://example.test/o/n.git"))
+	got := upCall(t, hostConfig(nil), WithCheckout("beehest", "main", "https://example.test/o/n.git"))
 
 	assert.False(t, slices.ContainsFunc(got, func(word string) bool { return strings.HasSuffix(word, ".yaml") }), "%v", got)
 }
@@ -285,8 +285,8 @@ func TestNew_ACheckoutWithOneEmptyFieldIsRefusedAndTheMessageNamesTheFix(t *test
 
 	for name, checkout := range map[string][3]string{
 		"project": {"", "main", "https://example.test/o/n.git"},
-		"branch":  {"beehave", "", "https://example.test/o/n.git"},
-		"url":     {"beehave", "main", ""},
+		"branch":  {"beehest", "", "https://example.test/o/n.git"},
+		"url":     {"beehest", "main", ""},
 	} {
 		cfg := hostConfig(nil)
 		cfg.SetupCommand = "make setup"

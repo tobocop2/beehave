@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 // attributionOff is the value of the attribution setting that omits the commit trailer, the pull request text and the session link, in the form that every
@@ -23,7 +23,7 @@ func TestAttribution_EveryLaunchTurnsOffTheCommitTrailerInItsSettings(t *testing
 
 	adapter := claude.New(nil)
 	launches := map[string]agent.Launch{
-		"guard with a hook":            adapter.Guard("/bin/beehave check command", "/run", nil, nil),
+		"guard with a hook":            adapter.Guard("/bin/beehest check command", "/run", nil, nil),
 		"guard with no hook and files": adapter.Guard("", "/run", nil, nil),
 		"guard with an output file":    adapter.Guard("", "/run", []string{outputFile}, nil),
 		"sandbox":                      adapter.Sandbox(plan(), "", "/run", nil, nil),
@@ -48,7 +48,7 @@ func TestLaunch_SaysWhetherItHoldsTheHook(t *testing.T) {
 
 	adapter := claude.New(nil)
 
-	assert.True(t, adapter.Guard("/bin/beehave check command", "/run", nil, nil).Hooked)
+	assert.True(t, adapter.Guard("/bin/beehest check command", "/run", nil, nil).Hooked)
 	assert.False(t, adapter.Guard("", "/run", []string{outputFile}, nil).Hooked, "settings with no hook")
 	assert.True(t, adapter.Sandbox(plan(), "g", "/run", nil, nil).Hooked)
 	assert.False(t, adapter.Sandbox(plan(), "", "/run", nil, nil).Hooked)

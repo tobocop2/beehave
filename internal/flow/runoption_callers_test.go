@@ -69,7 +69,7 @@ func runCallOf(name string, call *ast.CallExpr) []runCall {
 func TestRunFileAndJoinRun_EveryProductionCallerPassesTheRunOption(t *testing.T) {
 	t.Parallel()
 
-	calls := append(runCallsIn(t, "../cli"), runCallsIn(t, "../../cmd/beehave")...)
+	calls := append(runCallsIn(t, "../cli"), runCallsIn(t, "../../cmd/beehest")...)
 
 	var missing []string
 

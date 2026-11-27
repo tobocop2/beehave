@@ -145,8 +145,8 @@ func TestRoundRun_CancelRunByIdRefusesARunOfAnotherBuildWithTheExactText(t *test
 
 	err = other.CancelRun(testRun)
 
-	require.EqualError(t, err, "the run belongs to another version of beehave: "+testRun+" started under version "+run.ApplicationVersion+
-		" and this is "+other.version+". Start version "+testVersion+" to finish it, or run beehave resume "+testItem+
+	require.EqualError(t, err, "the run belongs to another version of beehest: "+testRun+" started under version "+run.ApplicationVersion+
+		" and this is "+other.version+". Start version "+testVersion+" to finish it, or run beehest resume "+testItem+
 		" --on-this-build to move the run to this build from its last finished step")
 	assert.Equal(t, runRunning, stateOfRun(t, same, testRun), "the refused cancel leaves the run running")
 }
@@ -161,7 +161,7 @@ func TestRoundRun_CancelRunRefusesAnIdNoRunHas(t *testing.T) {
 
 	require.ErrorIs(t, err, errNoRunID)
 	require.ErrorContains(t, err, "round-nothing-r1-p1")
-	require.ErrorContains(t, err, "beehave status")
+	require.ErrorContains(t, err, "beehest status")
 	require.NotContains(t, err.Error(), "item has")
 }
 

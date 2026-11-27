@@ -1,10 +1,10 @@
 #!/bin/sh
-# Make a linux amd64 machine ready as a beehave build host for the ssh provider, then prove it. See docs/design/hosts.md.
+# Make a linux amd64 machine ready as a beehest build host for the ssh provider, then prove it. See docs/design/hosts.md.
 # It runs in two stages. A second run of either stage changes nothing. Neither stage installs a watchdog: each refuses to start and to
 # finish unless the named self-delete watchdog unit is active, enabled and Restart=always.
 #
 # The root stage runs once as root, from a clone that only root and the admin user can write. It installs the apt packages, Go and uv, installs
-# the metadata guard unit, makes the job user beehave-jobs with useradd, and puts the public key of the controller in the authorized_keys file
+# the metadata guard unit, makes the job user beehest-jobs with useradd, and puts the public key of the controller in the authorized_keys file
 # of that user. The job user has no sudoers entry and no group that gives root. The guard rejects every user except root on every TCP port
 # but 53 to the instance metadata server. The stage fails unless root still gets the token. The last line of a pass is HOST-SETUP-ROOT-DONE.
 #
@@ -25,7 +25,7 @@ usage='usage: sudo sh scripts/host-setup.sh --stage root --watchdog <systemd uni
 min_systemd=240
 landlock_major=6
 landlock_minor=7
-job_user=beehave-jobs
+job_user=beehest-jobs
 job_home=/home/$job_user
 # The groups that give root, or the files of root, to a member.
 root_groups='root sudo admin wheel google-sudoers docker lxd disk shadow staff'
@@ -34,12 +34,12 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 sysroot=${HOST_SETUP_SYSROOT:-}
 go_root=$sysroot/usr/local/go
 lsm_file=$sysroot/sys/kernel/security/lsm
-env_file=$HOME/.config/environment.d/zz-beehave.conf
+env_file=$HOME/.config/environment.d/zz-beehest.conf
 guard_unit=metadata-guard.service
-guard_rules=$sysroot/etc/beehave/metadata-guard.nft
+guard_rules=$sysroot/etc/beehest/metadata-guard.nft
 guard_unit_file=$sysroot/etc/systemd/system/$guard_unit
 key_file=$sysroot$job_home/.ssh/authorized_keys
-job_key_copy=$sysroot/etc/beehave/job-key.pub
+job_key_copy=$sysroot/etc/beehest/job-key.pub
 stage=
 work_root=
 watchdog=
@@ -330,7 +330,7 @@ go_bin() {
 # that has a number prefix, so this file is the last one on any distribution, unless a file with a letter prefix after zz sets PATH.
 set_unit_path() {
 	content="PATH=$go_root/bin:$gobin:\${PATH}
-BEEHAVE_BD_132=$gobin/bd"
+BEEHEST_BD_132=$gobin/bd"
 	if [ -f "$env_file" ] && [ "$(cat "$env_file")" = "$content" ]; then
 		say "$env_file is up to date"
 	else
@@ -362,13 +362,13 @@ make_work_root() {
 		say "making the work root $work_root"
 		mkdir -m 0755 -- "$work_root"
 	fi
-	[ -d "$work_root/.beehave" ] || mkdir -- "$work_root/.beehave"
+	[ -d "$work_root/.beehest" ] || mkdir -- "$work_root/.beehest"
 }
 
 install_project_tools() {
 	PATH=$go_root/bin:$gobin:$PATH
-	BEEHAVE_BD_132=$gobin/bd
-	export PATH BEEHAVE_BD_132
+	BEEHEST_BD_132=$gobin/bd
+	export PATH BEEHEST_BD_132
 	make setup
 	make contract-tools-install
 }
@@ -538,7 +538,7 @@ token_path=/computeMetadata/v1/instance/service-accounts/default/token
 check_guard_root() {
 	[ "$(systemctl is-active "$guard_unit" 2>/dev/null || true)" = active ] || fail "$guard_unit is not active"
 	[ "$(systemctl is-enabled "$guard_unit" 2>/dev/null || true)" = enabled ] || fail "$guard_unit is not enabled, so a reboot would drop the rules"
-	sudo nft list table inet beehave_metadata_guard >/dev/null || fail 'the metadata guard rules are not loaded'
+	sudo nft list table inet beehest_metadata_guard >/dev/null || fail 'the metadata guard rules are not loaded'
 	url=http://169.254.169.254$token_path
 	code=$(sudo curl -g -s -o /dev/null --max-time 5 -H 'Metadata-Flavor: Google' -w '%{http_code}' "$url") || true
 	[ "$code" = 200 ] || fail "root got HTTP $code from $url, not 200. The idle watchdog runs as root and needs the metadata server. Read $guard_rules"
@@ -602,7 +602,7 @@ enable_job_linger() {
 }
 
 write_record() {
-	record=$work_root/.beehave/host-setup.record
+	record=$work_root/.beehest/host-setup.record
 	{
 		printf 'at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 		printf 'commit=%s\n' "$(git -C "$root" rev-parse HEAD)"

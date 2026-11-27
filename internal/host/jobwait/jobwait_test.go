@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 var (
@@ -110,7 +110,7 @@ func limitedEngine(s jobwait.Scheduler, c *clock, bank func(context.Context) err
 func TestJob_StringHoldsTheFolderAndSplitFolderReadsItBack(t *testing.T) {
 	t.Parallel()
 
-	withFolder := jobwait.Job{ID: "7", Nonce: "n", Folder: "/home/ci/beehave-gate-a-1"}
+	withFolder := jobwait.Job{ID: "7", Nonce: "n", Folder: "/home/ci/beehest-gate-a-1"}
 
 	assert.Equal(t, "7-n", withFolder.Key())
 	assert.NotEqual(t, withFolder.Key(), withFolder.String())
@@ -118,7 +118,7 @@ func TestJob_StringHoldsTheFolderAndSplitFolderReadsItBack(t *testing.T) {
 	key, folder, err := jobwait.SplitFolder(withFolder.String())
 	require.NoError(t, err)
 	assert.Equal(t, "7-n", key)
-	assert.Equal(t, "/home/ci/beehave-gate-a-1", folder)
+	assert.Equal(t, "/home/ci/beehest-gate-a-1", folder)
 
 	key, folder, err = jobwait.SplitFolder("7-n")
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestJob_StringJoinsTheIDAndTheNonce(t *testing.T) {
 func TestJob_StringOfAJobWithNoNonceIsItsID(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "beehave-x", jobwait.Job{ID: "beehave-x"}.String())
+	assert.Equal(t, "beehest-x", jobwait.Job{ID: "beehest-x"}.String())
 }
 
 func TestWait_FinalStateBanksAndReleases(t *testing.T) {

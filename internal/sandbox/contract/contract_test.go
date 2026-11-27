@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox"
 )
 
 // recorder is a reporter that keeps what the checks report, so a test can read it. It never stops the check that reports.
@@ -234,7 +234,7 @@ func TestSocketNamesFor_OnlyLinuxHasAnAbstractSocket(t *testing.T) {
 			t.Errorf("%s: no pathname socket: %v %v", goos, addresses, flags)
 		}
 
-		if abstract && !strings.HasPrefix(addresses["abstract"], "@beehave-contract-") {
+		if abstract && !strings.HasPrefix(addresses["abstract"], "@beehest-contract-") {
 			t.Errorf("%s: abstract address = %q", goos, addresses["abstract"])
 		}
 	}

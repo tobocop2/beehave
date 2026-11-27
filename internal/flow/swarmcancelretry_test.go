@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // retriedFlow spawns 21 with one retry and 22 with none. The first attempt of 21 fails at its first command. Its second attempt spawns 23, which holds, and

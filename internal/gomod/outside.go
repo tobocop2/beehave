@@ -256,7 +256,7 @@ func (t *tree) back() string {
 // replace writes data to a new file beside path and renames it over path, so the write never follows a link that path became. The new file is made
 // with an exclusive create, which never follows or reuses an entry at its name, and with no execute bit.
 func (t *tree) replace(path string, data []byte, mode fs.FileMode) string {
-	temp := path + ".beehave"
+	temp := path + ".beehest"
 
 	made, err := t.create(temp, data, mode)
 	if errors.Is(err, fs.ErrExist) {

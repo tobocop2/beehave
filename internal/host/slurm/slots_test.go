@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/slurmtest"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/host/jobwait"
+	"github.com/tobocop2/beehest/internal/host/link"
+	"github.com/tobocop2/beehest/internal/host/slurmtest"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 // jobNumber is the Slurm job number inside the job id that Submit returned.
@@ -45,8 +45,8 @@ func TestSubmit_WrapsTheCommandInTheSlotLoopOnlyForAJobWithASlot(t *testing.T) {
 	text := f.Jobs[jobNumber(t, limited)].Command
 	assert.Contains(t, text, "flock -n 9")
 	assert.Contains(t, text, "-le 3")
-	assert.Contains(t, text, ".beehave/slots/mutation")
-	assert.Contains(t, text, `.beehave/waiting-$SLURM_JOB_ID`)
+	assert.Contains(t, text, ".beehest/slots/mutation")
+	assert.Contains(t, text, `.beehest/waiting-$SLURM_JOB_ID`)
 	assert.Equal(t, "echo hi", f.Jobs[jobNumber(t, free)].Command)
 }
 
@@ -79,7 +79,7 @@ func TestWait_AWaitingMarkerReadsPendingSoTheJobNeverGoesStale(t *testing.T) {
 			h, f, _ := newClockedHost(t)
 			id, job := submitted(t, h, f)
 			job.Live, job.LogSizes = 300, []int{10}
-			f.Files[".beehave/waiting-"+jobNumber(t, id)] = tc.marker
+			f.Files[".beehest/waiting-"+jobNumber(t, id)] = tc.marker
 
 			state, err := h.Wait(context.Background(), id)
 
@@ -138,12 +138,12 @@ func TestWait_TheMarkerThatTheWrapperWritesIsTheOneThatTheObserveReads(t *testin
 	})
 
 	require.Eventually(t, func() bool {
-		names, globErr := filepath.Glob(filepath.Join(dir, ".beehave", "waiting-*"))
+		names, globErr := filepath.Glob(filepath.Join(dir, ".beehest", "waiting-*"))
 
 		return globErr == nil && len(names) == 1
 	}, 10*time.Second, 20*time.Millisecond, "the waiting job writes one marker")
 
-	written, err := filepath.Glob(filepath.Join(dir, ".beehave", "waiting-*"))
+	written, err := filepath.Glob(filepath.Join(dir, ".beehest", "waiting-*"))
 	require.NoError(t, err)
 
 	rel, err := filepath.Rel(dir, written[0])
@@ -156,7 +156,7 @@ func TestWait_TheMarkerThatTheWrapperWritesIsTheOneThatTheObserveReads(t *testin
 	state, err := h.Wait(t.Context(), second)
 
 	require.NoError(t, err)
-	assert.Equal(t, ".beehave/waiting-"+number, rel, "the wrapper names the marker by the job number")
+	assert.Equal(t, ".beehest/waiting-"+number, rel, "the wrapper names the marker by the job number")
 	assert.Equal(t, model.JobSucceeded, state, "the observe finds the marker of the wrapper and keeps the job pending, so it is not stale")
 }
 
@@ -191,7 +191,7 @@ func TestObserve_ARunningJobWhoseMarkerReadFailsIsRunningWithNoSizeAndNeverPendi
 			h, f, _ := newClockedHost(t)
 			id, job := submitted(t, h, f)
 			job.Live, job.LogSizes = 5, []int{10}
-			f.Files[".beehave/waiting-"+jobNumber(t, id)] = true
+			f.Files[".beehest/waiting-"+jobNumber(t, id)] = true
 
 			parsed, err := parseJobID(id)
 			require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestObserve_ARunningJobMakesTwoRemoteExecutionsPerPoll(t *testing.T) {
 			h, f, _ := newClockedHost(t)
 			id, job := submitted(t, h, f)
 			job.Live, job.LogSizes = 5, []int{10}
-			f.Files[".beehave/waiting-"+jobNumber(t, id)] = marker
+			f.Files[".beehest/waiting-"+jobNumber(t, id)] = marker
 
 			parsed, err := parseJobID(id)
 			require.NoError(t, err)
@@ -266,8 +266,8 @@ func TestObserve_TheReadOfARunningJobUnderARealShellFindsTheMarkerAndTheLogSize(
 	t.Parallel()
 
 	dir := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(dir, ".beehave"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".beehave", "waiting-7"), nil, 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".beehest"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".beehest", "waiting-7"), nil, 0o600))
 
 	for _, number := range []string{"7", "8"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "slurm-"+number+".out"), []byte("12345"), 0o600))

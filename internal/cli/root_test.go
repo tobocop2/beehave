@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehest/internal/cli"
 )
 
 func TestExecute(t *testing.T) {
@@ -26,13 +26,13 @@ func TestExecute(t *testing.T) {
 			name:       "prints_version",
 			args:       []string{"--version"},
 			wantCode:   0,
-			wantStdout: "beehave 1.2.3\n",
+			wantStdout: "beehest 1.2.3\n",
 		},
 		{
 			name:       "rejects_unknown_flag",
 			args:       []string{"--nope"},
 			wantCode:   1,
-			wantStderr: "beehave: unknown flag: --nope\n",
+			wantStderr: "beehest: unknown flag: --nope\n",
 		},
 	}
 
@@ -61,6 +61,6 @@ func TestExecute_RefusesToStartWhenADBOSVariableIsSet(t *testing.T) {
 
 	require.Equal(t, 1, code)
 	require.Empty(t, stdout.String())
-	require.Equal(t, "beehave: DBOS__CONDUCTOR_KEY is set. DBOS reads it and would connect to a service outside this machine. Unset it and start beehave again.\n", stderr.String())
+	require.Equal(t, "beehest: DBOS__CONDUCTOR_KEY is set. DBOS reads it and would connect to a service outside this machine. Unset it and start beehest again.\n", stderr.String())
 	require.NotContains(t, stderr.String(), "secret-value")
 }

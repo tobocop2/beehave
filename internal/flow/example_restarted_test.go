@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehest/internal/merge"
 )
 
-func TestExampleRestarted_TheRoundLandsAnApprovedRunThatTheOwnerStartedWithBeehaveRun(t *testing.T) {
+func TestExampleRestarted_TheRoundLandsAnApprovedRunThatTheOwnerStartedWithBeehestRun(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t, "1")
@@ -18,7 +18,7 @@ func TestExampleRestarted_TheRoundLandsAnApprovedRunThatTheOwnerStartedWithBeeha
 	engine := rig.engine(t)
 	rig.last = engine
 
-	// The owner runs the listed item by hand, as beehave run <item> does: a run that the round did not start. The review approves it.
+	// The owner runs the listed item by hand, as beehest run <item> does: a run that the round did not start. The review approves it.
 	_, err := engine.RunFile("1", testProject, rig.file, modeOff())
 	require.NoError(t, err)
 	require.Empty(t, rig.merger.landed(), "the run of one item lands nothing: only the round lands")

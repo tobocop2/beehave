@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/claim"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/claim"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // freshLife takes and releases the claim through the claim package over the local store, and mints a new owner token for each claim, as the real lifecycle does.

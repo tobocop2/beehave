@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/agent/opencode"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent/opencode"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 const (
@@ -25,14 +25,14 @@ const (
 // hooks reads the hook input of the agents of the tests: the real readers of the two adapters.
 var hooks = map[model.Agent]agent.HookDecoder{claude.Name: claude.DecodeHook, opencode.Name: opencode.DecodeHook}
 
-// hook runs `beehave check command --agent claude` with the event on stdin and returns the exit code and stderr.
+// hook runs `beehest check command --agent claude` with the event on stdin and returns the exit code and stderr.
 func hook(t *testing.T, event string, args ...string) (int, string) {
 	t.Helper()
 
 	return hookOf(t, claude.Name, event, args...)
 }
 
-// hookOf runs `beehave check command` for the agent with the event on stdin and returns the exit code and stderr.
+// hookOf runs `beehest check command` for the agent with the event on stdin and returns the exit code and stderr.
 func hookOf(t *testing.T, name model.Agent, event string, args ...string) (int, string) {
 	t.Helper()
 
@@ -61,7 +61,7 @@ func TestCheckCommand_RefusesACommandThatBreaksARuleWithExit2AndTheReasonOnStder
 	code, stderr := hook(t, bashEvent)
 
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "beehave refused the command")
+	assert.Contains(t, stderr, "beehest refused the command")
 	assert.Contains(t, stderr, "bulk-staging: git add -A")
 }
 
@@ -91,7 +91,7 @@ func TestCheckCommand_RefusesAnEventThatIsNotAShellCallWithACommand(t *testing.T
 		code, stderr := hook(t, event)
 
 		assert.Equal(t, 2, code, name)
-		assert.Contains(t, stderr, "beehave refused the command: the ", name)
+		assert.Contains(t, stderr, "beehest refused the command: the ", name)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestCheckCommand_AnyOtherFailureOfTheCommandExits2(t *testing.T) {
 		code, stderr := hook(t, bashEvent, args...)
 
 		assert.Equal(t, 2, code, args)
-		assert.Contains(t, stderr, "beehave refused the command", args)
+		assert.Contains(t, stderr, "beehest refused the command", args)
 	}
 }
 
@@ -234,7 +234,7 @@ func TestCheckCommand_AnEventThatCannotBeReadIsRefused(t *testing.T) {
 		code, stderr := hook(t, event)
 
 		assert.Equal(t, 2, code, event)
-		assert.Contains(t, stderr, "beehave refused the command", event)
+		assert.Contains(t, stderr, "beehest refused the command", event)
 	}
 }
 

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/host/hosttest"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // call runs the words as a command on the head node of the cluster.
@@ -110,7 +110,7 @@ func TestSSH_TheReadOfARunningJobAnswersTheMarkerAndTheLogSizeInOneCall(t *testi
 	assert.Equal(t, "7\n", read())
 
 	call(c, "touch", "m")
-	assert.Equal(t, "beehave-waiting\n7\n", read())
+	assert.Equal(t, "beehest-waiting\n7\n", read())
 }
 
 func TestSSH_TheFlockProbeAnswersUnlessTheHeadNodeHasNoFlock(t *testing.T) {

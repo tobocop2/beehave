@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehest/internal/host/skypilot"
 )
 
 func TestStatus_ADownNodeRefusesAndNamesTheFix(t *testing.T) {

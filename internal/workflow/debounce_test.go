@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 func TestDebouncePeriod_ReadsTheWindowOfAStartAndRefusesZeroAndNoDuration(t *testing.T) {
@@ -50,11 +50,11 @@ func TestCheckDebounce_RefusesAWindowBelowZeroAndTakesZeroAsNone(t *testing.T) {
 	require.EqualError(t, workflow.CheckDebounce(-time.Second), `debounce is "-1s", which must be above zero. Write a duration such as "30s", or leave debounce out to start at once`)
 }
 
-func TestCheck_ADebounceKeywordOfSpawnIsAnOptionOfBeehaveRun(t *testing.T) {
+func TestCheck_ADebounceKeywordOfSpawnIsAnOptionOfBeehestRun(t *testing.T) {
 	t.Parallel()
 
 	got := checkText(t, "def main(item):\n    spawn([\"1\"], debounce = \"30s\")\n")
 
 	require.Len(t, got, 1)
-	assert.Contains(t, got[0], "2:18 spawn takes no argument debounce. debounce is an option of beehave run.")
+	assert.Contains(t, got[0], "2:18 spawn takes no argument debounce. debounce is an option of beehest run.")
 }

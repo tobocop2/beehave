@@ -277,7 +277,7 @@ func (e *Engine) giveBackCut(cut []*attempt, stop <-chan struct{}) {
 	}
 }
 
-// giveBackStrayCancels gives back each canceled run that no run of this process executes: a run that beehave resume reopened for another build, or one that still waits in the queue.
+// giveBackStrayCancels gives back each canceled run that no run of this process executes: a run that beehest resume reopened for another build, or one that still waits in the queue.
 // Its cancel marker and the claim of its resume stay until an engine gives them back, and the tick is the engine that runs now.
 // A run that this process executes or releases is skipped. The release runs beside the tick, as the release of a local run does.
 func (e *Engine) giveBackStrayCancels() {
@@ -295,7 +295,7 @@ func (e *Engine) giveBackStrayCancels() {
 	}
 }
 
-// giveBackStray gives back one canceled run. It leaves the marker of a run that is open and not canceled yet, because beehave cancel writes the marker first.
+// giveBackStray gives back one canceled run. It leaves the marker of a run that is open and not canceled yet, because beehest cancel writes the marker first.
 // It drops the marker of a run that ended without a cancel or has a newer run.
 func (e *Engine) giveBackStray(a *attempt) {
 	defer e.cancels.finish(a)

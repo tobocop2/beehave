@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/agent/claude"
 )
 
 const reviewSkillFolder = "/home/o/login/skills/review"
@@ -19,13 +19,13 @@ func TestLaunch_AStepWithNoSandboxGetsThePluginFolderOfItsSkills(t *testing.T) {
 
 	assert.Equal(t, []string{"--setting-sources", "", "--add-dir", "/run/skills-plugin", "--plugin-dir", "/run/skills-plugin", "--settings", attributionSettings}, launch.Args, "the plugin folder is a working directory, so the Read tool reads the files of a skill")
 	assert.Equal(t, map[string]string{"skills-plugin/skills/review": reviewSkillFolder}, launch.Copies)
-	assert.Contains(t, launch.Files["skills-plugin/.claude-plugin/plugin.json"], `"name":"beehave-skills"`)
+	assert.Contains(t, launch.Files["skills-plugin/.claude-plugin/plugin.json"], `"name":"beehest-skills"`)
 }
 
 func TestLaunch_AGuardedStepWithOutputFileAndSkillsKeepsTheHookTheRulesAndThePlugin(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", []string{outputFile}, []string{reviewSkillFolder})
+	launch := claude.New(nil).Guard("/bin/beehest check command", "/run", []string{outputFile}, []string{reviewSkillFolder})
 	flags, settings := settingsOf(t, launch.Args)
 
 	assert.Equal(t, []string{"--setting-sources", "", "--add-dir", "/state/outputs/7.review", "/run/skills-plugin", "--plugin-dir", "/run/skills-plugin"}, flags)
@@ -49,7 +49,7 @@ func TestLaunch_EveryStepWithNoSandboxEmptiesTheSettingSourcesAndCarriesItsSetti
 
 	for name, launch := range map[string]agent.Launch{
 		"plain":  claude.New(nil).Guard("", "/run", nil, nil),
-		"hooked": claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil),
+		"hooked": claude.New(nil).Guard("/bin/beehest check command", "/run", nil, nil),
 		"output": claude.New(nil).Guard("", "/run", []string{outputFile}, nil),
 		"skills": claude.New(nil).Guard("", "/run", nil, []string{reviewSkillFolder}),
 	} {

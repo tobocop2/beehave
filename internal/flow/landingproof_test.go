@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/landing"
+	"github.com/tobocop2/beehest/internal/landing"
 )
 
 // landingProofCall writes a call of landing_proof over the landed members of the items, from the tip t0 to the tip t1, and a report of the unproven list.

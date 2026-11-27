@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 // networkNames lists the only variables that a role runner takes from the engine. It holds no home folder, no login folder and no token.

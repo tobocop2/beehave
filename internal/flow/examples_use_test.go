@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 // The contract test of the workflow API. It reads the builtins and keywords that the engine registers, the target table of docs/design/workflow-api.md,

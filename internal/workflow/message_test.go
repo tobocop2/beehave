@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/workflow"
+	"github.com/tobocop2/beehest/internal/workflow"
 )
 
 func TestMessageName_AcceptsTheNamesThatTheRuleAllows(t *testing.T) {
@@ -19,7 +19,7 @@ func TestMessageName_AcceptsTheNamesThatTheRuleAllows(t *testing.T) {
 		"digit first":   "9lives",
 		"dots dashes":   "review.round-2_x",
 		"longest":       strings.Repeat("a", 64),
-		"not the guard": "beehave", // the reserved prefix has a dot
+		"not the guard": "beehest", // the reserved prefix has a dot
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -55,10 +55,10 @@ func TestMessageName_RefusesAnEmptyBadOrTooLongName(t *testing.T) {
 	}
 }
 
-func TestMessageName_RefusesTheNamesThatBeehaveReserves(t *testing.T) {
+func TestMessageName_RefusesTheNamesThatBeehestReserves(t *testing.T) {
 	t.Parallel()
 
-	for _, text := range []string{"beehave.answer", "beehave.child", "beehave.", "beehave.inbox"} {
+	for _, text := range []string{"beehest.answer", "beehest.child", "beehest.", "beehest.inbox"} {
 		err := workflow.MessageName("key", text)
 
 		require.Error(t, err, text)
@@ -152,7 +152,7 @@ func TestTopics_ReadsTheTopicsOfAFirstOfCall(t *testing.T) {
 func TestTopics_RefusesATopicThatIsBadOrReserved(t *testing.T) {
 	t.Parallel()
 
-	for name, topic := range map[string]string{"bad": "Bad Topic", "reserved": "beehave.child"} {
+	for name, topic := range map[string]string{"bad": "Bad Topic", "reserved": "beehest.child"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 

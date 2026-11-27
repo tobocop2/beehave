@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/beehave/internal/sandbox"
-	"github.com/tobocop2/beehave/internal/sandbox/seatbelt"
+	"github.com/tobocop2/beehest/internal/sandbox"
+	"github.com/tobocop2/beehest/internal/sandbox/seatbelt"
 )
 
 // A plan that names the system folders, as the plan of a gate and the check of the enforcer do, reads every folder that the profile added by itself

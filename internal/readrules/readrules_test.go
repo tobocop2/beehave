@@ -255,9 +255,9 @@ var rules = map[string]rule{
 	"internal/store.Reader.Parent":                {NotHeld: inAdapter},
 	"internal/store.ClaimRows.HeldRows":           {NotHeld: inAdapter},
 	"internal/store.ClaimRows.Reclaim":            {NotHeld: inAdapter},
-	"cmd/beehave.treeFinder.Path":                 {NotHeld: inAdapter},
-	"cmd/beehave.programTrees.Ensure":             {Exempt: doesWork},
-	"cmd/beehave.loginReader.Login":               {NotHeld: noEngine},
+	"cmd/beehest.treeFinder.Path":                 {NotHeld: inAdapter},
+	"cmd/beehest.programTrees.Ensure":             {Exempt: doesWork},
+	"cmd/beehest.loginReader.Login":               {NotHeld: noEngine},
 }
 
 // read is one method of one interface that returns a value with an error.

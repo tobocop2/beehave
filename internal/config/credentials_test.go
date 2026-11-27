@@ -5,15 +5,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehest/internal/model"
 )
 
 func TestLoadFolder_TheWriterCredentialReachesTheProfileAsAFileOrAsACommand(t *testing.T) {
 	t.Parallel()
 
-	file, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(file = "~/.config/beehave/credentials/w.token")}`))
+	file, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(file = "~/.config/beehest/credentials/w.token")}`))
 	require.Empty(t, problems)
-	require.Equal(t, map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/w.token"}}, file.Credentials)
+	require.Equal(t, map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehest/credentials/w.token"}}, file.Credentials)
 
 	command, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(command = ["security", "find-generic-password", "-w"])}`))
 	require.Empty(t, problems)
@@ -49,9 +49,9 @@ func TestLoadFolder_CILockedIsABoolOfTheCredentialThatDefaultsToFalse(t *testing
 	t.Parallel()
 
 	for args, want := range map[string]bool{`, ci_locked = True`: true, `, ci_locked = False`: false, ``: false} {
-		file, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(file = "~/.config/beehave/credentials/w.token"`+args+`)}`))
+		file, problems := loadProjectText(t, call(localProject+`, credentials = {"writer": credential(file = "~/.config/beehest/credentials/w.token"`+args+`)}`))
 		require.Empty(t, problems, args)
-		require.Equal(t, map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/w.token", CILocked: want}}, file.Credentials, args)
+		require.Equal(t, map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehest/credentials/w.token", CILocked: want}}, file.Credentials, args)
 	}
 
 	for _, value := range []string{`"yes"`, `None`, `1`} {

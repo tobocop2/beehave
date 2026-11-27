@@ -1,0 +1,18 @@
+# The first mutation run fails and prints nothing. The fix lane gets one finding with the exit code, and the head gets no full review before the fix.
+exec beehest run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+grep -count=2 '^build mutation sh mutation.sh origin/integration$' mutation.log
+grep -count=2 '^fix 1 ' calls.log
+! grep '^fix 2 ' calls.log
+grep -count=3 '^review ' calls.log
+# The first fix takes the hit of the implementer and is clean, so the exit code is the first finding of the second fix. Both are fix round 1.
+grep -count=1 '^found=The mutation command exited with code 1 and printed no finding.' findings.log
+
+-- mutations --
+sh mutation.sh origin/integration => silent
+sh mutation.sh origin/integration => clean
+-- verdicts --
+approve
+approve
+approve

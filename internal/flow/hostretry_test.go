@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehest/internal/host"
 )
 
 // keyedJobs is a host that remembers each job by its key, as Slurm does: a submit with the key of a job that ended gets that job and its exit code.

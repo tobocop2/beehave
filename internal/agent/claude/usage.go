@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehest/internal/agent"
+	"github.com/tobocop2/beehest/internal/model"
+	"github.com/tobocop2/beehest/internal/proc"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	exitGrace = 500 * time.Millisecond
 
 	streamJSON     = "stream-json"
-	usageRequestID = "beehave-usage"
+	usageRequestID = "beehest-usage"
 	answerMark     = "control_response"
 	noAnswer       = "the CLI ended without answering get_usage"
 	noPlanLimits   = "the reply has no Claude plan limits (rate_limits_available is false)"
