@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://github.com/tobocop2/beehest">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-dark.svg?v=poison">
-      <img alt="beehest" src="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-light.svg?v=poison" width="928">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-dark.svg?v=drip4">
+      <img alt="beehest" src="https://raw.githubusercontent.com/tobocop2/beehest/main/docs/beehest-header-light.svg?v=drip4" width="928">
     </picture>
   </a>
 </p>
