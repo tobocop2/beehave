@@ -34,7 +34,7 @@ const (
 	badNameExit = "3"
 
 	// revertPassedMarker starts the line of a new test that passed or was skipped on the base code: the class and the name follow.
-	revertPassedMarker = "beehest-revert-passed "
+	revertPassedMarker = "beehest-revert-passed " //nolint:gosec // G101: a marker of the job output, not a credential
 
 	// revertEnd starts the end marker of the revert run: "new=<count> passed=<count> cases=<count>".
 	revertEnd = "beehest-revert-end "

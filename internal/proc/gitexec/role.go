@@ -4,7 +4,7 @@ import "github.com/tobocop2/beehest/internal/credential"
 
 // tokenVariable carries the token of one call to the credential helper of that call. hostVariable carries the one host that the helper answers for.
 const (
-	tokenVariable = "BEEHEST_FORGE_TOKEN"
+	tokenVariable = "BEEHEST_FORGE_TOKEN" //nolint:gosec // G101: the name of the variable, not a credential
 	hostVariable  = "BEEHEST_FORGE_HOST"
 )
 
