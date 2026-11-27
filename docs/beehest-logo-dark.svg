@@ -1,3 +1,72 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 644 158" width="644" height="158" role="img" aria-label="beehest">
-  <text x="6" y="19" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" fill="#ebbcba"><tspan x="6" dy="0">888                        888                        888</tspan><tspan x="6" dy="19">888                        888                        888</tspan><tspan x="6" dy="19">888                        888                        888</tspan><tspan x="6" dy="19">88888b.   .d88b.   .d88b.  88888b.   .d88b.  .d8888b  888888</tspan><tspan x="6" dy="19">888 "88b d8P  Y8b d8P  Y8b 888 "88b d8P  Y8b 88K      888</tspan><tspan x="6" dy="19">888  888 88888888 88888888 888  888 88888888 "Y8888b. 888</tspan><tspan x="6" dy="19">888 d88P Y8b.     Y8b.     888  888 Y8b.          X88 Y88b.</tspan><tspan x="6" dy="19">88888P"   "Y8888   "Y8888  888  888  "Y8888   88888P'  "Y888</tspan></text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 655 255" width="655" height="255" role="img" aria-label="beehest">
+  <style>
+    .bleed { transform-box: fill-box; transform-origin: 50% 0%; fill: #ebbcba; }
+    @keyframes drip0 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(0.4px) scaleY(1.000); } }
+    .r0 { animation: drip0 3.6s ease-in-out 0.00s infinite; }
+    @keyframes drip1 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(0.7px) scaleY(1.013); } }
+    .r1 { animation: drip1 3.6s ease-in-out 0.11s infinite; }
+    @keyframes drip2 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(1.0px) scaleY(1.027); } }
+    .r2 { animation: drip2 3.6s ease-in-out 0.22s infinite; }
+    @keyframes drip3 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(1.3px) scaleY(1.040); } }
+    .r3 { animation: drip3 3.6s ease-in-out 0.33s infinite; }
+    @keyframes drip4 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(1.6px) scaleY(1.053); } }
+    .r4 { animation: drip4 3.6s ease-in-out 0.44s infinite; }
+    @keyframes drip5 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(1.8px) scaleY(1.067); } }
+    .r5 { animation: drip5 3.6s ease-in-out 0.55s infinite; }
+    @keyframes drip6 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(2.1px) scaleY(1.080); } }
+    .r6 { animation: drip6 3.6s ease-in-out 0.66s infinite; }
+    @keyframes drip7 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(2.4px) scaleY(1.093); } }
+    .r7 { animation: drip7 3.6s ease-in-out 0.77s infinite; }
+    @keyframes drip8 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(2.7px) scaleY(1.107); } }
+    .r8 { animation: drip8 3.6s ease-in-out 0.88s infinite; }
+    @keyframes drip9 { 0%, 60%, 100% { fill: #ebbcba; transform: translateY(0) scaleY(1); } 22% { fill: #eb6f92; transform: translateY(3.0px) scaleY(1.120); } }
+    .r9 { animation: drip9 3.6s ease-in-out 0.99s infinite; }
+    .drop { transform-box: fill-box; transform-origin: 50% 0%; fill: #eb6f92; opacity: 0; }
+    @keyframes fall {
+      0%   { opacity: 0; transform: translateY(-4px) scaleY(.3); }
+      12%  { opacity: 1; transform: translateY(-2px) scaleY(.8); }
+      38%  { opacity: 1; transform: translateY(2px) scaleY(1.6); animation-timing-function: cubic-bezier(.5,0,1,1); }
+      78%  { opacity: .85; transform: translateY(46px) scaleY(1.1); }
+      86%, 100% { opacity: 0; transform: translateY(52px) scaleY(.6); }
+    }
+    .d0 { animation: fall 3.38s ease-in 0.47s infinite; }
+    .d1 { animation: fall 3.59s ease-in 0.42s infinite; }
+    .d2 { animation: fall 4.31s ease-in 2.60s infinite; }
+    .d3 { animation: fall 3.64s ease-in 1.71s infinite; }
+    .d4 { animation: fall 2.68s ease-in 3.46s infinite; }
+    .d5 { animation: fall 3.35s ease-in 2.25s infinite; }
+    .d6 { animation: fall 3.61s ease-in 2.79s infinite; }
+    .d7 { animation: fall 3.65s ease-in 2.63s infinite; }
+    .d8 { animation: fall 2.78s ease-in 2.91s infinite; }
+    .d9 { animation: fall 3.71s ease-in 2.09s infinite; }
+    .d10 { animation: fall 4.00s ease-in 1.97s infinite; }
+    .d11 { animation: fall 3.25s ease-in 1.14s infinite; }
+    .d12 { animation: fall 3.86s ease-in 1.13s infinite; }
+    .d13 { animation: fall 3.55s ease-in 3.53s infinite; }
+    @media (prefers-reduced-motion: reduce) { .bleed, .drop { animation: none; } }
+  </style>
+  <text class="bleed r0" x="6" y="22" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">@@@@@@@   @@@@@@@@  @@@@@@@@  @@@  @@@  @@@@@@@@   @@@@@@   @@@@@@@</text>
+  <text class="bleed r1" x="6" y="41" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">@@@@@@@@  @@@@@@@@  @@@@@@@@  @@@  @@@  @@@@@@@@  @@@@@@@   @@@@@@@</text>
+  <text class="bleed r2" x="6" y="60" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">@@!  @@@  @@!       @@!       @@!  @@@  @@!       !@@         @@!</text>
+  <text class="bleed r3" x="6" y="79" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">!@   @!@  !@!       !@!       !@!  @!@  !@!       !@!         !@!</text>
+  <text class="bleed r4" x="6" y="98" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">@!@!@!@   @!!!:!    @!!!:!    @!@!@!@!  @!!!:!    !!@@!!      @!!</text>
+  <text class="bleed r5" x="6" y="117" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">!!!@!!!!  !!!!!:    !!!!!:    !!!@!!!!  !!!!!:     !!@!!!     !!!</text>
+  <text class="bleed r6" x="6" y="136" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">!!:  !!!  !!:       !!:       !!:  !!!  !!:            !:!    !!:</text>
+  <text class="bleed r7" x="6" y="155" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">:!:  !:!  :!:       :!:       :!:  !:!  :!:           !:!     :!:</text>
+  <text class="bleed r8" x="6" y="174" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba"> :: ::::   :: ::::   :: ::::  ::   :::   :: ::::  :::: ::      ::</text>
+  <text class="bleed r9" x="6" y="193" xml:space="preserve" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold" fill="#ebbcba">:: : ::   : :: ::   : :: ::    :   : :  : :: ::   :: : :       :</text>
+  <text class="drop d0" x="25.2" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d1" x="34.8" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d2" x="44.4" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d3" x="54" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d4" x="63.6" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d5" x="111.6" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d6" x="150" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d7" x="236.4" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d8" x="265.2" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d9" x="303.6" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d10" x="418.8" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d11" x="438" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">!</text>
+  <text class="drop d12" x="514.8" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
+  <text class="drop d13" x="534" y="207.4" font-family="ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="16" font-weight="bold">:</text>
 </svg>
